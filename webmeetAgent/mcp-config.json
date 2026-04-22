@@ -1,0 +1,202 @@
+{
+  "tools": [
+    {
+      "name": "webmeet_workspace_list",
+      "title": "WebMeet List Workspaces",
+      "description": "List WebMeet workspaces.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {},
+      "env": { "TOOL_NAME": "webmeet_workspace_list" }
+    },
+    {
+      "name": "webmeet_workspace_create",
+      "title": "WebMeet Create Workspace",
+      "description": "Create a WebMeet workspace.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "name": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_workspace_create" }
+    },
+    {
+      "name": "webmeet_channel_list",
+      "title": "WebMeet List Channels",
+      "description": "List channels for a workspace.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "workspaceId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_channel_list" }
+    },
+    {
+      "name": "webmeet_channel_create",
+      "title": "WebMeet Create Channel",
+      "description": "Create a channel for a workspace.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "workspaceId": { "type": "string", "optional": false },
+        "name": { "type": "string", "optional": false },
+        "kind": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_channel_create" }
+    },
+    {
+      "name": "webmeet_meeting_list",
+      "title": "WebMeet List Meetings",
+      "description": "List meetings for a channel.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "channelId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_list" }
+    },
+    {
+      "name": "webmeet_meeting_create",
+      "title": "WebMeet Create Meeting",
+      "description": "Create a meeting in a channel.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "channelId": { "type": "string", "optional": false },
+        "title": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_create" }
+    },
+    {
+      "name": "webmeet_meeting_join",
+      "title": "WebMeet Join Meeting",
+      "description": "Create a participant session and LiveKit token for a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "displayName": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_join" }
+    },
+    {
+      "name": "webmeet_chat_list",
+      "title": "WebMeet List Chat",
+      "description": "List meeting chat messages.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_chat_list" }
+    },
+    {
+      "name": "webmeet_chat_send",
+      "title": "WebMeet Send Chat",
+      "description": "Send a chat message to a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "authorId": { "type": "string", "optional": false },
+        "authorName": { "type": "string", "optional": false },
+        "message": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_chat_send" }
+    },
+    {
+      "name": "webmeet_transcript_append",
+      "title": "WebMeet Append Transcript",
+      "description": "Append a transcript segment to a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "speakerId": { "type": "string", "optional": false },
+        "speakerName": { "type": "string", "optional": false },
+        "text": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_transcript_append" }
+    },
+    {
+      "name": "webmeet_transcript_list",
+      "title": "WebMeet List Transcript",
+      "description": "List transcript segments for a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_transcript_list" }
+    },
+    {
+      "name": "webmeet_agent_attach",
+      "title": "WebMeet Attach Agent",
+      "description": "Attach an AI agent to a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "agentType": { "type": "string", "optional": false },
+        "mode": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_agent_attach" }
+    },
+    {
+      "name": "webmeet_agent_list",
+      "title": "WebMeet List Agents",
+      "description": "List AI agents attached to a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_agent_list" }
+    },
+    {
+      "name": "webmeet_recording_start",
+      "title": "WebMeet Start Recording",
+      "description": "Start a real LiveKit Egress recording for a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_recording_start" }
+    },
+    {
+      "name": "webmeet_recording_stop",
+      "title": "WebMeet Stop Recording",
+      "description": "Stop a real LiveKit Egress recording and persist the resulting artifact metadata.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_recording_stop" }
+    },
+    {
+      "name": "webmeet_artifact_list",
+      "title": "WebMeet List Artifacts",
+      "description": "List artifacts for a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_artifact_list" }
+    },
+    {
+      "name": "webmeet_close_meeting",
+      "title": "WebMeet Close Meeting",
+      "description": "Close a meeting and generate summary artifacts.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_close_meeting" }
+    }
+  ]
+}

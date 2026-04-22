@@ -1,0 +1,241 @@
+{
+    "agent": "sh /code/scripts/startAgent.sh",
+    "container": "node:20-alpine",
+    "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and meeting artifacts.",
+    "network": {
+        "name": "webmeet",
+        "aliases": ["webmeetAgent"]
+    },
+    "enable": [
+        "basic/webmeetInfra"
+    ],
+    "volumes": {
+        "webmeetAgent/data": "/data",
+        "webmeet/recordings": "/recordings"
+    },
+    "profiles": {
+        "default": {
+            "env": [
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GEMINI_API_KEY",
+                "MISTRAL_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "OPENROUTER_API_KEY",
+                "HUGGINGFACE_API_KEY",
+                "XAI_API_KEY",
+                "AXIOLOGIC_API_KEY",
+                "OPENCODE_API_KEY",
+                "AXIOLOGIC_PROXY_API_KEY",
+                "ASSISTOS_FS_ROOT",
+                "WORKSPACE_ROOT",
+                "PLOINKY_WORKSPACE_ROOT",
+                "SOUL_GATEWAY_API_KEY",
+                "LLMAgentClient_DEBUG",
+                "LLMAgentClient_VERBOSE_DELAY",
+                {
+                    "name": "WEBMEET_DATA_DIR",
+                    "required": false,
+                    "default": "/data"
+                },
+                {
+                    "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
+                    "required": false,
+                    "default": "ws://127.0.0.1:7880"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_URL",
+                    "required": false,
+                    "default": "http://webmeetLivekitServer:7880"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_API_KEY",
+                    "required": false,
+                    "default": "devkey"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_API_SECRET",
+                    "required": false,
+                    "default": "devsecretdevsecretdevsecretdevsecret"
+                },
+                {
+                    "name": "WEBMEET_EGRESS_URL",
+                    "required": false,
+                    "default": "http://webmeetLivekitEgress:7980"
+                },
+                {
+                    "name": "WEBMEET_ROOM_PREFIX",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
+                    "name": "WEBMEET_AGENT_NAME",
+                    "required": false,
+                    "default": "WebMeetAgent"
+                },
+                {
+                    "name": "WEBMEET_RECORDINGS_DIR",
+                    "required": false,
+                    "default": "/recordings"
+                },
+                {
+                    "name": "WEBMEET_API_PORT",
+                    "required": false,
+                    "default": "8791"
+                },
+                {
+                    "name": "WEBMEET_WORKER_POLL_MS",
+                    "required": false,
+                    "default": "400"
+                }
+            ]
+        },
+        "dev": {
+            "env": [
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GEMINI_API_KEY",
+                "MISTRAL_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "OPENROUTER_API_KEY",
+                "HUGGINGFACE_API_KEY",
+                "XAI_API_KEY",
+                "AXIOLOGIC_API_KEY",
+                "OPENCODE_API_KEY",
+                "AXIOLOGIC_PROXY_API_KEY",
+                "ASSISTOS_FS_ROOT",
+                "WORKSPACE_ROOT",
+                "PLOINKY_WORKSPACE_ROOT",
+                "SOUL_GATEWAY_API_KEY",
+                "LLMAgentClient_DEBUG",
+                "LLMAgentClient_VERBOSE_DELAY",
+                {
+                    "name": "WEBMEET_DATA_DIR",
+                    "required": false,
+                    "default": "/data"
+                },
+                {
+                    "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
+                    "required": false,
+                    "default": "ws://127.0.0.1:7880"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_URL",
+                    "required": false,
+                    "default": "http://webmeetLivekitServer:7880"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_API_KEY",
+                    "required": false,
+                    "default": "devkey"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_API_SECRET",
+                    "required": false,
+                    "default": "devsecretdevsecretdevsecretdevsecret"
+                },
+                {
+                    "name": "WEBMEET_EGRESS_URL",
+                    "required": false,
+                    "default": "http://webmeetLivekitEgress:7980"
+                },
+                {
+                    "name": "WEBMEET_ROOM_PREFIX",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
+                    "name": "WEBMEET_AGENT_NAME",
+                    "required": false,
+                    "default": "WebMeetAgent"
+                },
+                {
+                    "name": "WEBMEET_RECORDINGS_DIR",
+                    "required": false,
+                    "default": "/recordings"
+                },
+                {
+                    "name": "WEBMEET_API_PORT",
+                    "required": false,
+                    "default": "8791"
+                },
+                {
+                    "name": "WEBMEET_WORKER_POLL_MS",
+                    "required": false,
+                    "default": "400"
+                }
+            ]
+        },
+        "prod": {
+            "env": [
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GEMINI_API_KEY",
+                "MISTRAL_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "OPENROUTER_API_KEY",
+                "HUGGINGFACE_API_KEY",
+                "XAI_API_KEY",
+                "AXIOLOGIC_API_KEY",
+                "OPENCODE_API_KEY",
+                "AXIOLOGIC_PROXY_API_KEY",
+                "ASSISTOS_FS_ROOT",
+                "WORKSPACE_ROOT",
+                "PLOINKY_WORKSPACE_ROOT",
+                "SOUL_GATEWAY_API_KEY",
+                "LLMAgentClient_DEBUG",
+                "LLMAgentClient_VERBOSE_DELAY",
+                {
+                    "name": "WEBMEET_DATA_DIR",
+                    "required": false,
+                    "default": "/data"
+                },
+                {
+                    "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_URL",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_API_KEY",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_API_SECRET",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_EGRESS_URL",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_ROOM_PREFIX",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
+                    "name": "WEBMEET_AGENT_NAME",
+                    "required": false,
+                    "default": "WebMeetAgent"
+                },
+                {
+                    "name": "WEBMEET_RECORDINGS_DIR",
+                    "required": false,
+                    "default": "/recordings"
+                },
+                {
+                    "name": "WEBMEET_API_PORT",
+                    "required": false,
+                    "default": "8791"
+                },
+                {
+                    "name": "WEBMEET_WORKER_POLL_MS",
+                    "required": false,
+                    "default": "400"
+                }
+            ]
+        }
+    }
+}

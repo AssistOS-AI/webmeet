@@ -1,0 +1,19 @@
+{
+    "pluginCategory": "application",
+    "id": "webmeet",
+    "component": "webmeet-tool-button",
+    "location": ["file-exp:toolbar"],
+    "label": "WebMeet",
+    "tooltip": "WebMeet collaboration",
+    "icon": "./icon.svg",
+    "presenter": "WebMeetToolButton",
+    "type": "embedded",
+    "autoPin": false,
+    "dependencies": [
+        {
+            "component": "webmeet-dashboard-modal",
+            "presenter": "WebMeetDashboardModal",
+            "type": "modal"
+        }
+    ]
+}

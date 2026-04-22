@@ -1,0 +1,249 @@
+<div class="webmeet-dashboard-modal">
+    <div class="modal-header">
+        <div class="modal-header-left">
+            <div class="modal-title">WebMeet Agent</div>
+            <div class="webmeet-subtitle">Channels, meetings, chat, transcript, artifacts</div>
+            <div id="webmeetWorkspaceIndicator" class="webmeet-workspace-indicator">
+                <span class="webmeet-workspace-label">Workspace:</span>
+                <span id="webmeetCurrentWorkspace" class="webmeet-workspace-name">None</span>
+            </div>
+        </div>
+        <div class="close" data-local-action="closeModal">
+            <img class="close-icon" src="/explorer/assets/icons/x-mark.svg" alt="close">
+        </div>
+    </div>
+    <div id="webmeetToastContainer" class="webmeet-toast-container"></div>
+    <div class="webmeet-dashboard-layout">
+        <section class="webmeet-sidebar">
+            <div class="webmeet-panel">
+                <div class="webmeet-panel-header">
+                    <span>Channels</span>
+                    <button type="button" class="general-button subtle-button" data-local-action="createChannel">New</button>
+                </div>
+                <div id="webmeetChannelList" class="webmeet-list"></div>
+            </div>
+            <div class="webmeet-panel">
+                <div class="webmeet-panel-header">
+                    <span>Meetings</span>
+                    <div class="webmeet-panel-actions">
+                        <button type="button" class="general-button subtle-button" data-local-action="createMeeting">New</button>
+                    </div>
+                </div>
+                <div id="webmeetMeetingList" class="webmeet-list"></div>
+            </div>
+            <div class="webmeet-panel" id="webmeetParticipantsPanel">
+                <div class="webmeet-panel-header">
+                    <span>Participants</span>
+                    <button type="button" class="webmeet-collapse-button" data-collapse="participants">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="18 15 12 9 6 15"></polyline>
+                        </svg>
+                    </button>
+                </div>
+                <div id="webmeetParticipantsList" class="webmeet-scroll-list webmeet-collapsible" data-collapsible="participants"></div>
+            </div>
+        </section>
+        <section class="webmeet-main">
+            <!-- Hidden elements for JS (accessible but not visible) -->
+            <div class="webmeet-js-elements">
+                <span id="webmeetJoinStatus">Not joined</span>
+                <span id="webmeetLifecycle">Active</span>
+                <span id="webmeetRoomConnectionState">Disconnected</span>
+                <div id="webmeetWorkspaceList"></div>
+            </div>
+
+            <!-- Welcome screen (shown when not joined to a meeting) -->
+            <div id="webmeetWelcomeScreen" class="webmeet-welcome-screen">
+                <div class="webmeet-welcome-content">
+                    <div class="webmeet-welcome-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                    <h2 class="webmeet-welcome-title">Welcome to WebMeet</h2>
+                    <p class="webmeet-welcome-text">Select a channel and meeting from the sidebar, then join to start collaborating.</p>
+                    <div class="webmeet-welcome-features">
+                        <div class="webmeet-welcome-feature">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <span>Audio & Video calls</span>
+                        </div>
+                        <div class="webmeet-welcome-feature">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            <span>Real-time chat</span>
+                        </div>
+                        <div class="webmeet-welcome-feature">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            <span>Transcripts & Artifacts</span>
+                        </div>
+                    </div>
+                    <div class="webmeet-welcome-status">
+                        <span id="webmeetWelcomeStatus" class="webmeet-status-badge">Select a meeting to begin</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meeting controls bar (hidden by default, shown when meeting selected) -->
+            <div class="webmeet-meeting-bar webmeet-hidden">
+                <div class="webmeet-meeting-info">
+                    <span id="webmeetMeetingTitle" class="webmeet-meeting-name">None</span>
+                    <span id="webmeetMeetingMeta" class="webmeet-meeting-meta"></span>
+                </div>
+                <div class="webmeet-meeting-actions">
+                    <button type="button" class="general-button subtle-button" data-local-action="toggleRecording" id="webmeetRecordingButton">Start rec</button>
+                    <button type="button" class="general-button subtle-button danger-button" data-local-action="leaveMeeting">Leave</button>
+                </div>
+            </div>
+
+            <!-- Main content area -->
+            <div class="webmeet-main-content">
+                <!-- Live room only -->
+                <div class="webmeet-chat-area">
+                    <div class="webmeet-chat-header">
+                        <div class="webmeet-tabs">
+                            <button class="webmeet-tab webmeet-tab-active" data-tab="live">Live Room</button>
+                        </div>
+                    </div>
+                    <div class="webmeet-live-content" id="webmeetLiveTab">
+                        <div id="webmeetVideoGrid" class="webmeet-video-grid">
+                            <!-- Default participant cards rendered by JS -->
+                        </div>
+                        <div class="webmeet-media-controls">
+                            <button type="button" class="webmeet-icon-button" data-local-action="toggleMicrophone" id="webmeetMicButton" title="Toggle Microphone">
+                                <!-- Mic ON icon -->
+                                <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>
+                                <!-- Mic OFF icon (muted) -->
+                                <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.18"></path>
+                                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+                                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>
+                            </button>
+                            <button type="button" class="webmeet-icon-button" data-local-action="toggleCamera" id="webmeetCameraButton" title="Toggle Camera">
+                                <!-- Cam ON icon -->
+                                <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                                <!-- Cam OFF icon (crossed) -->
+                                <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                            </button>
+                            <button type="button" class="webmeet-icon-button" data-local-action="toggleScreenShare" id="webmeetScreenShareButton" title="Toggle Screen Share">
+                                <!-- Screen ON icon -->
+                                <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                                </svg>
+                                <!-- Screen OFF icon -->
+                                <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat sidebar (right sidebar) -->
+                <div class="webmeet-member-list collapsed" id="webmeetChatSidebar">
+                    <div class="webmeet-panel-header">
+                        <span>Chat</span>
+                        <button type="button" class="webmeet-collapse-button" data-collapse="chat">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="18 15 12 9 6 15"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="webmeetChatList" class="webmeet-scroll-list webmeet-collapsible expanded" data-collapsible="chat"></div>
+                    <div class="webmeet-compose webmeet-collapsible expanded" data-collapsible="chat">
+                        <textarea id="webmeetChatInput" class="form-input" rows="2" placeholder="Type a message..."></textarea>
+                        <button type="button" class="general-button" data-local-action="sendChat">Send</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary panels (Transcript, Artifacts, Recordings) in tabs -->
+            <div class="webmeet-secondary-panels">
+                <div class="webmeet-tabs">
+                    <button class="webmeet-tab webmeet-tab-active" data-tab="transcript">Transcript</button>
+                    <button class="webmeet-tab" data-tab="artifacts">Artifacts</button>
+                    <button class="webmeet-tab" data-tab="recordings">Recordings</button>
+                    <button type="button" class="webmeet-collapse-button collapsed" data-collapse="transcript">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="18 15 12 9 6 15"></polyline>
+                        </svg>
+                    </button>
+                </div>
+                <div class="webmeet-panel-content" id="webmeetTranscriptTab">
+                    <div id="webmeetTranscriptList" class="webmeet-scroll-list webmeet-collapsible" data-collapsible="transcript"></div>
+                    <div class="webmeet-compose webmeet-collapsible" data-collapsible="transcript">
+                        <input id="webmeetTranscriptSpeaker" class="form-input" placeholder="Speaker name">
+                        <div class="webmeet-actions-row">
+                            <button type="button" class="general-button subtle-button" data-local-action="startAutoTranscript">Start auto</button>
+                            <button type="button" class="general-button subtle-button" data-local-action="stopAutoTranscript">Stop auto</button>
+                        </div>
+                        <textarea id="webmeetTranscriptInput" class="form-input" rows="2" placeholder="Append transcript..."></textarea>
+                        <button type="button" class="general-button" data-local-action="appendTranscript">Append</button>
+                    </div>
+                </div>
+                <div class="webmeet-panel-content webmeet-hidden" id="webmeetArtifactsTab">
+                    <div id="webmeetArtifactList" class="webmeet-scroll-list"></div>
+                </div>
+                <div class="webmeet-panel-content webmeet-hidden" id="webmeetRecordingsTab">
+                    <div id="webmeetRecordingList" class="webmeet-scroll-list"></div>
+                </div>
+            </div>
+
+            <!-- Debug panel (hidden) -->
+            <div class="webmeet-session-panel webmeet-hidden">
+                <label class="form-label" for="webmeetJoinPayload">Join payload</label>
+                <textarea id="webmeetJoinPayload" class="form-input webmeet-code" rows="5" readonly></textarea>
+            </div>
+
+            <!-- Dev grid (hidden) -->
+            <div class="webmeet-content-grid webmeet-dev-grid webmeet-hidden">
+                <div class="webmeet-panel">
+                    <div class="webmeet-panel-header"><span>Tasks</span></div>
+                    <div id="webmeetTaskList" class="webmeet-scroll-list"></div>
+                </div>
+                <div class="webmeet-panel">
+                    <div class="webmeet-panel-header"><span>Decisions</span></div>
+                    <div id="webmeetDecisionList" class="webmeet-scroll-list"></div>
+                </div>
+                <div class="webmeet-panel">
+                    <div class="webmeet-panel-header"><span>AI agents</span></div>
+                    <div id="webmeetAgentList" class="webmeet-scroll-list"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
