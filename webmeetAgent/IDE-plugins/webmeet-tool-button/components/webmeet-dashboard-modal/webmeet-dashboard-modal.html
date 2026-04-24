@@ -156,6 +156,12 @@
                                 </svg>
                             </button>
                             <div class="webmeet-inline-actions">
+                                <button type="button" class="webmeet-icon-button webmeet-media-settings-button" data-local-action="toggleMediaSettings" id="webmeetMediaSettingsButton" title="Media settings" aria-label="Media settings">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15a1.65 1.65 0 0 0-1.51-1H3.4a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 5 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.44 3.3l.06.06A1.65 1.65 0 0 0 9.32 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19 8a1.65 1.65 0 0 0 1.51 1h.09a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19 15z"></path>
+                                    </svg>
+                                </button>
                                 <button type="button" class="webmeet-icon-button webmeet-recording-button" data-local-action="toggleRecording" id="webmeetRecordingButton" title="Start recording" aria-label="Start recording">
                                     <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                         <circle cx="12" cy="12" r="5"></circle>
@@ -185,6 +191,38 @@
                                         <line x1="21" y1="12" x2="10" y2="12"></line>
                                     </svg>
                                 </button>
+                            </div>
+                        </div>
+                        <div id="webmeetMediaSettingsPanel" class="webmeet-media-settings webmeet-hidden">
+                            <div class="webmeet-media-settings-row">
+                                <label for="webmeetAudioInputSelect">Microphone</label>
+                                <select id="webmeetAudioInputSelect" class="form-input"></select>
+                            </div>
+                            <div class="webmeet-media-settings-row">
+                                <label for="webmeetVideoInputSelect">Camera</label>
+                                <select id="webmeetVideoInputSelect" class="form-input"></select>
+                            </div>
+                            <div class="webmeet-media-settings-row">
+                                <label for="webmeetAudioOutputSelect">Speaker</label>
+                                <select id="webmeetAudioOutputSelect" class="form-input"></select>
+                            </div>
+                            <div class="webmeet-media-settings-flags">
+                                <label class="webmeet-media-flag">
+                                    <input type="checkbox" id="webmeetAudioEchoCancellation">
+                                    Echo cancellation
+                                </label>
+                                <label class="webmeet-media-flag">
+                                    <input type="checkbox" id="webmeetAudioNoiseSuppression">
+                                    Noise suppression
+                                </label>
+                                <label class="webmeet-media-flag">
+                                    <input type="checkbox" id="webmeetAudioAutoGainControl">
+                                    Auto gain control
+                                </label>
+                            </div>
+                            <div class="webmeet-media-settings-actions">
+                                <button type="button" class="general-button subtle-button" data-local-action="refreshMediaDevices">Refresh devices</button>
+                                <button type="button" class="general-button" data-local-action="applyMediaSettings">Apply</button>
                             </div>
                         </div>
                     </div>

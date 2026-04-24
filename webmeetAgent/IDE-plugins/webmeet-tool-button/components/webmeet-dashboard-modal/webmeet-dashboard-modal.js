@@ -1,40 +1,14 @@
-import { callAgentTool, ensureSuccess, parseToolResult } from "/explorer/services/infrastructure/explorerApi.js";
+import { MeetingPresenceController } from './controllers/meeting-presence-controller.js';
+import { LivekitRoomController } from './controllers/livekit-room-controller.js';
+import { MeetingListController } from './controllers/meeting-list-controller.js';
+import { ParticipantLayoutController } from './controllers/participant-layout-controller.js';
+import { WebmeetMediaController } from './controllers/webmeet-media-controller.js';
+import { ensureLiveKitClient } from './services/livekit-loader.js';
+import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
+import { runWebMeetTool, WEBMEET_AGENT_NAME } from './services/webmeet-api-client.js';
 
-const AGENT_NAME = 'webmeetAgent';
-const LIVEKIT_UMD_URL = new URL('../../vendor/livekit-client.umd.min.js', import.meta.url).href;
-const PRESENCE_HEARTBEAT_INTERVAL_MS = 10_000;
-
-let livekitLoadPromise = null;
-
-async function runTool(name, args = {}) {
-    const raw = await callAgentTool(AGENT_NAME, name, args, { raw: true });
-    ensureSuccess(raw);
-    const parsed = parseToolResult(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-}
-
-async function ensureLiveKitClient() {
-    if (window.LivekitClient) {
-        return window.LivekitClient;
-    }
-    if (!livekitLoadPromise) {
-        livekitLoadPromise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = LIVEKIT_UMD_URL;
-            script.async = true;
-            script.onload = () => {
-                if (window.LivekitClient) {
-                    resolve(window.LivekitClient);
-                    return;
-                }
-                reject(new Error('LiveKit SDK did not register a global.'));
-            };
-            script.onerror = () => reject(new Error('Failed to load LiveKit SDK.'));
-            document.head.appendChild(script);
-        });
-    }
-    return livekitLoadPromise;
-}
+const AGENT_NAME = WEBMEET_AGENT_NAME;
+const runTool = runWebMeetTool;
 
 function escapeHtml(value) {
     return String(value || '')
@@ -62,71 +36,15 @@ function buildStableParticipantId(seed) {
     return `participant-${safe}`;
 }
 
-function buildRtcConfigForSession(session) {
-    const livekitUrl = String(session?.livekitUrl || '').trim();
-    if (!livekitUrl) return undefined;
-    let parsed;
+function createParticipantInstanceId() {
     try {
-        parsed = new URL(livekitUrl);
-    } catch {
-        return undefined;
-    }
-    const hostname = String(parsed.hostname || '').trim().toLowerCase();
-    if (!hostname || !['127.0.0.1', 'localhost'].includes(hostname)) {
-        return undefined;
-    }
-    return {
-        iceTransportPolicy: 'relay',
-        iceServers: [
-            { urls: ['stun:127.0.0.1:13478'] },
-            {
-                urls: [
-                    'turn:127.0.0.1:13478?transport=udp',
-                    'turn:127.0.0.1:13478?transport=tcp'
-                ],
-                username: 'webmeet',
-                credential: 'webmeet'
-            }
-        ]
-    };
-}
-
-function installRtcPeerConnectionOverride(session) {
-    const forcedConfig = buildRtcConfigForSession(session);
-    if (!forcedConfig || typeof window === 'undefined' || typeof window.RTCPeerConnection !== 'function') {
-        return null;
-    }
-
-    const NativePeerConnection = window.RTCPeerConnection;
-    if (NativePeerConnection.__webmeetForcedRelay) {
-        return null;
-    }
-
-    const ForcedPeerConnection = function(configuration = {}, ...rest) {
-        const mergedConfiguration = {
-            ...(configuration || {}),
-            iceTransportPolicy: forcedConfig.iceTransportPolicy,
-            iceServers: forcedConfig.iceServers
-        };
-        console.debug('[webmeet] forcing RTCPeerConnection config', {
-            originalConfiguration: configuration || {},
-            mergedConfiguration
-        });
-        return new NativePeerConnection(mergedConfiguration, ...rest);
-    };
-
-    ForcedPeerConnection.prototype = NativePeerConnection.prototype;
-    Object.setPrototypeOf(ForcedPeerConnection, NativePeerConnection);
-    ForcedPeerConnection.__webmeetForcedRelay = true;
-
-    window.RTCPeerConnection = ForcedPeerConnection;
-    console.debug('[webmeet] installed RTCPeerConnection relay override', forcedConfig);
-    return () => {
-        if (window.RTCPeerConnection === ForcedPeerConnection) {
-            window.RTCPeerConnection = NativePeerConnection;
-            console.debug('[webmeet] restored native RTCPeerConnection');
+        if (typeof crypto?.randomUUID === 'function') {
+            return crypto.randomUUID();
         }
-    };
+    } catch (_) {
+        // ignore and fallback
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export class WebMeetDashboardModal {
@@ -155,31 +73,65 @@ export class WebMeetDashboardModal {
                 camera: false,
                 screen: false
             },
+            mediaSettings: {
+                audioInputDeviceId: '',
+                videoInputDeviceId: '',
+                audioOutputDeviceId: '',
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            },
+            mediaSettingsPanelVisible: false,
             participants: [],
             chatSidebarVisible: true,
             videoGridFullscreen: false
         };
         this.room = null;
-        this.restoreRtcPeerConnection = null;
+        this.roomController = new LivekitRoomController({
+            ensureLiveKitClient,
+            buildRtcConfigForSession,
+            installRtcPeerConnectionOverride,
+            getAudioCaptureDefaults: () => this.mediaController.getMicrophoneEnableOptions()
+        });
         this.speechRecognition = null;
-        this.trackElements = new Map();
-        this.participantViews = new Map();
-        this.focusedParticipantId = '';
-        this.mediaToggleInFlight = false;
+        this.meetingListController = new MeetingListController();
+        this.participantLayoutController = new ParticipantLayoutController({
+            getParticipantDisplayName: (participant) => this.getParticipantDisplayName(participant)
+        });
         this.pollingInterval = null;
         this.cachedStableParticipantId = '';
-        this.presenceHeartbeatTimer = null;
-        this.lastKeepaliveLeaveKey = '';
-        this.handlePageHide = () => {
-            const meetingId = String(this.state.session?.meeting?.id || '').trim();
-            const participantId = String(this.state.session?.participantIdentity || '').trim();
-            this.sendLeaveKeepalive(meetingId, participantId);
+        this.mediaDevices = {
+            audioInput: [],
+            videoInput: [],
+            audioOutput: []
         };
-        this.handleBeforeUnload = () => {
-            const meetingId = String(this.state.session?.meeting?.id || '').trim();
-            const participantId = String(this.state.session?.participantIdentity || '').trim();
-            this.sendLeaveKeepalive(meetingId, participantId);
-        };
+        this.presenceController = new MeetingPresenceController({
+            runTool,
+            agentName: AGENT_NAME,
+            getContext: () => ({
+                meetingId: this.state.session?.meeting?.id,
+                participantId: this.state.session?.participantIdentity
+            }),
+            shouldPing: () => this.state.roomState === 'Connected'
+        });
+        this.mediaController = new WebmeetMediaController({
+            getRoom: () => this.room,
+            getTrack: () => window.LivekitClient?.Track || null,
+            onMediaStateChange: (next, localParticipantId) => {
+                this.state.media = next;
+                if (localParticipantId) {
+                    this.setParticipantMicState(localParticipantId, next.microphone);
+                }
+            },
+            onError: (message) => {
+                this.setError(message);
+            },
+            onAfterToggle: () => {
+                this.renderMeetingSummary();
+            }
+        });
+        this.state.mediaSettings = this.loadMediaSettings();
+        this.mediaController.setSettings(this.state.mediaSettings);
         this.invalidate();
     }
 
@@ -189,6 +141,8 @@ export class WebMeetDashboardModal {
         this.cacheElements();
         this.registerActions();
         this.registerWindowPresenceHandlers();
+        this.renderMediaSettingsPanel();
+        void this.refreshMediaDevices({ requestPermission: false, showToast: false });
         await this.bootstrap();
     }
 
@@ -207,6 +161,9 @@ export class WebMeetDashboardModal {
                 'toggleVideoGridFullscreen',
                 'toggleFullscreen',
                 'toggleChatSidebar',
+                'toggleMediaSettings',
+                'applyMediaSettings',
+                'refreshMediaDevices',
                 'focusParticipantCard',
                 'sendChat',
                 'appendTranscript',
@@ -309,10 +266,24 @@ export class WebMeetDashboardModal {
         this.chatSidebar = this.element.querySelector('#webmeetChatSidebar');
         this.toggleChatButton = this.element.querySelector('#webmeetToggleChatButton');
         this.fullscreenButton = this.element.querySelector('#webmeetModalFullscreen');
+        this.mediaSettingsButton = this.element.querySelector('#webmeetMediaSettingsButton');
+        this.mediaSettingsPanel = this.element.querySelector('#webmeetMediaSettingsPanel');
+        this.audioInputSelect = this.element.querySelector('#webmeetAudioInputSelect');
+        this.videoInputSelect = this.element.querySelector('#webmeetVideoInputSelect');
+        this.audioOutputSelect = this.element.querySelector('#webmeetAudioOutputSelect');
+        this.echoCancellationInput = this.element.querySelector('#webmeetAudioEchoCancellation');
+        this.noiseSuppressionInput = this.element.querySelector('#webmeetAudioNoiseSuppression');
+        this.autoGainControlInput = this.element.querySelector('#webmeetAudioAutoGainControl');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
         this.secondaryPanels = this.element.querySelector('.webmeet-secondary-panels');
+        this.meetingListController.setElement(this.meetingList);
+        this.participantLayoutController.setElements({
+            videoGrid: this.videoGrid,
+            videoGridAll: this.videoGridAll,
+            videoGridEmpty: this.videoGridEmpty
+        });
     }
 
     getDialogElement() {
@@ -368,6 +339,182 @@ export class WebMeetDashboardModal {
         }
     }
 
+    loadMediaSettings() {
+        const fallback = {
+            audioInputDeviceId: '',
+            videoInputDeviceId: '',
+            audioOutputDeviceId: '',
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        };
+        try {
+            const raw = String(window?.localStorage?.getItem('webmeet.mediaSettings') || '').trim();
+            if (!raw) return fallback;
+            const parsed = JSON.parse(raw);
+            return {
+                ...fallback,
+                ...parsed
+            };
+        } catch {
+            return fallback;
+        }
+    }
+
+    persistMediaSettings() {
+        try {
+            window?.localStorage?.setItem('webmeet.mediaSettings', JSON.stringify(this.state.mediaSettings));
+        } catch (_) {
+            // ignore storage failures
+        }
+    }
+
+    async refreshMediaDevices(options = {}) {
+        const requestPermission = options.requestPermission === undefined ? true : Boolean(options.requestPermission);
+        const requestAudioPermission = options.requestAudioPermission === undefined ? requestPermission : Boolean(options.requestAudioPermission);
+        const requestVideoPermission = options.requestVideoPermission === undefined ? false : Boolean(options.requestVideoPermission);
+        const showToast = options.showToast === undefined ? true : Boolean(options.showToast);
+        if (!navigator?.mediaDevices?.enumerateDevices) {
+            this.setError('Media device enumeration is not supported in this browser.');
+            return;
+        }
+        try {
+            if ((requestAudioPermission || requestVideoPermission) && navigator?.mediaDevices?.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: requestAudioPermission,
+                        video: requestVideoPermission
+                    });
+                    for (const track of stream.getTracks()) {
+                        try { track.stop(); } catch (_) {}
+                    }
+                } catch (_) {
+                    // ignore permission refusal and still enumerate what is available
+                }
+            }
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            this.mediaDevices = {
+                audioInput: devices.filter((d) => d.kind === 'audioinput'),
+                videoInput: devices.filter((d) => d.kind === 'videoinput'),
+                audioOutput: devices.filter((d) => d.kind === 'audiooutput')
+            };
+        } catch (_) {
+            this.mediaDevices = { audioInput: [], videoInput: [], audioOutput: [] };
+            this.setError('Failed to refresh media devices.');
+            return;
+        }
+        this.renderMediaSettingsPanel();
+        if (showToast) {
+            const ai = this.mediaDevices.audioInput.length;
+            const vi = this.mediaDevices.videoInput.length;
+            const ao = this.mediaDevices.audioOutput.length;
+            this.setError(`Devices refreshed: ${ai} microphones, ${vi} cameras, ${ao} speakers.`);
+        }
+    }
+
+    renderMediaDeviceOptions(selectElement, devices, selectedId, emptyLabel) {
+        if (!selectElement) return;
+        const safeDevices = Array.isArray(devices) ? devices : [];
+        const options = ['<option value="">Default</option>'];
+        for (const device of safeDevices) {
+            const id = escapeHtml(String(device.deviceId || '').trim());
+            const label = escapeHtml(String(device.label || `${emptyLabel} ${safeDevices.indexOf(device) + 1}`));
+            options.push(`<option value="${id}">${label}</option>`);
+        }
+        selectElement.innerHTML = options.join('');
+        selectElement.value = String(selectedId || '');
+    }
+
+    renderMediaSettingsPanel() {
+        const settings = this.state.mediaSettings;
+        this.renderMediaDeviceOptions(this.audioInputSelect, this.mediaDevices.audioInput, settings.audioInputDeviceId, 'Microphone');
+        this.renderMediaDeviceOptions(this.videoInputSelect, this.mediaDevices.videoInput, settings.videoInputDeviceId, 'Camera');
+        this.renderMediaDeviceOptions(this.audioOutputSelect, this.mediaDevices.audioOutput, settings.audioOutputDeviceId, 'Speaker');
+        if (this.echoCancellationInput) this.echoCancellationInput.checked = Boolean(settings.echoCancellation);
+        if (this.noiseSuppressionInput) this.noiseSuppressionInput.checked = Boolean(settings.noiseSuppression);
+        if (this.autoGainControlInput) this.autoGainControlInput.checked = Boolean(settings.autoGainControl);
+        if (this.mediaSettingsPanel) {
+            this.mediaSettingsPanel.classList.toggle('webmeet-hidden', !this.state.mediaSettingsPanelVisible);
+        }
+        if (this.mediaSettingsButton) {
+            this.mediaSettingsButton.classList.toggle('active', this.state.mediaSettingsPanelVisible);
+        }
+    }
+
+    toggleMediaSettings() {
+        this.state.mediaSettingsPanelVisible = !this.state.mediaSettingsPanelVisible;
+        this.renderMediaSettingsPanel();
+        if (this.state.mediaSettingsPanelVisible) {
+            void this.refreshMediaDevices({ requestPermission: false, showToast: false });
+        }
+    }
+
+    collectMediaSettingsFromInputs() {
+        return {
+            audioInputDeviceId: String(this.audioInputSelect?.value || '').trim(),
+            videoInputDeviceId: String(this.videoInputSelect?.value || '').trim(),
+            audioOutputDeviceId: String(this.audioOutputSelect?.value || '').trim(),
+            echoCancellation: Boolean(this.echoCancellationInput?.checked),
+            noiseSuppression: Boolean(this.noiseSuppressionInput?.checked),
+            autoGainControl: Boolean(this.autoGainControlInput?.checked)
+        };
+    }
+
+    async applyAudioOutputDeviceToElement(mediaElement) {
+        const outputId = String(this.state.mediaSettings.audioOutputDeviceId || '').trim();
+        if (!mediaElement || typeof mediaElement.setSinkId !== 'function') {
+            return;
+        }
+        try {
+            await mediaElement.setSinkId(outputId || '');
+        } catch (_) {
+            // ignore output routing errors
+        }
+    }
+
+    async applyAudioOutputDeviceToAllTracks() {
+        const entries = this.participantLayoutController.getTrackEntries();
+        const tasks = [];
+        for (const entry of entries) {
+            if (entry?.kind !== 'audio' || !entry.element) continue;
+            tasks.push(this.applyAudioOutputDeviceToElement(entry.element));
+        }
+        await Promise.allSettled(tasks);
+    }
+
+    async reapplyActiveInputDevices() {
+        if (!this.room?.localParticipant) return;
+        if (this.state.media.microphone) {
+            try {
+                await this.room.localParticipant.setMicrophoneEnabled(false);
+                const micOptions = this.mediaController.getMicrophoneEnableOptions();
+                await this.room.localParticipant.setMicrophoneEnabled(true, micOptions);
+            } catch (_) {
+                // ignore input restart errors
+            }
+        }
+        if (this.state.media.camera) {
+            try {
+                await this.room.localParticipant.setCameraEnabled(false);
+                const camOptions = this.mediaController.getCameraEnableOptions();
+                await this.room.localParticipant.setCameraEnabled(true, camOptions);
+            } catch (_) {
+                // ignore input restart errors
+            }
+        }
+    }
+
+    async applyMediaSettings() {
+        this.state.mediaSettings = this.collectMediaSettingsFromInputs();
+        this.mediaController.setSettings(this.state.mediaSettings);
+        this.persistMediaSettings();
+        await this.applyAudioOutputDeviceToAllTracks();
+        await this.reapplyActiveInputDevices();
+        this.state.mediaSettingsPanelVisible = false;
+        this.renderMediaSettingsPanel();
+        this.setError('Media settings applied.');
+    }
+
     toggleVideoGridFullscreen() {
         const isJoined = Boolean(this.state.session?.participantIdentity);
         if (!isJoined) {
@@ -388,263 +535,73 @@ export class WebMeetDashboardModal {
     }
 
     setVideoGridEmptyState(message) {
-        if (this.videoGridEmpty) {
-            this.videoGridEmpty.textContent = String(message || 'Join a meeting to attach media tracks.');
-        }
+        this.participantLayoutController.setVideoGridEmptyState(message);
     }
 
     syncVideoGridVisibility() {
-        const participantCount = this.participantViews.size;
-        const hasParticipants = participantCount > 0;
-        const hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId));
-        if (this.videoGridEmpty) {
-            this.videoGridEmpty.classList.toggle('webmeet-hidden', hasParticipants);
-        }
-        if (this.videoGridAll) {
-            this.videoGridAll.classList.toggle('webmeet-hidden', !hasParticipants);
-            this.videoGridAll.classList.toggle('has-focus', hasFocusedParticipant);
-        }
+        this.participantLayoutController.syncVideoGridVisibility();
     }
 
     applyParticipantViewState(view) {
-        if (!view || !view.element) return;
-        const payload = {
-            participantId: view.id,
-            displayName: view.name,
-            isLocal: Boolean(view.isLocal),
-            isMicOn: Boolean(view.micOn),
-            hasVideo: Boolean(view.hasVideo),
-            isMini: Boolean(view.isMini),
-            isFocused: Boolean(view.isFocused)
-        };
-        view.element.dataset.participantId = payload.participantId;
-        view.element.setAttribute('data-display-name', payload.displayName);
-        view.element.setAttribute('data-is-local', payload.isLocal ? 'true' : 'false');
-        view.element.setAttribute('data-is-mic-on', payload.isMicOn ? 'true' : 'false');
-        view.element.setAttribute('data-has-video', payload.hasVideo ? 'true' : 'false');
-        view.element.setAttribute('data-is-mini', payload.isMini ? 'true' : 'false');
-        view.element.setAttribute('data-is-focused', payload.isFocused ? 'true' : 'false');
-        const presenter = view.element.webSkelPresenter;
-        if (presenter && typeof presenter.setState === 'function') {
-            presenter.setState(payload);
-        }
-        if (view.videoElement) {
-            if (presenter && typeof presenter.setVideoElement === 'function') {
-                presenter.setVideoElement(view.videoElement);
-            } else {
-                const mediaHost = view.element.querySelector('[data-role="mediaHost"]');
-                if (mediaHost && !mediaHost.contains(view.videoElement)) {
-                    mediaHost.appendChild(view.videoElement);
-                }
-            }
-        }
+        this.participantLayoutController.applyParticipantViewState(view);
     }
 
     upsertParticipantView(participant) {
-        const id = String(participant?.identity || '').trim();
-        if (!id || !this.videoGrid) return null;
-        let view = this.participantViews.get(id);
-        if (!view) {
-            const element = document.createElement('webmeet-participant-card');
-            element.setAttribute('data-presenter', 'webmeet-participant-card');
-            element.setAttribute('data-local-action', 'focusParticipantCard');
-            element.dataset.participantId = id;
-            element.title = 'Focus participant';
-            view = {
-                id,
-                name: this.getParticipantDisplayName(participant),
-                isLocal: Boolean(participant.kind === 'local'),
-                hasVideo: false,
-                micOn: false,
-                isMini: true,
-                isFocused: false,
-                element
-            };
-            this.participantViews.set(id, view);
-        } else {
-            view.name = this.getParticipantDisplayName(participant);
-            view.isLocal = Boolean(participant.kind === 'local');
-        }
-        this.applyParticipantViewState(view);
-        return view;
+        return this.participantLayoutController.upsertParticipantView(participant);
     }
 
     renderParticipantLayout() {
-        if (!this.videoGrid || !this.videoGridAll) return;
-        if (!this.participantViews.size) {
-            this.focusedParticipantId = '';
-            this.syncVideoGridVisibility();
-            return;
-        }
-        const hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId));
-        if (!hasFocusedParticipant) {
-            this.focusedParticipantId = '';
-            for (const view of this.participantViews.values()) {
-                view.isFocused = false;
-                view.isMini = false;
-                if (view.element.parentElement !== this.videoGridAll) {
-                    this.videoGridAll.appendChild(view.element);
-                }
-                this.applyParticipantViewState(view);
-            }
-            this.syncVideoGridVisibility();
-            return;
-        }
-
-        for (const view of this.participantViews.values()) {
-            const isFocused = view.id === this.focusedParticipantId;
-            view.isFocused = isFocused;
-            view.isMini = !isFocused;
-            if (view.element.parentElement !== this.videoGridAll) {
-                this.videoGridAll.appendChild(view.element);
-            }
-            this.applyParticipantViewState(view);
-        }
-        this.syncVideoGridVisibility();
+        this.participantLayoutController.renderParticipantLayout();
     }
 
     setFocusedParticipant(participantId) {
-        const id = String(participantId || '').trim();
-        if (!id || !this.participantViews.has(id)) return;
-        this.focusedParticipantId = id;
-        this.renderParticipantLayout();
+        this.participantLayoutController.setFocusedParticipant(participantId);
     }
 
     focusParticipantCard(target) {
-        const participantId = String(target?.dataset?.participantId || '').trim();
-        if (!participantId) return;
-        if (this.focusedParticipantId === participantId) {
-            this.focusedParticipantId = '';
-            this.renderParticipantLayout();
-            return;
-        }
-        this.setFocusedParticipant(participantId);
+        this.participantLayoutController.focusParticipantCard(target);
     }
 
     setParticipantMicState(participantId, isMicOn) {
+        this.participantLayoutController.setParticipantMicState(participantId, isMicOn);
         const id = String(participantId || '').trim();
         if (!id) return;
-        const view = this.participantViews.get(id);
-        if (!view) return;
-        view.micOn = Boolean(isMicOn);
-        this.applyParticipantViewState(view);
+        let updated = false;
+        const nextMicState = Boolean(isMicOn);
+        const map = this.state.meetingParticipantsById || {};
+        for (const meetingId of Object.keys(map)) {
+            const entries = Array.isArray(map[meetingId]) ? map[meetingId] : [];
+            for (const entry of entries) {
+                if (String(entry?.id || '').trim() !== id) continue;
+                if (entry.micOn !== nextMicState) {
+                    entry.micOn = nextMicState;
+                    updated = true;
+                }
+            }
+        }
+        if (updated) {
+            this.renderMeetingList();
+        }
     }
 
     attachVideoTrack(participantId, trackSid, mediaElement) {
-        const id = String(participantId || '').trim();
-        if (!id || !trackSid || !mediaElement) return;
-        const view = this.participantViews.get(id);
-        if (!view) return;
-        view.videoElement = mediaElement;
-        if (view.element.parentElement !== this.videoGridAll && this.videoGridAll) {
-            this.videoGridAll.appendChild(view.element);
-        }
-
-        const tryAttach = () => {
-            const presenter = view.element.webSkelPresenter;
-            if (presenter && typeof presenter.setVideoElement === 'function') {
-                presenter.setVideoElement(mediaElement);
-            } else {
-                const host = view.element.querySelector('[data-role="mediaHost"]');
-                if (host && !host.contains(mediaElement)) {
-                    host.appendChild(mediaElement);
-                }
-            }
-            const host = view.element.querySelector('[data-role="mediaHost"]');
-            const attached = Boolean(host && host.contains(mediaElement));
-            view.hasVideo = attached;
-            this.applyParticipantViewState(view);
-            return attached;
-        };
-
-        if (!tryAttach()) {
-            let attempts = 0;
-            const retryAttach = () => {
-                attempts += 1;
-                if (tryAttach() || attempts >= 12) {
-                    return;
-                }
-                requestAnimationFrame(retryAttach);
-            };
-            requestAnimationFrame(retryAttach);
-        }
-
-        this.trackElements.set(trackSid, {
-            participantId: id,
-            kind: 'video',
-            element: mediaElement
-        });
-        this.renderParticipantLayout();
+        this.participantLayoutController.attachVideoTrack(participantId, trackSid, mediaElement);
     }
 
     clearVideoTrack(trackSid) {
-        const track = this.trackElements.get(trackSid);
-        if (!track || track.kind !== 'video') return;
-        const view = this.participantViews.get(track.participantId);
-        if (view) {
-            const presenter = view.element.webSkelPresenter;
-            if (presenter && typeof presenter.clearVideoElement === 'function') {
-                presenter.clearVideoElement();
-            } else {
-                const host = view.element.querySelector('[data-role="mediaHost"]');
-                const video = host?.querySelector('video');
-                if (video) {
-                    try { video.srcObject = null; } catch (_) {}
-                    video.remove();
-                }
-            }
-            view.hasVideo = false;
-            view.videoElement = null;
-            this.applyParticipantViewState(view);
-        }
-        try { track.element.srcObject = null; } catch (_) {}
-        track.element.remove();
-        this.trackElements.delete(trackSid);
+        this.participantLayoutController.clearVideoTrack(trackSid);
     }
 
     attachAudioTrack(participantId, trackSid, mediaElement) {
-        const id = String(participantId || '').trim();
-        if (!id || !trackSid || !mediaElement) return;
-        mediaElement.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-        const view = this.participantViews.get(id);
-        if (view?.element && !view.element.contains(mediaElement)) {
-            view.element.appendChild(mediaElement);
-        }
-        this.trackElements.set(trackSid, {
-            participantId: id,
-            kind: 'audio',
-            element: mediaElement
-        });
+        this.participantLayoutController.attachAudioTrack(participantId, trackSid, mediaElement);
     }
 
     removeTrack(trackSid) {
-        const entry = this.trackElements.get(trackSid);
-        if (!entry) return;
-        if (entry.kind === 'video') {
-            this.clearVideoTrack(trackSid);
-            return;
-        }
-        try { entry.element.srcObject = null; } catch (_) {}
-        entry.element.remove();
-        this.trackElements.delete(trackSid);
+        this.participantLayoutController.removeTrack(trackSid);
     }
 
     removeParticipantView(participantId) {
-        const id = String(participantId || '').trim();
-        if (!id) return;
-        const view = this.participantViews.get(id);
-        if (!view) return;
-        for (const [trackSid, track] of this.trackElements.entries()) {
-            if (track.participantId === id) {
-                this.removeTrack(trackSid);
-            }
-        }
-        view.element.remove();
-        this.participantViews.delete(id);
-        if (this.focusedParticipantId === id) {
-            this.focusedParticipantId = this.participantViews.keys().next().value || '';
-        }
-        this.renderParticipantLayout();
+        this.participantLayoutController.removeParticipantView(participantId);
     }
 
     isParticipantMicOn(participant, Track) {
@@ -687,7 +644,7 @@ export class WebMeetDashboardModal {
             this.applyParticipantViewState(view);
         }
 
-        for (const participantId of Array.from(this.participantViews.keys())) {
+        for (const participantId of this.participantLayoutController.getParticipantIds()) {
             if (!keep.has(participantId)) {
                 this.removeParticipantView(participantId);
             }
@@ -697,7 +654,12 @@ export class WebMeetDashboardModal {
         if (this.selectedMeeting?.id) {
             this.state.meetingParticipantsById[this.selectedMeeting.id] = items.map((entry) => ({
                 id: entry.identity,
-                name: entry.name
+                name: entry.name,
+                micOn: Boolean(
+                    this.participantLayoutController
+                        .getParticipantView?.(entry.identity)
+                        ?.micOn
+                )
             })).filter((entry) => entry.id);
             this.renderMeetingList();
         }
@@ -706,90 +668,13 @@ export class WebMeetDashboardModal {
         this.renderFeedLists();
     }
 
-    getLocalMediaStateFromRoom(TrackRef = null) {
-        const Track = TrackRef || window.LivekitClient?.Track;
-        const localParticipant = this.room?.localParticipant;
-        const next = {
-            microphone: false,
-            camera: false,
-            screen: false
-        };
-        if (!Track || !localParticipant?.trackPublications?.values) {
-            return next;
-        }
-        next.microphone = this.isLocalSourceEnabled('microphone', Track);
-        next.camera = this.isLocalSourceEnabled('camera', Track);
-        next.screen = this.isLocalSourceEnabled('screen', Track);
-        return next;
-    }
-
-    isLocalSourceEnabled(type, TrackRef = null) {
-        const Track = TrackRef || window.LivekitClient?.Track;
-        const localParticipant = this.room?.localParticipant;
-        if (!Track || !localParticipant?.trackPublications?.values) {
-            return false;
-        }
-        const sourceMap = {
-            microphone: Track.Source?.Microphone,
-            camera: Track.Source?.Camera,
-            screen: Track.Source?.ScreenShare
-        };
-        const wantedSource = sourceMap[type];
-        const wantedKind = type === 'microphone' ? Track.Kind.Audio : Track.Kind.Video;
-
-        for (const publication of localParticipant.trackPublications.values()) {
-            if (!publication) continue;
-            const sameKind = publication.kind === wantedKind;
-            const sameSource = wantedSource ? publication.source === wantedSource : false;
-            if ((sameSource || (type === 'camera' && sameKind && !publication.source))
-                && !publication.isMuted) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    async waitForLocalSourceState(type, enabled, timeoutMs = 1200) {
-        const start = Date.now();
-        while ((Date.now() - start) < timeoutMs) {
-            const current = this.isLocalSourceEnabled(type);
-            if (current === enabled) {
-                return true;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 60));
-        }
-        return false;
-    }
-
     syncLocalMediaStateFromRoom(TrackRef = null) {
-        const next = this.getLocalMediaStateFromRoom(TrackRef);
-        this.state.media = next;
-        const localId = String(this.room?.localParticipant?.identity || '').trim();
-        if (localId) {
-            this.setParticipantMicState(localId, next.microphone);
-        }
-    }
-
-    async runExclusiveMediaToggle(action) {
-        if (this.mediaToggleInFlight) {
-            return;
-        }
-        this.mediaToggleInFlight = true;
-        try {
-            await action();
-        } catch (error) {
-            this.setError(error instanceof Error ? error.message : String(error));
-        } finally {
-            this.syncLocalMediaStateFromRoom();
-            this.renderMeetingSummary();
-            this.mediaToggleInFlight = false;
-        }
+        this.mediaController.syncLocalMediaStateFromRoom(TrackRef);
     }
 
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
-        this.unregisterWindowPresenceHandlers();
-        this.stopPresenceHeartbeat();
+        this.presenceController.teardown();
         if (this.state.session?.participantIdentity) {
             void this.unjoinCurrentSession({ preserveDisplayName: false });
             return;
@@ -853,7 +738,8 @@ export class WebMeetDashboardModal {
             const participants = Array.isArray(result.value?.participants) ? result.value.participants : [];
             nextMap[meeting.id] = participants.map((entry) => ({
                 id: String(entry?.id || '').trim(),
-                name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant'
+                name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant',
+                micOn: typeof entry?.micOn === 'boolean' ? entry.micOn : false
             }));
         }
         this.state.meetingParticipantsById = nextMap;
@@ -939,117 +825,35 @@ export class WebMeetDashboardModal {
     }
 
     renderMeetingList() {
-        this.meetingList.innerHTML = this.state.meetings.map((entry) => `
-            <div class="webmeet-list-item ${entry.id === this.state.selectedMeetingId ? 'is-selected' : ''}" data-local-action="selectAndJoinMeeting" data-id="${escapeHtml(entry.id)}">
-                <div class="webmeet-meeting-row">
-                    <span class="webmeet-room-icon" aria-hidden="true">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="6" width="14" height="12" rx="2" ry="2"></rect>
-                            <polygon points="17 10 22 7 22 17 17 14"></polygon>
-                        </svg>
-                    </span>
-                    <strong class="webmeet-meeting-title">${escapeHtml(entry.title)}</strong>
-                    <span class="webmeet-meeting-status ${entry.id === this.state.selectedMeetingId ? '' : 'webmeet-hidden'}">${escapeHtml(entry.status)}</span>
-                </div>
-                ${this.renderMeetingParticipants(entry.id)}
-            </div>
-        `).join('') || '<div class="webmeet-feed-item">No meetings yet.</div>';
-    }
-
-    renderMeetingParticipants(meetingId) {
-        const participants = Array.isArray(this.state.meetingParticipantsById?.[meetingId])
-            ? this.state.meetingParticipantsById[meetingId]
-            : [];
-        if (!participants.length) {
-            return '';
-        }
-        return `
-            <div class="webmeet-room-participants">
-                ${participants.map((participant, index) => `
-                    <div class="webmeet-room-participant ${index === participants.length - 1 ? 'is-last' : ''}">
-                        <span class="webmeet-room-participant-name"> - ${escapeHtml(participant.name || 'Participant')}</span>
-                    </div>
-                `).join('')}
-            </div>
-        `;
+        this.meetingListController.render(
+            this.state.meetings,
+            this.state.selectedMeetingId,
+            this.state.meetingParticipantsById
+        );
     }
 
     registerWindowPresenceHandlers() {
-        window.addEventListener('pagehide', this.handlePageHide);
-        window.addEventListener('beforeunload', this.handleBeforeUnload);
+        this.presenceController.registerWindowHandlers();
     }
 
     unregisterWindowPresenceHandlers() {
-        window.removeEventListener('pagehide', this.handlePageHide);
-        window.removeEventListener('beforeunload', this.handleBeforeUnload);
+        this.presenceController.unregisterWindowHandlers();
     }
 
     async sendPresencePing() {
-        const meetingId = String(this.state.session?.meeting?.id || '').trim();
-        const participantId = String(this.state.session?.participantIdentity || '').trim();
-        if (!meetingId || !participantId) return;
-        try {
-            await runTool('webmeet_meeting_presence_ping', { meetingId, participantId });
-        } catch (_) {
-            // ignore transient ping failures
-        }
+        await this.presenceController.sendPresencePing();
     }
 
     startPresenceHeartbeat() {
-        this.stopPresenceHeartbeat();
-        void this.sendPresencePing();
-        this.presenceHeartbeatTimer = window.setInterval(() => {
-            if (this.state.roomState !== 'Connected') return;
-            void this.sendPresencePing();
-        }, PRESENCE_HEARTBEAT_INTERVAL_MS);
+        this.presenceController.startHeartbeat();
     }
 
     stopPresenceHeartbeat() {
-        if (!this.presenceHeartbeatTimer) return;
-        window.clearInterval(this.presenceHeartbeatTimer);
-        this.presenceHeartbeatTimer = null;
+        this.presenceController.stopHeartbeat();
     }
 
     sendLeaveKeepalive(meetingId, participantId) {
-        const safeMeetingId = String(meetingId || '').trim();
-        const safeParticipantId = String(participantId || '').trim();
-        if (!safeMeetingId || !safeParticipantId) return;
-        const key = `${safeMeetingId}:${safeParticipantId}`;
-        if (this.lastKeepaliveLeaveKey === key) return;
-        this.lastKeepaliveLeaveKey = key;
-        const payload = {
-            jsonrpc: '2.0',
-            id: `leave-${Date.now()}`,
-            method: 'tools/call',
-            params: {
-                name: 'webmeet_meeting_leave',
-                arguments: {
-                    meetingId: safeMeetingId,
-                    participantId: safeParticipantId
-                }
-            }
-        };
-        const body = JSON.stringify(payload);
-        try {
-            if (navigator?.sendBeacon) {
-                const blob = new Blob([body], { type: 'application/json' });
-                const sent = navigator.sendBeacon(`/mcps/${AGENT_NAME}/mcp`, blob);
-                if (sent) return;
-            }
-        } catch (_) {
-            // ignore sendBeacon errors, fallback to keepalive fetch
-        }
-        try {
-            void fetch(`/mcps/${AGENT_NAME}/mcp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body,
-                credentials: 'include',
-                keepalive: true
-            });
-        } catch (_) {
-            // ignore keepalive failures
-        }
+        this.presenceController.sendLeaveKeepalive(meetingId, participantId);
     }
 
     getStableParticipantId(displayName = '') {
@@ -1057,39 +861,29 @@ export class WebMeetDashboardModal {
             return this.cachedStableParticipantId;
         }
         const userEmail = String(window?.assistOS?.user?.email || '').trim();
-        if (userEmail) {
-            this.cachedStableParticipantId = buildStableParticipantId(userEmail);
-            return this.cachedStableParticipantId;
-        }
-        const storageKey = 'webmeet.participantId';
+        const baseSeed = userEmail || (String(displayName || 'user').trim() || 'user');
+        const sessionKey = 'webmeet.participant.instanceId';
         try {
-            const existing = String(window?.localStorage?.getItem(storageKey) || '').trim();
-            if (existing) {
-                this.cachedStableParticipantId = existing;
-                return this.cachedStableParticipantId;
+            let instanceId = String(window?.sessionStorage?.getItem(sessionKey) || '').trim();
+            if (!instanceId) {
+                instanceId = createParticipantInstanceId();
+                window?.sessionStorage?.setItem(sessionKey, instanceId);
             }
-            const fallbackSeed = String(displayName || 'user').trim() || 'user';
-            const created = buildStableParticipantId(`${fallbackSeed}-${Math.random().toString(36).slice(2, 8)}`);
-            window?.localStorage?.setItem(storageKey, created);
+            const created = buildStableParticipantId(`${baseSeed}-${instanceId}`);
             this.cachedStableParticipantId = created;
             return created;
         } catch {
-            const fallbackSeed = String(displayName || 'user').trim() || 'user';
-            this.cachedStableParticipantId = buildStableParticipantId(fallbackSeed);
+            this.cachedStableParticipantId = buildStableParticipantId(`${baseSeed}-${createParticipantInstanceId()}`);
             return this.cachedStableParticipantId;
         }
     }
 
     removeParticipantFromMeetingList(meetingId, participantId) {
-        const targetMeetingId = String(meetingId || '').trim();
-        const targetParticipantId = String(participantId || '').trim();
-        if (!targetMeetingId || !targetParticipantId) return;
-        const current = Array.isArray(this.state.meetingParticipantsById?.[targetMeetingId])
-            ? this.state.meetingParticipantsById[targetMeetingId]
-            : [];
-        this.state.meetingParticipantsById[targetMeetingId] = current.filter((entry) => (
-            String(entry?.id || '').trim() !== targetParticipantId
-        ));
+        this.meetingListController.removeParticipantFromMeetingMap(
+            this.state.meetingParticipantsById,
+            meetingId,
+            participantId
+        );
     }
 
     renderMeetingSummary() {
@@ -1303,20 +1097,10 @@ export class WebMeetDashboardModal {
             return;
         }
         await this.disconnectRoom();
-        const livekit = await ensureLiveKitClient();
-        const { Room, RoomEvent, Track, DataPacket_Kind } = livekit;
-        this.restoreRtcPeerConnection?.();
-        this.restoreRtcPeerConnection = installRtcPeerConnectionOverride(this.state.session);
-        const room = new Room({
-            adaptiveStream: true,
-            dynacast: true,
-            rtcConfig: buildRtcConfigForSession(this.state.session)
-        });
-        this.room = room;
-        this.state.roomState = 'Connecting';
-        this.renderMeetingSummary();
 
-        const renderPublication = (participant, publication, explicitTrack = null) => {
+        const renderPublication = (participant, publication, explicitTrack = null, TrackRef = null) => {
+            const Track = TrackRef || window.LivekitClient?.Track;
+            if (!Track) return;
             const participantId = String(participant?.identity || '').trim();
             if (!participantId || !publication) return;
             this.upsertParticipantView({
@@ -1341,22 +1125,24 @@ export class WebMeetDashboardModal {
                 }
                 this.attachVideoTrack(participantId, trackId, mediaElement);
             } else if (track.kind === Track.Kind.Audio) {
-                const mediaElement = track.attach();
-                mediaElement.autoplay = true;
-                if (participantId === this.room?.localParticipant?.identity) {
-                    mediaElement.muted = true;
+                const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
+                if (!isLocalParticipant) {
+                    const mediaElement = track.attach();
+                    mediaElement.autoplay = true;
+                    void this.applyAudioOutputDeviceToElement(mediaElement);
+                    this.attachAudioTrack(participantId, trackId, mediaElement);
                 }
-                this.attachAudioTrack(participantId, trackId, mediaElement);
                 this.setParticipantMicState(participantId, !publication.isMuted);
             }
         };
 
-        const removePublication = (publication) => {
+        const removePublication = (publication, TrackRef = null) => {
+            const Track = TrackRef || window.LivekitClient?.Track;
             const trackId = String(publication?.trackSid || '').trim();
             if (!trackId) return;
-            const trackInfo = this.trackElements.get(trackId);
+            const trackInfo = this.participantLayoutController.getTrackEntry(trackId);
             this.removeTrack(trackId);
-            if (trackInfo?.kind === 'audio' || publication.kind === Track.Kind.Audio) {
+            if (Track && (trackInfo?.kind === 'audio' || publication.kind === Track.Kind.Audio)) {
                 const participantId = String(trackInfo?.participantId || '').trim();
                 if (participantId) {
                     const participant = participantId === this.room?.localParticipant?.identity
@@ -1367,54 +1153,64 @@ export class WebMeetDashboardModal {
             }
         };
 
-        room
-            .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-                renderPublication(participant, publication, track);
+        await this.roomController.connect(this.state.session, {
+            onRoomCreated: ({ room }) => {
+                this.room = room;
+            },
+            onConnecting: () => {
+                this.state.roomState = 'Connecting';
+                this.renderMeetingSummary();
+            },
+            onTrackSubscribed: (track, publication, participant, { Track }) => {
+                renderPublication(participant, publication, track, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.TrackUnsubscribed, (_track, publication) => {
-                removePublication(publication);
+            },
+            onTrackUnsubscribed: (_track, publication, _participant, { Track }) => {
+                removePublication(publication, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.LocalTrackPublished, (publication) => {
-                renderPublication(room.localParticipant, publication);
+            },
+            onLocalTrackPublished: (publication, { room, Track }) => {
+                renderPublication(room.localParticipant, publication, null, Track);
                 this.syncLocalMediaStateFromRoom(Track);
+                this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.LocalTrackUnpublished, (publication) => {
-                removePublication(publication);
+            },
+            onLocalTrackUnpublished: (publication, { Track }) => {
+                removePublication(publication, Track);
                 this.syncLocalMediaStateFromRoom(Track);
+                this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.ParticipantConnected, () => {
+            },
+            onParticipantConnected: (_participant, { Track }) => {
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.ParticipantDisconnected, (participant) => {
+            },
+            onParticipantDisconnected: (participant, { Track }) => {
                 for (const publication of participant.trackPublications.values()) {
-                    removePublication(publication);
+                    removePublication(publication, Track);
                 }
                 this.removeParticipantView(participant.identity);
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.TrackMuted, (publication, participant) => {
+            },
+            onTrackMuted: (publication, participant, { Track }) => {
                 const participantId = String(participant?.identity || '').trim();
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
                 if (isVideoTrack) {
-                    removePublication(publication);
+                    removePublication(publication, Track);
                 } else {
                     this.setParticipantMicState(participantId, false);
                 }
                 if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
                     this.syncLocalMediaStateFromRoom(Track);
+                    this.renderMeetingSummary();
                 }
-            })
-            .on(RoomEvent.TrackUnmuted, (publication, participant) => {
+            },
+            onTrackUnmuted: (publication, participant, { Track }) => {
                 const participantId = String(participant?.identity || '').trim();
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
                 if (isVideoTrack) {
-                    renderPublication(participant, publication, publication?.track || null);
+                    renderPublication(participant, publication, publication?.track || null, Track);
                 }
                 const sourceParticipant = participantId === this.room?.localParticipant?.identity
                     ? this.room.localParticipant
@@ -1422,10 +1218,11 @@ export class WebMeetDashboardModal {
                 this.setParticipantMicState(participantId, this.isParticipantMicOn(sourceParticipant, Track));
                 if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
                     this.syncLocalMediaStateFromRoom(Track);
+                    this.renderMeetingSummary();
                 }
                 this.syncParticipantsFromRoom(this.room, Track);
-            })
-            .on(RoomEvent.DataReceived, (payload, participant) => {
+            },
+            onDataReceived: (payload, participant) => {
                 console.log('[WebMeet] DataReceived event fired, participant:', participant?.identity);
                 try {
                     const text = new TextDecoder().decode(payload);
@@ -1433,7 +1230,6 @@ export class WebMeetDashboardModal {
                     const data = JSON.parse(text);
                     console.log('[WebMeet] DataReceived parsed:', data);
                     if (data.type === 'chat' && data.meetingId === this.selectedMeeting?.id) {
-                        // Add to state.chat (same property used by renderFeedLists)
                         if (!this.state.chat) this.state.chat = [];
                         this.state.chat.push(data.message);
                         console.log('[WebMeet] Added message to state.chat, count:', this.state.chat.length);
@@ -1442,125 +1238,62 @@ export class WebMeetDashboardModal {
                 } catch (err) {
                     console.error('[WebMeet] DataReceived error:', err);
                 }
-            })
-            .on(RoomEvent.Disconnected, () => {
-                this.restoreRtcPeerConnection?.();
-                this.restoreRtcPeerConnection = null;
-                this.room = null;
-                this.mediaToggleInFlight = false;
-                this.state.roomState = 'Disconnected';
-                this.state.media = { microphone: false, camera: false, screen: false };
-                this.state.participants = [];
-                this.state.videoGridFullscreen = false;
-                for (const track of this.trackElements.values()) {
-                    try { track.element.srcObject = null; } catch (_) {}
-                    track.element.remove();
-                }
-                for (const view of this.participantViews.values()) {
-                    view.element.remove();
-                }
-                this.participantViews.clear();
-                this.focusedParticipantId = '';
-                this.trackElements.clear();
-                this.setVideoGridEmptyState('Join a meeting to attach media tracks.');
-                this.syncVideoGridVisibility();
-                this.renderAll();
-            });
-
-        try {
-            await room.connect(this.state.session.livekitUrl, this.state.session.participantToken);
-            this.state.roomState = 'Connected';
-            this.syncParticipantsFromRoom(this.room, Track);
-            this.startPresenceHeartbeat();
-            this.renderMeetingSummary();
-        } catch (error) {
-            this.state.roomState = error instanceof Error ? error.message : String(error);
-            this.stopPresenceHeartbeat();
-            this.renderMeetingSummary();
-            throw error;
-        }
+            },
+            onDisconnected: () => {
+                this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
+            },
+            onConnected: ({ Track }) => {
+                this.state.roomState = 'Connected';
+                this.syncParticipantsFromRoom(this.room, Track);
+                this.startPresenceHeartbeat();
+                this.renderMeetingSummary();
+            },
+            onConnectError: (error) => {
+                this.state.roomState = error instanceof Error ? error.message : String(error);
+                this.stopPresenceHeartbeat();
+                this.renderMeetingSummary();
+            }
+        });
     }
 
-    async disconnectRoom() {
-        if (!this.room) return;
-        try {
-            await this.room.disconnect();
-        } catch (_) {
-            // ignore disconnect failures
-        }
-        this.restoreRtcPeerConnection?.();
-        this.restoreRtcPeerConnection = null;
-        this.room = null;
+    resetRoomUiState(options = {}) {
+        const forceRenderAll = Boolean(options.forceRenderAll);
+        const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
+        this.room = this.roomController.getRoom();
         this.stopPresenceHeartbeat();
-        this.mediaToggleInFlight = false;
+        this.mediaController.reset();
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
         this.state.videoGridFullscreen = false;
-        for (const track of this.trackElements.values()) {
-            try { track.element.srcObject = null; } catch (_) {}
-            track.element.remove();
+        this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');
+        if (applyVideoFullscreenMode) {
+            this.applyVideoGridFullscreenMode();
         }
-        for (const view of this.participantViews.values()) {
-            const presenter = view.element.webSkelPresenter;
-            if (presenter && typeof presenter.clearVideoElement === 'function') {
-                presenter.clearVideoElement();
-            }
-            view.element.remove();
+        if (forceRenderAll) {
+            this.renderAll();
+        } else {
+            this.renderMeetingSummary();
+            this.renderFeedLists();
         }
-        this.trackElements.clear();
-        this.participantViews.clear();
-        this.focusedParticipantId = '';
-        this.setVideoGridEmptyState('Join a meeting to attach media tracks.');
-        this.syncVideoGridVisibility();
-        this.applyVideoGridFullscreenMode();
-        this.renderAll();
+    }
+
+    async disconnectRoom() {
+        if (!this.roomController.getRoom()) return;
+        await this.roomController.disconnect();
+        this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: true });
     }
 
     async toggleMicrophone() {
-        if (!this.room?.localParticipant) {
-            this.setError('Join a meeting before enabling the microphone.');
-            return;
-        }
-        await this.runExclusiveMediaToggle(async () => {
-            const enable = !this.isLocalSourceEnabled('microphone');
-            await this.room.localParticipant.setMicrophoneEnabled(enable);
-            await this.waitForLocalSourceState('microphone', enable);
-        });
+        await this.mediaController.toggleMicrophone();
     }
 
     async toggleCamera() {
-        if (!this.room?.localParticipant) {
-            this.setError('Join a meeting before enabling the camera.');
-            return;
-        }
-        await this.runExclusiveMediaToggle(async () => {
-            const localParticipant = this.room.localParticipant;
-            const shouldEnableCamera = !this.isLocalSourceEnabled('camera');
-            if (shouldEnableCamera && this.isLocalSourceEnabled('screen')) {
-                await localParticipant.setScreenShareEnabled(false);
-                await this.waitForLocalSourceState('screen', false);
-            }
-            await localParticipant.setCameraEnabled(shouldEnableCamera);
-            await this.waitForLocalSourceState('camera', shouldEnableCamera);
-        });
+        await this.mediaController.toggleCamera();
     }
 
     async toggleScreenShare() {
-        if (!this.room?.localParticipant) {
-            this.setError('Join a meeting before starting screen share.');
-            return;
-        }
-        await this.runExclusiveMediaToggle(async () => {
-            const localParticipant = this.room.localParticipant;
-            const shouldEnableScreen = !this.isLocalSourceEnabled('screen');
-            if (shouldEnableScreen && this.isLocalSourceEnabled('camera')) {
-                await localParticipant.setCameraEnabled(false);
-                await this.waitForLocalSourceState('camera', false);
-            }
-            await localParticipant.setScreenShareEnabled(shouldEnableScreen);
-            await this.waitForLocalSourceState('screen', shouldEnableScreen);
-        });
+        await this.mediaController.toggleScreenShare();
     }
 
     async leaveMeeting() {

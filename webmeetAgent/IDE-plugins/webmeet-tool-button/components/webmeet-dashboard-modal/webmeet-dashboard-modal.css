@@ -713,7 +713,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 
 .webmeet-video-all webmeet-participant-card {
     min-height: 170px;
-    aspect-ratio: 16 / 10;
 }
 
 .webmeet-video-all.has-focus {
@@ -770,6 +769,60 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     align-items: center;
     gap: 8px;
     margin-left: auto;
+}
+
+.webmeet-media-settings-button.active {
+    background: color-mix(in srgb, var(--accent) 24%, var(--option-hover) 76%);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.webmeet-media-settings {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px 16px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.webmeet-media-settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.webmeet-media-settings-row label {
+    font-size: 0.78rem;
+    color: var(--text-soft);
+    font-weight: 600;
+}
+
+.webmeet-media-settings-row select.form-input {
+    min-height: 34px;
+    padding: 6px 10px;
+}
+
+.webmeet-media-settings-flags {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.webmeet-media-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text);
+}
+
+.webmeet-media-settings-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 .webmeet-video-grid-fullscreen-button .icon-exit {
@@ -1099,6 +1152,24 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     text-overflow: ellipsis;
 }
 
+.webmeet-room-participant-mic {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    color: var(--text-soft);
+}
+
+.webmeet-room-participant-mic.is-on {
+    color: #1f9d5a;
+}
+
+.webmeet-room-participant-mic.is-off {
+    color: #d44b4b;
+}
+
 .webmeet-list-item button {
     margin-top: 8px;
 }
@@ -1241,6 +1312,10 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 }
 
 @media (max-width: 1180px) {
+    .webmeet-media-settings {
+        grid-template-columns: 1fr;
+    }
+
     .webmeet-dashboard-layout {
         grid-template-columns: 1fr;
     }
