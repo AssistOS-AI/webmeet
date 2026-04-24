@@ -126,7 +126,6 @@ export class WebMeetDashboardModal {
         this.hostContext = hostContext || {};
         this.state = {
             workspaces: [],
-            channels: [],
             meetings: [],
             chat: [],
             transcript: [],
@@ -135,8 +134,8 @@ export class WebMeetDashboardModal {
             tasks: [],
             decisions: [],
             agents: [],
+            meetingParticipantsById: {},
             selectedWorkspaceId: '',
-            selectedChannelId: '',
             selectedMeetingId: '',
             session: null,
             roomState: 'Disconnected',
@@ -146,12 +145,17 @@ export class WebMeetDashboardModal {
                 camera: false,
                 screen: false
             },
-            participants: []
+            participants: [],
+            chatSidebarVisible: true,
+            videoGridFullscreen: false
         };
         this.room = null;
         this.restoreRtcPeerConnection = null;
         this.speechRecognition = null;
         this.trackElements = new Map();
+        this.participantViews = new Map();
+        this.focusedParticipantId = '';
+        this.mediaToggleInFlight = false;
         this.pollingInterval = null;
         this.invalidate();
     }
@@ -169,7 +173,6 @@ export class WebMeetDashboardModal {
         if (this.hostContext && typeof this.hostContext.registerAction === 'function') {
             const actions = [
                 'closeModal',
-                'createChannel',
                 'createMeeting',
                 'joinMeeting',
                 'leaveMeeting',
@@ -177,11 +180,14 @@ export class WebMeetDashboardModal {
                 'toggleMicrophone',
                 'toggleCamera',
                 'toggleScreenShare',
+                'toggleVideoGridFullscreen',
+                'toggleFullscreen',
+                'toggleChatSidebar',
+                'focusParticipantCard',
                 'sendChat',
                 'appendTranscript',
                 'startAutoTranscript',
                 'stopAutoTranscript',
-                'selectChannel',
                 'selectMeeting',
                 'selectAndJoinMeeting'
             ];
@@ -206,14 +212,6 @@ export class WebMeetDashboardModal {
             tabGroup.querySelectorAll('.webmeet-tab').forEach(btn => {
                 btn.classList.toggle('webmeet-tab-active', btn.dataset.tab === tabId);
             });
-
-            // Handle chat/live room tabs (now only live room in main area)
-            if (tabId === 'live') {
-                const liveTab = this.element.querySelector('#webmeetLiveTab');
-                if (liveTab) {
-                    liveTab.classList.remove('webmeet-hidden');
-                }
-            }
 
             // Handle secondary tabs (transcript, artifacts, recordings)
             const secondaryTabs = ['transcript', 'artifacts', 'recordings'];
@@ -241,33 +239,6 @@ export class WebMeetDashboardModal {
             // Toggle button state
             collapseButton.classList.toggle('collapsed');
 
-            // Handle participants panel collapse (vertical content)
-            if (collapsibleId === 'participants') {
-                const collapsibles = this.element.querySelectorAll(`[data-collapsible="${collapsibleId}"]`);
-                const isCollapsed = collapseButton.classList.contains('collapsed');
-
-                // Toggle collapsible elements
-                collapsibles.forEach(el => {
-                    el.classList.toggle('expanded', !isCollapsed);
-                });
-
-                return;
-            }
-
-            // Handle chat sidebar collapse (horizontal)
-            if (collapsibleId === 'chat') {
-                const chatSidebar = this.element.querySelector('#webmeetChatSidebar');
-                if (chatSidebar) {
-                    chatSidebar.classList.toggle('collapsed');
-                }
-                const collapsibles = this.element.querySelectorAll(`[data-collapsible="${collapsibleId}"]`);
-                const isCollapsed = collapseButton.classList.contains('collapsed');
-                collapsibles.forEach(el => {
-                    el.classList.toggle('expanded', !isCollapsed);
-                });
-                return;
-            }
-
             // Handle transcript collapse (vertical content)
             const collapsibles = this.element.querySelectorAll(`[data-collapsible="${collapsibleId}"]`);
             const isCollapsed = collapseButton.classList.contains('collapsed');
@@ -285,7 +256,6 @@ export class WebMeetDashboardModal {
         this.workspaceList = this.element.querySelector('#webmeetWorkspaceList');
         this.currentWorkspace = this.element.querySelector('#webmeetCurrentWorkspace');
         this.toastContainer = this.element.querySelector('#webmeetToastContainer');
-        this.channelList = this.element.querySelector('#webmeetChannelList');
         this.meetingList = this.element.querySelector('#webmeetMeetingList');
         this.meetingTitle = this.element.querySelector('#webmeetMeetingTitle');
         this.meetingMeta = this.element.querySelector('#webmeetMeetingMeta');
@@ -304,15 +274,492 @@ export class WebMeetDashboardModal {
         this.agentList = this.element.querySelector('#webmeetAgentList');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
-        this.participantsList = this.element.querySelector('#webmeetParticipantsList');
+        this.videoGridEmpty = this.element.querySelector('#webmeetVideoEmpty');
+        this.videoGridAll = this.element.querySelector('#webmeetVideoAll');
         this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
         this.micButton = this.element.querySelector('#webmeetMicButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');
         this.screenShareButton = this.element.querySelector('#webmeetScreenShareButton');
+        this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
+        this.dashboardModalRoot = this.element.querySelector('.webmeet-dashboard-modal');
+        this.chatSidebar = this.element.querySelector('#webmeetChatSidebar');
+        this.toggleChatButton = this.element.querySelector('#webmeetToggleChatButton');
+        this.fullscreenButton = this.element.querySelector('#webmeetModalFullscreen');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
         this.secondaryPanels = this.element.querySelector('.webmeet-secondary-panels');
+    }
+
+    getDialogElement() {
+        return this.element?.closest?.('dialog') || null;
+    }
+
+    syncFullscreenButtonState() {
+        const dialog = this.getDialogElement();
+        const isFullscreen = Boolean(dialog?.classList.contains('is-fullscreen'));
+        if (!this.fullscreenButton) return;
+        this.fullscreenButton.classList.toggle('active', isFullscreen);
+        this.fullscreenButton.title = isFullscreen ? 'Exit fullscreen' : 'Toggle fullscreen';
+        this.fullscreenButton.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Toggle fullscreen');
+    }
+
+    toggleFullscreen() {
+        const dialog = this.getDialogElement();
+        if (!dialog) return;
+        dialog.classList.toggle('is-fullscreen');
+        this.syncFullscreenButtonState();
+    }
+
+    applyChatSidebarVisibility() {
+        const isVisible = this.state.chatSidebarVisible !== false;
+        if (this.chatSidebar) {
+            this.chatSidebar.classList.toggle('webmeet-hidden', !isVisible);
+        }
+        if (this.mainContent) {
+            this.mainContent.classList.toggle('webmeet-chat-hidden', !isVisible);
+        }
+        if (this.toggleChatButton) {
+            this.toggleChatButton.classList.toggle('active', isVisible);
+            this.toggleChatButton.title = isVisible ? 'Hide chat' : 'Show chat';
+            this.toggleChatButton.setAttribute('aria-label', isVisible ? 'Hide chat' : 'Show chat');
+        }
+    }
+
+    toggleChatSidebar() {
+        this.state.chatSidebarVisible = !this.state.chatSidebarVisible;
+        this.applyChatSidebarVisibility();
+    }
+
+    applyVideoGridFullscreenMode() {
+        const isActive = Boolean(this.state.videoGridFullscreen);
+        if (this.dashboardModalRoot) {
+            this.dashboardModalRoot.classList.toggle('webmeet-video-grid-fullscreen-mode', isActive);
+        }
+        if (this.videoGridFullscreenButton) {
+            this.videoGridFullscreenButton.classList.toggle('active', isActive);
+            const label = isActive ? 'Exit video fullscreen' : 'Video fullscreen';
+            this.videoGridFullscreenButton.title = label;
+            this.videoGridFullscreenButton.setAttribute('aria-label', label);
+        }
+    }
+
+    toggleVideoGridFullscreen() {
+        const isJoined = Boolean(this.state.session?.participantIdentity);
+        if (!isJoined) {
+            this.setError('Join a meeting before entering video fullscreen.');
+            return;
+        }
+        this.state.videoGridFullscreen = !this.state.videoGridFullscreen;
+        this.applyVideoGridFullscreenMode();
+    }
+
+    getParticipantDisplayName(participant) {
+        return String(
+            participant?.name
+            || participant?.displayName
+            || participant?.identity
+            || 'Participant'
+        ).trim() || 'Participant';
+    }
+
+    setVideoGridEmptyState(message) {
+        if (this.videoGridEmpty) {
+            this.videoGridEmpty.textContent = String(message || 'Join a meeting to attach media tracks.');
+        }
+    }
+
+    syncVideoGridVisibility() {
+        const participantCount = this.participantViews.size;
+        const hasParticipants = participantCount > 0;
+        const hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId));
+        if (this.videoGridEmpty) {
+            this.videoGridEmpty.classList.toggle('webmeet-hidden', hasParticipants);
+        }
+        if (this.videoGridAll) {
+            this.videoGridAll.classList.toggle('webmeet-hidden', !hasParticipants);
+            this.videoGridAll.classList.toggle('has-focus', hasFocusedParticipant);
+        }
+    }
+
+    applyParticipantViewState(view) {
+        if (!view || !view.element) return;
+        const payload = {
+            participantId: view.id,
+            displayName: view.name,
+            isLocal: Boolean(view.isLocal),
+            isMicOn: Boolean(view.micOn),
+            hasVideo: Boolean(view.hasVideo),
+            isMini: Boolean(view.isMini),
+            isFocused: Boolean(view.isFocused)
+        };
+        view.element.dataset.participantId = payload.participantId;
+        view.element.setAttribute('data-display-name', payload.displayName);
+        view.element.setAttribute('data-is-local', payload.isLocal ? 'true' : 'false');
+        view.element.setAttribute('data-is-mic-on', payload.isMicOn ? 'true' : 'false');
+        view.element.setAttribute('data-has-video', payload.hasVideo ? 'true' : 'false');
+        view.element.setAttribute('data-is-mini', payload.isMini ? 'true' : 'false');
+        view.element.setAttribute('data-is-focused', payload.isFocused ? 'true' : 'false');
+        const presenter = view.element.webSkelPresenter;
+        if (presenter && typeof presenter.setState === 'function') {
+            presenter.setState(payload);
+        }
+        if (view.videoElement) {
+            if (presenter && typeof presenter.setVideoElement === 'function') {
+                presenter.setVideoElement(view.videoElement);
+            } else {
+                const mediaHost = view.element.querySelector('[data-role="mediaHost"]');
+                if (mediaHost && !mediaHost.contains(view.videoElement)) {
+                    mediaHost.appendChild(view.videoElement);
+                }
+            }
+        }
+    }
+
+    upsertParticipantView(participant) {
+        const id = String(participant?.identity || '').trim();
+        if (!id || !this.videoGrid) return null;
+        let view = this.participantViews.get(id);
+        if (!view) {
+            const element = document.createElement('webmeet-participant-card');
+            element.setAttribute('data-presenter', 'webmeet-participant-card');
+            element.setAttribute('data-local-action', 'focusParticipantCard');
+            element.dataset.participantId = id;
+            element.title = 'Focus participant';
+            view = {
+                id,
+                name: this.getParticipantDisplayName(participant),
+                isLocal: Boolean(participant.kind === 'local'),
+                hasVideo: false,
+                micOn: false,
+                isMini: true,
+                isFocused: false,
+                element
+            };
+            this.participantViews.set(id, view);
+        } else {
+            view.name = this.getParticipantDisplayName(participant);
+            view.isLocal = Boolean(participant.kind === 'local');
+        }
+        this.applyParticipantViewState(view);
+        return view;
+    }
+
+    renderParticipantLayout() {
+        if (!this.videoGrid || !this.videoGridAll) return;
+        if (!this.participantViews.size) {
+            this.focusedParticipantId = '';
+            this.syncVideoGridVisibility();
+            return;
+        }
+        const hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId));
+        if (!hasFocusedParticipant) {
+            this.focusedParticipantId = '';
+            for (const view of this.participantViews.values()) {
+                view.isFocused = false;
+                view.isMini = false;
+                if (view.element.parentElement !== this.videoGridAll) {
+                    this.videoGridAll.appendChild(view.element);
+                }
+                this.applyParticipantViewState(view);
+            }
+            this.syncVideoGridVisibility();
+            return;
+        }
+
+        for (const view of this.participantViews.values()) {
+            const isFocused = view.id === this.focusedParticipantId;
+            view.isFocused = isFocused;
+            view.isMini = !isFocused;
+            if (view.element.parentElement !== this.videoGridAll) {
+                this.videoGridAll.appendChild(view.element);
+            }
+            this.applyParticipantViewState(view);
+        }
+        this.syncVideoGridVisibility();
+    }
+
+    setFocusedParticipant(participantId) {
+        const id = String(participantId || '').trim();
+        if (!id || !this.participantViews.has(id)) return;
+        this.focusedParticipantId = id;
+        this.renderParticipantLayout();
+    }
+
+    focusParticipantCard(target) {
+        const participantId = String(target?.dataset?.participantId || '').trim();
+        if (!participantId) return;
+        if (this.focusedParticipantId === participantId) {
+            this.focusedParticipantId = '';
+            this.renderParticipantLayout();
+            return;
+        }
+        this.setFocusedParticipant(participantId);
+    }
+
+    setParticipantMicState(participantId, isMicOn) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        const view = this.participantViews.get(id);
+        if (!view) return;
+        view.micOn = Boolean(isMicOn);
+        this.applyParticipantViewState(view);
+    }
+
+    attachVideoTrack(participantId, trackSid, mediaElement) {
+        const id = String(participantId || '').trim();
+        if (!id || !trackSid || !mediaElement) return;
+        const view = this.participantViews.get(id);
+        if (!view) return;
+        view.videoElement = mediaElement;
+        if (view.element.parentElement !== this.videoGridAll && this.videoGridAll) {
+            this.videoGridAll.appendChild(view.element);
+        }
+
+        const tryAttach = () => {
+            const presenter = view.element.webSkelPresenter;
+            if (presenter && typeof presenter.setVideoElement === 'function') {
+                presenter.setVideoElement(mediaElement);
+            } else {
+                const host = view.element.querySelector('[data-role="mediaHost"]');
+                if (host && !host.contains(mediaElement)) {
+                    host.appendChild(mediaElement);
+                }
+            }
+            const host = view.element.querySelector('[data-role="mediaHost"]');
+            const attached = Boolean(host && host.contains(mediaElement));
+            view.hasVideo = attached;
+            this.applyParticipantViewState(view);
+            return attached;
+        };
+
+        if (!tryAttach()) {
+            let attempts = 0;
+            const retryAttach = () => {
+                attempts += 1;
+                if (tryAttach() || attempts >= 12) {
+                    return;
+                }
+                requestAnimationFrame(retryAttach);
+            };
+            requestAnimationFrame(retryAttach);
+        }
+
+        this.trackElements.set(trackSid, {
+            participantId: id,
+            kind: 'video',
+            element: mediaElement
+        });
+        this.renderParticipantLayout();
+    }
+
+    clearVideoTrack(trackSid) {
+        const track = this.trackElements.get(trackSid);
+        if (!track || track.kind !== 'video') return;
+        const view = this.participantViews.get(track.participantId);
+        if (view) {
+            const presenter = view.element.webSkelPresenter;
+            if (presenter && typeof presenter.clearVideoElement === 'function') {
+                presenter.clearVideoElement();
+            } else {
+                const host = view.element.querySelector('[data-role="mediaHost"]');
+                const video = host?.querySelector('video');
+                if (video) {
+                    try { video.srcObject = null; } catch (_) {}
+                    video.remove();
+                }
+            }
+            view.hasVideo = false;
+            view.videoElement = null;
+            this.applyParticipantViewState(view);
+        }
+        try { track.element.srcObject = null; } catch (_) {}
+        track.element.remove();
+        this.trackElements.delete(trackSid);
+    }
+
+    attachAudioTrack(participantId, trackSid, mediaElement) {
+        const id = String(participantId || '').trim();
+        if (!id || !trackSid || !mediaElement) return;
+        mediaElement.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+        const view = this.participantViews.get(id);
+        if (view?.element && !view.element.contains(mediaElement)) {
+            view.element.appendChild(mediaElement);
+        }
+        this.trackElements.set(trackSid, {
+            participantId: id,
+            kind: 'audio',
+            element: mediaElement
+        });
+    }
+
+    removeTrack(trackSid) {
+        const entry = this.trackElements.get(trackSid);
+        if (!entry) return;
+        if (entry.kind === 'video') {
+            this.clearVideoTrack(trackSid);
+            return;
+        }
+        try { entry.element.srcObject = null; } catch (_) {}
+        entry.element.remove();
+        this.trackElements.delete(trackSid);
+    }
+
+    removeParticipantView(participantId) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        const view = this.participantViews.get(id);
+        if (!view) return;
+        for (const [trackSid, track] of this.trackElements.entries()) {
+            if (track.participantId === id) {
+                this.removeTrack(trackSid);
+            }
+        }
+        view.element.remove();
+        this.participantViews.delete(id);
+        if (this.focusedParticipantId === id) {
+            this.focusedParticipantId = this.participantViews.keys().next().value || '';
+        }
+        this.renderParticipantLayout();
+    }
+
+    isParticipantMicOn(participant, Track) {
+        if (!participant?.trackPublications?.values) return false;
+        for (const publication of participant.trackPublications.values()) {
+            if (!publication) continue;
+            const isAudioKind = publication.kind === Track.Kind.Audio;
+            const isMicSource = publication.source === Track.Source.Microphone;
+            if (isAudioKind || isMicSource) {
+                return !publication.isMuted;
+            }
+        }
+        return false;
+    }
+
+    syncParticipantsFromRoom(room, Track) {
+        if (!room) return;
+        const items = [{
+            identity: room.localParticipant?.identity || this.state.session?.participantIdentity || '',
+            name: room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
+            kind: 'local'
+        }];
+        for (const participant of room.remoteParticipants.values()) {
+            items.push({
+                identity: participant.identity || '',
+                name: participant.name || participant.identity || 'Remote',
+                kind: 'remote'
+            });
+        }
+
+        const keep = new Set();
+        for (const item of items) {
+            const id = String(item.identity || '').trim();
+            if (!id) continue;
+            keep.add(id);
+            const view = this.upsertParticipantView(item);
+            if (!view) continue;
+            const sourceParticipant = item.kind === 'local' ? room.localParticipant : room.remoteParticipants.get(id);
+            view.micOn = this.isParticipantMicOn(sourceParticipant, Track);
+            this.applyParticipantViewState(view);
+        }
+
+        for (const participantId of Array.from(this.participantViews.keys())) {
+            if (!keep.has(participantId)) {
+                this.removeParticipantView(participantId);
+            }
+        }
+
+        this.state.participants = items;
+        if (this.selectedMeeting?.id) {
+            this.state.meetingParticipantsById[this.selectedMeeting.id] = items.map((entry) => ({
+                id: entry.identity,
+                name: entry.name
+            })).filter((entry) => entry.id);
+            this.renderMeetingList();
+        }
+        this.renderParticipantLayout();
+        this.syncLocalMediaStateFromRoom(Track);
+        this.renderFeedLists();
+    }
+
+    getLocalMediaStateFromRoom(TrackRef = null) {
+        const Track = TrackRef || window.LivekitClient?.Track;
+        const localParticipant = this.room?.localParticipant;
+        const next = {
+            microphone: false,
+            camera: false,
+            screen: false
+        };
+        if (!Track || !localParticipant?.trackPublications?.values) {
+            return next;
+        }
+        next.microphone = this.isLocalSourceEnabled('microphone', Track);
+        next.camera = this.isLocalSourceEnabled('camera', Track);
+        next.screen = this.isLocalSourceEnabled('screen', Track);
+        return next;
+    }
+
+    isLocalSourceEnabled(type, TrackRef = null) {
+        const Track = TrackRef || window.LivekitClient?.Track;
+        const localParticipant = this.room?.localParticipant;
+        if (!Track || !localParticipant?.trackPublications?.values) {
+            return false;
+        }
+        const sourceMap = {
+            microphone: Track.Source?.Microphone,
+            camera: Track.Source?.Camera,
+            screen: Track.Source?.ScreenShare
+        };
+        const wantedSource = sourceMap[type];
+        const wantedKind = type === 'microphone' ? Track.Kind.Audio : Track.Kind.Video;
+
+        for (const publication of localParticipant.trackPublications.values()) {
+            if (!publication) continue;
+            const sameKind = publication.kind === wantedKind;
+            const sameSource = wantedSource ? publication.source === wantedSource : false;
+            if ((sameSource || (type === 'camera' && sameKind && !publication.source))
+                && !publication.isMuted) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    async waitForLocalSourceState(type, enabled, timeoutMs = 1200) {
+        const start = Date.now();
+        while ((Date.now() - start) < timeoutMs) {
+            const current = this.isLocalSourceEnabled(type);
+            if (current === enabled) {
+                return true;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+        return false;
+    }
+
+    syncLocalMediaStateFromRoom(TrackRef = null) {
+        const next = this.getLocalMediaStateFromRoom(TrackRef);
+        this.state.media = next;
+        const localId = String(this.room?.localParticipant?.identity || '').trim();
+        if (localId) {
+            this.setParticipantMicState(localId, next.microphone);
+        }
+    }
+
+    async runExclusiveMediaToggle(action) {
+        if (this.mediaToggleInFlight) {
+            return;
+        }
+        this.mediaToggleInFlight = true;
+        try {
+            await action();
+        } catch (error) {
+            this.setError(error instanceof Error ? error.message : String(error));
+        } finally {
+            this.syncLocalMediaStateFromRoom();
+            this.renderMeetingSummary();
+            this.mediaToggleInFlight = false;
+        }
     }
 
     afterUnload() {
@@ -322,10 +769,10 @@ export class WebMeetDashboardModal {
 
     async bootstrap() {
         try {
+            this.syncFullscreenButtonState();
             await this.loadWorkspaces();
             this.state.selectedWorkspaceId = this.state.workspaces[0]?.id || '';
-            await this.loadChannels();
-            if (this.state.selectedChannelId) {
+            if (this.state.selectedWorkspaceId) {
                 await this.loadMeetings();
             }
             this.renderAll();
@@ -344,31 +791,42 @@ export class WebMeetDashboardModal {
         this.state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
     }
 
-    async loadChannels() {
-        if (!this.state.selectedWorkspaceId) {
-            this.state.channels = [];
-            this.state.selectedChannelId = '';
-            return;
-        }
-        const payload = await runTool('webmeet_channel_list', { workspaceId: this.state.selectedWorkspaceId });
-        this.state.channels = Array.isArray(payload.channels) ? payload.channels : [];
-        this.state.selectedChannelId = this.state.channels.some((entry) => entry.id === this.state.selectedChannelId)
-            ? this.state.selectedChannelId
-            : (this.state.channels[0]?.id || '');
-    }
-
     async loadMeetings() {
-        if (!this.state.selectedChannelId) {
+        if (!this.state.selectedWorkspaceId) {
             this.state.meetings = [];
+            this.state.meetingParticipantsById = {};
             this.state.selectedMeetingId = '';
             return;
         }
-        const payload = await runTool('webmeet_meeting_list', { channelId: this.state.selectedChannelId });
+        const payload = await runTool('webmeet_meeting_list', { workspaceId: this.state.selectedWorkspaceId });
         this.state.meetings = Array.isArray(payload.meetings) ? payload.meetings : [];
+        await this.loadParticipantsForMeetings();
         this.state.selectedMeetingId = this.state.meetings.some((entry) => entry.id === this.state.selectedMeetingId)
             ? this.state.selectedMeetingId
-            : (this.state.meetings[0]?.id || '');
+            : '';
         await this.loadMeetingDetails();
+    }
+
+    async loadParticipantsForMeetings() {
+        const meetings = Array.isArray(this.state.meetings) ? this.state.meetings : [];
+        const results = await Promise.allSettled(
+            meetings.map((meeting) => runTool('webmeet_meeting_get', { meetingId: meeting.id }))
+        );
+        const nextMap = {};
+        for (let index = 0; index < meetings.length; index += 1) {
+            const meeting = meetings[index];
+            const result = results[index];
+            if (result.status !== 'fulfilled') {
+                nextMap[meeting.id] = [];
+                continue;
+            }
+            const participants = Array.isArray(result.value?.participants) ? result.value.participants : [];
+            nextMap[meeting.id] = participants.map((entry) => ({
+                id: String(entry?.id || '').trim(),
+                name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant'
+            }));
+        }
+        this.state.meetingParticipantsById = nextMap;
     }
 
     async loadMeetingDetails() {
@@ -402,7 +860,6 @@ export class WebMeetDashboardModal {
 
     renderAll() {
         this.renderWorkspaceList();
-        this.renderChannelList();
         this.renderMeetingList();
         this.renderMeetingSummary();
         this.renderFeedLists();
@@ -451,26 +908,52 @@ export class WebMeetDashboardModal {
         }
     }
 
-    renderChannelList() {
-        this.channelList.innerHTML = this.state.channels.map((entry) => `
-            <div class="webmeet-list-item ${entry.id === this.state.selectedChannelId ? 'is-selected' : ''}" data-local-action="selectChannel" data-id="${escapeHtml(entry.id)}">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.name)}</strong>
-                    <span class="webmeet-channel-status ${entry.id === this.state.selectedChannelId ? '' : 'webmeet-hidden'}">${escapeHtml(entry.kind)}</span>
-                </div>
-            </div>
-        `).join('') || '<div class="webmeet-feed-item">No channels yet.</div>';
-    }
-
     renderMeetingList() {
         this.meetingList.innerHTML = this.state.meetings.map((entry) => `
             <div class="webmeet-list-item ${entry.id === this.state.selectedMeetingId ? 'is-selected' : ''}" data-local-action="selectAndJoinMeeting" data-id="${escapeHtml(entry.id)}">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.title)}</strong>
+                <div class="webmeet-meeting-row">
+                    <span class="webmeet-room-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="6" width="14" height="12" rx="2" ry="2"></rect>
+                            <polygon points="17 10 22 7 22 17 17 14"></polygon>
+                        </svg>
+                    </span>
+                    <strong class="webmeet-meeting-title">${escapeHtml(entry.title)}</strong>
                     <span class="webmeet-meeting-status ${entry.id === this.state.selectedMeetingId ? '' : 'webmeet-hidden'}">${escapeHtml(entry.status)}</span>
                 </div>
+                ${this.renderMeetingParticipants(entry.id)}
             </div>
         `).join('') || '<div class="webmeet-feed-item">No meetings yet.</div>';
+    }
+
+    renderMeetingParticipants(meetingId) {
+        const participants = Array.isArray(this.state.meetingParticipantsById?.[meetingId])
+            ? this.state.meetingParticipantsById[meetingId]
+            : [];
+        if (!participants.length) {
+            return '';
+        }
+        return `
+            <div class="webmeet-room-participants">
+                ${participants.map((participant, index) => `
+                    <div class="webmeet-room-participant ${index === participants.length - 1 ? 'is-last' : ''}">
+                        <span class="webmeet-room-participant-name"> - ${escapeHtml(participant.name || 'Participant')}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    removeParticipantFromMeetingList(meetingId, participantId) {
+        const targetMeetingId = String(meetingId || '').trim();
+        const targetParticipantId = String(participantId || '').trim();
+        if (!targetMeetingId || !targetParticipantId) return;
+        const current = Array.isArray(this.state.meetingParticipantsById?.[targetMeetingId])
+            ? this.state.meetingParticipantsById[targetMeetingId]
+            : [];
+        this.state.meetingParticipantsById[targetMeetingId] = current.filter((entry) => (
+            String(entry?.id || '').trim() !== targetParticipantId
+        ));
     }
 
     renderMeetingSummary() {
@@ -490,6 +973,11 @@ export class WebMeetDashboardModal {
         if (this.secondaryPanels) {
             this.secondaryPanels.classList.toggle('webmeet-hidden', !isJoined);
         }
+        if (!isJoined && this.state.videoGridFullscreen) {
+            this.state.videoGridFullscreen = false;
+        }
+        this.applyChatSidebarVisibility();
+        this.applyVideoGridFullscreenMode();
         
         this.meetingTitle.textContent = meeting?.title || 'None';
         this.meetingMeta.textContent = meeting ? formatDate(meeting.createdAt) : '';
@@ -502,13 +990,13 @@ export class WebMeetDashboardModal {
         const latestRecording = [...this.state.recordings].reverse()[0] || null;
         if (this.recordingButton) {
             if (latestRecording && latestRecording.status === 'recording') {
-                this.recordingButton.textContent = 'Stop rec';
-                this.recordingButton.classList.remove('subtle-button');
-                this.recordingButton.classList.add('danger-button');
+                this.recordingButton.classList.add('active');
+                this.recordingButton.title = 'Stop recording';
+                this.recordingButton.setAttribute('aria-label', 'Stop recording');
             } else {
-                this.recordingButton.textContent = 'Start rec';
-                this.recordingButton.classList.remove('danger-button');
-                this.recordingButton.classList.add('subtle-button');
+                this.recordingButton.classList.remove('active');
+                this.recordingButton.title = 'Start recording';
+                this.recordingButton.setAttribute('aria-label', 'Start recording');
             }
         }
 
@@ -529,8 +1017,8 @@ export class WebMeetDashboardModal {
     }
 
     renderFeedLists() {
-        const renderFeed = (target, entries, formatter, shouldScroll = false) => {
-            target.innerHTML = entries.map(formatter).join('') || '<div class="webmeet-feed-item">No data yet.</div>';
+        const renderFeed = (target, entries, formatter, shouldScroll = false, emptyHtml = '<div class="webmeet-feed-item">No data yet.</div>') => {
+            target.innerHTML = entries.map(formatter).join('') || emptyHtml;
             if (shouldScroll) {
                 target.scrollTop = target.scrollHeight;
             }
@@ -538,22 +1026,21 @@ export class WebMeetDashboardModal {
 
         renderFeed(this.chatList, this.state.chat, (entry) => `
             <div class="webmeet-feed-item">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.authorName || entry.authorId || 'unknown')}</strong>
-                    <span>${escapeHtml(formatDate(entry.createdAt))}</span>
+                <div class="webmeet-chat-entry ${
+                    String(entry.authorId || '').trim() === String(this.state.session?.participantIdentity || '').trim()
+                        ? 'webmeet-chat-entry-self'
+                        : ''
+                }">
+                    <div class="webmeet-chat-message-content">
+                        <div class="webmeet-chat-meta">
+                            <strong class="webmeet-chat-author">${escapeHtml(entry.authorName || entry.authorId || 'unknown')}</strong>
+                            <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.createdAt))}</span>
+                        </div>
+                        <div class="webmeet-chat-text">${escapeHtml(entry.message || '')}</div>
+                    </div>
                 </div>
-                <div>${escapeHtml(entry.message || '')}</div>
             </div>
-        `, true);
-
-        renderFeed(this.participantsList, this.state.participants, (entry) => `
-            <div class="webmeet-feed-item">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.name)}</strong>
-                    <span>${escapeHtml(entry.kind)}</span>
-                </div>
-            </div>
-        `);
+        `, true, '<div class="webmeet-chat-empty">No messages yet. Start the conversation.</div>');
 
         renderFeed(this.transcriptList, this.state.transcript, (entry) => `
             <div class="webmeet-feed-item">
@@ -604,12 +1091,6 @@ export class WebMeetDashboardModal {
         `);
     }
 
-    async selectChannel(element) {
-        this.state.selectedChannelId = element.dataset.id || '';
-        await this.loadMeetings();
-        this.renderAll();
-    }
-
     async selectMeeting(element) {
         this.state.selectedMeetingId = element.dataset.id || '';
         await this.loadMeetingDetails();
@@ -617,60 +1098,69 @@ export class WebMeetDashboardModal {
     }
 
     async selectAndJoinMeeting(element) {
-        this.state.selectedMeetingId = element.dataset.id || '';
+        const nextMeetingId = String(element?.dataset?.id || '').trim();
+        if (!nextMeetingId) return;
+        const currentMeetingId = String(this.state.session?.meeting?.id || '').trim();
+        const currentlyJoined = Boolean(this.state.session?.participantIdentity);
+        const switchingRoom = Boolean(currentlyJoined && currentMeetingId && currentMeetingId !== nextMeetingId);
+        if (currentlyJoined && currentMeetingId === nextMeetingId) {
+            this.state.selectedMeetingId = nextMeetingId;
+            await this.loadMeetingDetails();
+            this.renderAll();
+            return;
+        }
+
+        if (switchingRoom) {
+            const currentMeeting = this.state.meetings.find((entry) => entry.id === currentMeetingId);
+            const nextMeeting = this.state.meetings.find((entry) => entry.id === nextMeetingId);
+            const confirmed = window.confirm(
+                `Leave "${currentMeeting?.title || 'current room'}" and join "${nextMeeting?.title || 'selected room'}"?`
+            );
+            if (!confirmed) {
+                return;
+            }
+            this.removeParticipantFromMeetingList(currentMeetingId, this.state.session?.participantIdentity);
+            const preservedName = String(this.state.session?.participant?.displayName || '').trim();
+            this.stopSpeechRecognition();
+            await this.disconnectRoom();
+            this.state.session = preservedName ? { participant: { displayName: preservedName } } : null;
+        }
+
+        this.state.selectedMeetingId = nextMeetingId;
         await this.loadMeetingDetails();
         this.renderAll();
-        await this.joinMeeting();
+        const defaultName = String(this.state.session?.participant?.displayName || '').trim();
+        await this.joinMeeting({ skipDisplayNamePrompt: Boolean(defaultName), displayNameOverride: defaultName });
     }
 
-    async createChannel() {
+    async createMeeting() {
         if (!this.state.selectedWorkspaceId) {
             this.setError('Current Explorer workspace is unavailable.');
             return;
         }
-        const name = window.prompt('Channel name', 'general');
-        if (!name) return;
-        const channel = await runTool('webmeet_channel_create', { workspaceId: this.state.selectedWorkspaceId, name, kind: 'meeting' });
-        this.state.selectedChannelId = channel?.id || this.state.selectedChannelId;
-        await this.loadChannels();
-        await this.loadMeetings();
-        this.renderAll();
-    }
-
-    async createMeeting() {
-        if (!this.state.selectedChannelId) {
-            this.setError('Select or create a channel first.');
-            return;
-        }
         const title = window.prompt('Meeting title', 'Standup');
         if (!title) return;
-        const meeting = await runTool('webmeet_meeting_create', { channelId: this.state.selectedChannelId, title });
+        const meeting = await runTool('webmeet_meeting_create', { workspaceId: this.state.selectedWorkspaceId, title });
         this.state.selectedMeetingId = meeting?.id || this.state.selectedMeetingId;
         await this.loadMeetings();
         this.renderAll();
     }
 
-    async joinMeeting() {
+    async joinMeeting(options = {}) {
         const meeting = this.selectedMeeting;
         if (!meeting) {
             this.setError('Select a meeting first.');
             return;
         }
-        const displayName = window.prompt('Display name', 'Admin');
+        const skipPrompt = Boolean(options.skipDisplayNamePrompt);
+        let displayName = String(options.displayNameOverride || '').trim();
+        if (!skipPrompt) {
+            displayName = String(window.prompt('Display name', displayName || 'Admin') || '').trim();
+        }
         if (!displayName) return;
         this.state.session = await runTool('webmeet_meeting_join', { meetingId: meeting.id, displayName });
         await this.connectRoom();
         this.renderMeetingSummary();
-
-        // Expand Participants panel when joining
-        const participantsCollapseButton = this.element.querySelector('[data-collapse="participants"]');
-        if (participantsCollapseButton && participantsCollapseButton.classList.contains('collapsed')) {
-            participantsCollapseButton.classList.remove('collapsed');
-        }
-        const participantsCollapsible = this.element.querySelector('[data-collapsible="participants"]');
-        if (participantsCollapsible && !participantsCollapsible.classList.contains('expanded')) {
-            participantsCollapsible.classList.add('expanded');
-        }
     }
 
     async connectRoom() {
@@ -693,164 +1183,114 @@ export class WebMeetDashboardModal {
         this.state.roomState = 'Connecting';
         this.renderMeetingSummary();
 
-        // Helper to get or create participant card
-        const getOrCreateParticipantCard = (participant) => {
-            const participantId = participant.identity || 'unknown';
-            let card = this.videoGrid.querySelector(`[data-participant-id="${participantId}"]`);
-            if (!card) {
-                card = document.createElement('div');
-                card.className = 'webmeet-participant-card';
-                card.dataset.participantId = participantId;
-                
-                // Avatar with initials
-                const name = participant.name || participant.identity || 'User';
-                const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2);
-                
-                card.innerHTML = `
-                    <div class="webmeet-participant-info">
-                        <div class="webmeet-participant-avatar">${escapeHtml(initials)}</div>
-                        <div class="webmeet-participant-name">${escapeHtml(name)}</div>
-                    </div>
-                    <div class="webmeet-participant-status">
-                        <span class="webmeet-status-icon mic-status muted" title="Microphone OFF">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="1" y1="1" x2="23" y2="23"></line>
-                                <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.18"></path>
-                                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
-                                <line x1="12" y1="19" x2="12" y2="23"></line>
-                                <line x1="8" y1="23" x2="16" y2="23"></line>
-                            </svg>
-                        </span>
-                    </div>
-                `;
-                
-                const emptyMsg = this.videoGrid.querySelector('.webmeet-video-empty');
-                if (emptyMsg) emptyMsg.remove();
-                this.videoGrid.appendChild(card);
-            }
-            return card;
-        };
-
-        const syncParticipants = () => {
-            if (!this.room) return;
-            const items = [{
-                identity: this.room.localParticipant?.identity || this.state.session?.participantIdentity || '',
-                name: this.room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
-                kind: 'local'
-            }];
-            for (const participant of this.room.remoteParticipants.values()) {
-                items.push({
-                    identity: participant.identity || '',
-                    name: participant.name || participant.identity || 'Remote',
-                    kind: 'remote'
-                });
-            }
-            this.state.participants = items;
-            this.renderFeedLists();
-        };
-
-        const renderPublication = (participant, publication, labelPrefix = '') => {
-            const track = publication?.track;
+        const renderPublication = (participant, publication, explicitTrack = null) => {
+            const participantId = String(participant?.identity || '').trim();
+            if (!participantId || !publication) return;
+            this.upsertParticipantView({
+                identity: participantId,
+                name: this.getParticipantDisplayName(participant),
+                kind: participantId === this.room?.localParticipant?.identity ? 'local' : 'remote'
+            });
+            const track = explicitTrack || publication.track;
             if (!track) return;
-            const trackId = publication.trackSid || `${participant.identity}:${publication.source || publication.kind}`;
-            const card = getOrCreateParticipantCard(participant);
-            
+            const trackId = String(
+                publication.trackSid
+                || `${participantId}:${publication.source || publication.kind || track.kind || 'track'}`
+            ).trim();
+            if (!trackId) return;
+
             if (track.kind === Track.Kind.Video) {
-                // Video track - show video, hide avatar
-                card.classList.add('has-video');
-                let video = card.querySelector('video');
-                if (video) {
-                    video.remove();
-                }
                 const mediaElement = track.attach();
                 mediaElement.autoplay = true;
                 mediaElement.playsInline = true;
-                card.insertBefore(mediaElement, card.firstChild);
-                
-                // Hide avatar info when video is active
-                const info = card.querySelector('.webmeet-participant-info');
-                if (info) info.style.display = 'none';
-            } else if (track.kind === Track.Kind.Audio) {
-                // Audio track - attach and insert into DOM (required for playback)
-                const mediaElement = track.attach();
-                mediaElement.autoplay = true;
-                if (participant.identity === this.room?.localParticipant?.identity) {
+                if (participantId === this.room?.localParticipant?.identity) {
                     mediaElement.muted = true;
                 }
-                mediaElement.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-                card.appendChild(mediaElement);
-                this.trackElements.set(`${trackId}_audio`, mediaElement);
+                this.attachVideoTrack(participantId, trackId, mediaElement);
+            } else if (track.kind === Track.Kind.Audio) {
+                const mediaElement = track.attach();
+                mediaElement.autoplay = true;
+                if (participantId === this.room?.localParticipant?.identity) {
+                    mediaElement.muted = true;
+                }
+                this.attachAudioTrack(participantId, trackId, mediaElement);
+                this.setParticipantMicState(participantId, !publication.isMuted);
             }
-            
-            this.trackElements.set(trackId, card);
         };
 
         const removePublication = (publication) => {
-            const trackId = publication?.trackSid;
+            const trackId = String(publication?.trackSid || '').trim();
             if (!trackId) return;
-            
-            // Remove audio element if exists
-            const audioEl = this.trackElements.get(`${trackId}_audio`);
-            if (audioEl) {
-                audioEl.remove();
-                this.trackElements.delete(`${trackId}_audio`);
-            }
-            
-            const card = this.trackElements.get(trackId);
-            if (!card) return;
-            
-            if (publication.kind === Track.Kind.Video) {
-                // Remove video, show avatar again
-                card.classList.remove('has-video');
-                const video = card.querySelector('video');
-                if (video) {
-                    video.srcObject = null;
-                    video.remove();
+            const trackInfo = this.trackElements.get(trackId);
+            this.removeTrack(trackId);
+            if (trackInfo?.kind === 'audio' || publication.kind === Track.Kind.Audio) {
+                const participantId = String(trackInfo?.participantId || '').trim();
+                if (participantId) {
+                    const participant = participantId === this.room?.localParticipant?.identity
+                        ? this.room.localParticipant
+                        : this.room?.remoteParticipants?.get?.(participantId);
+                    this.setParticipantMicState(participantId, this.isParticipantMicOn(participant, Track));
                 }
-                const info = card.querySelector('.webmeet-participant-info');
-                if (info) info.style.display = '';
-            }
-            
-            this.trackElements.delete(trackId);
-            
-            // Only remove card if no more tracks for this participant
-            const participantId = card.dataset.participantId;
-            const hasMoreTracks = [...this.trackElements.keys()].some(key => {
-                const el = this.trackElements.get(key);
-                return el && el.dataset && el.dataset.participantId === participantId;
-            });
-            if (!hasMoreTracks && !this.room?.remoteParticipants.has(participantId) && participantId !== this.room?.localParticipant?.identity) {
-                card.remove();
-            }
-            
-            if (!this.videoGrid.querySelector('.webmeet-participant-card')) {
-                this.videoGrid.innerHTML = '<div class="webmeet-video-empty">Join a meeting to see participants.</div>';
             }
         };
 
         room
             .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-                renderPublication(participant, publication);
-                syncParticipants();
+                renderPublication(participant, publication, track);
+                this.syncParticipantsFromRoom(this.room, Track);
             })
             .on(RoomEvent.TrackUnsubscribed, (_track, publication) => {
                 removePublication(publication);
-                syncParticipants();
+                this.syncParticipantsFromRoom(this.room, Track);
             })
             .on(RoomEvent.LocalTrackPublished, (publication) => {
-                renderPublication(room.localParticipant, publication, 'You · ');
+                renderPublication(room.localParticipant, publication);
+                this.syncLocalMediaStateFromRoom(Track);
+                this.syncParticipantsFromRoom(this.room, Track);
             })
             .on(RoomEvent.LocalTrackUnpublished, (publication) => {
                 removePublication(publication);
+                this.syncLocalMediaStateFromRoom(Track);
+                this.syncParticipantsFromRoom(this.room, Track);
             })
             .on(RoomEvent.ParticipantConnected, () => {
-                syncParticipants();
+                this.syncParticipantsFromRoom(this.room, Track);
             })
             .on(RoomEvent.ParticipantDisconnected, (participant) => {
                 for (const publication of participant.trackPublications.values()) {
                     removePublication(publication);
                 }
-                syncParticipants();
+                this.removeParticipantView(participant.identity);
+                this.syncParticipantsFromRoom(this.room, Track);
+            })
+            .on(RoomEvent.TrackMuted, (publication, participant) => {
+                const participantId = String(participant?.identity || '').trim();
+                if (!participantId) return;
+                const isVideoTrack = publication?.kind === Track.Kind.Video;
+                if (isVideoTrack) {
+                    removePublication(publication);
+                } else {
+                    this.setParticipantMicState(participantId, false);
+                }
+                if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
+                    this.syncLocalMediaStateFromRoom(Track);
+                }
+            })
+            .on(RoomEvent.TrackUnmuted, (publication, participant) => {
+                const participantId = String(participant?.identity || '').trim();
+                if (!participantId) return;
+                const isVideoTrack = publication?.kind === Track.Kind.Video;
+                if (isVideoTrack) {
+                    renderPublication(participant, publication, publication?.track || null);
+                }
+                const sourceParticipant = participantId === this.room?.localParticipant?.identity
+                    ? this.room.localParticipant
+                    : this.room?.remoteParticipants?.get?.(participantId) || participant;
+                this.setParticipantMicState(participantId, this.isParticipantMicOn(sourceParticipant, Track));
+                if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
+                    this.syncLocalMediaStateFromRoom(Track);
+                }
+                this.syncParticipantsFromRoom(this.room, Track);
             })
             .on(RoomEvent.DataReceived, (payload, participant) => {
                 console.log('[WebMeet] DataReceived event fired, participant:', participant?.identity);
@@ -873,18 +1313,31 @@ export class WebMeetDashboardModal {
             .on(RoomEvent.Disconnected, () => {
                 this.restoreRtcPeerConnection?.();
                 this.restoreRtcPeerConnection = null;
+                this.room = null;
+                this.mediaToggleInFlight = false;
                 this.state.roomState = 'Disconnected';
                 this.state.media = { microphone: false, camera: false, screen: false };
                 this.state.participants = [];
+                this.state.videoGridFullscreen = false;
+                for (const track of this.trackElements.values()) {
+                    try { track.element.srcObject = null; } catch (_) {}
+                    track.element.remove();
+                }
+                for (const view of this.participantViews.values()) {
+                    view.element.remove();
+                }
+                this.participantViews.clear();
+                this.focusedParticipantId = '';
                 this.trackElements.clear();
-                this.videoGrid.innerHTML = '<div class="webmeet-video-empty">Join a meeting to attach media tracks.</div>';
+                this.setVideoGridEmptyState('Join a meeting to attach media tracks.');
+                this.syncVideoGridVisibility();
                 this.renderAll();
             });
 
         try {
             await room.connect(this.state.session.livekitUrl, this.state.session.participantToken);
             this.state.roomState = 'Connected';
-            syncParticipants();
+            this.syncParticipantsFromRoom(this.room, Track);
             this.renderMeetingSummary();
         } catch (error) {
             this.state.roomState = error instanceof Error ? error.message : String(error);
@@ -903,18 +1356,28 @@ export class WebMeetDashboardModal {
         this.restoreRtcPeerConnection?.();
         this.restoreRtcPeerConnection = null;
         this.room = null;
+        this.mediaToggleInFlight = false;
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
-        for (const tile of this.trackElements.values()) {
-            Array.from(tile.querySelectorAll('video,audio')).forEach((node) => {
-                try { node.srcObject = null; } catch (_) {}
-            });
+        this.state.videoGridFullscreen = false;
+        for (const track of this.trackElements.values()) {
+            try { track.element.srcObject = null; } catch (_) {}
+            track.element.remove();
+        }
+        for (const view of this.participantViews.values()) {
+            const presenter = view.element.webSkelPresenter;
+            if (presenter && typeof presenter.clearVideoElement === 'function') {
+                presenter.clearVideoElement();
+            }
+            view.element.remove();
         }
         this.trackElements.clear();
-        if (this.videoGrid) {
-            this.videoGrid.innerHTML = '<div class="webmeet-video-empty">Join a meeting to attach media tracks.</div>';
-        }
+        this.participantViews.clear();
+        this.focusedParticipantId = '';
+        this.setVideoGridEmptyState('Join a meeting to attach media tracks.');
+        this.syncVideoGridVisibility();
+        this.applyVideoGridFullscreenMode();
         this.renderAll();
     }
 
@@ -923,9 +1386,11 @@ export class WebMeetDashboardModal {
             this.setError('Join a meeting before enabling the microphone.');
             return;
         }
-        this.state.media.microphone = !this.state.media.microphone;
-        await this.room.localParticipant.setMicrophoneEnabled(this.state.media.microphone);
-        this.renderMeetingSummary();
+        await this.runExclusiveMediaToggle(async () => {
+            const enable = !this.isLocalSourceEnabled('microphone');
+            await this.room.localParticipant.setMicrophoneEnabled(enable);
+            await this.waitForLocalSourceState('microphone', enable);
+        });
     }
 
     async toggleCamera() {
@@ -933,9 +1398,16 @@ export class WebMeetDashboardModal {
             this.setError('Join a meeting before enabling the camera.');
             return;
         }
-        this.state.media.camera = !this.state.media.camera;
-        await this.room.localParticipant.setCameraEnabled(this.state.media.camera);
-        this.renderMeetingSummary();
+        await this.runExclusiveMediaToggle(async () => {
+            const localParticipant = this.room.localParticipant;
+            const shouldEnableCamera = !this.isLocalSourceEnabled('camera');
+            if (shouldEnableCamera && this.isLocalSourceEnabled('screen')) {
+                await localParticipant.setScreenShareEnabled(false);
+                await this.waitForLocalSourceState('screen', false);
+            }
+            await localParticipant.setCameraEnabled(shouldEnableCamera);
+            await this.waitForLocalSourceState('camera', shouldEnableCamera);
+        });
     }
 
     async toggleScreenShare() {
@@ -943,14 +1415,26 @@ export class WebMeetDashboardModal {
             this.setError('Join a meeting before starting screen share.');
             return;
         }
-        this.state.media.screen = !this.state.media.screen;
-        await this.room.localParticipant.setScreenShareEnabled(this.state.media.screen);
-        this.renderMeetingSummary();
+        await this.runExclusiveMediaToggle(async () => {
+            const localParticipant = this.room.localParticipant;
+            const shouldEnableScreen = !this.isLocalSourceEnabled('screen');
+            if (shouldEnableScreen && this.isLocalSourceEnabled('camera')) {
+                await localParticipant.setCameraEnabled(false);
+                await this.waitForLocalSourceState('camera', false);
+            }
+            await localParticipant.setScreenShareEnabled(shouldEnableScreen);
+            await this.waitForLocalSourceState('screen', shouldEnableScreen);
+        });
     }
 
     async leaveMeeting() {
+        const previousMeetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const previousParticipantId = String(this.state.session?.participantIdentity || '').trim();
+        this.removeParticipantFromMeetingList(previousMeetingId, previousParticipantId);
         this.stopSpeechRecognition();
         await this.disconnectRoom();
+        this.state.session = null;
+        this.renderAll();
     }
 
     async sendChat() {
@@ -1177,6 +1661,10 @@ export class WebMeetDashboardModal {
     }
 
     closeModal(target) {
+        const dialog = this.getDialogElement();
+        if (dialog) {
+            dialog.classList.remove('is-fullscreen');
+        }
         assistOS.UI.closeModal(target || this.element);
     }
 }

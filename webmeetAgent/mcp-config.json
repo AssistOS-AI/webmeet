@@ -21,48 +21,24 @@
       "env": { "TOOL_NAME": "webmeet_workspace_create" }
     },
     {
-      "name": "webmeet_channel_list",
-      "title": "WebMeet List Channels",
-      "description": "List channels for a workspace.",
+      "name": "webmeet_meeting_list",
+      "title": "WebMeet List Meetings",
+      "description": "List meetings for a workspace.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
         "workspaceId": { "type": "string", "optional": false }
-      },
-      "env": { "TOOL_NAME": "webmeet_channel_list" }
-    },
-    {
-      "name": "webmeet_channel_create",
-      "title": "WebMeet Create Channel",
-      "description": "Create a channel for a workspace.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "workspaceId": { "type": "string", "optional": false },
-        "name": { "type": "string", "optional": false },
-        "kind": { "type": "string", "optional": true }
-      },
-      "env": { "TOOL_NAME": "webmeet_channel_create" }
-    },
-    {
-      "name": "webmeet_meeting_list",
-      "title": "WebMeet List Meetings",
-      "description": "List meetings for a channel.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "channelId": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_list" }
     },
     {
       "name": "webmeet_meeting_create",
       "title": "WebMeet Create Meeting",
-      "description": "Create a meeting in a channel.",
+      "description": "Create a meeting in a workspace.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "channelId": { "type": "string", "optional": false },
+        "workspaceId": { "type": "string", "optional": false },
         "title": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_create" }
@@ -79,6 +55,17 @@
         "participantId": { "type": "string", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_join" }
+    },
+    {
+      "name": "webmeet_meeting_get",
+      "title": "WebMeet Get Meeting",
+      "description": "Get meeting details, including participants.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_get" }
     },
     {
       "name": "webmeet_chat_list",

@@ -6,13 +6,11 @@ import {
     appendMeetingTranscript,
     attachMeetingAgent,
     closeMeeting,
-    createChannel,
     createMeeting,
     createStoreContext,
     createWorkspace,
     getMeeting,
     joinMeeting,
-    listChannels,
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
@@ -49,10 +47,8 @@ function matchRoute(method, pathname) {
         ['healthz', 'GET', /^\/healthz$/],
         ['workspaces.list', 'GET', /^\/api\/workspaces$/],
         ['workspaces.create', 'POST', /^\/api\/workspaces$/],
-        ['channels.list', 'GET', /^\/api\/workspaces\/([^/]+)\/channels$/],
-        ['channels.create', 'POST', /^\/api\/workspaces\/([^/]+)\/channels$/],
-        ['meetings.list', 'GET', /^\/api\/channels\/([^/]+)\/meetings$/],
-        ['meetings.create', 'POST', /^\/api\/channels\/([^/]+)\/meetings$/],
+        ['meetings.list', 'GET', /^\/api\/workspaces\/([^/]+)\/meetings$/],
+        ['meetings.create', 'POST', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.get', 'GET', /^\/api\/meetings\/([^/]+)$/],
         ['meetings.join', 'POST', /^\/api\/meetings\/([^/]+)\/join$/],
         ['chat.list', 'GET', /^\/api\/meetings\/([^/]+)\/chat$/],
@@ -106,28 +102,14 @@ async function handler(req, res) {
             json(res, 200, createWorkspace(context, { name: String(body.name || '').trim() }));
             return;
         }
-        if (route.name === 'channels.list' || route.name === 'channels.create') {
-            const [workspaceId] = route.params;
-            if (route.name === 'channels.list') {
-                json(res, 200, { channels: listChannels(context, workspaceId) });
-                return;
-            }
-            const body = await readBody(req);
-            json(res, 201, createChannel(context, {
-                workspaceId,
-                name: String(body.name || '').trim(),
-                kind: String(body.kind || 'meeting').trim() || 'meeting'
-            }));
-            return;
-        }
         if (route.name === 'meetings.list' || route.name === 'meetings.create') {
-            const [channelId] = route.params;
+            const [workspaceId] = route.params;
             if (route.name === 'meetings.list') {
-                json(res, 200, { meetings: listMeetings(context, channelId) });
+                json(res, 200, { meetings: listMeetings(context, workspaceId) });
                 return;
             }
             const body = await readBody(req);
-            json(res, 201, createMeeting(context, { channelId, title: String(body.title || '').trim() }));
+            json(res, 201, createMeeting(context, { workspaceId, title: String(body.title || '').trim() }));
             return;
         }
         if (route.name === 'meetings.get') {

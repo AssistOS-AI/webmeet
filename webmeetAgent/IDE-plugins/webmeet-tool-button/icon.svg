@@ -1,7 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect x="8" y="12" width="36" height="28" rx="8" fill="#0ea5e9"/>
-  <path d="M48 20l8-4v20l-8-4V20z" fill="#f97316"/>
-  <circle cx="20" cy="26" r="5" fill="#fff7ed"/>
-  <circle cx="32" cy="26" r="5" fill="#e0f2fe"/>
-  <path d="M18 37c1.8-3.4 5.1-5.1 9.9-5.1 4.7 0 8.1 1.7 10.1 5.1" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+  <style>
+    .webmeet-fill { fill: #6C707E; }
+    .webmeet-stroke {
+      stroke: #6C707E;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    @media (prefers-color-scheme: dark) {
+      .webmeet-fill { fill: #CED0D6; }
+      .webmeet-stroke { stroke: #CED0D6; }
+    }
+  </style>
+  <rect class="webmeet-stroke" x="2.6" y="4.3" width="10.8" height="8.2" rx="2"/>
+  <path class="webmeet-stroke" d="M13.4 7.2 17.2 5.7v5.4l-3.8-1.5"/>
+  <circle class="webmeet-fill" cx="6.6" cy="8.1" r="1.2"/>
+  <circle class="webmeet-fill" cx="9.9" cy="8.4" r="1"/>
+  <path class="webmeet-stroke" d="M5.2 11.1c.8-1 1.9-1.5 3.2-1.5 1.4 0 2.5.5 3.3 1.5"/>
 </svg>

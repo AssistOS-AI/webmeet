@@ -39,7 +39,6 @@ function deriveWorkspaceName(workspaceRoot) {
 
 function ensureDirs(paths) {
     fs.mkdirSync(paths.workspacesDir, { recursive: true });
-    fs.mkdirSync(paths.channelsDir, { recursive: true });
     fs.mkdirSync(paths.meetingsDir, { recursive: true });
     fs.mkdirSync(paths.eventsDir, { recursive: true });
     fs.mkdirSync(paths.jobsPendingDir, { recursive: true });
@@ -173,8 +172,8 @@ function recordMeetingEvent(context, meetingId, payload, type, data = {}) {
     return event;
 }
 
-function buildRoomName(prefix, workspaceId, channelId, meetingId) {
-    return `${prefix}-${workspaceId}-${channelId}-${meetingId}`
+function buildRoomName(prefix, workspaceId, meetingId) {
+    return `${prefix}-${workspaceId}-${meetingId}`
         .replace(/[^a-zA-Z0-9_-]/g, '-')
         .slice(0, 160);
 }
@@ -299,7 +298,6 @@ async function refreshObserverState(context, meetingId) {
 function buildMeetingView(record) {
     return {
         id: record.meetingId,
-        channelId: record.channelId,
         workspaceId: record.workspaceId,
         title: record.title,
         roomName: record.roomName,
@@ -487,29 +485,11 @@ export function createWorkspace(context, _input = {}) {
     return ensureCurrentWorkspaceRecord(context);
 }
 
-export function listChannels(context, workspaceId) {
+export function listMeetings(context, workspaceId) {
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
-    return listJsonFiles(context.channelsDir).map(readJsonFile).filter((entry) => entry.workspaceId === effectiveWorkspaceId);
-}
-
-export function createChannel(context, { workspaceId, name, kind = 'meeting' }) {
-    const workspace = ensureCurrentWorkspaceRecord(context);
-    const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
-    if (effectiveWorkspaceId !== workspace.id) {
-        throw new Error('Workspace mismatch for current Explorer workspace.');
-    }
-    const id = randomId('channel');
-    const createdAt = nowIso();
-    const record = { id, workspaceId: effectiveWorkspaceId, name, kind, createdAt, updatedAt: createdAt };
-    writeJsonFile(filePathFor(context.channelsDir, id), record);
-    return record;
-}
-
-export function listMeetings(context, channelId) {
-    return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => entry.channelId === channelId).map((entry) => ({
+    return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => entry.workspaceId === effectiveWorkspaceId).map((entry) => ({
         id: entry.meetingId,
-        channelId: entry.channelId,
         workspaceId: entry.workspaceId,
         title: entry.title,
         roomName: entry.roomName,
@@ -520,26 +500,25 @@ export function listMeetings(context, channelId) {
     }));
 }
 
-export function createMeeting(context, { channelId, title }) {
-    const channelPath = filePathFor(context.channelsDir, channelId);
-    if (!fs.existsSync(channelPath)) {
-        throw new Error('Channel not found.');
+export function createMeeting(context, { workspaceId, title }) {
+    const workspace = ensureCurrentWorkspaceRecord(context);
+    const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
+    if (effectiveWorkspaceId !== workspace.id) {
+        throw new Error('Workspace mismatch for current Explorer workspace.');
     }
-    const channel = readJsonFile(channelPath);
     const meetingId = randomId('meeting');
     const createdAt = nowIso();
     const expiresAt = new Date(Date.now() + getRetentionDays(context.workspaceRoot) * 24 * 60 * 60 * 1000).toISOString();
     const masterKey = ensureMasterKey(context.workspaceRoot);
     const { wrapped, dek } = createWrappedDek(masterKey);
     const payload = createMeetingPayload();
-    recordMeetingEvent(context, meetingId, payload, 'meeting.created', { meetingId, channelId });
+    recordMeetingEvent(context, meetingId, payload, 'meeting.created', { meetingId });
     const record = {
         version: 1,
         meetingId,
-        workspaceId: channel.workspaceId,
-        channelId,
+        workspaceId: effectiveWorkspaceId,
         title,
-        roomName: buildRoomName(context.roomPrefix, channel.workspaceId, channelId, meetingId),
+        roomName: buildRoomName(context.roomPrefix, effectiveWorkspaceId, meetingId),
         status: 'active',
         createdAt,
         updatedAt: createdAt,
@@ -551,7 +530,6 @@ export function createMeeting(context, { channelId, title }) {
     writeJsonFile(filePathFor(context.meetingsDir, meetingId), record);
     return {
         id: record.meetingId,
-        channelId: record.channelId,
         workspaceId: record.workspaceId,
         title: record.title,
         roomName: record.roomName,
@@ -575,7 +553,6 @@ export function joinMeeting(context, { meetingId, displayName, participantId }) 
     return {
         meeting: {
             id: record.meetingId,
-            channelId: record.channelId,
             workspaceId: record.workspaceId,
             title: record.title,
             roomName: record.roomName,

@@ -3,12 +3,11 @@ import {
     appendMeetingChat,
     appendMeetingTranscript,
     closeMeeting,
-    createChannel,
     createMeeting,
     createStoreContext,
     createWorkspace,
+    getMeeting,
     joinMeeting,
-    listChannels,
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
@@ -92,19 +91,11 @@ async function dispatch(toolName, args, context) {
         return { workspaces: listWorkspaces(context) };
     case 'webmeet_workspace_create':
         return createWorkspace(context, { name: String(args?.name || '').trim() });
-    case 'webmeet_channel_list':
-        return { channels: listChannels(context, String(args?.workspaceId || '').trim()) };
-    case 'webmeet_channel_create':
-        return createChannel(context, {
-            workspaceId: String(args?.workspaceId || '').trim(),
-            name: getRequiredString(args, 'name'),
-            kind: String(args?.kind || 'meeting').trim() || 'meeting'
-        });
     case 'webmeet_meeting_list':
-        return { meetings: listMeetings(context, getRequiredString(args, 'channelId')) };
+        return { meetings: listMeetings(context, getRequiredString(args, 'workspaceId')) };
     case 'webmeet_meeting_create':
         return createMeeting(context, {
-            channelId: getRequiredString(args, 'channelId'),
+            workspaceId: getRequiredString(args, 'workspaceId'),
             title: getRequiredString(args, 'title')
         });
     case 'webmeet_meeting_join':
@@ -113,6 +104,8 @@ async function dispatch(toolName, args, context) {
             displayName: getRequiredString(args, 'displayName'),
             participantId: String(args?.participantId || '').trim()
         });
+    case 'webmeet_meeting_get':
+        return getMeeting(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_chat_list':
         return { messages: listMeetingChat(context, getRequiredString(args, 'meetingId')) };
     case 'webmeet_chat_send':

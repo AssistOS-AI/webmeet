@@ -39,7 +39,6 @@ export function getWorkspacePaths(startDir = '') {
         ploinkyDir,
         webmeetDir,
         workspacesDir: path.join(webmeetDir, 'workspaces'),
-        channelsDir: path.join(webmeetDir, 'channels'),
         meetingsDir: path.join(webmeetDir, 'meetings'),
         eventsDir: path.join(webmeetDir, 'events'),
         jobsDir,

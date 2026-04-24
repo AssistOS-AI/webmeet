@@ -32,8 +32,7 @@ Port implicit: `8791`
 Endpoint-uri principale:
 - `GET /healthz`
 - `GET/POST /api/workspaces`
-- `GET/POST /api/workspaces/:workspaceId/channels`
-- `GET/POST /api/channels/:channelId/meetings`
+- `GET/POST /api/workspaces/:workspaceId/meetings`
 - `GET /api/meetings/:meetingId`
 - `POST /api/meetings/:meetingId/join`
 - `GET/POST /api/meetings/:meetingId/chat`
