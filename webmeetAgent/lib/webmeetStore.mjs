@@ -34,8 +34,8 @@ function randomId(prefix) {
     return `${prefix}_${crypto.randomUUID()}`;
 }
 
-function normalizeActor(actor = null) {
-    if (!actor || typeof actor !== 'object') {
+function normalizeAuthInfo(authInfo = null) {
+    if (!authInfo || typeof authInfo !== 'object') {
         return {
             id: '',
             username: '',
@@ -44,17 +44,19 @@ function normalizeActor(actor = null) {
             roles: []
         };
     }
+    const user = authInfo.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo;
+    const agent = authInfo.agent && typeof authInfo.agent === 'object' ? authInfo.agent : null;
     return {
-        id: String(actor.id || '').trim(),
-        username: String(actor.username || '').trim(),
-        email: String(actor.email || '').trim(),
-        principalId: String(actor.principalId || '').trim(),
-        roles: Array.isArray(actor.roles) ? actor.roles.map((role) => String(role || '').trim()).filter(Boolean) : []
+        id: String(user.id || '').trim(),
+        username: String(user.username || '').trim(),
+        email: String(user.email || '').trim(),
+        principalId: String(agent?.principalId || authInfo.principalId || '').trim(),
+        roles: Array.isArray(user.roles) ? user.roles.map((role) => String(role || '').trim()).filter(Boolean) : []
     };
 }
 
-function isAdminActor(actor = null) {
-    const normalized = normalizeActor(actor);
+function isAdminAuthInfo(authInfo = null) {
+    const normalized = normalizeAuthInfo(authInfo);
     const roleMatch = normalized.roles.some((role) => String(role || '').trim().toLowerCase() === 'admin');
     if (roleMatch) {
         return true;
@@ -64,17 +66,17 @@ function isAdminActor(actor = null) {
         || normalized.principalId === 'user:local:admin';
 }
 
-function assertAdminActor(actor = null) {
-    if (!isAdminActor(actor)) {
+function assertAdminAuthInfo(authInfo = null) {
+    if (!isAdminAuthInfo(authInfo)) {
         throw new Error('Access denied: only admin can manage rooms.');
     }
 }
 
-function canViewMeetingRecord(record, actor = null) {
+function canViewMeetingRecord(record, authInfo = null) {
     if (String(record?.status || '').trim().toLowerCase() !== 'closed') {
         return true;
     }
-    return isAdminActor(actor);
+    return isAdminAuthInfo(authInfo);
 }
 
 function deriveWorkspaceId(workspaceRoot) {
@@ -416,10 +418,10 @@ function buildMeetingView(record) {
     };
 }
 
-export function getMeeting(context, meetingId, actor = null) {
+export function getMeeting(context, meetingId, authInfo = null) {
     cleanupMeetingPresence(context, meetingId);
     const record = loadMeetingRecord(context, meetingId);
-    if (!canViewMeetingRecord(record, actor)) {
+    if (!canViewMeetingRecord(record, authInfo)) {
         throw new Error('Meeting not found.');
     }
     const payload = decryptMeetingPayload(context, record);
@@ -635,13 +637,13 @@ function ensureDefaultMeeting(context, workspaceId) {
     return createMeetingRecord(context, workspaceId, DEFAULT_ROOM_TITLE);
 }
 
-export function listMeetings(context, workspaceId, actor = null) {
+export function listMeetings(context, workspaceId, authInfo = null) {
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
     cleanupWorkspaceMeetingsPresence(context, effectiveWorkspaceId);
     ensureDefaultMeeting(context, effectiveWorkspaceId);
     return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => (
-        entry.workspaceId === effectiveWorkspaceId && canViewMeetingRecord(entry, actor)
+        entry.workspaceId === effectiveWorkspaceId && canViewMeetingRecord(entry, authInfo)
     )).map((entry) => ({
         id: entry.meetingId,
         workspaceId: entry.workspaceId,
@@ -654,8 +656,8 @@ export function listMeetings(context, workspaceId, actor = null) {
     }));
 }
 
-export function updateMeetingTitle(context, { meetingId, title, actor = null }) {
-    assertAdminActor(actor);
+export function updateMeetingTitle(context, { meetingId, title, authInfo = null }) {
+    assertAdminAuthInfo(authInfo);
     const nextTitle = String(title || '').trim();
     if (!nextTitle) {
         throw new Error('Missing room title.');
@@ -672,8 +674,8 @@ export function updateMeetingTitle(context, { meetingId, title, actor = null }) 
     return meeting;
 }
 
-export function createMeeting(context, { workspaceId, title, actor = null }) {
-    assertAdminActor(actor);
+export function createMeeting(context, { workspaceId, title, authInfo = null }) {
+    assertAdminAuthInfo(authInfo);
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
     if (effectiveWorkspaceId !== workspace.id) {
@@ -939,8 +941,8 @@ export function listMeetingArtifacts(context, meetingId) {
     return { artifacts: payload.artifacts, tasks: payload.tasks, decisions: payload.decisions, recordings: payload.recordings };
 }
 
-export async function closeMeeting(context, meetingId, actor = null) {
-    assertAdminActor(actor);
+export async function closeMeeting(context, meetingId, authInfo = null) {
+    assertAdminAuthInfo(authInfo);
     cleanupMeetingPresence(context, meetingId);
     const initialRecord = loadMeetingRecord(context, meetingId);
     const initialPayload = decryptMeetingPayload(context, initialRecord);
