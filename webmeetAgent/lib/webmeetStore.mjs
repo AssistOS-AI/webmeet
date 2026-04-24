@@ -13,6 +13,7 @@ const RETENTION_DAYS_VAR = 'PLOINKY_WEBMEET_RETENTION_DAYS';
 const PRESENCE_TTL_MS_VAR = 'PLOINKY_WEBMEET_PRESENCE_TTL_MS';
 const DEFAULT_RETENTION_DAYS = 30;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
+const DEFAULT_ROOM_TITLE = 'General';
 const ACTIVE_RECORDING_STATUSES = new Set([
     'recording',
     'EGRESS_STARTING',
@@ -31,6 +32,49 @@ function toTimestamp(value) {
 
 function randomId(prefix) {
     return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function normalizeActor(actor = null) {
+    if (!actor || typeof actor !== 'object') {
+        return {
+            id: '',
+            username: '',
+            email: '',
+            principalId: '',
+            roles: []
+        };
+    }
+    return {
+        id: String(actor.id || '').trim(),
+        username: String(actor.username || '').trim(),
+        email: String(actor.email || '').trim(),
+        principalId: String(actor.principalId || '').trim(),
+        roles: Array.isArray(actor.roles) ? actor.roles.map((role) => String(role || '').trim()).filter(Boolean) : []
+    };
+}
+
+function isAdminActor(actor = null) {
+    const normalized = normalizeActor(actor);
+    const roleMatch = normalized.roles.some((role) => String(role || '').trim().toLowerCase() === 'admin');
+    if (roleMatch) {
+        return true;
+    }
+    return normalized.username.toLowerCase() === 'admin'
+        || normalized.id === 'local:admin'
+        || normalized.principalId === 'user:local:admin';
+}
+
+function assertAdminActor(actor = null) {
+    if (!isAdminActor(actor)) {
+        throw new Error('Access denied: only admin can manage rooms.');
+    }
+}
+
+function canViewMeetingRecord(record, actor = null) {
+    if (String(record?.status || '').trim().toLowerCase() !== 'closed') {
+        return true;
+    }
+    return isAdminActor(actor);
 }
 
 function deriveWorkspaceId(workspaceRoot) {
@@ -372,9 +416,12 @@ function buildMeetingView(record) {
     };
 }
 
-export function getMeeting(context, meetingId) {
+export function getMeeting(context, meetingId, actor = null) {
     cleanupMeetingPresence(context, meetingId);
     const record = loadMeetingRecord(context, meetingId);
+    if (!canViewMeetingRecord(record, actor)) {
+        throw new Error('Meeting not found.');
+    }
     const payload = decryptMeetingPayload(context, record);
     return {
         meeting: buildMeetingView(record),
@@ -551,28 +598,7 @@ export function createWorkspace(context, _input = {}) {
     return ensureCurrentWorkspaceRecord(context);
 }
 
-export function listMeetings(context, workspaceId) {
-    const workspace = ensureCurrentWorkspaceRecord(context);
-    const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
-    cleanupWorkspaceMeetingsPresence(context, effectiveWorkspaceId);
-    return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => entry.workspaceId === effectiveWorkspaceId).map((entry) => ({
-        id: entry.meetingId,
-        workspaceId: entry.workspaceId,
-        title: entry.title,
-        roomName: entry.roomName,
-        status: entry.status,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
-        closedAt: entry.closedAt || null
-    }));
-}
-
-export function createMeeting(context, { workspaceId, title }) {
-    const workspace = ensureCurrentWorkspaceRecord(context);
-    const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
-    if (effectiveWorkspaceId !== workspace.id) {
-        throw new Error('Workspace mismatch for current Explorer workspace.');
-    }
+function createMeetingRecord(context, effectiveWorkspaceId, title) {
     const meetingId = randomId('meeting');
     const createdAt = nowIso();
     const expiresAt = new Date(Date.now() + getRetentionDays(context.workspaceRoot) * 24 * 60 * 60 * 1000).toISOString();
@@ -595,6 +621,65 @@ export function createMeeting(context, { workspaceId, title }) {
         payload: encryptPayload(dek, payload)
     };
     writeJsonFile(filePathFor(context.meetingsDir, meetingId), record);
+    return record;
+}
+
+function ensureDefaultMeeting(context, workspaceId) {
+    const records = listJsonFiles(context.meetingsDir)
+        .map(readJsonFile)
+        .filter((entry) => entry.workspaceId === workspaceId);
+    const hasActiveMeeting = records.some((entry) => String(entry?.status || '').trim().toLowerCase() === 'active');
+    if (hasActiveMeeting) {
+        return null;
+    }
+    return createMeetingRecord(context, workspaceId, DEFAULT_ROOM_TITLE);
+}
+
+export function listMeetings(context, workspaceId, actor = null) {
+    const workspace = ensureCurrentWorkspaceRecord(context);
+    const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
+    cleanupWorkspaceMeetingsPresence(context, effectiveWorkspaceId);
+    ensureDefaultMeeting(context, effectiveWorkspaceId);
+    return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => (
+        entry.workspaceId === effectiveWorkspaceId && canViewMeetingRecord(entry, actor)
+    )).map((entry) => ({
+        id: entry.meetingId,
+        workspaceId: entry.workspaceId,
+        title: entry.title,
+        roomName: entry.roomName,
+        status: entry.status,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        closedAt: entry.closedAt || null
+    }));
+}
+
+export function updateMeetingTitle(context, { meetingId, title, actor = null }) {
+    assertAdminActor(actor);
+    const nextTitle = String(title || '').trim();
+    if (!nextTitle) {
+        throw new Error('Missing room title.');
+    }
+    let meeting = null;
+    mutateMeeting(context, meetingId, (record, payload) => {
+        record.title = nextTitle;
+        meeting = buildMeetingView(record);
+        recordMeetingEvent(context, meetingId, payload, 'meeting.renamed', {
+            meetingId,
+            title: nextTitle
+        });
+    });
+    return meeting;
+}
+
+export function createMeeting(context, { workspaceId, title, actor = null }) {
+    assertAdminActor(actor);
+    const workspace = ensureCurrentWorkspaceRecord(context);
+    const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
+    if (effectiveWorkspaceId !== workspace.id) {
+        throw new Error('Workspace mismatch for current Explorer workspace.');
+    }
+    const record = createMeetingRecord(context, effectiveWorkspaceId, title);
     return {
         id: record.meetingId,
         workspaceId: record.workspaceId,
@@ -854,7 +939,8 @@ export function listMeetingArtifacts(context, meetingId) {
     return { artifacts: payload.artifacts, tasks: payload.tasks, decisions: payload.decisions, recordings: payload.recordings };
 }
 
-export async function closeMeeting(context, meetingId) {
+export async function closeMeeting(context, meetingId, actor = null) {
+    assertAdminActor(actor);
     cleanupMeetingPresence(context, meetingId);
     const initialRecord = loadMeetingRecord(context, meetingId);
     const initialPayload = decryptMeetingPayload(context, initialRecord);

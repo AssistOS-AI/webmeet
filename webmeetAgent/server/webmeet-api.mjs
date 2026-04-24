@@ -44,6 +44,11 @@ async function readBody(req) {
     return raw ? JSON.parse(raw) : {};
 }
 
+function getActor(body) {
+    const actor = body?.actor;
+    return actor && typeof actor === 'object' ? actor : null;
+}
+
 function matchRoute(method, pathname) {
     const routes = [
         ['healthz', 'GET', /^\/healthz$/],
@@ -113,7 +118,11 @@ async function handler(req, res) {
                 return;
             }
             const body = await readBody(req);
-            json(res, 201, createMeeting(context, { workspaceId, title: String(body.title || '').trim() }));
+            json(res, 201, createMeeting(context, {
+                workspaceId,
+                title: String(body.title || '').trim(),
+                actor: getActor(body)
+            }));
             return;
         }
         if (route.name === 'meetings.get') {

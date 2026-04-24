@@ -47,6 +47,37 @@ function createParticipantInstanceId() {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function normalizeCurrentActor() {
+    const user = globalThis.assistOS?.user;
+    if (!user || typeof user !== 'object') {
+        return {
+            id: '',
+            username: '',
+            email: '',
+            principalId: '',
+            roles: []
+        };
+    }
+    return {
+        id: String(user.id || '').trim(),
+        username: String(user.username || user.name || '').trim(),
+        email: String(user.email || '').trim(),
+        principalId: String(user.principalId || '').trim(),
+        roles: Array.isArray(user.roles) ? user.roles.map((role) => String(role || '').trim()).filter(Boolean) : []
+    };
+}
+
+function isAdminActor(actor = null) {
+    if (!actor || typeof actor !== 'object') return false;
+    const roles = Array.isArray(actor.roles) ? actor.roles : [];
+    if (roles.some((role) => String(role || '').trim().toLowerCase() === 'admin')) {
+        return true;
+    }
+    return String(actor.username || '').trim().toLowerCase() === 'admin'
+        || String(actor.id || '').trim() === 'local:admin'
+        || String(actor.principalId || '').trim() === 'user:local:admin';
+}
+
 export class WebMeetDashboardModal {
     constructor(element, invalidate, hostContext) {
         this.element = element;
@@ -100,6 +131,7 @@ export class WebMeetDashboardModal {
         });
         this.pollingInterval = null;
         this.cachedStableParticipantId = '';
+        this.chatSidebarWidth = this.loadChatSidebarWidth();
         this.mediaDevices = {
             audioInput: [],
             videoInput: [],
@@ -140,6 +172,7 @@ export class WebMeetDashboardModal {
     async afterRender() {
         this.cacheElements();
         this.registerActions();
+        this.registerChatSidebarResizer();
         this.registerWindowPresenceHandlers();
         this.renderMediaSettingsPanel();
         void this.refreshMediaDevices({ requestPermission: false, showToast: false });
@@ -152,6 +185,7 @@ export class WebMeetDashboardModal {
             const actions = [
                 'closeModal',
                 'createMeeting',
+                'renameMeeting',
                 'joinMeeting',
                 'leaveMeeting',
                 'toggleRecording',
@@ -264,7 +298,11 @@ export class WebMeetDashboardModal {
         this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
         this.dashboardModalRoot = this.element.querySelector('.webmeet-dashboard-modal');
         this.chatSidebar = this.element.querySelector('#webmeetChatSidebar');
+        this.chatResizer = this.element.querySelector('#webmeetChatResizer');
         this.toggleChatButton = this.element.querySelector('#webmeetToggleChatButton');
+        this.createRoomButton = this.element.querySelector('#webmeetCreateRoomButton');
+        this.renameRoomButton = this.element.querySelector('#webmeetRenameRoomButton');
+        this.closeRoomButton = this.element.querySelector('#webmeetCloseRoomButton');
         this.fullscreenButton = this.element.querySelector('#webmeetModalFullscreen');
         this.mediaSettingsButton = this.element.querySelector('#webmeetMediaSettingsButton');
         this.mediaSettingsPanel = this.element.querySelector('#webmeetMediaSettingsPanel');
@@ -284,6 +322,7 @@ export class WebMeetDashboardModal {
             videoGridAll: this.videoGridAll,
             videoGridEmpty: this.videoGridEmpty
         });
+        this.applyChatSidebarWidth();
     }
 
     getDialogElement() {
@@ -311,6 +350,9 @@ export class WebMeetDashboardModal {
         if (this.chatSidebar) {
             this.chatSidebar.classList.toggle('webmeet-hidden', !isVisible);
         }
+        if (this.chatResizer) {
+            this.chatResizer.classList.toggle('webmeet-hidden', !isVisible);
+        }
         if (this.mainContent) {
             this.mainContent.classList.toggle('webmeet-chat-hidden', !isVisible);
         }
@@ -324,6 +366,67 @@ export class WebMeetDashboardModal {
     toggleChatSidebar() {
         this.state.chatSidebarVisible = !this.state.chatSidebarVisible;
         this.applyChatSidebarVisibility();
+    }
+
+    loadChatSidebarWidth() {
+        const fallback = 320;
+        try {
+            const raw = Number.parseInt(String(window?.localStorage?.getItem('webmeet.chatSidebarWidth') || '').trim(), 10);
+            if (!Number.isFinite(raw)) return fallback;
+            return Math.max(260, Math.min(1400, raw));
+        } catch {
+            return fallback;
+        }
+    }
+
+    persistChatSidebarWidth() {
+        try {
+            window?.localStorage?.setItem('webmeet.chatSidebarWidth', String(this.chatSidebarWidth));
+        } catch (_) {
+            // ignore storage failures
+        }
+    }
+
+    applyChatSidebarWidth() {
+        if (!this.mainContent) return;
+        this.mainContent.style.setProperty('--webmeet-chat-sidebar-width', `${this.chatSidebarWidth}px`);
+    }
+
+    registerChatSidebarResizer() {
+        if (!this.chatResizer || !this.mainContent || this.chatResizer.dataset.bound === 'true') {
+            return;
+        }
+        const startResize = (event) => {
+            if (this.state.chatSidebarVisible === false) return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            const mainRect = this.mainContent.getBoundingClientRect();
+            const minWidth = 260;
+            const minLiveWidth = 252;
+            const resizerWidth = 10;
+            const maxWidth = Math.max(minWidth, Math.floor(mainRect.width - minLiveWidth - resizerWidth));
+
+            const onMove = (moveEvent) => {
+                const nextWidth = Math.round(mainRect.right - moveEvent.clientX);
+                this.chatSidebarWidth = Math.max(minWidth, Math.min(maxWidth, nextWidth));
+                this.mainContent.classList.add('webmeet-chat-resizing');
+                this.applyChatSidebarWidth();
+            };
+
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove, true);
+                window.removeEventListener('pointerup', onUp, true);
+                this.mainContent.classList.remove('webmeet-chat-resizing');
+                this.persistChatSidebarWidth();
+            };
+
+            window.addEventListener('pointermove', onMove, true);
+            window.addEventListener('pointerup', onUp, true);
+        };
+
+        this.chatResizer.addEventListener('pointerdown', startResize);
+        this.chatResizer.dataset.bound = 'true';
     }
 
     applyVideoGridFullscreenMode() {
@@ -701,6 +804,14 @@ export class WebMeetDashboardModal {
         return this.state.meetings.find((entry) => entry.id === this.state.selectedMeetingId) || null;
     }
 
+    get currentActor() {
+        return normalizeCurrentActor();
+    }
+
+    canManageRooms() {
+        return isAdminActor(this.currentActor);
+    }
+
     async loadWorkspaces() {
         const payload = await runTool('webmeet_workspace_list');
         this.state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
@@ -713,7 +824,9 @@ export class WebMeetDashboardModal {
             this.state.selectedMeetingId = '';
             return;
         }
-        const payload = await runTool('webmeet_meeting_list', { workspaceId: this.state.selectedWorkspaceId });
+        const payload = await runTool('webmeet_meeting_list', {
+            workspaceId: this.state.selectedWorkspaceId
+        });
         this.state.meetings = Array.isArray(payload.meetings) ? payload.meetings : [];
         await this.loadParticipantsForMeetings();
         this.state.selectedMeetingId = this.state.meetings.some((entry) => entry.id === this.state.selectedMeetingId)
@@ -775,6 +888,17 @@ export class WebMeetDashboardModal {
     }
 
     renderAll() {
+        const canManageRooms = this.canManageRooms();
+        const hasSelection = Boolean(this.selectedMeeting);
+        if (this.createRoomButton) {
+            this.createRoomButton.classList.toggle('webmeet-hidden', !canManageRooms);
+        }
+        if (this.renameRoomButton) {
+            this.renameRoomButton.classList.toggle('webmeet-hidden', !(canManageRooms && hasSelection));
+        }
+        if (this.closeRoomButton) {
+            this.closeRoomButton.classList.toggle('webmeet-hidden', !(canManageRooms && hasSelection));
+        }
         this.renderWorkspaceList();
         this.renderMeetingList();
         this.renderMeetingSummary();
@@ -1060,14 +1184,50 @@ export class WebMeetDashboardModal {
     }
 
     async createMeeting() {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can create rooms.');
+            return;
+        }
         if (!this.state.selectedWorkspaceId) {
             this.setError('Current Explorer workspace is unavailable.');
             return;
         }
-        const title = window.prompt('Meeting title', 'Standup');
+        const title = window.prompt('Room title', 'Standup');
         if (!title) return;
-        const meeting = await runTool('webmeet_meeting_create', { workspaceId: this.state.selectedWorkspaceId, title });
+        const meeting = await runTool('webmeet_meeting_create', {
+            workspaceId: this.state.selectedWorkspaceId,
+            title
+        });
         this.state.selectedMeetingId = meeting?.id || this.state.selectedMeetingId;
+        await this.loadMeetings();
+        this.renderAll();
+    }
+
+    async renameMeeting() {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can rename rooms.');
+            return;
+        }
+        const meeting = this.selectedMeeting;
+        if (!meeting) {
+            this.setError('Select a room before renaming it.');
+            return;
+        }
+        const title = String(window.prompt('Room title', meeting.title || '') || '').trim();
+        if (!title || title === meeting.title) {
+            return;
+        }
+        const updated = await runTool('webmeet_meeting_rename', {
+            meetingId: meeting.id,
+            title
+        });
+        if (updated?.title) {
+            const entry = this.state.meetings.find((item) => item.id === meeting.id);
+            if (entry) {
+                entry.title = updated.title;
+                entry.updatedAt = updated.updatedAt || entry.updatedAt;
+            }
+        }
         await this.loadMeetings();
         this.renderAll();
     }
@@ -1539,9 +1699,13 @@ export class WebMeetDashboardModal {
     }
 
     async closeMeeting() {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can delete rooms.');
+            return;
+        }
         const meeting = this.selectedMeeting;
         if (!meeting) {
-            this.setError('Select a meeting before closing it.');
+            this.setError('Select a room before deleting it.');
             return;
         }
         await runTool('webmeet_close_meeting', { meetingId: meeting.id });

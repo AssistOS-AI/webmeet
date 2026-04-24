@@ -2,7 +2,7 @@
     <div class="modal-header">
         <div class="modal-header-left">
             <div class="modal-title">WebMeet Agent</div>
-            <div class="webmeet-subtitle">Meetings, chat, transcript, artifacts</div>
+            <div class="webmeet-subtitle">Rooms, chat, transcript, artifacts</div>
             <div id="webmeetWorkspaceIndicator" class="webmeet-workspace-indicator">
                 <span class="webmeet-workspace-label">Workspace:</span>
                 <span id="webmeetCurrentWorkspace" class="webmeet-workspace-name">None</span>
@@ -22,9 +22,11 @@
         <section class="webmeet-sidebar">
             <div class="webmeet-panel">
                 <div class="webmeet-panel-header">
-                    <span>Meetings</span>
+                    <span>Rooms</span>
                     <div class="webmeet-panel-actions">
-                        <button type="button" class="general-button subtle-button" data-local-action="createMeeting">New</button>
+                        <button type="button" class="general-button subtle-button" id="webmeetCreateRoomButton" data-local-action="createMeeting">New</button>
+                        <button type="button" class="general-button subtle-button" id="webmeetRenameRoomButton" data-local-action="renameMeeting">Rename</button>
+                        <button type="button" class="general-button subtle-button" id="webmeetCloseRoomButton" data-local-action="closeMeeting">Close</button>
                     </div>
                 </div>
                 <div id="webmeetMeetingList" class="webmeet-list"></div>
@@ -51,7 +53,7 @@
                         </svg>
                     </div>
                     <h2 class="webmeet-welcome-title">Welcome to WebMeet</h2>
-                    <p class="webmeet-welcome-text">Select a meeting from the sidebar, then join to start collaborating.</p>
+                    <p class="webmeet-welcome-text">Select a room from the sidebar, then join to start collaborating.</p>
                     <div class="webmeet-welcome-features">
                         <div class="webmeet-welcome-feature">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -80,7 +82,7 @@
                         </div>
                     </div>
                     <div class="webmeet-welcome-status">
-                        <span id="webmeetWelcomeStatus" class="webmeet-status-badge">Select a meeting to begin</span>
+                        <span id="webmeetWelcomeStatus" class="webmeet-status-badge">Select a room to begin</span>
                     </div>
                 </div>
             </div>
@@ -227,6 +229,13 @@
                         </div>
                     </div>
                 </div>
+                <div
+                    class="webmeet-chat-resizer"
+                    id="webmeetChatResizer"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize chat panel"
+                ></div>
 
                 <!-- Chat sidebar (right sidebar) -->
                 <div class="webmeet-member-list" id="webmeetChatSidebar">

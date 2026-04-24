@@ -32,7 +32,7 @@ export class MeetingListController {
                 </div>
                 ${this.renderMeetingParticipants(meetingParticipantsById, entry.id)}
             </div>
-        `).join('') || '<div class="webmeet-feed-item">No meetings yet.</div>';
+        `).join('') || '<div class="webmeet-room-empty">No rooms yet.</div>';
     }
 
     renderMeetingParticipants(meetingParticipantsById, meetingId) {

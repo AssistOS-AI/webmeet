@@ -17,8 +17,25 @@ import {
     listMeetingTranscript,
     listWorkspaces,
     startMeetingRecording,
-    stopMeetingRecording
+    stopMeetingRecording,
+    updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
+
+async function loadInvocationAuth() {
+    const candidates = [
+        process.env.PLOINKY_INVOCATION_AUTH_MODULE,
+        '/Agent/lib/invocation-auth.mjs',
+        '../../shared/invocation-auth.mjs'
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+        try {
+            return await import(candidate);
+        } catch (_) {}
+    }
+    throw new Error('Unable to load invocation-auth helper.');
+}
+
+const { authInfoFromInvocation } = await loadInvocationAuth();
 
 const TOOL_NAME = String(process.env.TOOL_NAME || '').trim();
 const SUPPORTED_AGENT_TYPES = new Set(['observer', 'assistant_on_mention', 'scribe']);
@@ -44,9 +61,9 @@ async function readStdinFallback() {
     return data;
 }
 
-function normalizeInput(envelope) {
+function unwrapInput(envelope) {
     let current = envelope;
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
         if (!current || typeof current !== 'object') break;
         if (current.input && typeof current.input === 'object') {
             current = current.input;
@@ -69,14 +86,14 @@ function normalizeInput(envelope) {
     return current && typeof current === 'object' ? current : {};
 }
 
-async function readInput() {
+async function readEnvelope() {
     const raw = (await readStdinFallback()).trim();
     if (!raw) return {};
     const parsed = safeParseJson(raw);
     if (!parsed || typeof parsed !== 'object') {
         return {};
     }
-    return normalizeInput(parsed);
+    return parsed;
 }
 
 function getRequiredString(args, key) {
@@ -87,18 +104,40 @@ function getRequiredString(args, key) {
     return value;
 }
 
-async function dispatch(toolName, args, context) {
+function extractInvocationGrant(envelope) {
+    const metadata = envelope && typeof envelope === 'object' ? envelope.metadata : null;
+    const grant = metadata && typeof metadata === 'object' ? metadata.invocation : null;
+    return grant && typeof grant === 'object' ? grant : null;
+}
+
+function actorFromEnvelope(envelope) {
+    const invocationGrant = extractInvocationGrant(envelope || {});
+    const authInfo = invocationGrant
+        ? authInfoFromInvocation(invocationGrant, { invocationToken: envelope?.metadata?.invocationToken || '' })
+        : null;
+    const delegatedUser = authInfo?.user || null;
+    return {
+        id: String(delegatedUser?.id || '').trim(),
+        username: String(delegatedUser?.username || '').trim(),
+        email: String(delegatedUser?.email || '').trim(),
+        principalId: String(authInfo?.agent?.principalId || '').trim(),
+        roles: Array.isArray(delegatedUser?.roles) ? delegatedUser.roles : []
+    };
+}
+
+async function dispatch(toolName, args, context, actor) {
     switch (toolName) {
     case 'webmeet_workspace_list':
         return { workspaces: listWorkspaces(context) };
     case 'webmeet_workspace_create':
         return createWorkspace(context, { name: String(args?.name || '').trim() });
     case 'webmeet_meeting_list':
-        return { meetings: listMeetings(context, getRequiredString(args, 'workspaceId')) };
+        return { meetings: listMeetings(context, getRequiredString(args, 'workspaceId'), actor) };
     case 'webmeet_meeting_create':
         return createMeeting(context, {
             workspaceId: getRequiredString(args, 'workspaceId'),
-            title: getRequiredString(args, 'title')
+            title: getRequiredString(args, 'title'),
+            actor
         });
     case 'webmeet_meeting_join':
         return joinMeeting(context, {
@@ -117,7 +156,13 @@ async function dispatch(toolName, args, context) {
             participantId: getRequiredString(args, 'participantId')
         });
     case 'webmeet_meeting_get':
-        return getMeeting(context, getRequiredString(args, 'meetingId'));
+        return getMeeting(context, getRequiredString(args, 'meetingId'), actor);
+    case 'webmeet_meeting_rename':
+        return updateMeetingTitle(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            title: getRequiredString(args, 'title'),
+            actor
+        });
     case 'webmeet_chat_list':
         return { messages: listMeetingChat(context, getRequiredString(args, 'meetingId')) };
     case 'webmeet_chat_send':
@@ -157,16 +202,18 @@ async function dispatch(toolName, args, context) {
     case 'webmeet_artifact_list':
         return listMeetingArtifacts(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_close_meeting':
-        return closeMeeting(context, getRequiredString(args, 'meetingId'));
+        return closeMeeting(context, getRequiredString(args, 'meetingId'), actor);
     default:
         throw new Error(`Unsupported TOOL_NAME "${toolName}".`);
     }
 }
 
 async function main() {
-    const args = await readInput();
+    const envelope = await readEnvelope();
+    const args = unwrapInput(envelope);
+    const actor = actorFromEnvelope(envelope);
     const context = createStoreContext();
-    const result = await dispatch(TOOL_NAME, args, context);
+    const result = await dispatch(TOOL_NAME, args, context, actor);
     process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

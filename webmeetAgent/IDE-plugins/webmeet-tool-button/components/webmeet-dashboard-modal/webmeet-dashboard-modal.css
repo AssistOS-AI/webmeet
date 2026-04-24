@@ -373,7 +373,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 .webmeet-member-list {
     transition: width 0.3s ease;
     min-width: 200px;
-    max-width: 300px;
 }
 
 .webmeet-sidebar .webmeet-panel {
@@ -448,8 +447,9 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 
 /* Main content area */
 .webmeet-main-content {
+    --webmeet-chat-sidebar-width: 320px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 240px;
+    grid-template-columns: minmax(0, 1fr) 10px minmax(260px, var(--webmeet-chat-sidebar-width));
     gap: 0;
     min-height: 0;
     flex: 1;
@@ -463,12 +463,42 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     border-right: none;
 }
 
+.webmeet-main-content.webmeet-chat-hidden .webmeet-chat-resizer {
+    display: none;
+}
+
 .webmeet-chat-area {
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--border-strong);
     min-width: 0;
     background: var(--surface);
+}
+
+.webmeet-chat-resizer {
+    position: relative;
+    flex: 0 0 10px;
+    align-self: stretch;
+    cursor: col-resize;
+    background: transparent;
+    touch-action: none;
+}
+
+.webmeet-chat-resizer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.45);
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.webmeet-chat-resizer:hover::before,
+.webmeet-main-content.webmeet-chat-resizing .webmeet-chat-resizer::before {
+    background: rgba(59, 130, 246, 0.75);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
 /* Tabs */
@@ -587,6 +617,8 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     overflow: hidden;
     background: color-mix(in srgb, var(--menu-backgroud) 86%, var(--surface) 14%);
     box-shadow: none;
+    min-width: 0;
+    border-left: 1px solid var(--border-strong);
 }
 
 #webmeetChatSidebar .webmeet-panel-header {
@@ -983,6 +1015,13 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 .webmeet-feed-item:hover {
     background: var(--option-hover);
     border-color: var(--accent);
+}
+
+.webmeet-room-empty {
+    padding: 6px 0 2px;
+    color: var(--text-soft);
+    font-size: 0.88rem;
+    line-height: 1.4;
 }
 
 #webmeetChatList .webmeet-feed-item {
