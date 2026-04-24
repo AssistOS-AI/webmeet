@@ -57,6 +57,30 @@
       "env": { "TOOL_NAME": "webmeet_meeting_join" }
     },
     {
+      "name": "webmeet_meeting_leave",
+      "title": "WebMeet Leave Meeting",
+      "description": "Remove a participant from active meeting members.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_leave" }
+    },
+    {
+      "name": "webmeet_meeting_presence_ping",
+      "title": "WebMeet Presence Ping",
+      "description": "Update participant lastSeenAt for active presence.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_presence_ping" }
+    },
+    {
       "name": "webmeet_meeting_get",
       "title": "WebMeet Get Meeting",
       "description": "Get meeting details, including participants.",

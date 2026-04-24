@@ -2,6 +2,7 @@ import { callAgentTool, ensureSuccess, parseToolResult } from "/explorer/service
 
 const AGENT_NAME = 'webmeetAgent';
 const LIVEKIT_UMD_URL = new URL('../../vendor/livekit-client.umd.min.js', import.meta.url).href;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 10_000;
 
 let livekitLoadPromise = null;
 
@@ -50,6 +51,15 @@ function formatDate(value) {
     } catch {
         return String(value);
     }
+}
+
+function buildStableParticipantId(seed) {
+    const base = String(seed || '').trim().toLowerCase();
+    const safe = base.replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!safe) {
+        return `participant-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    return `participant-${safe}`;
 }
 
 function buildRtcConfigForSession(session) {
@@ -157,6 +167,19 @@ export class WebMeetDashboardModal {
         this.focusedParticipantId = '';
         this.mediaToggleInFlight = false;
         this.pollingInterval = null;
+        this.cachedStableParticipantId = '';
+        this.presenceHeartbeatTimer = null;
+        this.lastKeepaliveLeaveKey = '';
+        this.handlePageHide = () => {
+            const meetingId = String(this.state.session?.meeting?.id || '').trim();
+            const participantId = String(this.state.session?.participantIdentity || '').trim();
+            this.sendLeaveKeepalive(meetingId, participantId);
+        };
+        this.handleBeforeUnload = () => {
+            const meetingId = String(this.state.session?.meeting?.id || '').trim();
+            const participantId = String(this.state.session?.participantIdentity || '').trim();
+            this.sendLeaveKeepalive(meetingId, participantId);
+        };
         this.invalidate();
     }
 
@@ -165,6 +188,7 @@ export class WebMeetDashboardModal {
     async afterRender() {
         this.cacheElements();
         this.registerActions();
+        this.registerWindowPresenceHandlers();
         await this.bootstrap();
     }
 
@@ -764,6 +788,12 @@ export class WebMeetDashboardModal {
 
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
+        this.unregisterWindowPresenceHandlers();
+        this.stopPresenceHeartbeat();
+        if (this.state.session?.participantIdentity) {
+            void this.unjoinCurrentSession({ preserveDisplayName: false });
+            return;
+        }
         void this.disconnectRoom();
     }
 
@@ -944,6 +974,112 @@ export class WebMeetDashboardModal {
         `;
     }
 
+    registerWindowPresenceHandlers() {
+        window.addEventListener('pagehide', this.handlePageHide);
+        window.addEventListener('beforeunload', this.handleBeforeUnload);
+    }
+
+    unregisterWindowPresenceHandlers() {
+        window.removeEventListener('pagehide', this.handlePageHide);
+        window.removeEventListener('beforeunload', this.handleBeforeUnload);
+    }
+
+    async sendPresencePing() {
+        const meetingId = String(this.state.session?.meeting?.id || '').trim();
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        if (!meetingId || !participantId) return;
+        try {
+            await runTool('webmeet_meeting_presence_ping', { meetingId, participantId });
+        } catch (_) {
+            // ignore transient ping failures
+        }
+    }
+
+    startPresenceHeartbeat() {
+        this.stopPresenceHeartbeat();
+        void this.sendPresencePing();
+        this.presenceHeartbeatTimer = window.setInterval(() => {
+            if (this.state.roomState !== 'Connected') return;
+            void this.sendPresencePing();
+        }, PRESENCE_HEARTBEAT_INTERVAL_MS);
+    }
+
+    stopPresenceHeartbeat() {
+        if (!this.presenceHeartbeatTimer) return;
+        window.clearInterval(this.presenceHeartbeatTimer);
+        this.presenceHeartbeatTimer = null;
+    }
+
+    sendLeaveKeepalive(meetingId, participantId) {
+        const safeMeetingId = String(meetingId || '').trim();
+        const safeParticipantId = String(participantId || '').trim();
+        if (!safeMeetingId || !safeParticipantId) return;
+        const key = `${safeMeetingId}:${safeParticipantId}`;
+        if (this.lastKeepaliveLeaveKey === key) return;
+        this.lastKeepaliveLeaveKey = key;
+        const payload = {
+            jsonrpc: '2.0',
+            id: `leave-${Date.now()}`,
+            method: 'tools/call',
+            params: {
+                name: 'webmeet_meeting_leave',
+                arguments: {
+                    meetingId: safeMeetingId,
+                    participantId: safeParticipantId
+                }
+            }
+        };
+        const body = JSON.stringify(payload);
+        try {
+            if (navigator?.sendBeacon) {
+                const blob = new Blob([body], { type: 'application/json' });
+                const sent = navigator.sendBeacon(`/mcps/${AGENT_NAME}/mcp`, blob);
+                if (sent) return;
+            }
+        } catch (_) {
+            // ignore sendBeacon errors, fallback to keepalive fetch
+        }
+        try {
+            void fetch(`/mcps/${AGENT_NAME}/mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+                credentials: 'include',
+                keepalive: true
+            });
+        } catch (_) {
+            // ignore keepalive failures
+        }
+    }
+
+    getStableParticipantId(displayName = '') {
+        if (this.cachedStableParticipantId) {
+            return this.cachedStableParticipantId;
+        }
+        const userEmail = String(window?.assistOS?.user?.email || '').trim();
+        if (userEmail) {
+            this.cachedStableParticipantId = buildStableParticipantId(userEmail);
+            return this.cachedStableParticipantId;
+        }
+        const storageKey = 'webmeet.participantId';
+        try {
+            const existing = String(window?.localStorage?.getItem(storageKey) || '').trim();
+            if (existing) {
+                this.cachedStableParticipantId = existing;
+                return this.cachedStableParticipantId;
+            }
+            const fallbackSeed = String(displayName || 'user').trim() || 'user';
+            const created = buildStableParticipantId(`${fallbackSeed}-${Math.random().toString(36).slice(2, 8)}`);
+            window?.localStorage?.setItem(storageKey, created);
+            this.cachedStableParticipantId = created;
+            return created;
+        } catch {
+            const fallbackSeed = String(displayName || 'user').trim() || 'user';
+            this.cachedStableParticipantId = buildStableParticipantId(fallbackSeed);
+            return this.cachedStableParticipantId;
+        }
+    }
+
     removeParticipantFromMeetingList(meetingId, participantId) {
         const targetMeetingId = String(meetingId || '').trim();
         const targetParticipantId = String(participantId || '').trim();
@@ -1119,11 +1255,7 @@ export class WebMeetDashboardModal {
             if (!confirmed) {
                 return;
             }
-            this.removeParticipantFromMeetingList(currentMeetingId, this.state.session?.participantIdentity);
-            const preservedName = String(this.state.session?.participant?.displayName || '').trim();
-            this.stopSpeechRecognition();
-            await this.disconnectRoom();
-            this.state.session = preservedName ? { participant: { displayName: preservedName } } : null;
+            await this.unjoinCurrentSession({ preserveDisplayName: true });
         }
 
         this.state.selectedMeetingId = nextMeetingId;
@@ -1158,7 +1290,8 @@ export class WebMeetDashboardModal {
             displayName = String(window.prompt('Display name', displayName || 'Admin') || '').trim();
         }
         if (!displayName) return;
-        this.state.session = await runTool('webmeet_meeting_join', { meetingId: meeting.id, displayName });
+        const participantId = this.getStableParticipantId(displayName);
+        this.state.session = await runTool('webmeet_meeting_join', { meetingId: meeting.id, displayName, participantId });
         await this.connectRoom();
         this.renderMeetingSummary();
     }
@@ -1338,9 +1471,11 @@ export class WebMeetDashboardModal {
             await room.connect(this.state.session.livekitUrl, this.state.session.participantToken);
             this.state.roomState = 'Connected';
             this.syncParticipantsFromRoom(this.room, Track);
+            this.startPresenceHeartbeat();
             this.renderMeetingSummary();
         } catch (error) {
             this.state.roomState = error instanceof Error ? error.message : String(error);
+            this.stopPresenceHeartbeat();
             this.renderMeetingSummary();
             throw error;
         }
@@ -1356,6 +1491,7 @@ export class WebMeetDashboardModal {
         this.restoreRtcPeerConnection?.();
         this.restoreRtcPeerConnection = null;
         this.room = null;
+        this.stopPresenceHeartbeat();
         this.mediaToggleInFlight = false;
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
@@ -1428,12 +1564,32 @@ export class WebMeetDashboardModal {
     }
 
     async leaveMeeting() {
+        await this.unjoinCurrentSession({ preserveDisplayName: false });
+    }
+
+    async unjoinCurrentSession(options = {}) {
+        const preserveDisplayName = Boolean(options.preserveDisplayName);
         const previousMeetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
         const previousParticipantId = String(this.state.session?.participantIdentity || '').trim();
+        const preservedName = String(this.state.session?.participant?.displayName || '').trim();
+        this.stopPresenceHeartbeat();
+
+        if (previousMeetingId && previousParticipantId) {
+            try {
+                await runTool('webmeet_meeting_leave', {
+                    meetingId: previousMeetingId,
+                    participantId: previousParticipantId
+                });
+            } catch (error) {
+                console.warn('[webmeet] leave participant failed', error);
+            }
+        }
+
         this.removeParticipantFromMeetingList(previousMeetingId, previousParticipantId);
         this.stopSpeechRecognition();
         await this.disconnectRoom();
-        this.state.session = null;
+        this.state.session = preserveDisplayName && preservedName ? { participant: { displayName: preservedName } } : null;
+        await this.loadParticipantsForMeetings();
         this.renderAll();
     }
 
@@ -1660,7 +1816,10 @@ export class WebMeetDashboardModal {
         this.renderAll();
     }
 
-    closeModal(target) {
+    async closeModal(target) {
+        if (this.state.session?.participantIdentity) {
+            await this.unjoinCurrentSession({ preserveDisplayName: false });
+        }
         const dialog = this.getDialogElement();
         if (dialog) {
             dialog.classList.remove('is-fullscreen');

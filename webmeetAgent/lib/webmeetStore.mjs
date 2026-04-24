@@ -10,7 +10,9 @@ import { appendEventLog, enqueueJob, waitForJob } from './webmeetQueue.mjs';
 
 const MASTER_KEY_VAR = 'PLOINKY_WEBMEET_MASTER_KEY';
 const RETENTION_DAYS_VAR = 'PLOINKY_WEBMEET_RETENTION_DAYS';
+const PRESENCE_TTL_MS_VAR = 'PLOINKY_WEBMEET_PRESENCE_TTL_MS';
 const DEFAULT_RETENTION_DAYS = 30;
+const DEFAULT_PRESENCE_TTL_MS = 30_000;
 const ACTIVE_RECORDING_STATUSES = new Set([
     'recording',
     'EGRESS_STARTING',
@@ -20,6 +22,11 @@ const ACTIVE_RECORDING_STATUSES = new Set([
 
 function nowIso() {
     return new Date().toISOString();
+}
+
+function toTimestamp(value) {
+    const parsed = Date.parse(String(value || '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 function randomId(prefix) {
@@ -72,6 +79,15 @@ function ensureMasterKey(workspaceRoot) {
         setEnvVar(workspaceRoot, MASTER_KEY_VAR, raw);
     }
     return deriveMasterKey(raw);
+}
+
+function getPresenceTtlMs(workspaceRoot) {
+    const raw = readConfigValue(workspaceRoot, PRESENCE_TTL_MS_VAR);
+    const parsed = parseInt(raw || '', 10);
+    if (Number.isFinite(parsed) && parsed >= 1_000) {
+        return parsed;
+    }
+    return DEFAULT_PRESENCE_TTL_MS;
 }
 
 function filePathFor(dir, id) {
@@ -170,6 +186,54 @@ function recordMeetingEvent(context, meetingId, payload, type, data = {}) {
     const event = addMeetingEvent(payload, type, data);
     appendEventLog(context.workspaceRoot, meetingId, event);
     return event;
+}
+
+function cleanupStaleMembers(context, meetingId, payload) {
+    const now = Date.now();
+    const ttlMs = getPresenceTtlMs(context.workspaceRoot);
+    const members = Array.isArray(payload.members) ? payload.members : [];
+    const kept = [];
+    const removed = [];
+    for (const member of members) {
+        const lastSeenAt = toTimestamp(member?.lastSeenAt) ?? toTimestamp(member?.joinedAt);
+        if (!lastSeenAt || (now - lastSeenAt) > ttlMs) {
+            removed.push(member);
+            continue;
+        }
+        kept.push(member);
+    }
+    if (removed.length > 0) {
+        payload.members = kept;
+        for (const member of removed) {
+            const participantId = String(member?.id || '').trim();
+            if (!participantId) continue;
+            recordMeetingEvent(context, meetingId, payload, 'participant.timed_out', {
+                meetingId,
+                participantId
+            });
+        }
+    }
+    return removed;
+}
+
+function cleanupMeetingPresence(context, meetingId) {
+    let removedCount = 0;
+    mutateMeeting(context, meetingId, (_record, payload) => {
+        removedCount = cleanupStaleMembers(context, meetingId, payload).length;
+    });
+    return removedCount;
+}
+
+function cleanupWorkspaceMeetingsPresence(context, workspaceId) {
+    for (const filePath of listJsonFiles(context.meetingsDir)) {
+        try {
+            const record = readJsonFile(filePath);
+            if (String(record?.workspaceId || '') !== String(workspaceId || '')) continue;
+            cleanupMeetingPresence(context, String(record?.meetingId || ''));
+        } catch (_) {
+            // ignore malformed entries
+        }
+    }
 }
 
 function buildRoomName(prefix, workspaceId, meetingId) {
@@ -309,6 +373,7 @@ function buildMeetingView(record) {
 }
 
 export function getMeeting(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     const record = loadMeetingRecord(context, meetingId);
     const payload = decryptMeetingPayload(context, record);
     return {
@@ -321,6 +386,7 @@ export function getMeeting(context, meetingId) {
 }
 
 export function buildMeetingAiContext(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     const record = loadMeetingRecord(context, meetingId);
     const payload = decryptMeetingPayload(context, record);
     return {
@@ -488,6 +554,7 @@ export function createWorkspace(context, _input = {}) {
 export function listMeetings(context, workspaceId) {
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
+    cleanupWorkspaceMeetingsPresence(context, effectiveWorkspaceId);
     return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => entry.workspaceId === effectiveWorkspaceId).map((entry) => ({
         id: entry.meetingId,
         workspaceId: entry.workspaceId,
@@ -541,13 +608,21 @@ export function createMeeting(context, { workspaceId, title }) {
 
 export function joinMeeting(context, { meetingId, displayName, participantId }) {
     const participantIdentity = String(participantId || randomId('participant')).trim();
+    const joinedAt = nowIso();
     let participant = null;
     const { record } = mutateMeeting(context, meetingId, (_record, payload) => {
+        cleanupStaleMembers(context, meetingId, payload);
         participant = payload.members.find((entry) => entry.id === participantIdentity) || null;
         if (!participant) {
-            participant = { id: participantIdentity, displayName, joinedAt: nowIso() };
+            participant = { id: participantIdentity, displayName, joinedAt, lastSeenAt: joinedAt };
             payload.members.push(participant);
             recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participant.id });
+        } else {
+            participant.displayName = displayName;
+            if (!participant.joinedAt) {
+                participant.joinedAt = joinedAt;
+            }
+            participant.lastSeenAt = joinedAt;
         }
     });
     return {
@@ -568,11 +643,67 @@ export function joinMeeting(context, { meetingId, displayName, participantId }) 
     };
 }
 
+export function leaveMeeting(context, { meetingId, participantId }) {
+    const targetParticipantId = String(participantId || '').trim();
+    if (!targetParticipantId) {
+        throw new Error('Missing participantId.');
+    }
+    let removedParticipant = null;
+    mutateMeeting(context, meetingId, (_record, payload) => {
+        const existingMembers = Array.isArray(payload.members) ? payload.members : [];
+        const nextMembers = existingMembers.filter((entry) => {
+            const sameParticipant = String(entry?.id || '').trim() === targetParticipantId;
+            if (sameParticipant && !removedParticipant) {
+                removedParticipant = entry;
+            }
+            return !sameParticipant;
+        });
+        payload.members = nextMembers;
+        if (removedParticipant) {
+            recordMeetingEvent(context, meetingId, payload, 'participant.left', {
+                meetingId,
+                participantId: targetParticipantId
+            });
+        }
+    });
+    return {
+        ok: true,
+        removed: Boolean(removedParticipant),
+        participantId: targetParticipantId
+    };
+}
+
+export function pingMeetingPresence(context, { meetingId, participantId }) {
+    const targetParticipantId = String(participantId || '').trim();
+    if (!targetParticipantId) {
+        throw new Error('Missing participantId.');
+    }
+    const pingAt = nowIso();
+    let touched = false;
+    mutateMeeting(context, meetingId, (_record, payload) => {
+        cleanupStaleMembers(context, meetingId, payload);
+        const participant = (Array.isArray(payload.members) ? payload.members : []).find((entry) => (
+            String(entry?.id || '').trim() === targetParticipantId
+        )) || null;
+        if (!participant) return;
+        participant.lastSeenAt = pingAt;
+        touched = true;
+    });
+    return {
+        ok: true,
+        touched,
+        participantId: targetParticipantId,
+        lastSeenAt: pingAt
+    };
+}
+
 export function listMeetingChat(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).chatMessages;
 }
 
 export async function appendMeetingChat(context, { meetingId, authorId, authorName, message }) {
+    cleanupMeetingPresence(context, meetingId);
     let chatMessage = null;
     let shouldRefreshObserver = false;
     let assistantAgent = null;
@@ -603,6 +734,7 @@ export async function appendMeetingChat(context, { meetingId, authorId, authorNa
 }
 
 export async function appendMeetingTranscript(context, { meetingId, speakerId, speakerName, text }) {
+    cleanupMeetingPresence(context, meetingId);
     let segment = null;
     let shouldRefreshObserver = false;
     mutateMeeting(context, meetingId, (_record, payload) => {
@@ -618,10 +750,12 @@ export async function appendMeetingTranscript(context, { meetingId, speakerId, s
 }
 
 export function listMeetingTranscript(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).transcriptSegments;
 }
 
 export function attachMeetingAgent(context, { meetingId, agentType, mode }) {
+    cleanupMeetingPresence(context, meetingId);
     let agent = null;
     mutateMeeting(context, meetingId, (_record, payload) => {
         agent = { id: randomId('agent'), meetingId, agentType, mode, createdAt: nowIso() };
@@ -631,10 +765,12 @@ export function attachMeetingAgent(context, { meetingId, agentType, mode }) {
 }
 
 export function listMeetingAgents(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).agents;
 }
 
 export async function startMeetingRecording(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     let recording = null;
     const meetingRecord = loadMeetingRecord(context, meetingId);
     const meetingPayload = decryptMeetingPayload(context, meetingRecord);
@@ -672,6 +808,7 @@ export async function startMeetingRecording(context, meetingId) {
 }
 
 export async function stopMeetingRecording(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     let recording = null;
     let artifact = null;
     let egressResponse = null;
@@ -712,11 +849,13 @@ export async function stopMeetingRecording(context, meetingId) {
 }
 
 export function listMeetingArtifacts(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     const payload = decryptMeetingPayload(context, loadMeetingRecord(context, meetingId));
     return { artifacts: payload.artifacts, tasks: payload.tasks, decisions: payload.decisions, recordings: payload.recordings };
 }
 
 export async function closeMeeting(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
     const initialRecord = loadMeetingRecord(context, meetingId);
     const initialPayload = decryptMeetingPayload(context, initialRecord);
     const hasScribe = initialPayload.agents.some((entry) => entry.agentType === 'scribe' && entry.mode === 'post_event');

@@ -11,6 +11,8 @@ import {
     createWorkspace,
     getMeeting,
     joinMeeting,
+    leaveMeeting,
+    pingMeetingPresence,
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
@@ -51,6 +53,8 @@ function matchRoute(method, pathname) {
         ['meetings.create', 'POST', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.get', 'GET', /^\/api\/meetings\/([^/]+)$/],
         ['meetings.join', 'POST', /^\/api\/meetings\/([^/]+)\/join$/],
+        ['meetings.leave', 'POST', /^\/api\/meetings\/([^/]+)\/leave$/],
+        ['meetings.presence', 'POST', /^\/api\/meetings\/([^/]+)\/presence$/],
         ['chat.list', 'GET', /^\/api\/meetings\/([^/]+)\/chat$/],
         ['chat.send', 'POST', /^\/api\/meetings\/([^/]+)\/chat$/],
         ['agents.list', 'GET', /^\/api\/meetings\/([^/]+)\/agents$/],
@@ -121,6 +125,22 @@ async function handler(req, res) {
             json(res, 200, joinMeeting(context, {
                 meetingId: route.params[0],
                 displayName: String(body.displayName || '').trim(),
+                participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.leave') {
+            const body = await readBody(req);
+            json(res, 200, leaveMeeting(context, {
+                meetingId: route.params[0],
+                participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.presence') {
+            const body = await readBody(req);
+            json(res, 200, pingMeetingPresence(context, {
+                meetingId: route.params[0],
                 participantId: String(body.participantId || '').trim()
             }));
             return;

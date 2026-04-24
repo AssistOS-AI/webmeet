@@ -8,6 +8,8 @@ import {
     createWorkspace,
     getMeeting,
     joinMeeting,
+    leaveMeeting,
+    pingMeetingPresence,
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
@@ -103,6 +105,16 @@ async function dispatch(toolName, args, context) {
             meetingId: getRequiredString(args, 'meetingId'),
             displayName: getRequiredString(args, 'displayName'),
             participantId: String(args?.participantId || '').trim()
+        });
+    case 'webmeet_meeting_leave':
+        return leaveMeeting(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            participantId: getRequiredString(args, 'participantId')
+        });
+    case 'webmeet_meeting_presence_ping':
+        return pingMeetingPresence(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            participantId: getRequiredString(args, 'participantId')
         });
     case 'webmeet_meeting_get':
         return getMeeting(context, getRequiredString(args, 'meetingId'));
