@@ -1246,8 +1246,15 @@ export class WebMeetDashboardModal {
         if (!displayName) return;
         const participantId = this.getStableParticipantId(displayName);
         this.state.session = await runTool('webmeet_meeting_join', { meetingId: meeting.id, displayName, participantId });
-        await this.connectRoom();
-        this.renderMeetingSummary();
+        try {
+            await this.connectRoom();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.state.roomState = message;
+            this.setError(message);
+        } finally {
+            this.renderMeetingSummary();
+        }
     }
 
     async connectRoom() {

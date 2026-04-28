@@ -4,7 +4,9 @@
     "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and meeting artifacts.",
     "network": {
         "name": "webmeet",
-        "aliases": ["webmeetAgent"]
+        "aliases": [
+            "webmeetAgent"
+        ]
     },
     "enable": [
         "basic/webmeetInfra"
@@ -117,7 +119,7 @@
                 {
                     "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
                     "required": false,
-                    "default": "ws://127.0.0.1:7880"
+                    "default": "ws://127.0.0.1:17880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_URL",

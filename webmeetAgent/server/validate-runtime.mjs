@@ -1,21 +1,83 @@
 import net from 'node:net';
 
-const profile = String(process.env.PLOINKY_PROFILE || 'dev').trim().toLowerCase();
-const isDev = profile === 'dev';
-const livekitPort = isDev ? 7880 : 7880;
-const livekitRtcTcpPort = isDev ? 7881 : 7881;
-const egressPort = isDev ? 17980 : 7980;
-const coturnPort = isDev ? 13478 : 3478;
-const redisPort = isDev ? 16379 : 6379;
+const DEFAULT_WEBMEET_API_PORT = 8791;
+const DEFAULT_LIVEKIT_PUBLIC_URL = 'ws://127.0.0.1:7880';
+const DEFAULT_LIVEKIT_API_URL = 'http://webmeetLivekitServer:7880';
+const DEFAULT_EGRESS_URL = 'http://webmeetLivekitEgress:7980';
 
-const checks = [
-    { name: 'webmeet-api', type: 'http', url: `http://127.0.0.1:${process.env.WEBMEET_API_PORT || '8791'}/healthz` },
-    { name: 'livekit-signaling', type: 'tcp', host: '127.0.0.1', port: livekitPort },
-    { name: 'livekit-rtc-tcp', type: 'tcp', host: '127.0.0.1', port: livekitRtcTcpPort },
-    { name: 'livekit-egress', type: 'tcp', host: '127.0.0.1', port: egressPort },
-    { name: 'coturn-tcp', type: 'tcp', host: '127.0.0.1', port: coturnPort },
-    { name: 'redis', type: 'tcp', host: '127.0.0.1', port: redisPort }
-];
+function normalizePort(protocol, portText) {
+    if (portText) {
+        const parsed = Number.parseInt(portText, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
+    }
+    if (protocol === 'https:' || protocol === 'wss:') {
+        return 443;
+    }
+    return 80;
+}
+
+function buildTcpCheck(name, rawUrl) {
+    const trimmed = String(rawUrl || '').trim();
+    if (!trimmed) {
+        return null;
+    }
+    let parsed;
+    try {
+        parsed = new URL(trimmed);
+    } catch (error) {
+        throw new Error(`Invalid ${name} URL "${trimmed}": ${error instanceof Error ? error.message : String(error)}`);
+    }
+    let host = parsed.hostname;
+    if (name === 'livekit-public' && (host === '127.0.0.1' || host === 'localhost')) {
+        host = process.env.PLOINKY_RUNTIME === 'docker'
+            ? 'host.docker.internal'
+            : 'host.containers.internal';
+    }
+    return {
+        name,
+        type: 'tcp',
+        host,
+        port: normalizePort(parsed.protocol, parsed.port)
+    };
+}
+
+function getChecks() {
+    const checks = [
+        {
+            name: 'webmeet-api',
+            type: 'http',
+            url: `http://127.0.0.1:${process.env.WEBMEET_API_PORT || DEFAULT_WEBMEET_API_PORT}/healthz`
+        },
+        buildTcpCheck(
+            'livekit',
+            process.env.WEBMEET_LIVEKIT_URL || process.env.WEBMEET_PUBLIC_LIVEKIT_URL || DEFAULT_LIVEKIT_API_URL
+        ),
+        buildTcpCheck(
+            'livekit-public',
+            process.env.WEBMEET_PUBLIC_LIVEKIT_URL || process.env.WEBMEET_LIVEKIT_URL || DEFAULT_LIVEKIT_PUBLIC_URL
+        ),
+        buildTcpCheck(
+            'livekit-egress',
+            process.env.WEBMEET_EGRESS_URL || DEFAULT_EGRESS_URL
+        )
+    ].filter(Boolean);
+
+    const deduped = [];
+    const seen = new Set();
+    for (const check of checks) {
+        const signature = check.type === 'http'
+            ? `${check.type}:${check.url}`
+            : `${check.type}:${check.host}:${check.port}`;
+        if (seen.has(signature)) {
+            continue;
+        }
+        seen.add(signature);
+        deduped.push(check);
+    }
+    return deduped;
+}
 
 async function checkHttp(url) {
     const response = await fetch(url);
@@ -42,6 +104,7 @@ async function checkTcp(host, port, timeoutMs = 1500) {
 }
 
 async function main() {
+    const checks = getChecks();
     const results = [];
     let hasError = false;
     for (const check of checks) {

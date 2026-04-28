@@ -771,6 +771,10 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     height: clamp(240px, calc(100% - 92px), 100%);
     min-height: 220px;
     aspect-ratio: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
 }
 
 .webmeet-video-empty {

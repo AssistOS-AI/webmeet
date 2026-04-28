@@ -5,25 +5,27 @@
 ## Componente
 
 - `webmeetAgent`
-  - MCP surface pentru Explorer
+  - owner pentru MCP surface, bootstrap și runtime WebMeet
   - HTTP API pe `WEBMEET_API_PORT` (implicit `8791`)
   - queue persistentă pentru jobs/events sub `.ploinky/webmeet`
   - worker AI separat pornit din bootstrap
-- `basic/webmeetLivekitServer`
-- `basic/webmeetLivekitEgress`
-- `basic/webmeetCoturn`
-- `basic/webmeetRedis`
+- `basic/webmeetInfra`
+  - dependența de infrastructură declarată de agent
+  - include LiveKit, egress și restul serviciilor necesare runtime-ului WebMeet
 
 ## Rulare
 
 Agentul se pornește prin Ploinky, nu direct cu Docker Compose.
 
 Manifestul agentului:
-- activează dependențele shared WebMeet din `basic`
+- activează `basic/webmeetInfra` din `manifest.json`
 - pornește `AgentServer`
 - pornește în paralel:
   - `server/webmeet-api.mjs`
   - `server/webmeet-worker.mjs`
+
+Explorer trebuie doar să enable-uiască `webmeetAgent` și pluginul `webmeet`.
+Provisioning-ul pentru LiveKit nu mai aparține host-ului Explorer sau unui flow separat din Ploinky.
 
 ## HTTP API
 
@@ -54,10 +56,11 @@ node /code/server/validate-runtime.mjs
 
 Verifică:
 - `webmeet-api`
-- `livekit-server`
+- `livekit`
+- `livekit-public`
 - `livekit-egress`
-- `coturn`
-- `redis`
+
+Scriptul citește endpoint-urile din `WEBMEET_*` și validează dependențele declarate de agent.
 
 ## Transcript
 

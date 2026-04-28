@@ -92,6 +92,18 @@
       "env": { "TOOL_NAME": "webmeet_meeting_get" }
     },
     {
+      "name": "webmeet_meeting_rename",
+      "title": "WebMeet Rename Meeting",
+      "description": "Rename a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "title": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_rename" }
+    },
+    {
       "name": "webmeet_chat_list",
       "title": "WebMeet List Chat",
       "description": "List meeting chat messages.",

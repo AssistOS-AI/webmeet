@@ -16,6 +16,7 @@ export class WebMeetParticipantCard {
         this.invalidate = invalidate;
         this.refs = null;
         this.mediaElement = null;
+        this.mediaAspectCleanup = null;
         this.state = {
             participantId: String(element.getAttribute('data-participant-id') || '').trim(),
             displayName: String(element.getAttribute('data-display-name') || 'Participant').trim() || 'Participant',
@@ -57,6 +58,8 @@ export class WebMeetParticipantCard {
     }
 
     setVideoElement(mediaElement) {
+        this.mediaAspectCleanup?.();
+        this.mediaAspectCleanup = null;
         if (this.mediaElement && this.mediaElement !== mediaElement) {
             try { this.mediaElement.srcObject = null; } catch (_) {}
             this.mediaElement.remove();
@@ -65,6 +68,7 @@ export class WebMeetParticipantCard {
         if (this.refs?.mediaHost && this.mediaElement && !this.refs.mediaHost.contains(this.mediaElement)) {
             this.refs.mediaHost.appendChild(this.mediaElement);
         }
+        this.installMediaAspectObserver();
         this.setState({ hasVideo: Boolean(this.mediaElement) });
     }
 
@@ -74,8 +78,11 @@ export class WebMeetParticipantCard {
             return;
         }
         try { this.mediaElement.srcObject = null; } catch (_) {}
+        this.mediaAspectCleanup?.();
+        this.mediaAspectCleanup = null;
         this.mediaElement.remove();
         this.mediaElement = null;
+        this.element.style.removeProperty('--wm-media-aspect-ratio');
         this.setState({ hasVideo: false });
     }
 
@@ -100,5 +107,27 @@ export class WebMeetParticipantCard {
         const micLabel = this.state.isMicOn ? 'Microphone on' : 'Microphone off';
         this.refs.mic.title = micLabel;
         this.refs.mic.setAttribute('aria-label', micLabel);
+    }
+
+    installMediaAspectObserver() {
+        const video = this.mediaElement;
+        if (!video) {
+            this.element.style.removeProperty('--wm-media-aspect-ratio');
+            return;
+        }
+        const sync = () => {
+            const width = Number(video.videoWidth || 0);
+            const height = Number(video.videoHeight || 0);
+            if (width > 0 && height > 0) {
+                this.element.style.setProperty('--wm-media-aspect-ratio', `${width} / ${height}`);
+            }
+        };
+        sync();
+        video.addEventListener('loadedmetadata', sync);
+        video.addEventListener('resize', sync);
+        this.mediaAspectCleanup = () => {
+            video.removeEventListener('loadedmetadata', sync);
+            video.removeEventListener('resize', sync);
+        };
     }
 }
