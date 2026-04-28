@@ -9,7 +9,7 @@
   - HTTP API pe `WEBMEET_API_PORT` (implicit `8791`)
   - queue persistentă pentru jobs/events sub `.ploinky/webmeet`
   - worker AI separat pornit din bootstrap
-- `basic/webmeetInfra`
+- `webmeetInfra/stack`
   - dependența de infrastructură declarată de agent
   - include LiveKit, egress și restul serviciilor necesare runtime-ului WebMeet
 
@@ -18,7 +18,7 @@
 Agentul se pornește prin Ploinky, nu direct cu Docker Compose.
 
 Manifestul agentului:
-- activează `basic/webmeetInfra` din `manifest.json`
+- activează `webmeetInfra/stack` din `manifest.json`
 - pornește `AgentServer`
 - pornește în paralel:
   - `server/webmeet-api.mjs`

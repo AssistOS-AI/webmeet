@@ -9,7 +9,7 @@
         ]
     },
     "enable": [
-        "basic/webmeetInfra"
+        "webmeetInfra/stack"
     ],
     "volumes": {
         "webmeetAgent/data": "/data",
