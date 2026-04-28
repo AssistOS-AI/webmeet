@@ -8,9 +8,6 @@ function getSecretsFile(workspaceRoot) {
 function ensureSecretsFile(workspaceRoot) {
     const secretsFile = getSecretsFile(workspaceRoot);
     fs.mkdirSync(path.dirname(secretsFile), { recursive: true });
-    if (!fs.existsSync(secretsFile)) {
-        fs.writeFileSync(secretsFile, '# WebMeet secrets\n');
-    }
     return secretsFile;
 }
 
@@ -51,17 +48,5 @@ export function resolveVarValue(workspaceRoot, name) {
 }
 
 export function setEnvVar(workspaceRoot, name, value) {
-    if (!name) throw new Error('Missing variable name.');
-    const secretsFile = ensureSecretsFile(workspaceRoot);
-    let lines = [];
-    try {
-        lines = fs.readFileSync(secretsFile, 'utf8').split('\n');
-    } catch (_) {
-        lines = [];
-    }
-    const envLine = `${name}=${value ?? ''}`;
-    const idx = lines.findIndex((line) => String(line).startsWith(`${name}=`));
-    if (idx >= 0) lines[idx] = envLine;
-    else lines.push(envLine);
-    fs.writeFileSync(secretsFile, lines.filter((entry) => entry !== undefined).join('\n'));
+    throw new Error('Writing plaintext .ploinky/.secrets from WebMeet is disabled.');
 }

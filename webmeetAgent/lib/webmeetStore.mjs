@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { getWorkspacePaths } from './workspacePaths.mjs';
-import { resolveVarValue, setEnvVar } from './secretVars.mjs';
+import { resolveVarValue } from './secretVars.mjs';
 import { createWrappedDek, decryptPayload, deriveMasterKey, encryptPayload, unwrapDek } from './webmeetCrypto.mjs';
 import { generateAssistantReply, generateObserverSummary, generateScribeOutput } from './webmeetLLM.mjs';
 import { appendEventLog, enqueueJob, waitForJob } from './webmeetQueue.mjs';
@@ -121,8 +121,10 @@ function getRetentionDays(workspaceRoot) {
 function ensureMasterKey(workspaceRoot) {
     let raw = readConfigValue(workspaceRoot, MASTER_KEY_VAR);
     if (!raw) {
-        raw = crypto.randomBytes(32).toString('base64');
-        setEnvVar(workspaceRoot, MASTER_KEY_VAR, raw);
+        raw = String(process.env.PLOINKY_MASTER_KEY || process.env.PLOINKY_WIRE_SECRET || '').trim();
+    }
+    if (!raw) {
+        throw new Error(`${MASTER_KEY_VAR} is not configured.`);
     }
     return deriveMasterKey(raw);
 }
