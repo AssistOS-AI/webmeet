@@ -11,6 +11,9 @@
     "enable": [
         "webmeetInfra/stack"
     ],
+    "repos": {
+        "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
+    },
     "volumes": {
         "webmeetAgent/data": "/data",
         "webmeet/recordings": "/recordings"
