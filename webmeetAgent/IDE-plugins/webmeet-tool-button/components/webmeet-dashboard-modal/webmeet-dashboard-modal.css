@@ -151,14 +151,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     color: var(--gray-button-border);
 }
 
-.modal-header {
-    background: var(--surface);
-    padding: 16px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border-strong);
-}
 
 .modal-header-left {
     display: flex;
