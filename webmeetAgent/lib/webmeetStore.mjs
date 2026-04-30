@@ -147,7 +147,13 @@ function readJsonFile(filePath) {
 }
 
 function writeJsonFile(filePath, record) {
-    fs.writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`);
+    // Atomic write: temp + rename. Concurrent webmeet tool subprocesses run
+    // cleanupMeetingPresence on the same record, and a non-atomic in-place
+    // writeFileSync gave parallel readers an empty/truncated file mid-write,
+    // surfacing as "Unexpected end of JSON input" / MCP -32603 in the UI.
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`);
+    fs.renameSync(tempPath, filePath);
 }
 
 function listJsonFiles(dir) {
