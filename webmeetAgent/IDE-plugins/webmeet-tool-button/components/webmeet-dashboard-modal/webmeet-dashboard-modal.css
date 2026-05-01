@@ -464,6 +464,7 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     flex-direction: column;
     min-width: 0;
     background: var(--surface);
+    overflow: auto;
 }
 
 .webmeet-chat-resizer {

@@ -51,7 +51,7 @@
       "cwd": "workspace",
       "inputSchema": {
         "meetingId": { "type": "string", "optional": false },
-        "displayName": { "type": "string", "optional": false },
+        "displayName": { "type": "string", "optional": true },
         "participantId": { "type": "string", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_join" }

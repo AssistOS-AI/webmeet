@@ -134,8 +134,9 @@ async function dispatch(toolName, args, context, authInfo) {
     case 'webmeet_meeting_join':
         return joinMeeting(context, {
             meetingId: getRequiredString(args, 'meetingId'),
-            displayName: getRequiredString(args, 'displayName'),
-            participantId: String(args?.participantId || '').trim()
+            displayName: String(args?.displayName || '').trim(),
+            participantId: String(args?.participantId || '').trim(),
+            authInfo
         });
     case 'webmeet_meeting_leave':
         return leaveMeeting(context, {

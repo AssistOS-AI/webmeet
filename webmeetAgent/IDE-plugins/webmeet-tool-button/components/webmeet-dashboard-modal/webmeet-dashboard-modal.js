@@ -67,6 +67,15 @@ function normalizeCurrentActor() {
     };
 }
 
+function getCurrentActorDisplayName() {
+    const user = globalThis.assistOS?.user;
+    if (!user || typeof user !== 'object') return '';
+    const explicitName = String(user.name || user.username || '').trim();
+    if (explicitName) return explicitName;
+    const email = String(user.email || '').trim();
+    return email && email !== 'local@example.com' ? email : '';
+}
+
 function isAdminActor(actor = null) {
     if (!actor || typeof actor !== 'object') return false;
     const roles = Array.isArray(actor.roles) ? actor.roles : [];
@@ -1180,7 +1189,7 @@ export class WebMeetDashboardModal {
         await this.loadMeetingDetails();
         this.renderAll();
         const defaultName = String(this.state.session?.participant?.displayName || '').trim();
-        await this.joinMeeting({ skipDisplayNamePrompt: Boolean(defaultName), displayNameOverride: defaultName });
+        await this.joinMeeting({ displayNameOverride: defaultName });
     }
 
     async createMeeting() {
@@ -1238,14 +1247,13 @@ export class WebMeetDashboardModal {
             this.setError('Select a meeting first.');
             return;
         }
-        const skipPrompt = Boolean(options.skipDisplayNamePrompt);
-        let displayName = String(options.displayNameOverride || '').trim();
-        if (!skipPrompt) {
-            displayName = String(window.prompt('Display name', displayName || 'Admin') || '').trim();
-        }
-        if (!displayName) return;
+        const displayName = String(options.displayNameOverride || getCurrentActorDisplayName()).trim();
         const participantId = this.getStableParticipantId(displayName);
-        this.state.session = await runTool('webmeet_meeting_join', { meetingId: meeting.id, displayName, participantId });
+        const payload = { meetingId: meeting.id, participantId };
+        if (displayName) {
+            payload.displayName = displayName;
+        }
+        this.state.session = await runTool('webmeet_meeting_join', payload);
         try {
             await this.connectRoom();
         } catch (error) {

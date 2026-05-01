@@ -134,7 +134,8 @@ async function handler(req, res) {
             json(res, 200, joinMeeting(context, {
                 meetingId: route.params[0],
                 displayName: String(body.displayName || '').trim(),
-                participantId: String(body.participantId || '').trim()
+                participantId: String(body.participantId || '').trim(),
+                authInfo: getActor(body)
             }));
             return;
         }

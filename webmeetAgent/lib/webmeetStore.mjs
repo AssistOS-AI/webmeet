@@ -72,6 +72,14 @@ function assertAdminAuthInfo(authInfo = null) {
     }
 }
 
+function getAuthDisplayName(authInfo = null) {
+    const user = authInfo && typeof authInfo === 'object'
+        ? (authInfo.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo)
+        : null;
+    if (!user) return '';
+    return String(user.name || user.username || user.email || '').trim();
+}
+
 function canViewMeetingRecord(record, authInfo = null) {
     if (String(record?.status || '').trim().toLowerCase() !== 'closed') {
         return true;
@@ -701,19 +709,20 @@ export function createMeeting(context, { workspaceId, title, authInfo = null }) 
     };
 }
 
-export function joinMeeting(context, { meetingId, displayName, participantId }) {
+export function joinMeeting(context, { meetingId, displayName, participantId, authInfo = null }) {
     const participantIdentity = String(participantId || randomId('participant')).trim();
+    const effectiveDisplayName = String(displayName || getAuthDisplayName(authInfo) || 'Participant').trim() || 'Participant';
     const joinedAt = nowIso();
     let participant = null;
     const { record } = mutateMeeting(context, meetingId, (_record, payload) => {
         cleanupStaleMembers(context, meetingId, payload);
         participant = payload.members.find((entry) => entry.id === participantIdentity) || null;
         if (!participant) {
-            participant = { id: participantIdentity, displayName, joinedAt, lastSeenAt: joinedAt };
+            participant = { id: participantIdentity, displayName: effectiveDisplayName, joinedAt, lastSeenAt: joinedAt };
             payload.members.push(participant);
             recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participant.id });
         } else {
-            participant.displayName = displayName;
+            participant.displayName = effectiveDisplayName;
             if (!participant.joinedAt) {
                 participant.joinedAt = joinedAt;
             }
@@ -733,7 +742,7 @@ export function joinMeeting(context, { meetingId, displayName, participantId }) 
         participant,
         livekitUrl: context.livekitPublicUrl,
         roomName: record.roomName,
-        participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: displayName }),
+        participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: effectiveDisplayName }),
         participantIdentity: participant.id
     };
 }
