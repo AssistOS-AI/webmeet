@@ -51,17 +51,6 @@ export_with_fallback() {
 }
 
 for name in \
-    OPENAI_API_KEY \
-    ANTHROPIC_API_KEY \
-    GEMINI_API_KEY \
-    MISTRAL_API_KEY \
-    DEEPSEEK_API_KEY \
-    OPENROUTER_API_KEY \
-    HUGGINGFACE_API_KEY \
-    XAI_API_KEY \
-    AXIOLOGIC_API_KEY \
-    OPENCODE_API_KEY \
-    AXIOLOGIC_PROXY_API_KEY \
     LLMAgentClient_DEBUG \
     LLMAgentClient_VERBOSE_DELAY \
     SOUL_GATEWAY_API_KEY \

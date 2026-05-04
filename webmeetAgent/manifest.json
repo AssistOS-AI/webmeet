@@ -21,17 +21,6 @@
     "profiles": {
         "default": {
             "env": [
-                "OPENAI_API_KEY",
-                "ANTHROPIC_API_KEY",
-                "GEMINI_API_KEY",
-                "MISTRAL_API_KEY",
-                "DEEPSEEK_API_KEY",
-                "OPENROUTER_API_KEY",
-                "HUGGINGFACE_API_KEY",
-                "XAI_API_KEY",
-                "AXIOLOGIC_API_KEY",
-                "OPENCODE_API_KEY",
-                "AXIOLOGIC_PROXY_API_KEY",
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
                 "PLOINKY_WORKSPACE_ROOT",
@@ -97,17 +86,6 @@
         },
         "dev": {
             "env": [
-                "OPENAI_API_KEY",
-                "ANTHROPIC_API_KEY",
-                "GEMINI_API_KEY",
-                "MISTRAL_API_KEY",
-                "DEEPSEEK_API_KEY",
-                "OPENROUTER_API_KEY",
-                "HUGGINGFACE_API_KEY",
-                "XAI_API_KEY",
-                "AXIOLOGIC_API_KEY",
-                "OPENCODE_API_KEY",
-                "AXIOLOGIC_PROXY_API_KEY",
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
                 "PLOINKY_WORKSPACE_ROOT",
@@ -173,17 +151,6 @@
         },
         "prod": {
             "env": [
-                "OPENAI_API_KEY",
-                "ANTHROPIC_API_KEY",
-                "GEMINI_API_KEY",
-                "MISTRAL_API_KEY",
-                "DEEPSEEK_API_KEY",
-                "OPENROUTER_API_KEY",
-                "HUGGINGFACE_API_KEY",
-                "XAI_API_KEY",
-                "AXIOLOGIC_API_KEY",
-                "OPENCODE_API_KEY",
-                "AXIOLOGIC_PROXY_API_KEY",
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
                 "PLOINKY_WORKSPACE_ROOT",
