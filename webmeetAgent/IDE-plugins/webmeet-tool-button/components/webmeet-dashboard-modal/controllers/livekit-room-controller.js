@@ -78,10 +78,14 @@ export class LivekitRoomController {
 
         try {
             hooks.onConnecting?.({ room, livekit, Track, RoomEvent });
+            const connectOptions = {
+                autoSubscribe: false,
+                ...(rtcConfig ? { rtcConfig } : {})
+            };
             await room.connect(
                 session.livekitUrl,
                 session.participantToken,
-                rtcConfig ? { rtcConfig } : undefined
+                connectOptions
             );
             hooks.onConnected?.({ room, livekit, Track, RoomEvent });
             return { room, livekit, Track, RoomEvent };

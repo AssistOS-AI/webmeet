@@ -1328,6 +1328,97 @@ export class WebMeetDashboardModal {
             }
         };
 
+        const getPublicationDebugState = (event, publication = null, participant = null, extra = {}) => {
+            const track = publication?.track || null;
+            const mediaStreamTrack = track?.mediaStreamTrack || null;
+            return {
+                event,
+                participant: participant?.identity || null,
+                localParticipant: this.room?.localParticipant?.identity || null,
+                trackSid: publication?.trackSid || null,
+                kind: publication?.kind || track?.kind || null,
+                source: publication?.source || track?.source || null,
+                isSubscribed: publication?.isSubscribed ?? null,
+                isMuted: publication?.isMuted ?? null,
+                hasTrack: Boolean(track),
+                trackKind: track?.kind || null,
+                mediaTrackId: mediaStreamTrack?.id || null,
+                mediaReadyState: mediaStreamTrack?.readyState || null,
+                mediaMuted: mediaStreamTrack?.muted ?? null,
+                mediaEnabled: mediaStreamTrack?.enabled ?? null,
+                remoteParticipants: this.room?.remoteParticipants?.size ?? null,
+                ...extra
+            };
+        };
+
+        const logMediaEvent = (event, publication = null, participant = null, extra = {}) => {
+            try {
+                console.info('[WebMeetMedia]', getPublicationDebugState(event, publication, participant, extra));
+            } catch (_) {
+                // Debug logging must not affect call setup.
+            }
+        };
+
+        const setPublicationSubscribed = (publication, shouldSubscribe, participant, reason) => {
+            if (!publication || typeof publication.setSubscribed !== 'function') return;
+            try {
+                const result = publication.setSubscribed(shouldSubscribe);
+                logMediaEvent('setSubscribed', publication, participant, { reason, shouldSubscribe });
+                if (result && typeof result.catch === 'function') {
+                    result.catch((error) => console.warn('[WebMeetMedia] setSubscribed failed', {
+                        reason,
+                        shouldSubscribe,
+                        error
+                    }));
+                }
+            } catch (error) {
+                console.warn('[WebMeetMedia] setSubscribed failed', { reason, shouldSubscribe, error });
+            }
+        };
+
+        const subscribePublication = (publication, participant = null, TrackRef = null, reason = 'subscribe') => {
+            const participantId = String(participant?.identity || '').trim();
+            const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
+            if (!publication || !participantId || participantId === localParticipantId) return;
+
+            logMediaEvent('subscribePublication', publication, participant, { reason });
+            if (publication.track) {
+                renderPublication(participant, publication, publication.track, TrackRef);
+            }
+
+            if (publication.isSubscribed && publication.track) return;
+
+            if (publication.isSubscribed && !publication.track) {
+                setPublicationSubscribed(publication, false, participant, `${reason}:refresh-off`);
+                window.setTimeout(() => {
+                    setPublicationSubscribed(publication, true, participant, `${reason}:refresh-on`);
+                }, 75);
+                return;
+            }
+
+            setPublicationSubscribed(publication, true, participant, reason);
+        };
+
+        const subscribeParticipantPublications = (participant, TrackRef = null, reason = 'participant-sweep') => {
+            if (!participant?.trackPublications?.values) return;
+            for (const publication of participant.trackPublications.values()) {
+                subscribePublication(publication, participant, TrackRef, reason);
+            }
+        };
+
+        const subscribeRemotePublications = (TrackRef = null, reason = 'room-sweep') => {
+            if (!this.room?.remoteParticipants?.values) return;
+            for (const participant of this.room.remoteParticipants.values()) {
+                subscribeParticipantPublications(participant, TrackRef, reason);
+            }
+        };
+
+        const scheduleRemoteSubscriptionSweep = (TrackRef = null, reason = 'scheduled-sweep') => {
+            for (const delay of [250, 1000, 2500]) {
+                window.setTimeout(() => subscribeRemotePublications(TrackRef, `${reason}:${delay}`), delay);
+            }
+        };
+
         await this.roomController.connect(this.state.session, {
             onRoomCreated: ({ room }) => {
                 this.room = room;
@@ -1337,35 +1428,40 @@ export class WebMeetDashboardModal {
                 this.renderMeetingSummary();
             },
             onTrackSubscribed: (track, publication, participant, { Track }) => {
+                logMediaEvent('TrackSubscribed', publication, participant);
                 renderPublication(participant, publication, track, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onTrackUnsubscribed: (_track, publication, _participant, { Track }) => {
+                logMediaEvent('TrackUnsubscribed', publication, _participant);
                 removePublication(publication, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onLocalTrackPublished: (publication, { room, Track }) => {
+                logMediaEvent('LocalTrackPublished', publication, room.localParticipant);
                 renderPublication(room.localParticipant, publication, null, Track);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
+                scheduleRemoteSubscriptionSweep(Track, 'local-published');
             },
             onLocalTrackUnpublished: (publication, { Track }) => {
+                logMediaEvent('LocalTrackUnpublished', publication, this.room?.localParticipant);
                 removePublication(publication, Track);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
+                scheduleRemoteSubscriptionSweep(Track, 'local-unpublished');
             },
             onRemoteTrackPublished: (publication, participant, { Track }) => {
-                if (publication.isSubscribed && publication.track) {
-                    renderPublication(participant, publication, publication.track, Track);
-                } else if (!publication.isSubscribed && typeof publication.setSubscribed === 'function') {
-                    publication.setSubscribed(true);
-                }
+                subscribePublication(publication, participant, Track, 'remote-track-published');
                 this.syncParticipantsFromRoom(this.room, Track);
+                scheduleRemoteSubscriptionSweep(Track, 'remote-track-published');
             },
-            onParticipantConnected: (_participant, { Track }) => {
+            onParticipantConnected: (participant, { Track }) => {
+                subscribeParticipantPublications(participant, Track, 'participant-connected');
                 this.syncParticipantsFromRoom(this.room, Track);
+                scheduleRemoteSubscriptionSweep(Track, 'participant-connected');
             },
             onParticipantDisconnected: (participant, { Track }) => {
                 for (const publication of participant.trackPublications.values()) {
@@ -1375,6 +1471,7 @@ export class WebMeetDashboardModal {
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onTrackMuted: (publication, participant, { Track }) => {
+                logMediaEvent('TrackMuted', publication, participant);
                 const participantId = String(participant?.identity || '').trim();
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
@@ -1389,6 +1486,7 @@ export class WebMeetDashboardModal {
                 }
             },
             onTrackUnmuted: (publication, participant, { Track }) => {
+                logMediaEvent('TrackUnmuted', publication, participant);
                 const participantId = String(participant?.identity || '').trim();
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
@@ -1429,14 +1527,9 @@ export class WebMeetDashboardModal {
                 this.state.roomState = 'Connected';
                 this.syncParticipantsFromRoom(this.room, Track);
                 for (const participant of room.remoteParticipants.values()) {
-                    for (const publication of participant.trackPublications.values()) {
-                        if (publication.isSubscribed && publication.track) {
-                            renderPublication(participant, publication, publication.track, Track);
-                        } else if (!publication.isSubscribed && typeof publication.setSubscribed === 'function') {
-                            publication.setSubscribed(true);
-                        }
-                    }
+                    subscribeParticipantPublications(participant, Track, 'connected');
                 }
+                scheduleRemoteSubscriptionSweep(Track, 'connected');
                 this.startPresenceHeartbeat();
                 this.renderMeetingSummary();
             },
