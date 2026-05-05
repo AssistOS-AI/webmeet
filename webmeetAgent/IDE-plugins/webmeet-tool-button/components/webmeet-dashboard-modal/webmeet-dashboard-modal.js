@@ -320,6 +320,7 @@ export class WebMeetDashboardModal {
         this.meetingTitle = this.element.querySelector('#webmeetMeetingTitle');
         this.meetingMeta = this.element.querySelector('#webmeetMeetingMeta');
         this.joinStatus = this.element.querySelector('#webmeetJoinStatus');
+        this.activeRoomTitle = this.element.querySelector('#webmeetActiveRoomTitle');
         this.lifecycle = this.element.querySelector('#webmeetLifecycle');
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
@@ -1246,6 +1247,11 @@ export class WebMeetDashboardModal {
         
         this.meetingTitle.textContent = meeting?.title || 'None';
         this.meetingMeta.textContent = meeting ? formatDate(meeting.createdAt) : '';
+        
+        // Update active room title in header
+        if (this.activeRoomTitle) {
+            this.activeRoomTitle.textContent = meeting?.title || 'Select a room';
+        }
         this.lifecycle.textContent = meeting?.status || 'Idle';
         this.joinStatus.textContent = isJoined ? 'Joined' : 'Not joined';
         this.joinPayload.value = this.state.session ? JSON.stringify(this.state.session, null, 2) : '';
