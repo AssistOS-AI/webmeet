@@ -280,7 +280,7 @@
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
                     "required": false,
-                    "default": "relay"
+                    "default": "all"
                 },
                 {
                     "name": "WEBMEET_ROOM_PREFIX",
