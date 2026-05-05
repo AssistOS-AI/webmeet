@@ -1,0 +1,204 @@
+# DS008: Room Types (Team vs Guest)
+
+## Overview
+
+WebMeet supports two types of rooms to accommodate different collaboration scenarios:
+
+- **Team Room**: Accessible only to authenticated workspace members
+- **Guest Room**: Accessible via a shareable link, allowing external participants to join without workspace authentication
+
+## Room Types
+
+### Team Room
+
+**Purpose**: Internal collaboration within the workspace team.
+
+**Access Control**:
+- Only authenticated users with workspace access can join
+- Requires valid session/authentication via assistOS
+- Participants are identified by their workspace identity
+
+**Use Cases**:
+- Daily standups
+- Internal team meetings
+- Project reviews
+- Workspace-only discussions
+
+### Guest Room
+
+**Purpose**: External collaboration with participants outside the workspace.
+
+**Access Control**:
+- Accessible via unique shareable URL containing a guest token
+- No workspace authentication required
+- Guests must provide their name before joining
+- Guests receive a unique participant identity
+
+**Use Cases**:
+- Client meetings
+- Interviews
+- External consultations
+- Demos for prospects
+
+## Data Model
+
+### Meeting Record Extensions
+
+```typescript
+interface MeetingRecord {
+    // ... existing fields ...
+    roomType: 'team' | 'guest';
+    guestToken?: string; // Only present for guest rooms
+}
+```
+
+### API Changes
+
+#### Create Meeting
+
+```typescript
+POST /api/workspaces/:workspaceId/meetings
+{
+    title: string;
+    roomType: 'team' | 'guest'; // Optional, defaults to 'team'
+}
+
+// Response includes:
+{
+    id: string;
+    roomType: 'team' | 'guest';
+    guestToken?: string; // Only for guest rooms
+    // ... other fields ...
+}
+```
+
+#### Join Meeting (Authenticated)
+
+```typescript
+POST /api/meetings/:meetingId/join
+{
+    displayName?: string;
+    participantId?: string;
+}
+// Requires authentication
+```
+
+#### Join Guest Meeting (Unauthenticated)
+
+```typescript
+POST /api/meetings/:meetingId/join-guest
+{
+    guestToken: string;
+    displayName: string; // Required for guests
+    participantId?: string;
+}
+// No authentication required
+```
+
+## Guest Room Flow
+
+### 1. Room Creation (Admin)
+
+1. Admin clicks "New" button in WebMeet dashboard
+2. Webskel modal `create-room-modal` opens with:
+   - Room type selection (Team / Guest)
+   - Room title input
+3. Admin selects "Guest Room" and provides title
+4. System creates room and generates unique `guestToken`
+5. Guest URL is displayed: `https://{host}/webmeet/join?room={roomId}&token={guestToken}`
+6. Admin can copy and share the link
+
+### 2. Guest Access
+
+1. Guest receives URL via any channel (email, chat, etc.)
+2. Guest opens URL in browser
+3. System detects guest access and shows name input form
+4. Guest enters their name
+5. System calls `join-guest` API with token and name
+6. Guest joins the room with generated participant identity
+
+### 3. Security Considerations
+
+- Guest tokens are UUID v4 random strings
+- Tokens are stored encrypted in the meeting record
+- Guest rooms can be converted to team rooms (future feature)
+- Guest access can be revoked by regenerating token (future feature)
+
+## UI Components
+
+### Create Room Modal
+
+**Location**: `explorer/web-components/modals/create-room-modal/`
+
+**Structure**:
+- Modal header with title "Create New Room"
+- Room type selection cards (Team / Guest)
+- Room title input
+- Cancel and Create buttons
+
+**Behavior**:
+- Team Room is pre-selected by default
+- Guest Room shows "link access" description
+- Title defaults to "Standup"
+
+### Room List Indicators
+
+**Team Room Icon**: Video camera icon (existing)
+**Guest Room Icon**: Link icon with different color
+**Guest Room Badge**: 🔗 emoji indicator next to title
+
+## Implementation Details
+
+### Backend (webmeetStore.mjs)
+
+```javascript
+function createMeetingRecord(context, effectiveWorkspaceId, title, roomType = 'team') {
+    const isGuestRoom = roomType === 'guest';
+    const guestToken = isGuestRoom ? crypto.randomUUID() : null;
+    
+    const record = {
+        // ... existing fields ...
+        roomType: isGuestRoom ? 'guest' : 'team',
+        guestToken,
+        // ...
+    };
+}
+
+export function joinGuestMeeting(context, { meetingId, guestToken, displayName, participantId }) {
+    // Verify room type is 'guest'
+    // Validate guest token matches
+    // Create participant without requiring auth
+}
+```
+
+### API Layer (webmeet-api.mjs)
+
+- Added `joinGuestMeeting` to imports
+- New route: `['meetings.join.guest', 'POST', /^\/api\/meetings\/([^/]+)\/join-guest$/]`
+- Handler validates token and allows unauthenticated access
+
+### Frontend (WebMeet Dashboard)
+
+- `createMeeting()` now calls `assistOS.UI.showModal('create-room-modal')`
+- Guest room creation shows confirmation with guest URL
+- URL is auto-copied to clipboard when possible
+- Room list shows type indicators
+
+## Security Boundaries
+
+| Aspect | Team Room | Guest Room |
+|--------|-----------|------------|
+| Authentication | Required | Not required |
+| Access Control | Workspace membership | Guest token possession |
+| Participant Identity | Workspace identity | Self-declared name |
+| Data Visibility | Workspace policy | Same as team room |
+| Recording Access | Workspace members | Same as team room |
+
+## Future Enhancements
+
+- Token expiration/revocation
+- Guest room password protection
+- Maximum guest count limits
+- Guest waiting room (approval required)
+- Conversion between room types
+- Guest access audit log

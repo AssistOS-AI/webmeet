@@ -15,24 +15,56 @@ export class MeetingListController {
         this.meetingListElement = element || null;
     }
 
-    render(meetings, selectedMeetingId, meetingParticipantsById) {
+    render(meetings, selectedMeetingId, meetingParticipantsById, canManageRooms = false) {
         if (!this.meetingListElement) return;
         const safeMeetings = Array.isArray(meetings) ? meetings : [];
-        this.meetingListElement.innerHTML = safeMeetings.map((entry) => `
-            <div class="webmeet-list-item ${entry.id === selectedMeetingId ? 'is-selected' : ''}" data-local-action="selectAndJoinMeeting" data-id="${escapeHtml(entry.id)}">
-                <div class="webmeet-meeting-row">
-                    <span class="webmeet-room-icon" aria-hidden="true">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="6" width="14" height="12" rx="2" ry="2"></rect>
-                            <polygon points="17 10 22 7 22 17 17 14"></polygon>
-                        </svg>
-                    </span>
-                    <strong class="webmeet-meeting-title">${escapeHtml(entry.title)}</strong>
-                    <span class="webmeet-meeting-status ${entry.id === selectedMeetingId ? '' : 'webmeet-hidden'}">${escapeHtml(entry.status)}</span>
+        this.meetingListElement.innerHTML = safeMeetings.map((entry) => {
+            const isGuestRoom = entry.roomType === 'guest';
+            return `
+            <div class="webmeet-list-item ${entry.id === selectedMeetingId ? 'is-selected' : ''}" data-id="${escapeHtml(entry.id)}">
+                <div class="webmeet-meeting-row" data-local-action="selectAndJoinMeeting" data-id="${escapeHtml(entry.id)}">
+                    <div class="webmeet-room-identity">
+                        <span class="webmeet-room-icon" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="6" width="14" height="12" rx="2" ry="2"></rect>
+                                <polygon points="17 10 22 7 22 17 17 14"></polygon>
+                            </svg>
+                        </span>
+                        <div class="webmeet-room-copy">
+                            <strong class="webmeet-meeting-title">${escapeHtml(entry.title)}</strong>
+                        </div>
+                    </div>
                 </div>
+                ${canManageRooms ? `
+                    <div class="webmeet-room-actions" aria-label="Room actions">
+                        ${isGuestRoom ? `
+                            <button type="button" class="webmeet-room-action-button" data-local-action="copyGuestInviteLink" data-id="${escapeHtml(entry.id)}" title="Copy invite link" aria-label="Copy invite link">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                </svg>
+                            </button>
+                        ` : ''}
+                        <button type="button" class="webmeet-room-action-button" data-local-action="renameMeeting" data-id="${escapeHtml(entry.id)}" title="Rename room" aria-label="Rename room">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 20h9"></path>
+                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+                            </svg>
+                        </button>
+                        <button type="button" class="webmeet-room-action-button danger" data-local-action="deleteMeeting" data-id="${escapeHtml(entry.id)}" title="Delete room" aria-label="Delete room">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 6h18"></path>
+                                <path d="M8 6V4h8v2"></path>
+                                <path d="M19 6l-1 14H6L5 6"></path>
+                                <path d="M10 11v5"></path>
+                                <path d="M14 11v5"></path>
+                            </svg>
+                        </button>
+                    </div>
+                ` : ''}
                 ${this.renderMeetingParticipants(meetingParticipantsById, entry.id)}
             </div>
-        `).join('') || '<div class="webmeet-room-empty">No rooms yet.</div>';
+        `;}).join('') || '<div class="webmeet-room-empty">No rooms yet.</div>';
     }
 
     renderMeetingParticipants(meetingParticipantsById, meetingId) {

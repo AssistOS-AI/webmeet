@@ -60,7 +60,7 @@ function normalizeAuthInfo(authInfo = null) {
     };
 }
 
-function isAdminAuthInfo(authInfo = null) {
+export function isAdminAuthInfo(authInfo = null) {
     const normalized = normalizeAuthInfo(authInfo);
     const roleMatch = normalized.roles.some((role) => String(role || '').trim().toLowerCase() === 'admin');
     if (roleMatch) {
@@ -86,10 +86,7 @@ function getAuthDisplayName(authInfo = null) {
 }
 
 function canViewMeetingRecord(record, authInfo = null) {
-    if (String(record?.status || '').trim().toLowerCase() !== 'closed') {
-        return true;
-    }
-    return isAdminAuthInfo(authInfo);
+    return String(record?.status || '').trim().toLowerCase() !== 'closed';
 }
 
 function deriveWorkspaceId(workspaceRoot) {
@@ -183,6 +180,10 @@ function purgeExpiredMeetings(paths) {
             const record = readJsonFile(filePath);
             if (record?.expiresAt && now > Date.parse(record.expiresAt)) {
                 fs.unlinkSync(filePath);
+                const meetingId = String(record?.meetingId || path.basename(filePath, '.json')).trim();
+                if (meetingId) {
+                    fs.rmSync(path.join(paths.eventsDir, meetingId), { recursive: true, force: true });
+                }
             }
         } catch (_) {
             // ignore malformed
@@ -213,7 +214,14 @@ function loadMeetingRecord(context, meetingId) {
     if (!fs.existsSync(filePath)) {
         throw new Error('Meeting not found.');
     }
-    return readJsonFile(filePath);
+    try {
+        return readJsonFile(filePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            throw new Error('Meeting not found.');
+        }
+        throw error;
+    }
 }
 
 function decryptMeetingPayload(context, record) {
@@ -392,48 +400,6 @@ function createLiveKitToken(context, { roomName, identity, name }) {
     return `${header}.${payload}.${signature}`;
 }
 
-function summarizeMeetingPayload(payload, meetingTitle, closedAt) {
-    const candidateLines = [...payload.chatMessages, ...payload.transcriptSegments]
-        .map((entry) => entry.message || entry.text || '')
-        .map((entry) => String(entry || '').trim())
-        .filter(Boolean);
-
-    for (const line of candidateLines) {
-        if ((/^task[:\-]/i.test(line) || /\b(todo|action item|follow up)\b/i.test(line))) {
-            const title = line.replace(/^task[:\-]\s*/i, '').trim();
-            if (title && !payload.tasks.some((entry) => entry.title === title)) {
-                payload.tasks.push({ id: randomId('task'), title, status: 'open', createdAt: nowIso() });
-            }
-        }
-        if ((/^decision[:\-]/i.test(line) || /\bdecided\b/i.test(line))) {
-            const title = line.replace(/^decision[:\-]\s*/i, '').trim();
-            if (title && !payload.decisions.some((entry) => entry.title === title)) {
-                payload.decisions.push({ id: randomId('decision'), title, createdAt: nowIso() });
-            }
-        }
-    }
-
-    return {
-        id: randomId('artifact'),
-        type: 'minutes-of-meeting',
-        title: `${meetingTitle} Minutes`,
-        body: [
-            `Meeting: ${meetingTitle}`,
-            `Closed: ${closedAt}`,
-            '',
-            `Chat messages: ${payload.chatMessages.length}`,
-            `Transcript segments: ${payload.transcriptSegments.length}`,
-            '',
-            'Decisions:',
-            ...(payload.decisions.length ? payload.decisions.map((entry) => `- ${entry.title}`) : ['- None']),
-            '',
-            'Tasks:',
-            ...(payload.tasks.length ? payload.tasks.map((entry) => `- ${entry.title}`) : ['- None'])
-        ].join('\n'),
-        createdAt: nowIso()
-    };
-}
-
 function buildRecentTranscriptText(payload, limit = 12) {
     return payload.transcriptSegments
         .slice(-limit)
@@ -486,6 +452,7 @@ function buildMeetingView(record) {
         id: record.meetingId,
         workspaceId: record.workspaceId,
         title: record.title,
+        roomType: record.roomType || 'team',
         roomName: record.roomName,
         status: record.status,
         createdAt: record.createdAt,
@@ -501,8 +468,12 @@ export function getMeeting(context, meetingId, authInfo = null) {
         throw new Error('Meeting not found.');
     }
     const payload = decryptMeetingPayload(context, record);
+    const meeting = buildMeetingView(record);
+    if (isAdminAuthInfo(authInfo) && record.roomType === 'guest') {
+        meeting.guestToken = record.guestToken || '';
+    }
     return {
-        meeting: buildMeetingView(record),
+        meeting,
         participants: payload.members,
         agents: payload.agents,
         observerState: payload.observerState,
@@ -684,20 +655,26 @@ export function createWorkspace(context, _input = {}) {
     return ensureCurrentWorkspaceRecord(context);
 }
 
-function createMeetingRecord(context, effectiveWorkspaceId, title) {
+function createMeetingRecord(context, effectiveWorkspaceId, title, roomType = 'team') {
     const meetingId = randomId('meeting');
     const createdAt = nowIso();
     const expiresAt = new Date(Date.now() + getRetentionDays(context.workspaceRoot) * 24 * 60 * 60 * 1000).toISOString();
     const masterKey = ensureMasterKey(context.workspaceRoot);
     const { wrapped, dek } = createWrappedDek(masterKey);
     const payload = createMeetingPayload();
-    recordMeetingEvent(context, meetingId, payload, 'meeting.created', { meetingId });
+    recordMeetingEvent(context, meetingId, payload, 'meeting.created', { meetingId, roomType });
+
+    const isGuestRoom = roomType === 'guest';
+    const guestToken = isGuestRoom ? crypto.randomUUID() : null;
+
     const record = {
         version: 1,
         meetingId,
         workspaceId: effectiveWorkspaceId,
         title,
+        roomType: isGuestRoom ? 'guest' : 'team',
         roomName: buildRoomName(context.roomPrefix, effectiveWorkspaceId, meetingId),
+        guestToken,
         status: 'active',
         createdAt,
         updatedAt: createdAt,
@@ -718,20 +695,31 @@ function ensureDefaultMeeting(context, workspaceId) {
     if (hasActiveMeeting) {
         return null;
     }
-    return createMeetingRecord(context, workspaceId, DEFAULT_ROOM_TITLE);
+    return createMeetingRecord(context, workspaceId, DEFAULT_ROOM_TITLE, 'team');
 }
 
 export function listMeetings(context, workspaceId, authInfo = null) {
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
+    const canManageRooms = isAdminAuthInfo(authInfo);
     cleanupWorkspaceMeetingsPresence(context, effectiveWorkspaceId);
-    ensureDefaultMeeting(context, effectiveWorkspaceId);
-    return listJsonFiles(context.meetingsDir).map(readJsonFile).filter((entry) => (
+    return listJsonFiles(context.meetingsDir).map((filePath) => {
+        try {
+            return readJsonFile(filePath);
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                return null;
+            }
+            throw error;
+        }
+    }).filter((entry) => entry && (
         entry.workspaceId === effectiveWorkspaceId && canViewMeetingRecord(entry, authInfo)
     )).map((entry) => ({
         id: entry.meetingId,
         workspaceId: entry.workspaceId,
         title: entry.title,
+        roomType: entry.roomType || 'team',
+        guestToken: canManageRooms && entry.roomType === 'guest' ? entry.guestToken : undefined,
         roomName: entry.roomName,
         status: entry.status,
         createdAt: entry.createdAt,
@@ -758,23 +746,130 @@ export function updateMeetingTitle(context, { meetingId, title, authInfo = null 
     return meeting;
 }
 
-export function createMeeting(context, { workspaceId, title, authInfo = null }) {
+export function createMeeting(context, { workspaceId, title, roomType = 'team', authInfo = null }) {
     assertAdminAuthInfo(authInfo);
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
     if (effectiveWorkspaceId !== workspace.id) {
         throw new Error('Workspace mismatch for current Explorer workspace.');
     }
-    const record = createMeetingRecord(context, effectiveWorkspaceId, title);
+    const validRoomType = roomType === 'guest' ? 'guest' : 'team';
+    const record = createMeetingRecord(context, effectiveWorkspaceId, title, validRoomType);
     return {
         id: record.meetingId,
         workspaceId: record.workspaceId,
         title: record.title,
+        roomType: record.roomType,
         roomName: record.roomName,
+        guestToken: record.guestToken,
         status: record.status,
         createdAt: record.createdAt,
         closedAt: record.closedAt
     };
+}
+
+export function joinGuestMeeting(context, { meetingId, guestToken, displayName, participantId }) {
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const participantIdentity = String(participantId || randomId('participant')).trim();
+    const effectiveDisplayName = String(displayName || 'Guest').trim() || 'Guest';
+    const joinedAt = nowIso();
+
+    let participant = null;
+    mutateMeeting(context, meetingId, (_record, payload) => {
+        const members = Array.isArray(payload.members) ? payload.members : [];
+        payload.members = members;
+        participant = members.find((p) => p.id === participantIdentity);
+        if (!participant) {
+            participant = { id: participantIdentity, displayName: effectiveDisplayName, joinedAt, lastSeenAt: joinedAt, guest: true };
+            members.push(participant);
+        } else {
+            participant.displayName = effectiveDisplayName;
+            participant.lastSeenAt = joinedAt;
+            participant.guest = true;
+        }
+        recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participantIdentity, guest: true });
+    });
+
+    return {
+        meeting: {
+            id: record.meetingId,
+            workspaceId: record.workspaceId,
+            title: record.title,
+            roomType: record.roomType || 'guest',
+            roomName: record.roomName,
+            status: record.status,
+            createdAt: record.createdAt,
+            closedAt: record.closedAt || null
+        },
+        participant,
+        livekitUrl: context.livekitPublicUrl,
+        roomName: record.roomName,
+        participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: effectiveDisplayName }),
+        participantIdentity: participant.id
+    };
+}
+
+function assertGuestMeetingAccess(record, guestToken) {
+    if (record.roomType !== 'guest') {
+        throw new Error('Meeting does not support guest access.');
+    }
+    if (!canViewMeetingRecord(record, null)) {
+        throw new Error('Meeting not found.');
+    }
+    if (String(record.guestToken || '').trim() !== String(guestToken || '').trim()) {
+        throw new Error('Invalid guest token.');
+    }
+}
+
+function assertGuestParticipant(payload, participantId) {
+    const targetParticipantId = String(participantId || '').trim();
+    if (!targetParticipantId) {
+        throw new Error('Missing participantId.');
+    }
+    const participant = (Array.isArray(payload.members) ? payload.members : []).find((entry) => (
+        String(entry?.id || '').trim() === targetParticipantId && entry?.guest === true
+    )) || null;
+    if (!participant) {
+        throw new Error('Guest participant is not joined.');
+    }
+    return participant;
+}
+
+export function getGuestMeetingDetails(context, { meetingId, guestToken, participantId }) {
+    cleanupMeetingPresence(context, meetingId);
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const payload = decryptMeetingPayload(context, record);
+    assertGuestParticipant(payload, participantId);
+    return {
+        meeting: buildMeetingView(record),
+        participants: payload.members,
+        chat: payload.chatMessages,
+        transcript: payload.transcriptSegments,
+        artifacts: payload.artifacts,
+        recordings: payload.recordings,
+        tasks: payload.tasks,
+        decisions: payload.decisions,
+        agents: payload.agents,
+        observerState: payload.observerState
+    };
+}
+
+export function pingGuestMeetingPresence(context, { meetingId, guestToken, participantId }) {
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const payload = decryptMeetingPayload(context, record);
+    assertGuestParticipant(payload, participantId);
+    return pingMeetingPresence(context, { meetingId, participantId });
+}
+
+export function leaveGuestMeeting(context, { meetingId, guestToken, participantId }) {
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const payload = decryptMeetingPayload(context, record);
+    assertGuestParticipant(payload, participantId);
+    return leaveMeeting(context, { meetingId, participantId });
 }
 
 export function joinMeeting(context, { meetingId, displayName, participantId, authInfo = null }) {
@@ -907,6 +1002,20 @@ export async function appendMeetingChat(context, { meetingId, authorId, authorNa
     return { message: chatMessage, assistantMessage };
 }
 
+export async function appendGuestMeetingChat(context, { meetingId, guestToken, participantId, message }) {
+    cleanupMeetingPresence(context, meetingId);
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const payload = decryptMeetingPayload(context, record);
+    const participant = assertGuestParticipant(payload, participantId);
+    return appendMeetingChat(context, {
+        meetingId,
+        authorId: participant.id,
+        authorName: participant.displayName || 'Guest',
+        message
+    });
+}
+
 export async function appendMeetingTranscript(context, { meetingId, speakerId, speakerName, text }) {
     cleanupMeetingPresence(context, meetingId);
     let segment = null;
@@ -921,6 +1030,20 @@ export async function appendMeetingTranscript(context, { meetingId, speakerId, s
         enqueueJob(context.workspaceRoot, 'observer_refresh', { meetingId });
     }
     return segment;
+}
+
+export async function appendGuestMeetingTranscript(context, { meetingId, guestToken, participantId, text }) {
+    cleanupMeetingPresence(context, meetingId);
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const payload = decryptMeetingPayload(context, record);
+    const participant = assertGuestParticipant(payload, participantId);
+    return appendMeetingTranscript(context, {
+        meetingId,
+        speakerId: participant.id,
+        speakerName: participant.displayName || 'Guest',
+        text
+    });
 }
 
 export function listMeetingTranscript(context, meetingId) {
@@ -1028,28 +1151,17 @@ export function listMeetingArtifacts(context, meetingId) {
     return { artifacts: payload.artifacts, tasks: payload.tasks, decisions: payload.decisions, recordings: payload.recordings };
 }
 
-export async function closeMeeting(context, meetingId, authInfo = null) {
+export function deleteMeeting(context, meetingId, authInfo = null) {
     assertAdminAuthInfo(authInfo);
-    cleanupMeetingPresence(context, meetingId);
-    const initialRecord = loadMeetingRecord(context, meetingId);
-    const initialPayload = decryptMeetingPayload(context, initialRecord);
-    const hasScribe = initialPayload.agents.some((entry) => entry.agentType === 'scribe' && entry.mode === 'post_event');
-    if (hasScribe) {
-        const job = enqueueJob(context.workspaceRoot, 'scribe_finalize', { meetingId });
-        const completed = await waitForJob(context.workspaceRoot, job.id, 20000);
-        return completed.result;
+    const targetMeetingId = String(meetingId || '').trim();
+    if (!targetMeetingId) {
+        throw new Error('Meeting not found.');
     }
-    let artifact = null;
-    let meeting = null;
-    mutateMeeting(context, meetingId, (record, payload) => {
-        record.status = 'closed';
-        record.closedAt = nowIso();
-        artifact = summarizeMeetingPayload(payload, record.title, record.closedAt);
-        payload.artifacts.push(artifact);
-        recordMeetingEvent(context, meetingId, payload, 'meeting.ended', { meetingId });
-        recordMeetingEvent(context, meetingId, payload, 'artifact.created', { meetingId, artifactId: artifact.id });
-        meeting = buildMeetingView(record);
-    });
-    const payload = decryptMeetingPayload(context, loadMeetingRecord(context, meetingId));
-    return { meeting, artifact, tasks: payload.tasks, decisions: payload.decisions };
+    const record = loadMeetingRecord(context, targetMeetingId);
+    fs.rmSync(path.join(context.eventsDir, targetMeetingId), { recursive: true, force: true });
+    fs.rmSync(filePathFor(context.meetingsDir, targetMeetingId), { force: true });
+    return {
+        ok: true,
+        meeting: buildMeetingView(record)
+    };
 }

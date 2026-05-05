@@ -2,11 +2,13 @@ import {
     attachMeetingAgent,
     appendMeetingChat,
     appendMeetingTranscript,
-    closeMeeting,
     createMeeting,
     createStoreContext,
     createWorkspace,
+    deleteMeeting,
     getMeeting,
+    isAdminAuthInfo,
+    joinGuestMeeting,
     joinMeeting,
     leaveMeeting,
     pingMeetingPresence,
@@ -124,11 +126,15 @@ async function dispatch(toolName, args, context, authInfo) {
     case 'webmeet_workspace_create':
         return createWorkspace(context, { name: String(args?.name || '').trim() });
     case 'webmeet_meeting_list':
-        return { meetings: listMeetings(context, getRequiredString(args, 'workspaceId'), authInfo) };
+        return {
+            meetings: listMeetings(context, getRequiredString(args, 'workspaceId'), authInfo),
+            canManageRooms: isAdminAuthInfo(authInfo)
+        };
     case 'webmeet_meeting_create':
         return createMeeting(context, {
             workspaceId: getRequiredString(args, 'workspaceId'),
             title: getRequiredString(args, 'title'),
+            roomType: String(args?.roomType || 'team').trim(),
             authInfo
         });
     case 'webmeet_meeting_join':
@@ -137,6 +143,13 @@ async function dispatch(toolName, args, context, authInfo) {
             displayName: String(args?.displayName || '').trim(),
             participantId: String(args?.participantId || '').trim(),
             authInfo
+        });
+    case 'webmeet_meeting_join_guest':
+        return joinGuestMeeting(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            guestToken: getRequiredString(args, 'guestToken'),
+            displayName: getRequiredString(args, 'displayName'),
+            participantId: String(args?.participantId || '').trim()
         });
     case 'webmeet_meeting_leave':
         return leaveMeeting(context, {
@@ -194,8 +207,8 @@ async function dispatch(toolName, args, context, authInfo) {
         return stopMeetingRecording(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_artifact_list':
         return listMeetingArtifacts(context, getRequiredString(args, 'meetingId'));
-    case 'webmeet_close_meeting':
-        return closeMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+    case 'webmeet_delete_meeting':
+        return deleteMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
     default:
         throw new Error(`Unsupported TOOL_NAME "${toolName}".`);
     }

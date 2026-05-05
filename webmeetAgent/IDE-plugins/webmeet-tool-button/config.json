@@ -11,6 +11,10 @@
     "autoPin": false,
     "dependencies": [
         {
+            "component": "webmeet-dashboard-page",
+            "presenter": "WebMeetDashboardPage"
+        },
+        {
             "component": "webmeet-dashboard-modal",
             "presenter": "WebMeetDashboardModal",
             "type": "modal"

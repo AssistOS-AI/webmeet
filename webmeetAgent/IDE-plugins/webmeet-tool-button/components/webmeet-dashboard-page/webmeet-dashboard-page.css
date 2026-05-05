@@ -1,0 +1,35 @@
+.webmeet-dashboard-page {
+    width: 100%;
+    min-height: 100vh;
+    background: var(--file-exp-panel);
+    color: var(--text);
+    overflow: hidden;
+}
+
+.webmeet-dashboard-page webmeet-dashboard-modal {
+    display: block;
+    width: 100%;
+    min-height: 100vh;
+}
+
+.webmeet-dashboard-page .webmeet-dashboard-modal {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    height: 100vh;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    resize: none;
+}
+
+.webmeet-dashboard-page .modal-header {
+    min-height: 64px;
+}
+
+.webmeet-dashboard-page .webmeet-modal-window-actions {
+    display: none;
+}

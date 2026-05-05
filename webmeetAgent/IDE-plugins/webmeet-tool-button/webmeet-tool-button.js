@@ -14,10 +14,14 @@ export class WebMeetToolButton {
         this.labelEl = this.element.querySelector('.webmeet-tool-button-label');
         this.syncButtonMetadata();
         this.button?.addEventListener('click', this.openDashboard);
+        window.addEventListener('focus', this.clearPendingInitialTabLoader);
+        document.addEventListener('visibilitychange', this.clearPendingInitialTabLoader);
     }
 
     afterUnload() {
         this.button?.removeEventListener('click', this.openDashboard);
+        window.removeEventListener('focus', this.clearPendingInitialTabLoader);
+        document.removeEventListener('visibilitychange', this.clearPendingInitialTabLoader);
     }
 
     updateHostContext(context = {}) {
@@ -47,9 +51,49 @@ export class WebMeetToolButton {
         }
     }
 
+    clearInitialTabLoader() {
+        const webSkel = window.webSkel || window.WebSkel?.instance;
+        if (typeof webSkel?.clearLoading === 'function') {
+            webSkel.clearLoading();
+        } else if (webSkel) {
+            webSkel.loaderCount = 0;
+            webSkel.activeLoaderId = null;
+        }
+        document.querySelectorAll('.spinner').forEach((loader) => {
+            try {
+                if (typeof loader.close === 'function') {
+                    loader.close();
+                }
+            } catch (_) {
+                // The loader may already be closed by WebSkel.
+            }
+            loader.remove();
+        });
+    }
+
+    clearPendingInitialTabLoader = () => {
+        if (!this.shouldClearInitialTabLoader) {
+            return;
+        }
+        this.clearInitialTabLoader();
+    };
+
+    scheduleInitialTabLoaderCleanup() {
+        this.shouldClearInitialTabLoader = true;
+        [0, 50, 250, 1000, 2000].forEach((delay) => {
+            window.setTimeout(() => this.clearInitialTabLoader(), delay);
+        });
+    }
+
     openDashboard = async (event) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        await assistOS.UI.showModal('webmeet-dashboard-modal', {}, true);
+        const targetUrl = new URL(window.location.href);
+        targetUrl.hash = 'webmeet-dashboard-page';
+        const opened = window.open(targetUrl.toString(), '_blank', 'noopener');
+        this.scheduleInitialTabLoaderCleanup();
+        if (!opened) {
+            window.location.href = targetUrl.toString();
+        }
     };
 }

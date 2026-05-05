@@ -3,15 +3,20 @@ import { URL } from 'node:url';
 
 import {
     appendMeetingChat,
+    appendGuestMeetingChat,
+    appendGuestMeetingTranscript,
     appendMeetingTranscript,
     attachMeetingAgent,
-    closeMeeting,
     createMeeting,
     createStoreContext,
     createWorkspace,
     getMeeting,
+    getGuestMeetingDetails,
     joinMeeting,
+    joinGuestMeeting,
+    leaveGuestMeeting,
     leaveMeeting,
+    pingGuestMeetingPresence,
     pingMeetingPresence,
     listMeetingAgents,
     listMeetingArtifacts,
@@ -58,6 +63,12 @@ function matchRoute(method, pathname) {
         ['meetings.create', 'POST', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.get', 'GET', /^\/api\/meetings\/([^/]+)$/],
         ['meetings.join', 'POST', /^\/api\/meetings\/([^/]+)\/join$/],
+        ['meetings.join.guest', 'POST', /^\/api\/meetings\/([^/]+)\/join-guest$/],
+        ['meetings.guest.state', 'POST', /^\/api\/meetings\/([^/]+)\/guest-state$/],
+        ['meetings.guest.leave', 'POST', /^\/api\/meetings\/([^/]+)\/guest-leave$/],
+        ['meetings.guest.presence', 'POST', /^\/api\/meetings\/([^/]+)\/guest-presence$/],
+        ['chat.guest.send', 'POST', /^\/api\/meetings\/([^/]+)\/guest-chat$/],
+        ['transcript.guest.append', 'POST', /^\/api\/meetings\/([^/]+)\/guest-transcript$/],
         ['meetings.leave', 'POST', /^\/api\/meetings\/([^/]+)\/leave$/],
         ['meetings.presence', 'POST', /^\/api\/meetings\/([^/]+)\/presence$/],
         ['chat.list', 'GET', /^\/api\/meetings\/([^/]+)\/chat$/],
@@ -121,7 +132,8 @@ async function handler(req, res) {
             json(res, 201, createMeeting(context, {
                 workspaceId,
                 title: String(body.title || '').trim(),
-                actor: getActor(body)
+                roomType: String(body.roomType || 'team').trim(),
+                authInfo: getActor(body)
             }));
             return;
         }
@@ -136,6 +148,43 @@ async function handler(req, res) {
                 displayName: String(body.displayName || '').trim(),
                 participantId: String(body.participantId || '').trim(),
                 authInfo: getActor(body)
+            }));
+            return;
+        }
+        if (route.name === 'meetings.join.guest') {
+            const body = await readBody(req);
+            json(res, 200, joinGuestMeeting(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                displayName: String(body.displayName || '').trim(),
+                participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.guest.state') {
+            const body = await readBody(req);
+            json(res, 200, getGuestMeetingDetails(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.guest.leave') {
+            const body = await readBody(req);
+            json(res, 200, leaveGuestMeeting(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.guest.presence') {
+            const body = await readBody(req);
+            json(res, 200, pingGuestMeetingPresence(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                participantId: String(body.participantId || '').trim()
             }));
             return;
         }
@@ -166,6 +215,16 @@ async function handler(req, res) {
                 meetingId,
                 authorId: String(body.authorId || '').trim(),
                 authorName: String(body.authorName || '').trim(),
+                message: String(body.message || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'chat.guest.send') {
+            const body = await readBody(req);
+            json(res, 201, await appendGuestMeetingChat(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                participantId: String(body.participantId || '').trim(),
                 message: String(body.message || '').trim()
             }));
             return;
@@ -206,6 +265,16 @@ async function handler(req, res) {
             }));
             return;
         }
+        if (route.name === 'transcript.guest.append') {
+            const body = await readBody(req);
+            json(res, 201, await appendGuestMeetingTranscript(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                participantId: String(body.participantId || '').trim(),
+                text: String(body.text || '').trim()
+            }));
+            return;
+        }
         if (route.name === 'artifacts.list') {
             json(res, 200, listMeetingArtifacts(context, route.params[0]));
             return;
@@ -222,6 +291,14 @@ async function handler(req, res) {
         }
         json(res, 404, { error: 'Unhandled route.' });
     } catch (error) {
+        const guestRoute = route.name === 'meetings.join.guest'
+            || route.name.startsWith('meetings.guest.')
+            || route.name.startsWith('chat.guest.')
+            || route.name.startsWith('transcript.guest.');
+        if (guestRoute) {
+            json(res, 403, { error: 'Guest access denied.' });
+            return;
+        }
         json(res, 500, { error: error instanceof Error ? error.message : String(error) });
     }
 }

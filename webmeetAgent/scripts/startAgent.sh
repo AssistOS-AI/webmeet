@@ -83,5 +83,6 @@ chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null ||
 
 node /code/server/webmeet-api.mjs >/tmp/webmeet-api.out 2>/tmp/webmeet-api.err &
 node /code/server/webmeet-worker.mjs >/tmp/webmeet-worker.out 2>/tmp/webmeet-worker.err &
+PORT="${WEBMEET_MCP_PORT:-7001}" sh /Agent/server/AgentServer.sh >/tmp/webmeet-mcp.out 2>/tmp/webmeet-mcp.err &
 
-exec sh /Agent/server/AgentServer.sh
+exec node /code/server/webmeet-public-proxy.mjs

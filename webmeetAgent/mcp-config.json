@@ -39,7 +39,8 @@
       "cwd": "workspace",
       "inputSchema": {
         "workspaceId": { "type": "string", "optional": false },
-        "title": { "type": "string", "optional": false }
+        "title": { "type": "string", "optional": false },
+        "roomType": { "type": "string", "optional": true, "enum": ["team", "guest"] }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_create" }
     },
@@ -55,6 +56,20 @@
         "participantId": { "type": "string", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_join" }
+    },
+    {
+      "name": "webmeet_meeting_join_guest",
+      "title": "WebMeet Join Guest Meeting",
+      "description": "Create a guest participant session and LiveKit token for a guest meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "guestToken": { "type": "string", "optional": false },
+        "displayName": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_join_guest" }
     },
     {
       "name": "webmeet_meeting_leave",
@@ -211,15 +226,15 @@
       "env": { "TOOL_NAME": "webmeet_artifact_list" }
     },
     {
-      "name": "webmeet_close_meeting",
-      "title": "WebMeet Close Meeting",
-      "description": "Close a meeting and generate summary artifacts.",
+      "name": "webmeet_delete_meeting",
+      "title": "WebMeet Delete Meeting",
+      "description": "Delete a meeting and its event data.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
         "meetingId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_close_meeting" }
+      "env": { "TOOL_NAME": "webmeet_delete_meeting" }
     }
   ]
 }

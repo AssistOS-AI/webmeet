@@ -24,6 +24,67 @@ export class ParticipantLayoutController {
         }
     }
 
+    buildInitials(name) {
+        const text = String(name || '').trim();
+        if (!text) return '?';
+        const chunks = text.split(/\s+/).filter(Boolean);
+        return chunks.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';
+    }
+
+    ensureNativeParticipantMarkup(element) {
+        if (!element || element.querySelector('[data-role="mediaHost"]')) return;
+        element.innerHTML = `
+            <div class="wm-participant-shell">
+                <div class="wm-participant-stage">
+                    <div class="wm-participant-media" data-role="mediaHost"></div>
+                    <div class="wm-participant-fallback" data-role="fallback">
+                        <div class="wm-participant-avatar" data-role="avatar">?</div>
+                    </div>
+                </div>
+                <div class="wm-participant-footer" data-role="footer">
+                    <span class="wm-participant-name" data-role="name">Participant</span>
+                    <span class="wm-participant-mic is-off" data-role="mic" title="Microphone off" aria-label="Microphone off">
+                        <svg class="wm-mic-on" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                        <svg class="wm-mic-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="1" y1="1" x2="23" y2="23"></line>
+                            <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.18"></path>
+                            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+        `;
+    }
+
+    applyNativeParticipantState(view, payload) {
+        this.ensureNativeParticipantMarkup(view.element);
+        view.element.classList.toggle('is-mini', Boolean(payload.isMini));
+        view.element.classList.toggle('is-focused', Boolean(payload.isFocused));
+        view.element.dataset.local = payload.isLocal ? 'true' : 'false';
+
+        const name = view.element.querySelector('[data-role="name"]');
+        const avatar = view.element.querySelector('[data-role="avatar"]');
+        const fallback = view.element.querySelector('[data-role="fallback"]');
+        const mic = view.element.querySelector('[data-role="mic"]');
+        if (name) name.textContent = payload.displayName;
+        if (avatar) avatar.textContent = this.buildInitials(payload.displayName);
+        if (fallback) fallback.style.display = payload.hasVideo ? 'none' : 'flex';
+        if (mic) {
+            mic.classList.toggle('is-on', Boolean(payload.isMicOn));
+            mic.classList.toggle('is-off', !payload.isMicOn);
+            const micLabel = payload.isMicOn ? 'Microphone on' : 'Microphone off';
+            mic.title = micLabel;
+            mic.setAttribute('aria-label', micLabel);
+        }
+    }
+
     syncVideoGridVisibility() {
         const participantCount = this.participantViews.size;
         const hasParticipants = participantCount > 0;
@@ -58,6 +119,8 @@ export class ParticipantLayoutController {
         const presenter = view.element.webSkelPresenter;
         if (presenter && typeof presenter.setState === 'function') {
             presenter.setState(payload);
+        } else {
+            this.applyNativeParticipantState(view, payload);
         }
         if (view.videoElement) {
             if (presenter && typeof presenter.setVideoElement === 'function') {
@@ -177,8 +240,18 @@ export class ParticipantLayoutController {
                 presenter.setVideoElement(mediaElement);
             } else {
                 const host = view.element.querySelector('[data-role="mediaHost"]');
-                if (host && !host.contains(mediaElement)) {
-                    host.appendChild(mediaElement);
+                if (host) {
+                    // Remove existing video elements to prevent duplicates in Safari
+                    const existingVideos = host.querySelectorAll('video');
+                    existingVideos.forEach(video => {
+                        if (video !== mediaElement && video.parentNode === host) {
+                            video.remove();
+                        }
+                    });
+                    
+                    if (!host.contains(mediaElement)) {
+                        host.appendChild(mediaElement);
+                    }
                 }
             }
             const host = view.element.querySelector('[data-role="mediaHost"]');
