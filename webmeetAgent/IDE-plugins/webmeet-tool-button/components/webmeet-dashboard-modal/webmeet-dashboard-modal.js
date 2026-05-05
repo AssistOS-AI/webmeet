@@ -1328,35 +1328,46 @@ export class WebMeetDashboardModal {
             }
         };
 
-        const subscribePublication = (publication, participant = null) => {
+        const subscribePublication = (publication, participant = null, TrackRef = null, livekitRef = null) => {
+            const Track = TrackRef || window.LivekitClient?.Track;
+            const livekit = livekitRef || window.LivekitClient || {};
             const participantId = String(participant?.identity || '').trim();
             const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
             if (!publication || !participantId || participantId === localParticipantId) return;
-            if (publication.isSubscribed || typeof publication.setSubscribed !== 'function') return;
+            const isVideo = Track && publication.kind === Track.Kind.Video;
             try {
-                const result = publication.setSubscribed(true);
-                if (result && typeof result.catch === 'function') {
-                    result.catch((error) => console.warn('[WebMeet] Failed to subscribe remote track:', error));
+                if (isVideo && typeof publication.setEnabled === 'function') {
+                    publication.setEnabled(true);
+                }
+                if (isVideo && typeof publication.setVideoQuality === 'function'
+                    && livekit.VideoQuality?.HIGH !== undefined) {
+                    publication.setVideoQuality(livekit.VideoQuality.HIGH);
+                }
+                if (typeof publication.setSubscribed === 'function') {
+                    const result = publication.setSubscribed(true);
+                    if (result && typeof result.catch === 'function') {
+                        result.catch((error) => console.warn('[WebMeet] Failed to subscribe remote track:', error));
+                    }
                 }
             } catch (error) {
                 console.warn('[WebMeet] Failed to subscribe remote track:', error);
             }
         };
 
-        const subscribeParticipantPublications = (participant, TrackRef = null) => {
+        const subscribeParticipantPublications = (participant, TrackRef = null, livekitRef = null) => {
             if (!participant?.trackPublications?.values) return;
             for (const publication of participant.trackPublications.values()) {
-                subscribePublication(publication, participant);
+                subscribePublication(publication, participant, TrackRef, livekitRef);
                 if (publication?.track) {
                     renderPublication(participant, publication, publication.track, TrackRef);
                 }
             }
         };
 
-        const subscribeRemotePublications = (TrackRef = null) => {
+        const subscribeRemotePublications = (TrackRef = null, livekitRef = null) => {
             if (!this.room?.remoteParticipants?.values) return;
             for (const participant of this.room.remoteParticipants.values()) {
-                subscribeParticipantPublications(participant, TrackRef);
+                subscribeParticipantPublications(participant, TrackRef, livekitRef);
             }
         };
 
@@ -1368,8 +1379,8 @@ export class WebMeetDashboardModal {
                 this.state.roomState = 'Connecting';
                 this.renderMeetingSummary();
             },
-            onTrackPublished: (publication, participant, { Track }) => {
-                subscribePublication(publication, participant);
+            onTrackPublished: (publication, participant, { Track, livekit }) => {
+                subscribePublication(publication, participant, Track, livekit);
                 if (publication?.track) {
                     renderPublication(participant, publication, publication.track, Track);
                 }
@@ -1395,8 +1406,8 @@ export class WebMeetDashboardModal {
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
             },
-            onParticipantConnected: (participant, { Track }) => {
-                subscribeParticipantPublications(participant, Track);
+            onParticipantConnected: (participant, { Track, livekit }) => {
+                subscribeParticipantPublications(participant, Track, livekit);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onParticipantDisconnected: (participant, { Track }) => {
@@ -1457,9 +1468,9 @@ export class WebMeetDashboardModal {
             onDisconnected: () => {
                 this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
             },
-            onConnected: ({ Track }) => {
+            onConnected: ({ Track, livekit }) => {
                 this.state.roomState = 'Connected';
-                subscribeRemotePublications(Track);
+                subscribeRemotePublications(Track, livekit);
                 this.syncParticipantsFromRoom(this.room, Track);
                 this.startPresenceHeartbeat();
                 this.renderMeetingSummary();
