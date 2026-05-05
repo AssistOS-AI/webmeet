@@ -14,6 +14,11 @@ const PRESENCE_TTL_MS_VAR = 'PLOINKY_WEBMEET_PRESENCE_TTL_MS';
 const DEFAULT_RETENTION_DAYS = 30;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
 const DEFAULT_ROOM_TITLE = 'General';
+const DEFAULT_STUN_URLS = [
+    'stun:global.stun.twilio.com:3478',
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302'
+];
 const ACTIVE_RECORDING_STATUSES = new Set([
     'recording',
     'EGRESS_STARTING',
@@ -304,6 +309,60 @@ function buildRoomName(prefix, workspaceId, meetingId) {
         .slice(0, 160);
 }
 
+function splitCsvEnv(value) {
+    return String(value || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+}
+
+function normalizeTurnHost(value) {
+    return String(value || '')
+        .trim()
+        .replace(/^turns?:\/\//i, '')
+        .replace(/^turns?:/i, '')
+        .replace(/\?.*$/u, '')
+        .replace(/\/+$/u, '');
+}
+
+function buildTurnUrls({ host, port, explicitUrls }) {
+    const urls = splitCsvEnv(explicitUrls);
+    if (urls.length) {
+        return urls;
+    }
+    const normalizedHost = normalizeTurnHost(host);
+    if (!normalizedHost) {
+        return [];
+    }
+    const safePort = String(port || '3478').trim() || '3478';
+    const hostWithPort = /:\d+$/u.test(normalizedHost) ? normalizedHost : `${normalizedHost}:${safePort}`;
+    return [
+        `turn:${hostWithPort}?transport=udp`,
+        `turn:${hostWithPort}?transport=tcp`
+    ];
+}
+
+function buildRtcConfig(context) {
+    const turn = context.turn || {};
+    const username = String(turn.username || '').trim();
+    const credential = String(turn.credential || '').trim();
+    const turnUrls = buildTurnUrls(turn);
+    if (!username || !credential || !turnUrls.length) {
+        return null;
+    }
+    return {
+        iceTransportPolicy: 'all',
+        iceServers: [
+            { urls: DEFAULT_STUN_URLS },
+            {
+                urls: turnUrls,
+                username,
+                credential
+            }
+        ]
+    };
+}
+
 function createLiveKitToken(context, { roomName, identity, name }) {
     if (!context.livekitApiKey || !context.livekitApiSecret) {
         return null;
@@ -541,7 +600,14 @@ export function createStoreContext(startDir = '') {
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
         egressUrl: String(process.env.WEBMEET_EGRESS_URL || '').trim(),
-        recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/recordings').trim() || '/recordings'
+        recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/recordings').trim() || '/recordings',
+        turn: {
+            host: String(process.env.WEBMEET_TURN_EXTERNAL_IP || '').trim(),
+            port: String(process.env.WEBMEET_TURN_PORT || '').trim(),
+            explicitUrls: String(process.env.WEBMEET_TURN_URLS || '').trim(),
+            username: String(process.env.WEBMEET_TURN_USER || '').trim(),
+            credential: String(process.env.WEBMEET_TURN_PASSWORD || '').trim()
+        }
     };
 }
 
@@ -729,6 +795,7 @@ export function joinMeeting(context, { meetingId, displayName, participantId, au
             participant.lastSeenAt = joinedAt;
         }
     });
+    const rtcConfig = buildRtcConfig(context);
     return {
         meeting: {
             id: record.meetingId,
@@ -743,7 +810,8 @@ export function joinMeeting(context, { meetingId, displayName, participantId, au
         livekitUrl: context.livekitPublicUrl,
         roomName: record.roomName,
         participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: effectiveDisplayName }),
-        participantIdentity: participant.id
+        participantIdentity: participant.id,
+        ...(rtcConfig ? { rtcConfig } : {})
     };
 }
 

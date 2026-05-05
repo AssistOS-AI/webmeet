@@ -58,6 +58,35 @@
                     "default": "http://webmeetLivekitEgress:7980"
                 },
                 {
+                    "name": "WEBMEET_TURN_EXTERNAL_IP",
+                    "required": false,
+                    "default": "127.0.0.1"
+                },
+                {
+                    "name": "WEBMEET_TURN_PORT",
+                    "required": false,
+                    "default": "3478"
+                },
+                {
+                    "name": "WEBMEET_TURN_URLS",
+                    "required": false
+                },
+                {
+                    "name": "WEBMEET_TURN_REALM",
+                    "required": false,
+                    "default": "webmeet.local"
+                },
+                {
+                    "name": "WEBMEET_TURN_USER",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
+                    "name": "WEBMEET_TURN_PASSWORD",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
                     "name": "WEBMEET_ROOM_PREFIX",
                     "required": false,
                     "default": "webmeet"
@@ -123,6 +152,35 @@
                     "default": "http://webmeetLivekitEgress:7980"
                 },
                 {
+                    "name": "WEBMEET_TURN_EXTERNAL_IP",
+                    "required": false,
+                    "default": "127.0.0.1"
+                },
+                {
+                    "name": "WEBMEET_TURN_PORT",
+                    "required": false,
+                    "default": "13478"
+                },
+                {
+                    "name": "WEBMEET_TURN_URLS",
+                    "required": false
+                },
+                {
+                    "name": "WEBMEET_TURN_REALM",
+                    "required": false,
+                    "default": "webmeet.local"
+                },
+                {
+                    "name": "WEBMEET_TURN_USER",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
+                    "name": "WEBMEET_TURN_PASSWORD",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
                     "name": "WEBMEET_ROOM_PREFIX",
                     "required": false,
                     "default": "webmeet"
@@ -180,6 +238,33 @@
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_TURN_EXTERNAL_IP",
+                    "required": true
+                },
+                {
+                    "name": "WEBMEET_TURN_PORT",
+                    "required": false,
+                    "default": "3478"
+                },
+                {
+                    "name": "WEBMEET_TURN_URLS",
+                    "required": false
+                },
+                {
+                    "name": "WEBMEET_TURN_REALM",
+                    "required": false,
+                    "default": "webmeet.local"
+                },
+                {
+                    "name": "WEBMEET_TURN_USER",
+                    "required": false,
+                    "default": "webmeet"
+                },
+                {
+                    "name": "WEBMEET_TURN_PASSWORD",
                     "required": true
                 },
                 {
