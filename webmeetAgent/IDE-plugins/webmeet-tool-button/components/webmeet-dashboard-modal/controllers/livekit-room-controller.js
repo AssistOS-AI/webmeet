@@ -30,8 +30,8 @@ export class LivekitRoomController {
         const audioCaptureDefaults = this.getAudioCaptureDefaults();
 
         const room = new Room({
-            adaptiveStream: false,
-            dynacast: false,
+            adaptiveStream: true,
+            dynacast: true,
             audioCaptureDefaults,
             rtcConfig: this.buildRtcConfigForSession(session)
         });
