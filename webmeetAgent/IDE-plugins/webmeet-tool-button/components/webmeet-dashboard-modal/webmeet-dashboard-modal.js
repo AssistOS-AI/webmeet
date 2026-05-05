@@ -1328,6 +1328,38 @@ export class WebMeetDashboardModal {
             }
         };
 
+        const subscribePublication = (publication, participant = null) => {
+            const participantId = String(participant?.identity || '').trim();
+            const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
+            if (!publication || !participantId || participantId === localParticipantId) return;
+            if (publication.isSubscribed || typeof publication.setSubscribed !== 'function') return;
+            try {
+                const result = publication.setSubscribed(true);
+                if (result && typeof result.catch === 'function') {
+                    result.catch((error) => console.warn('[WebMeet] Failed to subscribe remote track:', error));
+                }
+            } catch (error) {
+                console.warn('[WebMeet] Failed to subscribe remote track:', error);
+            }
+        };
+
+        const subscribeParticipantPublications = (participant, TrackRef = null) => {
+            if (!participant?.trackPublications?.values) return;
+            for (const publication of participant.trackPublications.values()) {
+                subscribePublication(publication, participant);
+                if (publication?.track) {
+                    renderPublication(participant, publication, publication.track, TrackRef);
+                }
+            }
+        };
+
+        const subscribeRemotePublications = (TrackRef = null) => {
+            if (!this.room?.remoteParticipants?.values) return;
+            for (const participant of this.room.remoteParticipants.values()) {
+                subscribeParticipantPublications(participant, TrackRef);
+            }
+        };
+
         await this.roomController.connect(this.state.session, {
             onRoomCreated: ({ room }) => {
                 this.room = room;
@@ -1335,6 +1367,13 @@ export class WebMeetDashboardModal {
             onConnecting: () => {
                 this.state.roomState = 'Connecting';
                 this.renderMeetingSummary();
+            },
+            onTrackPublished: (publication, participant, { Track }) => {
+                subscribePublication(publication, participant);
+                if (publication?.track) {
+                    renderPublication(participant, publication, publication.track, Track);
+                }
+                this.syncParticipantsFromRoom(this.room, Track);
             },
             onTrackSubscribed: (track, publication, participant, { Track }) => {
                 renderPublication(participant, publication, track, Track);
@@ -1356,7 +1395,8 @@ export class WebMeetDashboardModal {
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
             },
-            onParticipantConnected: (_participant, { Track }) => {
+            onParticipantConnected: (participant, { Track }) => {
+                subscribeParticipantPublications(participant, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onParticipantDisconnected: (participant, { Track }) => {
@@ -1419,6 +1459,7 @@ export class WebMeetDashboardModal {
             },
             onConnected: ({ Track }) => {
                 this.state.roomState = 'Connected';
+                subscribeRemotePublications(Track);
                 this.syncParticipantsFromRoom(this.room, Track);
                 this.startPresenceHeartbeat();
                 this.renderMeetingSummary();
