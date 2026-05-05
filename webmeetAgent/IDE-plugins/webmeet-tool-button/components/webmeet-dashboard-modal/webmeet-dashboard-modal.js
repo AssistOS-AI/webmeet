@@ -1380,13 +1380,31 @@ export class WebMeetDashboardModal {
             const participantId = String(participant?.identity || '').trim();
             const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
             if (!publication || !participantId || participantId === localParticipantId) return;
+            const Track = TrackRef || window.LivekitClient?.Track || null;
 
             logMediaEvent('subscribePublication', publication, participant, { reason });
             if (publication.track) {
                 renderPublication(participant, publication, publication.track, TrackRef);
             }
 
-            if (publication.isSubscribed && publication.track) return;
+            if (publication.isSubscribed && publication.track) {
+                const mediaStreamTrack = publication.track.mediaStreamTrack || null;
+                const isVideoTrack = Track
+                    ? publication.kind === Track.Kind.Video
+                    : publication.track.kind === 'video';
+                const isStuckRemoteVideo = isVideoTrack
+                    && !publication.isMuted
+                    && mediaStreamTrack?.readyState === 'live'
+                    && mediaStreamTrack.muted === true;
+                if (isStuckRemoteVideo) {
+                    logMediaEvent('refresh-muted-video-subscription', publication, participant, { reason });
+                    setPublicationSubscribed(publication, false, participant, `${reason}:muted-refresh-off`);
+                    window.setTimeout(() => {
+                        setPublicationSubscribed(publication, true, participant, `${reason}:muted-refresh-on`);
+                    }, 125);
+                }
+                return;
+            }
 
             if (publication.isSubscribed && !publication.track) {
                 setPublicationSubscribed(publication, false, participant, `${reason}:refresh-off`);
@@ -1414,7 +1432,7 @@ export class WebMeetDashboardModal {
         };
 
         const scheduleRemoteSubscriptionSweep = (TrackRef = null, reason = 'scheduled-sweep') => {
-            for (const delay of [250, 1000, 2500]) {
+            for (const delay of [250, 1000, 2500, 5000]) {
                 window.setTimeout(() => subscribeRemotePublications(TrackRef, `${reason}:${delay}`), delay);
             }
         };
