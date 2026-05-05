@@ -28,12 +28,12 @@ export class LivekitRoomController {
         this.restoreRtcPeerConnection?.();
         this.restoreRtcPeerConnection = this.installRtcPeerConnectionOverride(session);
         const audioCaptureDefaults = this.getAudioCaptureDefaults();
+        const rtcConfig = this.buildRtcConfigForSession(session);
 
         const room = new Room({
             adaptiveStream: true,
             dynacast: true,
-            audioCaptureDefaults,
-            rtcConfig: this.buildRtcConfigForSession(session)
+            audioCaptureDefaults
         });
         this.room = room;
         hooks.onRoomCreated?.({ room, livekit, Track, RoomEvent });
@@ -75,7 +75,11 @@ export class LivekitRoomController {
 
         try {
             hooks.onConnecting?.({ room, livekit, Track, RoomEvent });
-            await room.connect(session.livekitUrl, session.participantToken);
+            await room.connect(
+                session.livekitUrl,
+                session.participantToken,
+                rtcConfig ? { rtcConfig } : undefined
+            );
             hooks.onConnected?.({ room, livekit, Track, RoomEvent });
             return { room, livekit, Track, RoomEvent };
         } catch (error) {
