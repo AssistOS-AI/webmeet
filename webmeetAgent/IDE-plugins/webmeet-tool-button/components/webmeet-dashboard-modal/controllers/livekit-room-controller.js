@@ -45,6 +45,9 @@ export class LivekitRoomController {
             .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
                 hooks.onTrackUnsubscribed?.(track, publication, participant, { room, livekit, Track, RoomEvent });
             })
+            .on(RoomEvent.TrackPublished, (publication, participant) => {
+                hooks.onRemoteTrackPublished?.(publication, participant, { room, livekit, Track, RoomEvent });
+            })
             .on(RoomEvent.LocalTrackPublished, (publication) => {
                 hooks.onLocalTrackPublished?.(publication, { room, livekit, Track, RoomEvent });
             })

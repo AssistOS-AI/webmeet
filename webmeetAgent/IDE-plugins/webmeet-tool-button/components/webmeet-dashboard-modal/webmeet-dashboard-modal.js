@@ -1356,6 +1356,14 @@ export class WebMeetDashboardModal {
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
             },
+            onRemoteTrackPublished: (publication, participant, { Track }) => {
+                if (publication.isSubscribed && publication.track) {
+                    renderPublication(participant, publication, publication.track, Track);
+                } else if (!publication.isSubscribed && typeof publication.setSubscribed === 'function') {
+                    publication.setSubscribed(true);
+                }
+                this.syncParticipantsFromRoom(this.room, Track);
+            },
             onParticipantConnected: (_participant, { Track }) => {
                 this.syncParticipantsFromRoom(this.room, Track);
             },
@@ -1417,9 +1425,18 @@ export class WebMeetDashboardModal {
             onDisconnected: () => {
                 this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
             },
-            onConnected: ({ Track }) => {
+            onConnected: ({ room, Track }) => {
                 this.state.roomState = 'Connected';
                 this.syncParticipantsFromRoom(this.room, Track);
+                for (const participant of room.remoteParticipants.values()) {
+                    for (const publication of participant.trackPublications.values()) {
+                        if (publication.isSubscribed && publication.track) {
+                            renderPublication(participant, publication, publication.track, Track);
+                        } else if (!publication.isSubscribed && typeof publication.setSubscribed === 'function') {
+                            publication.setSubscribed(true);
+                        }
+                    }
+                }
                 this.startPresenceHeartbeat();
                 this.renderMeetingSummary();
             },
