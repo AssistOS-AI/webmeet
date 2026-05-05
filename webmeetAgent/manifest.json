@@ -87,6 +87,11 @@
                     "default": "webmeet"
                 },
                 {
+                    "name": "WEBMEET_ICE_TRANSPORT_POLICY",
+                    "required": false,
+                    "default": "all"
+                },
+                {
                     "name": "WEBMEET_ROOM_PREFIX",
                     "required": false,
                     "default": "webmeet"
@@ -181,6 +186,11 @@
                     "default": "webmeet"
                 },
                 {
+                    "name": "WEBMEET_ICE_TRANSPORT_POLICY",
+                    "required": false,
+                    "default": "all"
+                },
+                {
                     "name": "WEBMEET_ROOM_PREFIX",
                     "required": false,
                     "default": "webmeet"
@@ -266,6 +276,11 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": true
+                },
+                {
+                    "name": "WEBMEET_ICE_TRANSPORT_POLICY",
+                    "required": false,
+                    "default": "relay"
                 },
                 {
                     "name": "WEBMEET_ROOM_PREFIX",

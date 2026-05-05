@@ -350,8 +350,9 @@ function buildRtcConfig(context) {
     if (!username || !credential || !turnUrls.length) {
         return null;
     }
+    const iceTransportPolicy = String(turn.iceTransportPolicy || '').trim();
     return {
-        iceTransportPolicy: 'all',
+        iceTransportPolicy: iceTransportPolicy === 'relay' ? 'relay' : 'all',
         iceServers: [
             { urls: DEFAULT_STUN_URLS },
             {
@@ -606,7 +607,8 @@ export function createStoreContext(startDir = '') {
             port: String(process.env.WEBMEET_TURN_PORT || '').trim(),
             explicitUrls: String(process.env.WEBMEET_TURN_URLS || '').trim(),
             username: String(process.env.WEBMEET_TURN_USER || '').trim(),
-            credential: String(process.env.WEBMEET_TURN_PASSWORD || '').trim()
+            credential: String(process.env.WEBMEET_TURN_PASSWORD || '').trim(),
+            iceTransportPolicy: String(process.env.WEBMEET_ICE_TRANSPORT_POLICY || '').trim()
         }
     };
 }
