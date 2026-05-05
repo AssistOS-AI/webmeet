@@ -39,9 +39,6 @@ export class LivekitRoomController {
         hooks.onRoomCreated?.({ room, livekit, Track, RoomEvent });
 
         room
-            .on(RoomEvent.TrackPublished, (publication, participant) => {
-                hooks.onTrackPublished?.(publication, participant, { room, livekit, Track, RoomEvent });
-            })
             .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
                 hooks.onTrackSubscribed?.(track, publication, participant, { room, livekit, Track, RoomEvent });
             })
