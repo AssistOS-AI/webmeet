@@ -20,6 +20,11 @@
             "type": "modal"
         },
         {
+            "component": "create-room-modal",
+            "presenter": "CreateRoomModal",
+            "type": "modal"
+        },
+        {
             "component": "webmeet-participant-card",
             "presenter": "WebMeetParticipantCard"
         }

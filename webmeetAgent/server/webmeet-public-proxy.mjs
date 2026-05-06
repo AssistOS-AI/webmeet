@@ -13,6 +13,17 @@ const PUBLIC_ASSET_ROOTS = [
     path.join(PLUGIN_DIR, 'components/webmeet-participant-card'),
     path.join(PLUGIN_DIR, 'vendor')
 ];
+const PUBLIC_SERVICE_PREFIX = '/public-services/webmeet/';
+const INTERNAL_API_PREFIX = '/api/';
+const HTTP_SERVICE_TOOL = '__http_service__';
+const PUBLIC_MCP_METHODS = new Set([
+    'initialize',
+    'notifications/initialized',
+    'notifications/cancelled',
+    'tools/list',
+    'resources/list',
+    'ping'
+]);
 
 const CONTENT_TYPES = new Map([
     ['.css', 'text/css; charset=utf-8'],
@@ -44,30 +55,230 @@ function htmlEscape(value) {
         .replaceAll("'", '&#39;');
 }
 
+let cachedJwtVerify = null;
+let sharedReplayCache = null;
+
+async function loadJwtVerify() {
+    if (cachedJwtVerify) return cachedJwtVerify;
+    const candidates = [
+        process.env.PLOINKY_JWT_VERIFY_MODULE,
+        '/Agent/lib/jwtVerify.mjs',
+        path.resolve(process.cwd(), 'Agent/lib/jwtVerify.mjs'),
+        path.resolve(process.cwd(), '../Agent/lib/jwtVerify.mjs')
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+        try {
+            cachedJwtVerify = await import(candidate);
+            return cachedJwtVerify;
+        } catch (_) {
+            // Try the next runtime-specific location.
+        }
+    }
+    return null;
+}
+
+function readWireSecret() {
+    const hex = String(process.env.PLOINKY_WIRE_SECRET || '').trim();
+    return hex ? Buffer.from(hex, 'hex') : null;
+}
+
+function expectedAudienceForSelf() {
+    const principal = String(process.env.PLOINKY_AGENT_PRINCIPAL || '').trim();
+    if (principal) return principal;
+    const agentName = String(process.env.AGENT_NAME || process.env.WEBMEET_ROUTE_AGENT_NAME || 'webmeetAgent').trim();
+    return agentName ? `agent:${agentName}` : '';
+}
+
 function readPloinkyAuthInfo(req) {
     const raw = String(req.headers?.['x-ploinky-auth-info'] || '').trim();
     if (!raw) return null;
     try {
-        const parsed = JSON.parse(raw);
-        const user = parsed?.user && typeof parsed.user === 'object' ? parsed.user : null;
-        const roles = Array.isArray(user?.roles) ? user.roles.map((role) => String(role || '').trim()) : [];
-        const sessionId = String(parsed?.sessionId || '').trim();
-        const id = String(user?.id || '').trim();
-        return id && sessionId ? { user: { ...user, roles }, sessionId } : null;
+        return JSON.parse(raw);
     } catch {
         return null;
     }
 }
 
-function requirePloinkyIdentity(req, res) {
-    if (readPloinkyAuthInfo(req)) {
-        return true;
+function buildExternalServicePath(pathname) {
+    if (pathname === '/api') return PUBLIC_SERVICE_PREFIX.replace(/\/+$/g, '');
+    if (!pathname.startsWith(INTERNAL_API_PREFIX)) return pathname;
+    return `${PUBLIC_SERVICE_PREFIX}${pathname.slice(INTERNAL_API_PREFIX.length)}`;
+}
+
+function buildHttpServiceBody(req, url) {
+    return {
+        tool: HTTP_SERVICE_TOOL,
+        arguments: {
+            method: req.method || 'GET',
+            path: buildExternalServicePath(url.pathname || ''),
+            search: url.search || ''
+        }
+    };
+}
+
+function hasGuestRole(payload) {
+    const roles = Array.isArray(payload?.usr?.roles) ? payload.usr.roles : [];
+    return roles.some((role) => String(role || '').trim().toLowerCase() === 'guest');
+}
+
+function readAuthorizationBearer(req) {
+    const raw = req.headers?.authorization || req.headers?.Authorization;
+    const header = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof header !== 'string' || !header.toLowerCase().startsWith('bearer ')) {
+        return '';
     }
+    return header.slice(7).trim();
+}
+
+async function verifyRouterInvocationToken(invocationToken, { expectedTool, bodyObject }) {
+    const jwt = await loadJwtVerify();
+    if (!jwt?.verifyInvocationToken) {
+        return { ok: false, reason: 'jwt verifier unavailable' };
+    }
+    const secret = readWireSecret();
+    if (!secret) {
+        return { ok: false, reason: 'PLOINKY_WIRE_SECRET not configured' };
+    }
+    const audience = expectedAudienceForSelf();
+    if (!audience) {
+        return { ok: false, reason: 'agent audience unavailable' };
+    }
+    if (!sharedReplayCache && typeof jwt.createMemoryReplayCache === 'function') {
+        sharedReplayCache = jwt.createMemoryReplayCache({ maxSize: 4096 });
+    }
+    try {
+        const { payload } = jwt.verifyInvocationToken(invocationToken, {
+            secret,
+            expectedAudience: audience,
+            expectedTool,
+            bodyObject,
+            ...(sharedReplayCache ? { replayCache: sharedReplayCache } : {})
+        });
+        return { ok: true, payload };
+    } catch (error) {
+        return { ok: false, reason: error?.message || String(error) };
+    }
+}
+
+async function verifyRouterGuestInvocation(req, url) {
+    const authInfo = readPloinkyAuthInfo(req);
+    const invocationToken = String(authInfo?.invocationToken || '').trim();
+    if (!invocationToken) {
+        return { ok: false, reason: 'missing router invocation token' };
+    }
+    const verified = await verifyRouterInvocationToken(invocationToken, {
+        expectedTool: HTTP_SERVICE_TOOL,
+        bodyObject: buildHttpServiceBody(req, url)
+    });
+    if (!verified.ok) {
+        return verified;
+    }
+    const { payload } = verified;
+    try {
+        if (!hasGuestRole(payload)) {
+            return { ok: false, reason: 'guest role required' };
+        }
+        return { ok: true, payload };
+    } catch (error) {
+        return { ok: false, reason: error?.message || String(error) };
+    }
+}
+
+async function requirePloinkyGuestIdentity(req, res, url) {
+    const verified = await verifyRouterGuestInvocation(req, url);
+    if (verified.ok) return true;
     writeResponse(res, 401, JSON.stringify({ error: 'Ploinky guest session required.' }), {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-store'
     });
     return false;
+}
+
+function parseJsonRpcPayload(bodyBuffer) {
+    try {
+        return JSON.parse(bodyBuffer.toString('utf8') || '{}');
+    } catch {
+        return null;
+    }
+}
+
+function asJsonRpcMessages(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (payload && typeof payload === 'object') return [payload];
+    return [];
+}
+
+function buildMcpInvocationSpec(message) {
+    const method = typeof message?.method === 'string' ? message.method : '';
+    if (method === 'tools/call') {
+        const params = message.params && typeof message.params === 'object' ? message.params : {};
+        const name = typeof params.name === 'string'
+            ? params.name
+            : typeof params.tool === 'string'
+                ? params.tool
+                : '';
+        if (!name) return { ok: false, reason: 'missing tool name' };
+        const argPayload = params.arguments && typeof params.arguments === 'object' && !Array.isArray(params.arguments)
+            ? { ...params.arguments }
+            : {};
+        return {
+            ok: true,
+            expectedTool: name,
+            bodyObject: { tool: name, arguments: argPayload }
+        };
+    }
+    if (method === 'resources/read') {
+        const params = message.params && typeof message.params === 'object' ? message.params : {};
+        const uri = typeof params.uri === 'string' ? params.uri : '';
+        if (!uri) return { ok: false, reason: 'missing resource uri' };
+        return {
+            ok: true,
+            expectedTool: 'resources/read',
+            bodyObject: { tool: 'resources/read', arguments: { uri } }
+        };
+    }
+    return { ok: false, reason: `method requires router invocation: ${method || 'unknown'}` };
+}
+
+function writeMcpRejection(res, message, reason) {
+    const id = message && Object.prototype.hasOwnProperty.call(message, 'id') ? message.id : null;
+    writeResponse(res, 200, JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        error: {
+            code: -32600,
+            message: `Invocation rejected: ${reason}`
+        }
+    }), {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store'
+    });
+}
+
+async function requireMcpInvocation(req, res, message) {
+    const method = typeof message?.method === 'string' ? message.method : '';
+    if (PUBLIC_MCP_METHODS.has(method)) {
+        return true;
+    }
+    const token = readAuthorizationBearer(req);
+    if (!token) {
+        writeMcpRejection(res, message, 'missing router invocation token');
+        return false;
+    }
+    const spec = buildMcpInvocationSpec(message);
+    if (!spec.ok) {
+        writeMcpRejection(res, message, spec.reason);
+        return false;
+    }
+    const verified = await verifyRouterInvocationToken(token, {
+        expectedTool: spec.expectedTool,
+        bodyObject: spec.bodyObject
+    });
+    if (!verified.ok) {
+        writeMcpRejection(res, message, verified.reason);
+        return false;
+    }
+    return true;
 }
 
 function sendGuestPage(req, res) {
@@ -428,6 +639,72 @@ function proxy(req, res, targetPort, targetPath) {
     req.pipe(upstream, { end: true });
 }
 
+function proxyBuffered(req, res, targetPort, targetPath, bodyBuffer) {
+    const headers = {
+        ...req.headers,
+        host: `127.0.0.1:${targetPort}`,
+        'content-length': String(bodyBuffer.length)
+    };
+    delete headers['transfer-encoding'];
+    delete headers['Transfer-Encoding'];
+
+    const upstream = http.request({
+        hostname: '127.0.0.1',
+        port: targetPort,
+        path: targetPath,
+        method: req.method,
+        headers
+    }, (upstreamRes) => {
+        res.writeHead(upstreamRes.statusCode || 200, upstreamRes.headers);
+        upstreamRes.pipe(res, { end: true });
+    });
+    upstream.on('error', (error) => {
+        if (!res.headersSent) {
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+        }
+        res.end(JSON.stringify({ error: 'upstream error', detail: String(error?.message || error) }));
+    });
+    req.on('aborted', () => upstream.destroy());
+    upstream.end(bodyBuffer);
+}
+
+async function proxyMcp(req, res, targetPath) {
+    const method = String(req.method || 'GET').toUpperCase();
+    if (method !== 'POST') {
+        proxy(req, res, MCP_PORT, targetPath);
+        return;
+    }
+
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', async () => {
+        try {
+            const bodyBuffer = Buffer.concat(chunks);
+            const payload = parseJsonRpcPayload(bodyBuffer);
+            if (payload) {
+                const messages = asJsonRpcMessages(payload);
+                for (const message of messages) {
+                    if (!(await requireMcpInvocation(req, res, message))) {
+                        return;
+                    }
+                }
+            }
+            proxyBuffered(req, res, MCP_PORT, targetPath, bodyBuffer);
+        } catch (error) {
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+            }
+            res.end(JSON.stringify({ error: 'mcp proxy failure', detail: String(error?.message || error) }));
+        }
+    });
+    req.on('error', (error) => {
+        if (!res.headersSent) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+        }
+        res.end(JSON.stringify({ error: 'request error', detail: String(error?.message || error) }));
+    });
+}
+
 function isAllowedPublicApi(req, pathname) {
     const method = String(req.method || 'GET').toUpperCase();
     return method === 'POST' && (
@@ -441,6 +718,15 @@ function isAllowedPublicApi(req, pathname) {
 }
 
 const server = http.createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+        if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+        }
+        res.end(JSON.stringify({ error: 'proxy failure', detail: String(error?.message || error) }));
+    });
+});
+
+async function handleRequest(req, res) {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const pathname = url.pathname || '/';
 
@@ -451,7 +737,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/guest') {
-        if (!requirePloinkyIdentity(req, res)) return;
+        if (!(await requirePloinkyGuestIdentity(req, res, url))) return;
         sendGuestPage(req, res);
         return;
     }
@@ -462,19 +748,19 @@ const server = http.createServer((req, res) => {
     }
 
     if (pathname === '/mcp' || pathname.startsWith('/mcp/')) {
-        proxy(req, res, MCP_PORT, `${pathname}${url.search || ''}`);
+        await proxyMcp(req, res, `${pathname}${url.search || ''}`);
         return;
     }
 
     if (isAllowedPublicApi(req, pathname)) {
-        if (!requirePloinkyIdentity(req, res)) return;
+        if (!(await requirePloinkyGuestIdentity(req, res, url))) return;
         proxy(req, res, API_PORT, `${pathname}${url.search || ''}`);
         return;
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found.' }));
-});
+}
 
 server.listen(PUBLIC_PORT, '0.0.0.0', () => {
     process.stdout.write(`webmeet-public-proxy listening on 0.0.0.0:${PUBLIC_PORT}\n`);

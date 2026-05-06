@@ -90,10 +90,7 @@ export class WebMeetToolButton {
         event?.stopPropagation?.();
         const targetUrl = new URL(window.location.href);
         targetUrl.hash = 'webmeet-dashboard-page';
-        const opened = window.open(targetUrl.toString(), '_blank', 'noopener');
+        window.open(targetUrl.toString(), '_blank', 'noopener');
         this.scheduleInitialTabLoaderCleanup();
-        if (!opened) {
-            window.location.href = targetUrl.toString();
-        }
     };
 }

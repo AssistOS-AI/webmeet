@@ -31,6 +31,7 @@ WebMeet supports two types of rooms to accommodate different collaboration scena
 **Access Control**:
 - Accessible via unique shareable URL containing a guest token
 - No workspace authentication required
+- `webmeetAgent/manifest.json` declares the invite path as a guest-only HTTP service, so the Ploinky router sends a signed `__http_service__` invocation to the WebMeet proxy
 - Guests must provide their name before joining
 - Guests receive a unique participant identity
 
@@ -93,6 +94,7 @@ POST /api/meetings/:meetingId/join-guest
     participantId?: string;
 }
 // No authentication required
+// Must arrive through /public-services/webmeet/... with a router-issued guest invocation
 ```
 
 ## Guest Room Flow
@@ -105,7 +107,7 @@ POST /api/meetings/:meetingId/join-guest
    - Room title input
 3. Admin selects "Guest Room" and provides title
 4. System creates room and generates unique `guestToken`
-5. Guest URL is displayed: `https://{host}/webmeet/join?room={roomId}&token={guestToken}`
+5. Guest URL is displayed: `https://{host}/public-services/webmeet/guest?room={roomId}&token={guestToken}`
 6. Admin can copy and share the link
 
 ### 2. Guest Access
@@ -121,6 +123,9 @@ POST /api/meetings/:meetingId/join-guest
 
 - Guest tokens are UUID v4 random strings
 - Tokens are stored encrypted in the meeting record
+- Guest HTTP routes reject unsigned `x-ploinky-auth-info` headers and require a verified Ploinky invocation token with the guest role
+- Guest access is limited to the WebMeet public-service route; it must not expose Explorer or generic MCP agent routes
+- WebMeet must not set manifest-level `guest: true`; unlike visitor-only agents such as webAssist, WebMeet guests are scoped to the invite HTTP service so they cannot reach the agent's general MCP tools
 - Guest rooms can be converted to team rooms (future feature)
 - Guest access can be revoked by regenerating token (future feature)
 
@@ -128,7 +133,7 @@ POST /api/meetings/:meetingId/join-guest
 
 ### Create Room Modal
 
-**Location**: `explorer/web-components/modals/create-room-modal/`
+**Location**: `webmeetAgent/IDE-plugins/webmeet-tool-button/components/create-room-modal/`
 
 **Structure**:
 - Modal header with title "Create New Room"

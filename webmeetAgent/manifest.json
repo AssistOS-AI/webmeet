@@ -18,6 +18,16 @@
         "webmeetAgent/data": "/data",
         "webmeet/recordings": "/recordings"
     },
+    "httpServices": [
+        {
+            "externalPrefix": "/public-services/webmeet/",
+            "internalPrefix": "/api/",
+            "auth": "guest",
+            "guestScope": "webmeet-public-service",
+            "forceGuest": true,
+            "notFoundMessage": "WebMeet route not found."
+        }
+    ],
     "profiles": {
         "default": {
             "env": [

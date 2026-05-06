@@ -790,6 +790,7 @@ export function joinGuestMeeting(context, { meetingId, guestToken, displayName, 
         }
         recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participantIdentity, guest: true });
     });
+    const rtcConfig = buildRtcConfig(context);
 
     return {
         meeting: {
@@ -802,6 +803,7 @@ export function joinGuestMeeting(context, { meetingId, guestToken, displayName, 
             createdAt: record.createdAt,
             closedAt: record.closedAt || null
         },
+        ...(rtcConfig ? { rtcConfig } : {}),
         participant,
         livekitUrl: context.livekitPublicUrl,
         roomName: record.roomName,
