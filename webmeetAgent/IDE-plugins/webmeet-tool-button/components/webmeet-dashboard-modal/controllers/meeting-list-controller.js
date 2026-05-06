@@ -15,25 +15,40 @@ export class MeetingListController {
         this.meetingListElement = element || null;
     }
 
-    render(meetings, selectedMeetingId, meetingParticipantsById, canManageRooms = false) {
+    render(meetings, selectedMeetingId, meetingParticipantsById, canManageRooms = false, joiningMeetingId = '') {
         if (!this.meetingListElement) return;
         const safeMeetings = Array.isArray(meetings) ? meetings : [];
+        const activeJoiningId = String(joiningMeetingId || '').trim();
         this.meetingListElement.innerHTML = safeMeetings.map((entry) => {
             const isGuestRoom = entry.roomType === 'guest';
+            const isJoining = String(entry.id || '').trim() === activeJoiningId;
             return `
-            <div class="webmeet-list-item ${entry.id === selectedMeetingId ? 'is-selected' : ''}" data-id="${escapeHtml(entry.id)}">
+            <div class="webmeet-list-item ${entry.id === selectedMeetingId ? 'is-selected' : ''} ${isJoining ? 'is-joining' : ''} ${activeJoiningId ? 'is-join-locked' : ''}" data-id="${escapeHtml(entry.id)}" aria-busy="${isJoining ? 'true' : 'false'}">
                 <div class="webmeet-meeting-row" data-local-action="selectAndJoinMeeting" data-id="${escapeHtml(entry.id)}">
                     <div class="webmeet-room-identity">
-                        <span class="webmeet-room-icon" aria-hidden="true">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="3" y="6" width="14" height="12" rx="2" ry="2"></rect>
-                                <polygon points="17 10 22 7 22 17 17 14"></polygon>
-                            </svg>
+                        <span class="webmeet-room-icon ${isGuestRoom ? 'is-guest' : 'is-team'}" aria-hidden="true" title="${isGuestRoom ? 'Guest Room' : 'Team Room'}">
+                            ${isGuestRoom ? `
+                                <!-- Guest Room Icon - External Link -->
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                            ` : `
+                                <!-- Team Room Icon - Users/People -->
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </svg>
+                            `}
                         </span>
                         <div class="webmeet-room-copy">
                             <strong class="webmeet-meeting-title">${escapeHtml(entry.title)}</strong>
                         </div>
                     </div>
+                    ${isJoining ? '<span class="webmeet-room-join-spinner" aria-hidden="true"></span>' : ''}
                 </div>
                 ${canManageRooms ? `
                     <div class="webmeet-room-actions" aria-label="Room actions">

@@ -137,6 +137,7 @@ export class WebMeetDashboardModal {
             meetingParticipantsById: {},
             selectedWorkspaceId: '',
             selectedMeetingId: '',
+            joiningMeetingId: '',
             canManageRooms: undefined,
             session: null,
             roomState: 'Disconnected',
@@ -1216,7 +1217,8 @@ export class WebMeetDashboardModal {
             this.state.meetings,
             this.state.selectedMeetingId,
             this.state.meetingParticipantsById,
-            this.canManageRooms()
+            this.canManageRooms(),
+            this.state.joiningMeetingId
         );
     }
 
@@ -1441,6 +1443,7 @@ export class WebMeetDashboardModal {
     async selectAndJoinMeeting(element) {
         const nextMeetingId = String(element?.dataset?.id || '').trim();
         if (!nextMeetingId) return;
+        if (this.state.joiningMeetingId) return;
         const currentMeetingId = String(this.state.session?.meeting?.id || '').trim();
         const currentlyJoined = Boolean(this.state.session?.participantIdentity);
         const switchingRoom = Boolean(currentlyJoined && currentMeetingId && currentMeetingId !== nextMeetingId);
@@ -1467,16 +1470,22 @@ export class WebMeetDashboardModal {
         }
 
         this.state.selectedMeetingId = nextMeetingId;
+        this.state.joiningMeetingId = nextMeetingId;
+        this.renderMeetingList();
         try {
             await this.loadMeetingDetails({ expectedMeetingId: nextMeetingId });
-        } finally {
             this.renderAll();
+            if (!this.selectedMeeting) {
+                return;
+            }
+            const defaultName = String(this.state.session?.participant?.displayName || '').trim();
+            await this.joinMeeting({ displayNameOverride: defaultName });
+        } finally {
+            if (this.state.joiningMeetingId === nextMeetingId) {
+                this.state.joiningMeetingId = '';
+                this.renderMeetingList();
+            }
         }
-        if (!this.selectedMeeting) {
-            return;
-        }
-        const defaultName = String(this.state.session?.participant?.displayName || '').trim();
-        await this.joinMeeting({ displayNameOverride: defaultName });
     }
 
     async createMeeting() {
