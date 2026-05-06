@@ -34,6 +34,11 @@
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
                 "PLOINKY_WORKSPACE_ROOT",
+                {
+                    "name": "PLOINKY_WEBMEET_MASTER_KEY",
+                    "required": false,
+                    "default": "dev-webmeet-master-key"
+                },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
@@ -133,6 +138,11 @@
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
                 "PLOINKY_WORKSPACE_ROOT",
+                {
+                    "name": "PLOINKY_WEBMEET_MASTER_KEY",
+                    "required": false,
+                    "default": "dev-webmeet-master-key"
+                },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
@@ -232,6 +242,10 @@
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
                 "PLOINKY_WORKSPACE_ROOT",
+                {
+                    "name": "PLOINKY_WEBMEET_MASTER_KEY",
+                    "required": true
+                },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
