@@ -833,6 +833,30 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     padding: 6px 10px;
 }
 
+.webmeet-media-slider-row input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+}
+
+.webmeet-media-slider-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+}
+
+.webmeet-media-slider-label span {
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+.webmeet-media-warning {
+    color: var(--danger);
+    font-size: 0.74rem;
+    line-height: 1.25;
+}
+
 .webmeet-media-settings-flags {
     grid-column: 1 / -1;
     display: flex;

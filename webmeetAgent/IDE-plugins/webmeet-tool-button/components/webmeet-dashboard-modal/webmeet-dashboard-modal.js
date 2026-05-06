@@ -157,7 +157,9 @@ export class WebMeetDashboardModal {
                 audioOutputDeviceId: '',
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true
+                autoGainControl: true,
+                microphoneGain: 1,
+                outputVolume: 1
             },
             mediaSettingsPanelVisible: false,
             participants: [],
@@ -361,6 +363,11 @@ export class WebMeetDashboardModal {
         this.echoCancellationInput = this.element.querySelector('#webmeetAudioEchoCancellation');
         this.noiseSuppressionInput = this.element.querySelector('#webmeetAudioNoiseSuppression');
         this.autoGainControlInput = this.element.querySelector('#webmeetAudioAutoGainControl');
+        this.microphoneGainInput = this.element.querySelector('#webmeetMicrophoneGain');
+        this.microphoneGainValue = this.element.querySelector('#webmeetMicrophoneGainValue');
+        this.microphoneGainWarning = this.element.querySelector('#webmeetMicrophoneGainWarning');
+        this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
+        this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
@@ -498,7 +505,9 @@ export class WebMeetDashboardModal {
             audioOutputDeviceId: '',
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            microphoneGain: 1,
+            outputVolume: 1
         };
         try {
             const raw = String(window?.localStorage?.getItem('webmeet.mediaSettings') || '').trim();
@@ -506,11 +515,29 @@ export class WebMeetDashboardModal {
             const parsed = JSON.parse(raw);
             return {
                 ...fallback,
-                ...parsed
+                ...parsed,
+                microphoneGain: this.normalizeMicrophoneGain(parsed?.microphoneGain),
+                outputVolume: this.normalizeOutputVolume(parsed?.outputVolume)
             };
         } catch {
             return fallback;
         }
+    }
+
+    normalizeMicrophoneGain(value) {
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue)) return 1;
+        return Math.min(2, Math.max(0, numberValue));
+    }
+
+    normalizeOutputVolume(value) {
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue)) return 1;
+        return Math.min(1, Math.max(0, numberValue));
+    }
+
+    formatPercent(value) {
+        return `${Math.round(Number(value || 0) * 100)}%`;
     }
 
     persistMediaSettings() {
@@ -585,6 +612,15 @@ export class WebMeetDashboardModal {
         if (this.echoCancellationInput) this.echoCancellationInput.checked = Boolean(settings.echoCancellation);
         if (this.noiseSuppressionInput) this.noiseSuppressionInput.checked = Boolean(settings.noiseSuppression);
         if (this.autoGainControlInput) this.autoGainControlInput.checked = Boolean(settings.autoGainControl);
+        const microphoneGain = this.normalizeMicrophoneGain(settings.microphoneGain);
+        const outputVolume = this.normalizeOutputVolume(settings.outputVolume);
+        if (this.microphoneGainInput) this.microphoneGainInput.value = String(microphoneGain);
+        if (this.microphoneGainValue) this.microphoneGainValue.textContent = this.formatPercent(microphoneGain);
+        if (this.microphoneGainWarning) {
+            this.microphoneGainWarning.classList.toggle('webmeet-hidden', microphoneGain <= 1.25);
+        }
+        if (this.outputVolumeInput) this.outputVolumeInput.value = String(outputVolume);
+        if (this.outputVolumeValue) this.outputVolumeValue.textContent = this.formatPercent(outputVolume);
         if (this.mediaSettingsPanel) {
             this.mediaSettingsPanel.classList.toggle('webmeet-hidden', !this.state.mediaSettingsPanelVisible);
         }
@@ -608,19 +644,24 @@ export class WebMeetDashboardModal {
             audioOutputDeviceId: String(this.audioOutputSelect?.value || '').trim(),
             echoCancellation: Boolean(this.echoCancellationInput?.checked),
             noiseSuppression: Boolean(this.noiseSuppressionInput?.checked),
-            autoGainControl: Boolean(this.autoGainControlInput?.checked)
+            autoGainControl: Boolean(this.autoGainControlInput?.checked),
+            microphoneGain: this.normalizeMicrophoneGain(this.microphoneGainInput?.value),
+            outputVolume: this.normalizeOutputVolume(this.outputVolumeInput?.value)
         };
     }
 
     async applyAudioOutputDeviceToElement(mediaElement) {
         const outputId = String(this.state.mediaSettings.audioOutputDeviceId || '').trim();
-        if (!mediaElement || typeof mediaElement.setSinkId !== 'function') {
+        if (!mediaElement) {
             return;
         }
-        try {
-            await mediaElement.setSinkId(outputId || '');
-        } catch (_) {
-            // ignore output routing errors
+        mediaElement.volume = this.normalizeOutputVolume(this.state.mediaSettings.outputVolume);
+        if (typeof mediaElement.setSinkId === 'function') {
+            try {
+                await mediaElement.setSinkId(outputId || '');
+            } catch (_) {
+                // ignore output routing errors
+            }
         }
     }
 
@@ -637,13 +678,7 @@ export class WebMeetDashboardModal {
     async reapplyActiveInputDevices() {
         if (!this.room?.localParticipant) return;
         if (this.state.media.microphone) {
-            try {
-                await this.room.localParticipant.setMicrophoneEnabled(false);
-                const micOptions = this.mediaController.getMicrophoneEnableOptions();
-                await this.room.localParticipant.setMicrophoneEnabled(true, micOptions);
-            } catch (_) {
-                // ignore input restart errors
-            }
+            await this.runMediaToggleWithLoading('microphone', () => this.mediaController.restartMicrophone());
         }
         if (this.state.media.camera) {
             try {

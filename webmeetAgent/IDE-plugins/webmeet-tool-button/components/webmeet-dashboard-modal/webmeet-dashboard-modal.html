@@ -203,6 +203,21 @@
                                 <label for="webmeetAudioOutputSelect">Speaker</label>
                                 <select id="webmeetAudioOutputSelect" class="form-input"></select>
                             </div>
+                            <div class="webmeet-media-settings-row webmeet-media-slider-row">
+                                <div class="webmeet-media-slider-label">
+                                    <label for="webmeetMicrophoneGain">Microphone volume</label>
+                                    <span id="webmeetMicrophoneGainValue">100%</span>
+                                </div>
+                                <input id="webmeetMicrophoneGain" type="range" min="0" max="2" step="0.05" value="1">
+                                <div id="webmeetMicrophoneGainWarning" class="webmeet-media-warning webmeet-hidden">High gain can distort audio.</div>
+                            </div>
+                            <div class="webmeet-media-settings-row webmeet-media-slider-row">
+                                <div class="webmeet-media-slider-label">
+                                    <label for="webmeetOutputVolume">Speaker volume</label>
+                                    <span id="webmeetOutputVolumeValue">100%</span>
+                                </div>
+                                <input id="webmeetOutputVolume" type="range" min="0" max="1" step="0.05" value="1">
+                            </div>
                             <div class="webmeet-media-settings-flags">
                                 <label class="webmeet-media-flag">
                                     <input type="checkbox" id="webmeetAudioEchoCancellation">

@@ -12,13 +12,17 @@ export class WebmeetMediaController {
             audioOutputDeviceId: '',
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            microphoneGain: 1,
+            outputVolume: 1
         };
         this.inFlight = false;
+        this.customMicrophone = null;
     }
 
     reset() {
         this.inFlight = false;
+        this.stopCustomMicrophoneCapture();
     }
 
     setSettings(next = {}) {
@@ -39,10 +43,153 @@ export class WebmeetMediaController {
             : undefined;
         return {
             deviceId,
+            channelCount: 1,
+            sampleRate: 48000,
             echoCancellation: Boolean(this.settings.echoCancellation),
             noiseSuppression: Boolean(this.settings.noiseSuppression),
             autoGainControl: Boolean(this.settings.autoGainControl)
         };
+    }
+
+    getMicrophoneGain() {
+        const value = Number(this.settings.microphoneGain);
+        if (!Number.isFinite(value)) return 1;
+        return Math.min(2, Math.max(0, value));
+    }
+
+    usesCustomMicrophoneGain() {
+        return Math.abs(this.getMicrophoneGain() - 1) > 0.001;
+    }
+
+    getAudioContextConstructor() {
+        return globalThis.AudioContext || globalThis.webkitAudioContext || null;
+    }
+
+    async stopCustomMicrophoneCapture() {
+        const current = this.customMicrophone;
+        this.customMicrophone = null;
+        const room = this.getRoom();
+        if (current?.track && room?.localParticipant?.unpublishTrack) {
+            try {
+                await room.localParticipant.unpublishTrack(current.track, true);
+            } catch (_) {
+                // continue with local cleanup
+            }
+        }
+        for (const track of [
+            current?.track,
+            ...(current?.processedStream?.getTracks?.() || []),
+            ...(current?.sourceStream?.getTracks?.() || [])
+        ]) {
+            try { track?.stop?.(); } catch (_) {}
+        }
+        try { current?.sourceNode?.disconnect?.(); } catch (_) {}
+        try { current?.gainNode?.disconnect?.(); } catch (_) {}
+        try { await current?.audioContext?.close?.(); } catch (_) {}
+    }
+
+    async enableDefaultMicrophone(room) {
+        await this.stopCustomMicrophoneCapture();
+        const options = this.getMicrophoneEnableOptions();
+        try {
+            await room.localParticipant.setMicrophoneEnabled(true, options);
+        } catch (_) {
+            await room.localParticipant.setMicrophoneEnabled(true);
+        }
+    }
+
+    async enableCustomGainMicrophone(room) {
+        if (!navigator?.mediaDevices?.getUserMedia) {
+            throw new Error('Microphone capture is not supported in this browser.');
+        }
+        const AudioContextRef = this.getAudioContextConstructor();
+        if (!AudioContextRef) {
+            throw new Error('Audio processing is not supported in this browser.');
+        }
+
+        await room.localParticipant.setMicrophoneEnabled(false);
+        await this.stopCustomMicrophoneCapture();
+
+        let sourceStream = null;
+        let audioContext = null;
+        let sourceNode = null;
+        let gainNode = null;
+        let destination = null;
+        let processedTrack = null;
+        try {
+            sourceStream = await navigator.mediaDevices.getUserMedia({
+                audio: this.getMicrophoneEnableOptions(),
+                video: false
+            });
+            audioContext = new AudioContextRef({ sampleRate: 48000 });
+            sourceNode = audioContext.createMediaStreamSource(sourceStream);
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = this.getMicrophoneGain();
+            destination = audioContext.createMediaStreamDestination();
+            sourceNode.connect(gainNode);
+            gainNode.connect(destination);
+
+            [processedTrack] = destination.stream.getAudioTracks();
+            if (!processedTrack) {
+                throw new Error('Processed microphone track could not be created.');
+            }
+            processedTrack.contentHint = 'speech';
+
+            const Track = this.getTrack();
+            const publishOptions = Track?.Source?.Microphone
+                ? { source: Track.Source.Microphone, name: 'microphone' }
+                : { name: 'microphone' };
+            await room.localParticipant.publishTrack(processedTrack, publishOptions);
+            this.customMicrophone = {
+                sourceStream,
+                processedStream: destination.stream,
+                audioContext,
+                sourceNode,
+                gainNode,
+                track: processedTrack
+            };
+        } catch (error) {
+            for (const track of [
+                processedTrack,
+                ...(destination?.stream?.getTracks?.() || []),
+                ...(sourceStream?.getTracks?.() || [])
+            ]) {
+                try { track?.stop?.(); } catch (_) {}
+            }
+            try { sourceNode?.disconnect?.(); } catch (_) {}
+            try { gainNode?.disconnect?.(); } catch (_) {}
+            try { await audioContext?.close?.(); } catch (_) {}
+            throw error;
+        }
+    }
+
+    async enableMicrophone(room) {
+        if (!this.usesCustomMicrophoneGain()) {
+            await this.enableDefaultMicrophone(room);
+            return;
+        }
+        try {
+            await this.enableCustomGainMicrophone(room);
+        } catch (error) {
+            await this.enableDefaultMicrophone(room);
+            this.onError('Custom microphone volume is unavailable. Using standard microphone audio.');
+        }
+    }
+
+    async disableMicrophone(room) {
+        this.hardStopMicrophoneTracks();
+        await this.stopCustomMicrophoneCapture();
+        await room.localParticipant.setMicrophoneEnabled(false);
+    }
+
+    async restartMicrophone() {
+        const room = this.getRoom();
+        if (!room?.localParticipant || !this.isLocalSourceEnabled('microphone')) return;
+        await this.runExclusiveToggle(async () => {
+            await this.disableMicrophone(room);
+            await this.enableMicrophone(room);
+            await this.waitForLocalSourceState('microphone', true);
+        });
     }
 
     getLocalMicrophoneTracks(TrackRef = null) {
@@ -54,7 +201,8 @@ export class WebmeetMediaController {
         for (const publication of localParticipant.trackPublications.values()) {
             if (!publication) continue;
             const isMic = publication.source === Track.Source.Microphone;
-            if (!isMic) continue;
+            const isCustomMic = publication.track && publication.track === this.customMicrophone?.track;
+            if (!isMic && !isCustomMic) continue;
             if (publication.track) {
                 tracks.push(publication.track);
             }
@@ -132,7 +280,10 @@ export class WebmeetMediaController {
             if (!publication) continue;
             const sameKind = publication.kind === wantedKind;
             const sameSource = wantedSource ? publication.source === wantedSource : false;
-            if ((sameSource || (type === 'camera' && sameKind && !publication.source))
+            const sameCustomMic = type === 'microphone'
+                && sameKind
+                && (publication.track === this.customMicrophone?.track || !publication.source);
+            if ((sameSource || sameCustomMic || (type === 'camera' && sameKind && !publication.source))
                 && !publication.isMuted) {
                 return true;
             }
@@ -203,15 +354,9 @@ export class WebmeetMediaController {
         await this.runExclusiveToggle(async () => {
             const enable = !this.isLocalSourceEnabled('microphone');
             if (enable) {
-                const options = this.getMicrophoneEnableOptions();
-                try {
-                    await room.localParticipant.setMicrophoneEnabled(true, options);
-                } catch (_) {
-                    await room.localParticipant.setMicrophoneEnabled(true);
-                }
+                await this.enableMicrophone(room);
             } else {
-                this.hardStopMicrophoneTracks();
-                await room.localParticipant.setMicrophoneEnabled(false);
+                await this.disableMicrophone(room);
                 const hardStopped = await this.waitForMicrophoneHardStopped();
                 if (!hardStopped) {
                     throw new Error('Microphone capture did not stop completely. Check browser permissions/device.');
