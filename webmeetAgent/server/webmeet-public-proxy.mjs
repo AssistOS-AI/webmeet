@@ -707,6 +707,10 @@ async function proxyMcp(req, res, targetPath) {
 
 function isAllowedPublicApi(req, pathname) {
     const method = String(req.method || 'GET').toUpperCase();
+    if (method === 'GET' && /^\/api\/meetings\/[^/]+\/events$/.test(pathname)) {
+        const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+        return url.searchParams.has('guestToken') && url.searchParams.has('participantId');
+    }
     return method === 'POST' && (
         /^\/api\/meetings\/[^/]+\/join-guest$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-state$/.test(pathname)

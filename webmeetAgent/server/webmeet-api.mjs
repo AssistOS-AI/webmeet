@@ -1,4 +1,6 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { URL } from 'node:url';
 
 import {
@@ -21,6 +23,7 @@ import {
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
+    listMeetingEvents,
     listMeetings,
     listMeetingTranscript,
     listWorkspaces,
@@ -29,6 +32,7 @@ import {
 } from '../lib/webmeetStore.mjs';
 
 const PORT = Number.parseInt(process.env.WEBMEET_API_PORT || '8791', 10);
+const SSE_KEEPALIVE_MS = 15_000;
 
 function json(res, status, payload) {
     res.writeHead(status, {
@@ -54,6 +58,73 @@ function getActor(body) {
     return actor && typeof actor === 'object' ? actor : null;
 }
 
+function sseWrite(res, event) {
+    const id = String(event?.id || '').trim();
+    const type = String(event?.type || 'message').trim() || 'message';
+    if (id) res.write(`id: ${id}\n`);
+    res.write(`event: ${type}\n`);
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function getLastEventId(req, url) {
+    const header = String(req.headers?.['last-event-id'] || '').trim();
+    if (header) return header;
+    return String(url.searchParams.get('lastEventId') || '').trim();
+}
+
+function assertGuestEventAccess(context, meetingId, url) {
+    const guestToken = String(url.searchParams.get('guestToken') || '').trim();
+    const participantId = String(url.searchParams.get('participantId') || '').trim();
+    if (!guestToken || !participantId) {
+        throw new Error('Guest event access requires guest token and participant.');
+    }
+    getGuestMeetingDetails(context, { meetingId, guestToken, participantId });
+}
+
+function sendMeetingEvents(req, res, context, meetingId, { afterId = '', url = null } = {}) {
+    const targetMeetingId = String(meetingId || '').trim();
+    if (url?.searchParams?.has('guestToken')) {
+        assertGuestEventAccess(context, targetMeetingId, url);
+    } else {
+        getMeeting(context, targetMeetingId);
+    }
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-store, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.write(': connected\n\n');
+    let lastEventId = String(afterId || '').trim();
+    const sendBacklog = () => {
+        for (const event of listMeetingEvents(context, targetMeetingId, { afterId: lastEventId })) {
+            sseWrite(res, event);
+            lastEventId = String(event?.id || lastEventId).trim();
+        }
+    };
+    sendBacklog();
+
+    const eventsDir = path.join(context.eventsDir, targetMeetingId);
+    fs.mkdirSync(eventsDir, { recursive: true });
+    const watcher = fs.watch(eventsDir, () => {
+        try {
+            sendBacklog();
+        } catch (_) {
+            // Keep the stream open; the next event can still be delivered.
+        }
+    });
+    const keepalive = setInterval(() => {
+        res.write(': keepalive\n\n');
+    }, SSE_KEEPALIVE_MS);
+    const cleanup = () => {
+        clearInterval(keepalive);
+        try { watcher.close(); } catch (_) {}
+    };
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+}
+
 function matchRoute(method, pathname) {
     const routes = [
         ['healthz', 'GET', /^\/healthz$/],
@@ -62,6 +133,7 @@ function matchRoute(method, pathname) {
         ['meetings.list', 'GET', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.create', 'POST', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.get', 'GET', /^\/api\/meetings\/([^/]+)$/],
+        ['meetings.events', 'GET', /^\/api\/meetings\/([^/]+)\/events$/],
         ['meetings.join', 'POST', /^\/api\/meetings\/([^/]+)\/join$/],
         ['meetings.join.guest', 'POST', /^\/api\/meetings\/([^/]+)\/join-guest$/],
         ['meetings.guest.state', 'POST', /^\/api\/meetings\/([^/]+)\/guest-state$/],
@@ -139,6 +211,13 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.get') {
             json(res, 200, getMeeting(context, route.params[0]));
+            return;
+        }
+        if (route.name === 'meetings.events') {
+            sendMeetingEvents(req, res, context, route.params[0], {
+                afterId: getLastEventId(req, url),
+                url
+            });
             return;
         }
         if (route.name === 'meetings.join') {

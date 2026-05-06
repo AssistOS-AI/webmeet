@@ -481,6 +481,36 @@ export function getMeeting(context, meetingId, authInfo = null) {
     };
 }
 
+export function listMeetingEvents(context, meetingId, { afterId = '' } = {}) {
+    const targetMeetingId = String(meetingId || '').trim();
+    if (!targetMeetingId) return [];
+    const eventsDir = path.join(context.eventsDir, targetMeetingId);
+    if (!fs.existsSync(eventsDir)) return [];
+    const afterEventId = String(afterId || '').trim();
+    let foundAfter = !afterEventId;
+    return fs.readdirSync(eventsDir)
+        .filter((name) => name.endsWith('.json'))
+        .sort()
+        .map((name) => {
+            try {
+                return readJsonFile(path.join(eventsDir, name));
+            } catch (_) {
+                return null;
+            }
+        })
+        .filter(Boolean)
+        .filter((event) => {
+            const eventId = String(event?.id || '').trim();
+            if (!afterEventId) return true;
+            if (foundAfter) return true;
+            if (eventId === afterEventId) {
+                foundAfter = true;
+            }
+            return false;
+        })
+        .filter((event) => String(event?.id || '').trim() !== afterEventId);
+}
+
 export function buildMeetingAiContext(context, meetingId) {
     cleanupMeetingPresence(context, meetingId);
     const record = loadMeetingRecord(context, meetingId);
@@ -737,12 +767,12 @@ export function updateMeetingTitle(context, { meetingId, title, authInfo = null 
     let meeting = null;
     mutateMeeting(context, meetingId, (record, payload) => {
         record.title = nextTitle;
-        meeting = buildMeetingView(record);
         recordMeetingEvent(context, meetingId, payload, 'meeting.renamed', {
             meetingId,
             title: nextTitle
         });
     });
+    meeting = buildMeetingView(loadMeetingRecord(context, meetingId));
     return meeting;
 }
 

@@ -119,6 +119,10 @@ function buildPublicWebMeetApiBaseUrl() {
     return `${window.location.origin}/public-services/webmeet`;
 }
 
+function buildAuthenticatedWebMeetApiBaseUrl() {
+    return `${window.location.origin}/services/webmeet`;
+}
+
 export class WebMeetDashboardModal {
     constructor(element, invalidate, hostContext) {
         this.element = element;
@@ -168,6 +172,7 @@ export class WebMeetDashboardModal {
             videoGridFullscreen: false
         };
         this.room = null;
+        this.meetingEventsSource = null;
         this.roomController = new LivekitRoomController({
             ensureLiveKitClient,
             buildRtcConfigForSession,
@@ -179,7 +184,6 @@ export class WebMeetDashboardModal {
         this.participantLayoutController = new ParticipantLayoutController({
             getParticipantDisplayName: (participant) => this.getParticipantDisplayName(participant)
         });
-        this.pollingInterval = null;
         this.meetingDetailsLoadSeq = 0;
         this.cachedStableParticipantId = '';
         this.chatSidebarWidth = this.loadChatSidebarWidth();
@@ -874,6 +878,7 @@ export class WebMeetDashboardModal {
 
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
+        this.stopMeetingEvents();
         this.presenceController.teardown();
         if (this.state.session?.participantIdentity) {
             void this.unjoinCurrentSession({ preserveDisplayName: false });
@@ -1156,6 +1161,73 @@ export class WebMeetDashboardModal {
         this.state.tasks = Array.isArray(artifactPayload.tasks) ? artifactPayload.tasks : [];
         this.state.decisions = Array.isArray(artifactPayload.decisions) ? artifactPayload.decisions : [];
         this.state.agents = Array.isArray(agentPayload.agents) ? agentPayload.agents : [];
+    }
+
+    applyMeetingRename(meetingId, title, updatedAt = '') {
+        const targetMeetingId = String(meetingId || '').trim();
+        const nextTitle = String(title || '').trim();
+        if (!targetMeetingId || !nextTitle) return false;
+        let changed = false;
+        const updateEntry = (entry) => {
+            if (!entry || String(entry.id || '').trim() !== targetMeetingId) return;
+            if (entry.title !== nextTitle) {
+                entry.title = nextTitle;
+                changed = true;
+            }
+            if (updatedAt && entry.updatedAt !== updatedAt) {
+                entry.updatedAt = updatedAt;
+            }
+        };
+        this.state.meetings.forEach(updateEntry);
+        updateEntry(this.state.session?.meeting);
+        if (changed) {
+            this.renderMeetingList();
+            this.renderMeetingSummary();
+        }
+        return changed;
+    }
+
+    async publishRealtimePayload(payload) {
+        if (!this.room?.localParticipant || !payload || typeof payload !== 'object') return;
+        const encoder = new TextEncoder();
+        let kindValue = 0;
+        if (window.LivekitClient?.DataPacket_Kind?.RELIABLE !== undefined) {
+            kindValue = window.LivekitClient.DataPacket_Kind.RELIABLE;
+        }
+        await this.room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), kindValue);
+    }
+
+    startMeetingEvents() {
+        this.stopMeetingEvents();
+        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        if (!meetingId || !this.state.session?.participantIdentity || typeof EventSource !== 'function') return;
+        const baseUrl = this.isGuestSession()
+            ? (this.state.session?.publicApiBaseUrl || buildPublicWebMeetApiBaseUrl())
+            : buildAuthenticatedWebMeetApiBaseUrl();
+        const url = new URL(`${baseUrl}/meetings/${encodeURIComponent(meetingId)}/events`);
+        if (this.isGuestSession()) {
+            url.searchParams.set('guestToken', this.getGuestToken());
+            url.searchParams.set('participantId', String(this.state.session?.participantIdentity || '').trim());
+        }
+        this.meetingEventsSource = new EventSource(url.toString(), { withCredentials: true });
+        this.meetingEventsSource.addEventListener('meeting.renamed', (event) => {
+            try {
+                const payload = JSON.parse(String(event.data || '{}'));
+                this.applyMeetingRename(
+                    payload?.payload?.meetingId || payload?.meetingId,
+                    payload?.payload?.title || payload?.title,
+                    payload?.createdAt || ''
+                );
+            } catch (_) {
+                // Ignore malformed event payloads.
+            }
+        });
+    }
+
+    stopMeetingEvents() {
+        if (!this.meetingEventsSource) return;
+        try { this.meetingEventsSource.close(); } catch (_) {}
+        this.meetingEventsSource = null;
     }
 
     renderAll() {
@@ -1598,10 +1670,18 @@ export class WebMeetDashboardModal {
             title
         });
         if (updated?.title) {
-            const entry = this.state.meetings.find((item) => item.id === meeting.id);
-            if (entry) {
-                entry.title = updated.title;
-                entry.updatedAt = updated.updatedAt || entry.updatedAt;
+            this.applyMeetingRename(meeting.id, updated.title, updated.updatedAt || '');
+            if (String(this.state.session?.meeting?.id || '').trim() === String(meeting.id || '').trim()) {
+                try {
+                    await this.publishRealtimePayload({
+                        type: 'meeting.renamed',
+                        meetingId: meeting.id,
+                        title: updated.title,
+                        updatedAt: updated.updatedAt || new Date().toISOString()
+                    });
+                } catch (_) {
+                    // Persisted rename already succeeded; realtime delivery is best effort.
+                }
             }
         }
         await this.loadMeetings();
@@ -1852,6 +1932,8 @@ export class WebMeetDashboardModal {
                         if (!this.state.chat) this.state.chat = [];
                         this.state.chat.push(data.message);
                         this.renderFeedLists();
+                    } else if (data.type === 'meeting.renamed') {
+                        this.applyMeetingRename(data.meetingId, data.title, data.updatedAt || '');
                     }
                 } catch (err) {
                     // Ignore malformed data-channel messages from other clients.
@@ -1868,6 +1950,7 @@ export class WebMeetDashboardModal {
                 }
                 scheduleRemoteSubscriptionSweep(Track, 'connected');
                 this.startPresenceHeartbeat();
+                this.startMeetingEvents();
                 this.renderMeetingSummary();
             },
             onConnectError: (error) => {
@@ -1883,6 +1966,7 @@ export class WebMeetDashboardModal {
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
         this.room = this.roomController.getRoom();
         this.stopPresenceHeartbeat();
+        this.stopMeetingEvents();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
@@ -2011,12 +2095,7 @@ export class WebMeetDashboardModal {
                             meetingId: meeting.id,
                             message: newMessage
                         };
-                        const encoder = new TextEncoder();
-                        let kindValue = 0;
-                        if (window.LivekitClient?.DataPacket_Kind?.RELIABLE !== undefined) {
-                            kindValue = window.LivekitClient.DataPacket_Kind.RELIABLE;
-                        }
-                        await this.room.localParticipant.publishData(encoder.encode(JSON.stringify(chatPayload)), kindValue);
+                        await this.publishRealtimePayload(chatPayload);
                     } catch (err) {
                         // Persisted chat already succeeded; realtime delivery is best effort.
                     }
@@ -2050,12 +2129,7 @@ export class WebMeetDashboardModal {
                         createdAt: new Date().toISOString()
                     }
                 };
-                const encoder = new TextEncoder();
-                let kindValue = 0;
-                if (window.LivekitClient?.DataPacket_Kind?.RELIABLE !== undefined) {
-                    kindValue = window.LivekitClient.DataPacket_Kind.RELIABLE;
-                }
-                await this.room.localParticipant.publishData(encoder.encode(JSON.stringify(chatPayload)), kindValue);
+                await this.publishRealtimePayload(chatPayload);
             } catch (err) {
                 // Persisted chat already succeeded; realtime delivery is best effort.
             }
