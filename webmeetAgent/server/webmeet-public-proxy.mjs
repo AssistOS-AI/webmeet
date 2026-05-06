@@ -44,6 +44,32 @@ function htmlEscape(value) {
         .replaceAll("'", '&#39;');
 }
 
+function readPloinkyAuthInfo(req) {
+    const raw = String(req.headers?.['x-ploinky-auth-info'] || '').trim();
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        const user = parsed?.user && typeof parsed.user === 'object' ? parsed.user : null;
+        const roles = Array.isArray(user?.roles) ? user.roles.map((role) => String(role || '').trim()) : [];
+        const sessionId = String(parsed?.sessionId || '').trim();
+        const id = String(user?.id || '').trim();
+        return id && sessionId ? { user: { ...user, roles }, sessionId } : null;
+    } catch {
+        return null;
+    }
+}
+
+function requirePloinkyIdentity(req, res) {
+    if (readPloinkyAuthInfo(req)) {
+        return true;
+    }
+    writeResponse(res, 401, JSON.stringify({ error: 'Ploinky guest session required.' }), {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store'
+    });
+    return false;
+}
+
 function sendGuestPage(req, res) {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const meetingId = String(url.searchParams.get('room') || '').trim();
@@ -256,6 +282,23 @@ function sendGuestPage(req, res) {
             const instance = new module.WebMeetDashboardModal(dashboardRoot, () => {}, {
                 registerAction(name, callback) {
                     actions.set(name, callback);
+                },
+                onGuestExit() {
+                    sessionStorage.removeItem(sessionKey);
+                    dashboardRoot.innerHTML = '';
+                    dashboardRoot.classList.add('webmeet-hidden');
+                    joinView.classList.add('webmeet-hidden');
+                    try {
+                        window.history.replaceState(null, '', window.location.pathname);
+                    } catch (_) {
+                        window.location.hash = '';
+                    }
+                    window.close();
+                    window.setTimeout(() => {
+                        if (!window.closed) {
+                            window.location.replace('about:blank');
+                        }
+                    }, 50);
                 }
             });
             dashboardRoot.addEventListener('click', (event) => {
@@ -408,6 +451,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/guest') {
+        if (!requirePloinkyIdentity(req, res)) return;
         sendGuestPage(req, res);
         return;
     }
@@ -423,6 +467,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (isAllowedPublicApi(req, pathname)) {
+        if (!requirePloinkyIdentity(req, res)) return;
         proxy(req, res, API_PORT, `${pathname}${url.search || ''}`);
         return;
     }

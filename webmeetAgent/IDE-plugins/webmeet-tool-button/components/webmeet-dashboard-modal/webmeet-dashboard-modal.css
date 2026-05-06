@@ -913,6 +913,7 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     cursor: pointer;
     transition: all 0.2s ease;
     color: var(--gray-button-text);
+    position: relative;
 }
 
 .webmeet-icon-button:hover {
@@ -925,6 +926,38 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     background: #22c55e;
     border-color: #22c55e;
     color: var(--white);
+}
+
+.webmeet-icon-button:disabled {
+    cursor: wait;
+    opacity: 0.68;
+}
+
+.webmeet-icon-button.is-loading {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--surface);
+}
+
+.webmeet-icon-button.is-loading svg {
+    opacity: 0;
+}
+
+.webmeet-icon-button.is-loading::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: webmeet-spin 0.8s linear infinite;
+}
+
+@keyframes webmeet-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Show/hide icons based on state */

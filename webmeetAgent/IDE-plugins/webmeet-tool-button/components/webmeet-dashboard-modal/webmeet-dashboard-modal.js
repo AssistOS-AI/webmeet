@@ -146,6 +146,11 @@ export class WebMeetDashboardModal {
                 camera: false,
                 screen: false
             },
+            mediaLoading: {
+                microphone: false,
+                camera: false,
+                screen: false
+            },
             mediaSettings: {
                 audioInputDeviceId: '',
                 videoInputDeviceId: '',
@@ -819,6 +824,18 @@ export class WebMeetDashboardModal {
         this.mediaController.syncLocalMediaStateFromRoom(TrackRef);
     }
 
+    setMediaLoading(type, value) {
+        const mediaType = String(type || '').trim();
+        if (!Object.prototype.hasOwnProperty.call(this.state.mediaLoading, mediaType)) {
+            return;
+        }
+        this.state.mediaLoading = {
+            ...this.state.mediaLoading,
+            [mediaType]: Boolean(value)
+        };
+        this.renderMeetingSummary();
+    }
+
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
         this.presenceController.teardown();
@@ -1286,6 +1303,17 @@ export class WebMeetDashboardModal {
         if (this.screenShareButton) {
             this.screenShareButton.classList.toggle('active', this.state.media.screen);
         }
+        const mediaBusy = Object.values(this.state.mediaLoading || {}).some(Boolean);
+        const setMediaButtonLoading = (button, type) => {
+            if (!button) return;
+            const isLoading = Boolean(this.state.mediaLoading?.[type]);
+            button.classList.toggle('is-loading', isLoading);
+            button.disabled = mediaBusy;
+            button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+        };
+        setMediaButtonLoading(this.micButton, 'microphone');
+        setMediaButtonLoading(this.cameraButton, 'camera');
+        setMediaButtonLoading(this.screenShareButton, 'screen');
     }
 
     renderFeedLists() {
@@ -1568,11 +1596,6 @@ export class WebMeetDashboardModal {
         }
         await this.disconnectRoom();
 
-        const logMediaEvent = (eventName, publication, participant) => {
-            // Optional: Add debugging for media events
-            // console.log(`[WebMeet] ${eventName}`, { publication, participant });
-        };
-
         const renderPublication = (participant, publication, explicitTrack = null, TrackRef = null) => {
             const Track = TrackRef || window.LivekitClient?.Track;
             if (!Track) return;
@@ -1708,17 +1731,14 @@ export class WebMeetDashboardModal {
                 this.renderMeetingSummary();
             },
             onTrackSubscribed: (track, publication, participant, { Track }) => {
-                logMediaEvent('TrackSubscribed', publication, participant);
                 renderPublication(participant, publication, track, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onTrackUnsubscribed: (_track, publication, _participant, { Track }) => {
-                logMediaEvent('TrackUnsubscribed', publication, _participant);
                 removePublication(publication, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onLocalTrackPublished: (publication, { room, Track }) => {
-                logMediaEvent('LocalTrackPublished', publication, room.localParticipant);
                 renderPublication(room.localParticipant, publication, null, Track);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
@@ -1726,7 +1746,6 @@ export class WebMeetDashboardModal {
                 scheduleRemoteSubscriptionSweep(Track, 'local-published');
             },
             onLocalTrackUnpublished: (publication, { Track }) => {
-                logMediaEvent('LocalTrackUnpublished', publication, this.room?.localParticipant);
                 removePublication(publication, Track);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
@@ -1823,6 +1842,7 @@ export class WebMeetDashboardModal {
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
+        this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
         this.state.videoGridFullscreen = false;
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');
@@ -1844,19 +1864,35 @@ export class WebMeetDashboardModal {
     }
 
     async toggleMicrophone() {
-        await this.mediaController.toggleMicrophone();
+        await this.runMediaToggleWithLoading('microphone', () => this.mediaController.toggleMicrophone());
     }
 
     async toggleCamera() {
-        await this.mediaController.toggleCamera();
+        await this.runMediaToggleWithLoading('camera', () => this.mediaController.toggleCamera());
     }
 
     async toggleScreenShare() {
-        await this.mediaController.toggleScreenShare();
+        await this.runMediaToggleWithLoading('screen', () => this.mediaController.toggleScreenShare());
+    }
+
+    async runMediaToggleWithLoading(type, action) {
+        if (Object.values(this.state.mediaLoading || {}).some(Boolean)) {
+            return;
+        }
+        this.setMediaLoading(type, true);
+        try {
+            await action();
+        } finally {
+            this.setMediaLoading(type, false);
+        }
     }
 
     async leaveMeeting() {
+        const wasGuestSession = this.isGuestSession();
         await this.unjoinCurrentSession({ preserveDisplayName: false });
+        if (wasGuestSession && typeof this.hostContext?.onGuestExit === 'function') {
+            this.hostContext.onGuestExit();
+        }
     }
 
     async unjoinCurrentSession(options = {}) {
