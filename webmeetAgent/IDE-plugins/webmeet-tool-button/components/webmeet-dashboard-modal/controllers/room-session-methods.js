@@ -65,6 +65,17 @@ export const roomSessionMethods = {
             if (!trackId) return;
 
             if (track.kind === Track.Kind.Video) {
+                const existingTrackEntry = this.participantLayoutController.getTrackEntry(trackId);
+                if (existingTrackEntry?.element) {
+                    logMediaDiagnostic('video-track-attach-skip-existing', {
+                        participant: summarizeParticipant(participant),
+                        publication: summarizePublication(publication),
+                        track: summarizeTrack(track),
+                        trackId,
+                        videoElement: summarizeVideoElement(existingTrackEntry.element)
+                    });
+                    return;
+                }
                 const mediaElement = track.attach();
                 mediaElement.autoplay = true;
                 mediaElement.playsInline = true;
