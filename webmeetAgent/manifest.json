@@ -36,7 +36,8 @@
                 "PLOINKY_WORKSPACE_ROOT",
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
-                    "required": false
+                    "required": false,
+                    "derive": "derived-master"
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -58,11 +59,14 @@
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
-                    "required": false
+                    "required": false,
+                    "derive": "derived-master",
+                    "deriveBytes": 16
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
-                    "required": false
+                    "required": false,
+                    "derive": "derived-master"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -95,7 +99,8 @@
                 },
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
-                    "required": false
+                    "required": false,
+                    "derive": "derived-master"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -137,7 +142,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,
-                    "default": "dev-webmeet-master-key"
+                    "derive": "derived-master"
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -160,12 +165,13 @@
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": false,
-                    "default": "devkey"
+                    "derive": "derived-master",
+                    "deriveBytes": 16
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
-                    "default": "devsecretdevsecretdevsecretdevsecret"
+                    "derive": "derived-master"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -199,7 +205,7 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": false,
-                    "default": "webmeet"
+                    "derive": "derived-master"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -240,7 +246,8 @@
                 "PLOINKY_WORKSPACE_ROOT",
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
-                    "required": true
+                    "required": true,
+                    "derive": "derived-master"
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -260,11 +267,14 @@
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
-                    "required": true
+                    "required": true,
+                    "derive": "derived-master",
+                    "deriveBytes": 16
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
-                    "required": true
+                    "required": true,
+                    "derive": "derived-master"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -295,7 +305,8 @@
                 },
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
-                    "required": true
+                    "required": true,
+                    "derive": "derived-master"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",

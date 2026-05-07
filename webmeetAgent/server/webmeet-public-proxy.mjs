@@ -77,8 +77,8 @@ async function loadJwtVerify() {
     return null;
 }
 
-function readWireSecret() {
-    const hex = String(process.env.PLOINKY_WIRE_SECRET || '').trim();
+function readDerivedMasterKey() {
+    const hex = String(process.env.PLOINKY_DERIVED_MASTER_KEY || '').trim();
     return hex ? Buffer.from(hex, 'hex') : null;
 }
 
@@ -135,9 +135,9 @@ async function verifyRouterInvocationToken(invocationToken, { expectedTool, body
     if (!jwt?.verifyInvocationToken) {
         return { ok: false, reason: 'jwt verifier unavailable' };
     }
-    const secret = readWireSecret();
+    const secret = readDerivedMasterKey();
     if (!secret) {
-        return { ok: false, reason: 'PLOINKY_WIRE_SECRET not configured' };
+        return { ok: false, reason: 'PLOINKY_DERIVED_MASTER_KEY not configured' };
     }
     const audience = expectedAudienceForSelf();
     if (!audience) {

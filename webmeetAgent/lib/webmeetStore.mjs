@@ -137,12 +137,12 @@ function ensureMasterKey(workspaceRoot) {
 }
 
 function getLegacyMeetingKeyCandidates() {
-    const raw = String(process.env.PLOINKY_WIRE_SECRET || '').trim();
+    const raw = String(process.env.PLOINKY_DERIVED_MASTER_KEY || '').trim();
     if (!raw) {
         return [];
     }
     return [{
-        source: 'legacy:PLOINKY_WIRE_SECRET',
+        source: 'legacy:PLOINKY_DERIVED_MASTER_KEY',
         key: deriveMasterKey(raw)
     }];
 }
