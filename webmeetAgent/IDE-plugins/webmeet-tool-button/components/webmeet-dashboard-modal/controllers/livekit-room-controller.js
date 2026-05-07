@@ -1,3 +1,5 @@
+import { logMediaDiagnostic } from '../services/media-diagnostics.js';
+
 export class LivekitRoomController {
     constructor(options = {}) {
         this.ensureLiveKitClient = options.ensureLiveKitClient;
@@ -154,11 +156,35 @@ export class LivekitRoomController {
                 autoSubscribe: true,
                 ...(rtcConfig ? { rtcConfig } : {})
             };
+            logMediaDiagnostic('room-connect-start', {
+                livekitHost: (() => {
+                    try {
+                        return new URL(session.livekitUrl).host;
+                    } catch (_) {
+                        return '';
+                    }
+                })(),
+                hasRtcConfig: Boolean(rtcConfig),
+                iceServerCount: Number(rtcConfig?.iceServers?.length || 0),
+                roomOptions: {
+                    adaptiveStream: false,
+                    dynacast: false,
+                    stopLocalTrackOnUnpublish: true
+                },
+                connectOptions: {
+                    autoSubscribe: true,
+                    hasRtcConfig: Boolean(rtcConfig)
+                }
+            });
             await room.connect(
                 session.livekitUrl,
                 session.participantToken,
                 connectOptions
             );
+            logMediaDiagnostic('room-connect-complete', {
+                localIdentity: room.localParticipant?.identity || '',
+                remoteParticipantCount: Number(room.remoteParticipants?.size || 0)
+            });
             hooks.onConnected?.({ room, livekit, Track, RoomEvent });
             return { room, livekit, Track, RoomEvent };
         } catch (error) {

@@ -199,6 +199,10 @@ export function joinGuestMeeting(context, { meetingId, guestToken, displayName, 
 | Data Visibility | Workspace policy | Same as team room |
 | Recording Access | Workspace members | Same as team room |
 
+## Media Transport Behavior
+
+WebMeet publishes screen-share video without LiveKit simulcast so remote receivers subscribe to a single screen-share RTP stream across local and production topologies. The client may emit WebRTC media diagnostics only when an explicit debug flag such as `WEBMEET_MEDIA_DEBUG` or `webmeetMediaDebug=1` is enabled; those diagnostics must summarize track, publication, and video-element state without logging tokens, SDP, ICE candidates, or credentials.
+
 ## Future Enhancements
 
 - Token expiration/revocation

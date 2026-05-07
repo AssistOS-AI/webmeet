@@ -1,3 +1,8 @@
+import {
+    logMediaDiagnostic,
+    summarizePublication
+} from '../services/media-diagnostics.js';
+
 export class WebmeetMediaController {
     constructor(options = {}) {
         this.getRoom = typeof options.getRoom === 'function' ? options.getRoom : (() => null);
@@ -72,6 +77,23 @@ export class WebmeetMediaController {
             h1080: { width: 1920, height: 1080, frameRate: 30 }
         };
         return profiles[quality] || profiles.h720;
+    }
+
+    getScreenShareQualityOptions() {
+        const quality = String(this.settings.screenShareQuality || 'h1080fps30').trim();
+        const profiles = {
+            h720fps15: { resolution: { width: 1280, height: 720, frameRate: 15 } },
+            h720fps30: { resolution: { width: 1280, height: 720, frameRate: 30 } },
+            h1080fps15: { resolution: { width: 1920, height: 1080, frameRate: 15 } },
+            h1080fps30: { resolution: { width: 1920, height: 1080, frameRate: 30 } }
+        };
+        return profiles[quality] || profiles.h1080fps30;
+    }
+
+    getScreenSharePublishOptions() {
+        return {
+            simulcast: false
+        };
     }
 
     getAudioContextConstructor() {
@@ -429,8 +451,24 @@ export class WebmeetMediaController {
         await this.runExclusiveToggle(async () => {
             const localParticipant = room.localParticipant;
             const shouldEnableScreen = !this.isLocalSourceEnabled('screen');
-            await localParticipant.setScreenShareEnabled(shouldEnableScreen);
+            const captureOptions = this.getScreenShareQualityOptions();
+            const publishOptions = this.getScreenSharePublishOptions();
+            logMediaDiagnostic('screen-share-toggle-requested', {
+                enable: shouldEnableScreen,
+                captureOptions,
+                publishOptions
+            });
+            if (shouldEnableScreen) {
+                await localParticipant.setScreenShareEnabled(true, captureOptions, publishOptions);
+            } else {
+                await localParticipant.setScreenShareEnabled(false);
+            }
             await this.waitForLocalSourceState('screen', shouldEnableScreen);
+            logMediaDiagnostic('screen-share-toggle-completed', {
+                enable: shouldEnableScreen,
+                publications: Array.from(localParticipant.trackPublications?.values?.() || [])
+                    .map((publication) => summarizePublication(publication))
+            });
         });
     }
 }

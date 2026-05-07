@@ -1,3 +1,11 @@
+import {
+    logMediaDiagnostic,
+    summarizeParticipant,
+    summarizePublication,
+    summarizeTrack,
+    summarizeVideoElement
+} from '../services/media-diagnostics.js';
+
 export const roomSessionMethods = {
     async connectRoom() {
         if (!this.state.session?.participantToken || !this.state.session?.livekitUrl) {
@@ -6,6 +14,37 @@ export const roomSessionMethods = {
             return;
         }
         await this.disconnectRoom();
+
+        const isRemoteVideoElementReady = (mediaElement) => {
+            if (!mediaElement) return false;
+            return Number(mediaElement.videoWidth || 0) > 0
+                || Number(mediaElement.videoHeight || 0) > 0
+                || Number(mediaElement.currentTime || 0) > 0
+                || Number(mediaElement.readyState || 0) >= HTMLMediaElement.HAVE_CURRENT_DATA;
+        };
+
+        const scheduleRemoteVideoReadinessDiagnostics = (participant, publication, mediaElement, TrackRef = null, reason = 'remote-video') => {
+            const Track = TrackRef || window.LivekitClient?.Track || null;
+            const isVideoTrack = Track
+                ? publication?.kind === Track.Kind.Video
+                : publication?.track?.kind === 'video';
+            if (!publication || !mediaElement || !isVideoTrack) return;
+
+            for (const delay of [1500, 3500, 7000]) {
+                window.setTimeout(() => {
+                    if (!this.room) return;
+                    const isReady = isRemoteVideoElementReady(mediaElement);
+                    logMediaDiagnostic('remote-video-readiness-check', {
+                        reason,
+                        delay,
+                        isReady,
+                        participant: summarizeParticipant(participant),
+                        publication: summarizePublication(publication),
+                        videoElement: summarizeVideoElement(mediaElement)
+                    });
+                }, delay);
+            }
+        };
 
         const renderPublication = (participant, publication, explicitTrack = null, TrackRef = null) => {
             const Track = TrackRef || window.LivekitClient?.Track;
@@ -29,10 +68,31 @@ export const roomSessionMethods = {
                 const mediaElement = track.attach();
                 mediaElement.autoplay = true;
                 mediaElement.playsInline = true;
-                if (participantId === this.room?.localParticipant?.identity) {
+                const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
+                if (isLocalParticipant) {
                     mediaElement.muted = true;
                 }
+                logMediaDiagnostic('video-track-attached', {
+                    participant: summarizeParticipant(participant),
+                    publication: summarizePublication(publication),
+                    track: summarizeTrack(track),
+                    trackId,
+                    isLocalParticipant
+                });
                 this.attachVideoTrack(participantId, trackId, mediaElement);
+                if (!isLocalParticipant) {
+                    for (const eventName of ['loadedmetadata', 'playing', 'waiting', 'stalled', 'error']) {
+                        mediaElement.addEventListener(eventName, () => {
+                            logMediaDiagnostic('remote-video-element-event', {
+                                eventName,
+                                participant: summarizeParticipant(participant),
+                                publication: summarizePublication(publication),
+                                videoElement: summarizeVideoElement(mediaElement)
+                            });
+                        }, { once: eventName !== 'waiting' });
+                    }
+                    scheduleRemoteVideoReadinessDiagnostics(participant, publication, mediaElement, Track, 'render-video');
+                }
             } else if (track.kind === Track.Kind.Audio) {
                 const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
                 if (!isLocalParticipant) {
@@ -65,12 +125,29 @@ export const roomSessionMethods = {
 
         const setPublicationSubscribed = (publication, shouldSubscribe, participant, reason) => {
             if (!publication || typeof publication.setSubscribed !== 'function') return;
+            logMediaDiagnostic('publication-set-subscribed', {
+                shouldSubscribe,
+                reason,
+                participant: summarizeParticipant(participant),
+                publication: summarizePublication(publication)
+            });
             try {
                 const result = publication.setSubscribed(shouldSubscribe);
                 if (result && typeof result.catch === 'function') {
-                    result.catch(() => {});
+                    result.catch((error) => {
+                        logMediaDiagnostic('publication-set-subscribed-rejected', {
+                            shouldSubscribe,
+                            reason,
+                            message: error instanceof Error ? error.message : String(error)
+                        });
+                    });
                 }
             } catch (error) {
+                logMediaDiagnostic('publication-set-subscribed-error', {
+                    shouldSubscribe,
+                    reason,
+                    message: error instanceof Error ? error.message : String(error)
+                });
                 // LiveKit may reject subscription changes during disconnect/reconnect.
             }
         };
@@ -79,6 +156,11 @@ export const roomSessionMethods = {
             const participantId = String(participant?.identity || '').trim();
             const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
             if (!publication || !participantId || participantId === localParticipantId) return;
+            logMediaDiagnostic('publication-subscribe-check', {
+                reason,
+                participant: summarizeParticipant(participant),
+                publication: summarizePublication(publication)
+            });
             if (publication.track) {
                 renderPublication(participant, publication, publication.track, TrackRef);
             }
@@ -126,14 +208,27 @@ export const roomSessionMethods = {
                 this.renderMeetingSummary();
             },
             onTrackSubscribed: (track, publication, participant, { Track }) => {
+                logMediaDiagnostic('room-track-subscribed', {
+                    participant: summarizeParticipant(participant),
+                    publication: summarizePublication(publication),
+                    track: summarizeTrack(track)
+                });
                 renderPublication(participant, publication, track, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onTrackUnsubscribed: (_track, publication, _participant, { Track }) => {
+                logMediaDiagnostic('room-track-unsubscribed', {
+                    participant: summarizeParticipant(_participant),
+                    publication: summarizePublication(publication),
+                    track: summarizeTrack(_track)
+                });
                 removePublication(publication, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onLocalTrackPublished: (publication, { room, Track }) => {
+                logMediaDiagnostic('room-local-track-published', {
+                    publication: summarizePublication(publication)
+                });
                 renderPublication(room.localParticipant, publication, null, Track);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
@@ -141,6 +236,9 @@ export const roomSessionMethods = {
                 scheduleRemoteSubscriptionSweep(Track, 'local-published');
             },
             onLocalTrackUnpublished: (publication, { Track }) => {
+                logMediaDiagnostic('room-local-track-unpublished', {
+                    publication: summarizePublication(publication)
+                });
                 removePublication(publication, Track);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
@@ -148,6 +246,10 @@ export const roomSessionMethods = {
                 scheduleRemoteSubscriptionSweep(Track, 'local-unpublished');
             },
             onRemoteTrackPublished: (publication, participant, { Track }) => {
+                logMediaDiagnostic('room-remote-track-published', {
+                    participant: summarizeParticipant(participant),
+                    publication: summarizePublication(publication)
+                });
                 subscribePublication(publication, participant, Track, 'remote-track-published');
                 this.syncParticipantsFromRoom(this.room, Track);
                 scheduleRemoteSubscriptionSweep(Track, 'remote-track-published');
