@@ -36,7 +36,8 @@
                 "PLOINKY_WORKSPACE_ROOT",
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
-                    "required": false
+                    "required": false,
+                    "default": "dev-webmeet-master-key"
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -58,11 +59,13 @@
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
-                    "required": false
+                    "required": false,
+                    "default": "devkey"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
-                    "required": false
+                    "required": false,
+                    "default": "devsecretdevsecretdevsecretdevsecret"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -95,7 +98,8 @@
                 },
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
-                    "required": false
+                    "required": false,
+                    "default": "webmeet"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
