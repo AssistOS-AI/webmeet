@@ -180,7 +180,7 @@ export class LivekitRoomController {
         try {
             hooks.onConnecting?.({ room, livekit, Track, RoomEvent });
             const connectOptions = {
-                autoSubscribe: false,
+                autoSubscribe: true,
                 ...(rtcConfig ? { rtcConfig } : {})
             };
             await room.connect(
