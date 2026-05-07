@@ -79,27 +79,11 @@ export const roomSessionMethods = {
             const participantId = String(participant?.identity || '').trim();
             const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
             if (!publication || !participantId || participantId === localParticipantId) return;
-            const Track = TrackRef || window.LivekitClient?.Track || null;
-
             if (publication.track) {
                 renderPublication(participant, publication, publication.track, TrackRef);
             }
 
             if (publication.isSubscribed && publication.track) {
-                const mediaStreamTrack = publication.track.mediaStreamTrack || null;
-                const isVideoTrack = Track
-                    ? publication.kind === Track.Kind.Video
-                    : publication.track.kind === 'video';
-                const isStuckRemoteVideo = isVideoTrack
-                    && !publication.isMuted
-                    && mediaStreamTrack?.readyState === 'live'
-                    && mediaStreamTrack.muted === true;
-                if (isStuckRemoteVideo) {
-                    setPublicationSubscribed(publication, false, participant, `${reason}:muted-refresh-off`);
-                    window.setTimeout(() => {
-                        setPublicationSubscribed(publication, true, participant, `${reason}:muted-refresh-on`);
-                    }, 125);
-                }
                 return;
             }
 
