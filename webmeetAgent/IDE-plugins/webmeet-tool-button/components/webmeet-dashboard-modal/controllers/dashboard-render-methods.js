@@ -68,6 +68,10 @@ export const dashboardRenderMethods = {
     renderMeetingSummary() {
         const meeting = this.selectedMeeting;
         const isJoined = !!this.state.session?.participantIdentity;
+
+        if (this.dashboardModalRoot) {
+            this.dashboardModalRoot.classList.toggle('is-joined', isJoined);
+        }
         
         // Toggle welcome screen vs meeting UI
         if (this.welcomeScreen) {
@@ -87,6 +91,7 @@ export const dashboardRenderMethods = {
         }
         this.applyChatSidebarVisibility();
         this.applyVideoGridFullscreenMode();
+        this.applyMobilePanelState();
         
         this.meetingTitle.textContent = meeting?.title || 'None';
         this.meetingMeta.textContent = meeting ? formatDate(meeting.createdAt) : '';

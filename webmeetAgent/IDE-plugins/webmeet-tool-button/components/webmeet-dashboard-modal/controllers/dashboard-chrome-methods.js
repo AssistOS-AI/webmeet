@@ -39,7 +39,39 @@ export const dashboardChromeMethods = {
 
     toggleChatSidebar() {
         this.state.chatSidebarVisible = !this.state.chatSidebarVisible;
+        if (this.state.chatSidebarVisible && this.state.activeMobilePanel !== 'chat') {
+            this.state.activeMobilePanel = 'chat';
+            this.applyMobilePanelState();
+        }
         this.applyChatSidebarVisibility();
+    },
+
+    setMobilePanel(panelName) {
+        const nextPanel = ['room', 'rooms', 'chat', 'info', 'settings'].includes(panelName) ? panelName : 'room';
+        this.state.activeMobilePanel = nextPanel;
+        if (nextPanel === 'settings') {
+            this.state.mediaSettingsPanelVisible = true;
+            this.renderMediaSettingsPanel?.();
+        }
+        this.applyMobilePanelState();
+    },
+
+    applyMobilePanelState() {
+        const activePanel = String(this.state.activeMobilePanel || 'room').trim() || 'room';
+        if (this.dashboardModalRoot) {
+            this.dashboardModalRoot.dataset.mobilePanel = activePanel;
+        }
+        if (Array.isArray(this.mobileNavButtons)) {
+            this.mobileNavButtons.forEach((button) => {
+                const isActive = button.dataset.mobilePanel === activePanel;
+                button.classList.toggle('is-active', isActive);
+                if (isActive) {
+                    button.setAttribute('aria-current', 'page');
+                } else {
+                    button.removeAttribute('aria-current');
+                }
+            });
+        }
     },
 
     loadChatSidebarWidth() {

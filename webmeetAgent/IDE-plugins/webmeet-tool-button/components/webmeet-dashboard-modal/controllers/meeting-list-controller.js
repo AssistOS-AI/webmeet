@@ -87,7 +87,7 @@ export class MeetingListController {
             ? meetingParticipantsById[meetingId]
             : [];
         if (!participants.length) {
-            return '';
+            return  `<div class="webmeet-room-participants"> No participants </div>`;
         }
         return `
             <div class="webmeet-room-participants">

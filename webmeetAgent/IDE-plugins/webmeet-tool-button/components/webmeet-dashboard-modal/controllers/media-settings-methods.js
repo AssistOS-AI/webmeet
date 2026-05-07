@@ -423,6 +423,13 @@ export const mediaSettingsMethods = {
 
     toggleMediaSettings() {
         this.state.mediaSettingsPanelVisible = !this.state.mediaSettingsPanelVisible;
+        if (this.state.mediaSettingsPanelVisible) {
+            this.state.activeMobilePanel = 'settings';
+            this.applyMobilePanelState?.();
+        } else if (this.state.activeMobilePanel === 'settings') {
+            this.state.activeMobilePanel = 'room';
+            this.applyMobilePanelState?.();
+        }
         this.renderMediaSettingsPanel();
         if (this.state.mediaSettingsPanelVisible) {
             void this.refreshMediaDevices({ requestPermission: false, showToast: false });

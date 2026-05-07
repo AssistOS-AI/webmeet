@@ -78,6 +78,7 @@ export class WebMeetDashboardModal {
             mediaSettingsPanelVisible: false,
             participants: [],
             chatSidebarVisible: true,
+            activeMobilePanel: 'room',
             videoGridFullscreen: false
         };
         this.room = null;
@@ -248,6 +249,12 @@ export class WebMeetDashboardModal {
     }
 
     handleClick = (event) => {
+        const mobilePanelButton = event.target?.closest?.('[data-mobile-panel]');
+        if (mobilePanelButton) {
+            this.setMobilePanel(String(mobilePanelButton.dataset.mobilePanel || 'room').trim());
+            return;
+        }
+
         // Handle tab switching
         const tabButton = event.target?.closest?.('[data-tab]');
         if (tabButton) {
@@ -354,6 +361,8 @@ export class WebMeetDashboardModal {
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
         this.secondaryPanels = this.element.querySelector('.webmeet-secondary-panels');
+        this.mobileNav = this.element.querySelector('.webmeet-mobile-nav');
+        this.mobileNavButtons = Array.from(this.element.querySelectorAll('[data-mobile-panel]'));
         this.meetingListController.setElement(this.meetingList);
         this.participantLayoutController.setElements({
             videoGrid: this.videoGrid,
@@ -369,6 +378,7 @@ export class WebMeetDashboardModal {
         });
 
         this.applyChatSidebarWidth();
+        this.applyMobilePanelState();
     }
 
 
@@ -870,6 +880,7 @@ export class WebMeetDashboardModal {
             }
             const defaultName = String(this.state.session?.participant?.displayName || '').trim();
             await this.joinMeeting({ displayNameOverride: defaultName });
+            this.setMobilePanel('room');
         } finally {
             if (this.state.joiningMeetingId === nextMeetingId) {
                 this.state.joiningMeetingId = '';

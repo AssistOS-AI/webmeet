@@ -31,5 +31,9 @@
 }
 
 .webmeet-dashboard-page .webmeet-modal-window-actions {
+    display: inline-flex;
+}
+
+.webmeet-dashboard-page #webmeetModalFullscreen {
     display: none;
 }

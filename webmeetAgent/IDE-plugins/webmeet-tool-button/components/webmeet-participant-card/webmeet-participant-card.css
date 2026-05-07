@@ -39,7 +39,7 @@ webmeet-participant-card.is-focused {
     min-height: 0;
     border-radius: 10px;
     overflow: hidden;
-    background: #000;
+    background: var(--webmeet-video-stage-background, var(--bg));
 }
 
 .wm-participant-media {
@@ -52,7 +52,7 @@ webmeet-participant-card.is-focused {
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    background: #000;
+    background: var(--webmeet-video-stage-background, var(--bg));
 }
 
 .wm-participant-media video {
@@ -61,7 +61,7 @@ webmeet-participant-card.is-focused {
     object-fit: contain;
     object-position: center center;
     display: block;
-    background: #000;
+    background: var(--webmeet-video-stage-background, var(--bg));
 }
 
 .wm-participant-media.has-multiple-videos {
@@ -108,7 +108,7 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     display: none;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.36);
+    background: color-mix(in srgb, var(--webmeet-video-stage-background, var(--bg)) 36%, transparent);
     backdrop-filter: blur(2px);
 }
 
@@ -116,7 +116,7 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     width: 28px;
     height: 28px;
     border-radius: 999px;
-    border: 3px solid rgba(255, 255, 255, 0.32);
+    border: 3px solid color-mix(in srgb, var(--white) 32%, transparent);
     border-top-color: var(--white);
     animation: wmParticipantSpin 0.8s linear infinite;
 }
@@ -137,7 +137,7 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     font-size: 1.7rem;
     font-weight: 700;
     color: var(--white);
-    background: color-mix(in srgb, var(--accent) 42%, #0f172a 58%);
+    background: color-mix(in srgb, var(--accent) 42%, var(--surface) 58%);
     text-transform: uppercase;
     user-select: none;
 }
@@ -153,7 +153,7 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     gap: 8px;
     padding: 6px 8px;
     border-radius: 8px;
-    background: rgba(15, 23, 42, 0.56);
+    background: color-mix(in srgb, var(--surface) 56%, transparent);
     backdrop-filter: blur(4px);
     margin: 0;
     opacity: 0;
@@ -192,13 +192,13 @@ webmeet-participant-card.is-focused .wm-participant-footer {
 }
 
 .wm-participant-mic.is-on {
-    color: #22c55e;
-    background: rgba(34, 197, 94, 0.2);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .wm-participant-mic.is-off {
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.2);
+    color: var(--red);
+    background: color-mix(in srgb, var(--red) 20%, transparent);
 }
 
 .wm-participant-mic .wm-mic-on,
