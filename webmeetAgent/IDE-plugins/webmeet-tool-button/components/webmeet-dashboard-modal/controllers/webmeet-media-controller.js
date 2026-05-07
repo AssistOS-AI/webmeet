@@ -74,23 +74,6 @@ export class WebmeetMediaController {
         return profiles[quality] || profiles.h720;
     }
 
-    getScreenShareQualityOptions() {
-        const quality = String(this.settings.screenShareQuality || 'h1080fps30').trim();
-        const profiles = {
-            h720fps15: { resolution: { width: 1280, height: 720, frameRate: 15 } },
-            h720fps30: { resolution: { width: 1280, height: 720, frameRate: 30 } },
-            h1080fps15: { resolution: { width: 1920, height: 1080, frameRate: 15 } },
-            h1080fps30: { resolution: { width: 1920, height: 1080, frameRate: 30 } }
-        };
-        return profiles[quality] || profiles.h1080fps30;
-    }
-
-    getScreenSharePublishOptions() {
-        return {
-            simulcast: false
-        };
-    }
-
     getAudioContextConstructor() {
         return globalThis.AudioContext || globalThis.webkitAudioContext || null;
     }
@@ -446,17 +429,7 @@ export class WebmeetMediaController {
         await this.runExclusiveToggle(async () => {
             const localParticipant = room.localParticipant;
             const shouldEnableScreen = !this.isLocalSourceEnabled('screen');
-            const options = this.getScreenShareQualityOptions();
-            const publishOptions = this.getScreenSharePublishOptions();
-            try {
-                await localParticipant.setScreenShareEnabled(shouldEnableScreen, options, publishOptions);
-            } catch (_) {
-                if (shouldEnableScreen) {
-                    await localParticipant.setScreenShareEnabled(true, undefined, publishOptions);
-                } else {
-                    await localParticipant.setScreenShareEnabled(false);
-                }
-            }
+            await localParticipant.setScreenShareEnabled(shouldEnableScreen);
             await this.waitForLocalSourceState('screen', shouldEnableScreen);
         });
     }

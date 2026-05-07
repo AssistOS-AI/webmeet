@@ -488,11 +488,7 @@ export const mediaSettingsMethods = {
         if (this.state.media.screen) {
             try {
                 await this.room.localParticipant.setScreenShareEnabled(false);
-                await this.room.localParticipant.setScreenShareEnabled(
-                    true,
-                    this.mediaController.getScreenShareQualityOptions(),
-                    this.mediaController.getScreenSharePublishOptions()
-                );
+                await this.room.localParticipant.setScreenShareEnabled(true);
             } catch (_) {
                 // ignore screen restart errors
             }
