@@ -20,6 +20,8 @@ The authoritative upstream contracts are Ploinky `docs/specs/DS005-routing-and-w
 
 Executable MCP operations must be authorized by router-minted invocation JWTs. The agent runtime may receive `PLOINKY_WIRE_SECRET`, which is the HKDF-derived invocation subkey, but it must never receive or require `PLOINKY_MASTER_KEY`. Code must not invent alternate bearer-token, client-secret, or caller-header authorization paths around the router's secure-wire model.
 
+`PLOINKY_WIRE_SECRET` is not a domain-secret root. It exists only for verifying router-issued invocation JWTs. Agent, service, media, provider, recording, TURN, webhook, and data-encryption secrets must be independently configured or generated, then injected through Ploinky encrypted variables, runtime resource secret templates, or DPU secret records with explicit policy. Production profiles must require those secrets or fail closed; they must not fall back to development defaults, and agent code must not derive persistent or third-party credentials from `PLOINKY_WIRE_SECRET`.
+
 The compact `x-ploinky-auth-info` header is not a secure grant by itself. Any HTTP service that receives that header must trust it only when it arrived through a declared Ploinky HTTP service route and, for guest services, only after validating the router-issued invocation token and the expected guest role or scope. Caller-supplied copies of identity headers must be rejected as authoritative input.
 
 Guest access must remain scoped to the route shape declared by the owning manifest. Manifest-level `guest: true` exposes the agent as a normal guest agent and should still enforce limitations from `usr.roles`. An `httpServices` entry with `auth: "guest"` exposes only the declared HTTP prefix; `forceGuest: true` must ignore any existing workspace login and mint a service-scoped guest session. Product-specific public paths must be declared in the agent manifest rather than hard-coded in Ploinky core.
@@ -39,6 +41,7 @@ Agent-local contract:
 - Authentication: Workspace room operations require authenticated route/MCP context; guest room entry is limited to the manifest-declared public service with scoped forced guest sessions. Manifest guest: none.
 - HTTP service surface: Declares `/public-services/webmeet/` -> `/api/` with `auth: "guest"`, `guestScope: "webmeet-public-service"`, and `forceGuest: true`. Manifest httpServices: {"externalPrefix":"/public-services/webmeet/","internalPrefix":"/api/","auth":"guest","guestScope":"webmeet-public-service","forceGuest":true,"notFoundMessage":"WebMeet route not found."}.
 - Persistent state: Meeting data lives under `/data`; recordings live under `/recordings`; LiveKit secrets stay server-side. Manifest volumes: {"webmeetAgent/data":"/data","webmeet/recordings":"/recordings"}.
+- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` is the explicit WebMeet data-encryption key for meeting payload DEK wrapping. New payloads must not use `PLOINKY_WIRE_SECRET`; a legacy wire-secret unwrap path may exist only to migrate old records into the explicit WebMeet key.
 - Documentation: `docs/index.html`
 - Validation: Run WebMeet proxy/plugin syntax checks and a Ploinky guest invite smoke test for auth or route changes.
 
