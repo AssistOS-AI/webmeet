@@ -129,22 +129,14 @@ function getRetentionDays(workspaceRoot) {
 }
 
 function ensureMasterKey(workspaceRoot) {
-    const raw = readConfigValue(workspaceRoot, MASTER_KEY_VAR);
+    let raw = readConfigValue(workspaceRoot, MASTER_KEY_VAR);
+    if (!raw) {
+        raw = String(process.env.PLOINKY_MASTER_KEY || process.env.PLOINKY_WIRE_SECRET || '').trim();
+    }
     if (!raw) {
         throw new Error(`${MASTER_KEY_VAR} is not configured.`);
     }
     return deriveMasterKey(raw);
-}
-
-function getLegacyMeetingKeyCandidates() {
-    const raw = String(process.env.PLOINKY_WIRE_SECRET || '').trim();
-    if (!raw) {
-        return [];
-    }
-    return [{
-        source: 'legacy:PLOINKY_WIRE_SECRET',
-        key: deriveMasterKey(raw)
-    }];
 }
 
 function getPresenceTtlMs(workspaceRoot) {
@@ -232,53 +224,16 @@ function loadMeetingRecord(context, meetingId) {
     }
 }
 
-function openMeetingPayload(context, record) {
-    const masterKey = ensureMasterKey(context.workspaceRoot);
-    const candidates = [
-        { source: MASTER_KEY_VAR, key: masterKey },
-        ...getLegacyMeetingKeyCandidates()
-    ];
-    let firstError = null;
-    for (const candidate of candidates) {
-        try {
-            const dek = unwrapDek(candidate.key, record.dek);
-            const payload = decryptPayload(dek, record.payload);
-            return {
-                dek,
-                payload,
-                usedLegacyKey: candidate.source !== MASTER_KEY_VAR,
-                source: candidate.source
-            };
-        } catch (error) {
-            firstError = firstError || error;
-        }
-    }
-    throw firstError || new Error('Unable to decrypt meeting payload.');
-}
-
 function decryptMeetingPayload(context, record) {
-    return openMeetingPayload(context, record).payload;
+    const masterKey = ensureMasterKey(context.workspaceRoot);
+    const dek = unwrapDek(masterKey, record.dek);
+    return decryptPayload(dek, record.payload);
 }
 
 function saveMeetingRecord(context, record, payload) {
     const masterKey = ensureMasterKey(context.workspaceRoot);
-    const opened = openMeetingPayload(context, record);
-    if (opened.usedLegacyKey) {
-        const { wrapped, dek } = createWrappedDek(masterKey);
-        record.dek = wrapped;
-        record.payload = encryptPayload(dek, payload);
-        record.encryption = {
-            masterKey: MASTER_KEY_VAR,
-            migratedFrom: opened.source,
-            migratedAt: nowIso()
-        };
-    } else {
-        record.payload = encryptPayload(opened.dek, payload);
-        record.encryption = {
-            ...(record.encryption && typeof record.encryption === 'object' ? record.encryption : {}),
-            masterKey: MASTER_KEY_VAR
-        };
-    }
+    const dek = unwrapDek(masterKey, record.dek);
+    record.payload = encryptPayload(dek, payload);
     record.updatedAt = nowIso();
     writeJsonFile(filePathFor(context.meetingsDir, record.meetingId), record);
 }
@@ -756,9 +711,6 @@ function createMeetingRecord(context, effectiveWorkspaceId, title, roomType = 't
         closedAt: null,
         expiresAt,
         dek: wrapped,
-        encryption: {
-            masterKey: MASTER_KEY_VAR
-        },
         payload: encryptPayload(dek, payload)
     };
     writeJsonFile(filePathFor(context.meetingsDir, meetingId), record);
