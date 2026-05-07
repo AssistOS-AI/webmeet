@@ -417,10 +417,6 @@ export class WebmeetMediaController {
         await this.runExclusiveToggle(async () => {
             const localParticipant = room.localParticipant;
             const shouldEnableCamera = !this.isLocalSourceEnabled('camera');
-            if (shouldEnableCamera && this.isLocalSourceEnabled('screen')) {
-                await localParticipant.setScreenShareEnabled(false);
-                await this.waitForLocalSourceState('screen', false);
-            }
             if (shouldEnableCamera) {
                 const options = this.getCameraEnableOptions();
                 try {
@@ -444,10 +440,6 @@ export class WebmeetMediaController {
         await this.runExclusiveToggle(async () => {
             const localParticipant = room.localParticipant;
             const shouldEnableScreen = !this.isLocalSourceEnabled('screen');
-            if (shouldEnableScreen && this.isLocalSourceEnabled('camera')) {
-                await localParticipant.setCameraEnabled(false);
-                await this.waitForLocalSourceState('camera', false);
-            }
             const options = this.getScreenShareQualityOptions();
             try {
                 await localParticipant.setScreenShareEnabled(shouldEnableScreen, options);

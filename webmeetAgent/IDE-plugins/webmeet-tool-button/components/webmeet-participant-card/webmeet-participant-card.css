@@ -64,6 +64,21 @@ webmeet-participant-card.is-focused {
     background: #000;
 }
 
+.wm-participant-media.has-multiple-videos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    align-items: stretch;
+    justify-items: stretch;
+    gap: 4px;
+    padding: 4px;
+}
+
+.wm-participant-media.has-multiple-videos video {
+    min-width: 0;
+    min-height: 0;
+    border-radius: 6px;
+}
+
 webmeet-participant-card.is-focused .wm-participant-shell {
     padding: 0;
 }

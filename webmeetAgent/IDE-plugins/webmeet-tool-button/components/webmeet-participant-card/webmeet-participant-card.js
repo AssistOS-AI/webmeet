@@ -16,6 +16,7 @@ export class WebMeetParticipantCard {
         this.invalidate = invalidate;
         this.refs = null;
         this.mediaElement = null;
+        this.mediaElements = [];
         this.mediaAspectCleanup = null;
         this.state = {
             participantId: String(element.getAttribute('data-participant-id') || '').trim(),
@@ -46,9 +47,7 @@ export class WebMeetParticipantCard {
             videoLoading: this.element.querySelector('[data-role="videoLoading"]')
         };
         this.applyState();
-        if (this.mediaElement && this.refs.mediaHost && !this.refs.mediaHost.contains(this.mediaElement)) {
-            this.refs.mediaHost.appendChild(this.mediaElement);
-        }
+        this.syncMediaElements();
     }
 
     setState(patch = {}) {
@@ -60,31 +59,54 @@ export class WebMeetParticipantCard {
     }
 
     setVideoElement(mediaElement) {
+        this.setVideoElements(mediaElement ? [mediaElement] : []);
+    }
+
+    setVideoElements(mediaElements = []) {
+        const nextElements = Array.from(mediaElements).filter(Boolean);
         this.mediaAspectCleanup?.();
         this.mediaAspectCleanup = null;
-        if (this.mediaElement && this.mediaElement !== mediaElement) {
-            try { this.mediaElement.srcObject = null; } catch (_) {}
-            this.mediaElement.remove();
+        const previousElements = this.mediaElements.length ? this.mediaElements : (this.mediaElement ? [this.mediaElement] : []);
+        for (const element of previousElements) {
+            if (!nextElements.includes(element)) {
+                try { element.srcObject = null; } catch (_) {}
+                element.remove();
+            }
         }
-        this.mediaElement = mediaElement || null;
-        if (this.refs?.mediaHost && this.mediaElement && !this.refs.mediaHost.contains(this.mediaElement)) {
-            this.refs.mediaHost.appendChild(this.mediaElement);
-        }
+        this.mediaElements = nextElements;
+        this.mediaElement = nextElements[0] || null;
+        this.syncMediaElements();
         this.installMediaAspectObserver();
-        this.setState({ hasVideo: Boolean(this.mediaElement), videoLoading: false });
+        this.setState({ hasVideo: nextElements.length > 0, videoLoading: false });
+    }
+
+    syncMediaElements() {
+        const host = this.refs?.mediaHost || null;
+        if (!host) return;
+        for (const mediaElement of this.mediaElements) {
+            if (!host.contains(mediaElement)) {
+                host.appendChild(mediaElement);
+            }
+        }
+        host.classList.toggle('has-multiple-videos', this.mediaElements.length > 1);
+        host.dataset.videoCount = String(this.mediaElements.length);
     }
 
     clearVideoElement() {
-        if (!this.mediaElement) {
+        if (!this.mediaElements.length && !this.mediaElement) {
             this.setState({ hasVideo: false });
             return;
         }
-        try { this.mediaElement.srcObject = null; } catch (_) {}
+        for (const mediaElement of this.mediaElements.length ? this.mediaElements : [this.mediaElement]) {
+            try { mediaElement.srcObject = null; } catch (_) {}
+            mediaElement.remove();
+        }
         this.mediaAspectCleanup?.();
         this.mediaAspectCleanup = null;
-        this.mediaElement.remove();
+        this.mediaElements = [];
         this.mediaElement = null;
         this.element.style.removeProperty('--wm-media-aspect-ratio');
+        this.syncMediaElements();
         this.setState({ hasVideo: false });
     }
 

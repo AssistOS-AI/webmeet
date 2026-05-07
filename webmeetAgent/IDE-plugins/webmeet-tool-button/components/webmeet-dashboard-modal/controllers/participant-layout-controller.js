@@ -130,13 +130,22 @@ export class ParticipantLayoutController {
         } else {
             this.applyNativeParticipantState(view, payload);
         }
-        if (view.videoElement) {
-            if (presenter && typeof presenter.setVideoElement === 'function') {
-                presenter.setVideoElement(view.videoElement);
+        const videoElements = this.getParticipantVideoElements(view);
+        if (videoElements.length) {
+            if (presenter && typeof presenter.setVideoElements === 'function') {
+                presenter.setVideoElements(videoElements);
+            } else if (presenter && typeof presenter.setVideoElement === 'function') {
+                presenter.setVideoElement(videoElements[0]);
             } else {
                 const mediaHost = view.element.querySelector('[data-role="mediaHost"]');
-                if (mediaHost && !mediaHost.contains(view.videoElement)) {
-                    mediaHost.appendChild(view.videoElement);
+                if (mediaHost) {
+                    for (const videoElement of videoElements) {
+                        if (!mediaHost.contains(videoElement)) {
+                            mediaHost.appendChild(videoElement);
+                        }
+                    }
+                    mediaHost.classList.toggle('has-multiple-videos', videoElements.length > 1);
+                    mediaHost.dataset.videoCount = String(videoElements.length);
                 }
             }
         }
@@ -161,12 +170,16 @@ export class ParticipantLayoutController {
                 micOn: false,
                 isMini: true,
                 isFocused: false,
-                element
+                element,
+                videoElements: new Map()
             };
             this.participantViews.set(id, view);
         } else {
             view.name = this.getParticipantDisplayName(participant);
             view.isLocal = Boolean(participant.kind === 'local');
+            if (!view.videoElements) {
+                view.videoElements = new Map();
+            }
         }
         this.applyParticipantViewState(view);
         return view;
@@ -224,6 +237,50 @@ export class ParticipantLayoutController {
         this.setFocusedParticipant(participantId);
     }
 
+    getParticipantVideoElements(view) {
+        if (!view) return [];
+        if (view.videoElements?.size) {
+            return Array.from(view.videoElements.values()).filter(Boolean);
+        }
+        return view.videoElement ? [view.videoElement] : [];
+    }
+
+    syncParticipantVideoElements(view) {
+        if (!view) return;
+        const videoElements = this.getParticipantVideoElements(view);
+        view.videoElement = videoElements[0] || null;
+        view.hasVideo = videoElements.length > 0;
+        if (!view.hasVideo) {
+            view.videoLoading = false;
+        }
+
+        const presenter = view.element.webSkelPresenter;
+        if (presenter && typeof presenter.setVideoElements === 'function') {
+            presenter.setVideoElements(videoElements);
+            return;
+        }
+        if (presenter && typeof presenter.setVideoElement === 'function') {
+            presenter.setVideoElement(videoElements[0] || null);
+            return;
+        }
+
+        const host = view.element.querySelector('[data-role="mediaHost"]');
+        if (!host) return;
+        const keep = new Set(videoElements);
+        for (const existing of host.querySelectorAll('video')) {
+            if (!keep.has(existing)) {
+                existing.remove();
+            }
+        }
+        for (const videoElement of videoElements) {
+            if (!host.contains(videoElement)) {
+                host.appendChild(videoElement);
+            }
+        }
+        host.classList.toggle('has-multiple-videos', videoElements.length > 1);
+        host.dataset.videoCount = String(videoElements.length);
+    }
+
     setParticipantMicState(participantId, isMicOn) {
         const id = String(participantId || '').trim();
         if (!id) return;
@@ -247,35 +304,21 @@ export class ParticipantLayoutController {
         if (!id || !trackSid || !mediaElement) return;
         const view = this.participantViews.get(id);
         if (!view) return;
+        if (!view.videoElements) {
+            view.videoElements = new Map();
+        }
+        view.videoElements.set(trackSid, mediaElement);
         view.videoElement = mediaElement;
         if (view.element.parentElement !== this.videoGridAll && this.videoGridAll) {
             this.videoGridAll.appendChild(view.element);
         }
 
         const tryAttach = () => {
-            const presenter = view.element.webSkelPresenter;
-            if (presenter && typeof presenter.setVideoElement === 'function') {
-                presenter.setVideoElement(mediaElement);
-            } else {
-                const host = view.element.querySelector('[data-role="mediaHost"]');
-                if (host) {
-                    // Remove existing video elements to prevent duplicates in Safari
-                    const existingVideos = host.querySelectorAll('video');
-                    existingVideos.forEach(video => {
-                        if (video !== mediaElement && video.parentNode === host) {
-                            video.remove();
-                        }
-                    });
-                    
-                    if (!host.contains(mediaElement)) {
-                        host.appendChild(mediaElement);
-                    }
-                }
-            }
+            this.syncParticipantVideoElements(view);
             const host = view.element.querySelector('[data-role="mediaHost"]');
             const attached = Boolean(host && host.contains(mediaElement));
-            view.hasVideo = attached;
-            if (attached) {
+            view.hasVideo = view.videoElements.size > 0;
+            if (attached || view.hasVideo) {
                 view.videoLoading = false;
             }
             this.applyParticipantViewState(view);
@@ -306,21 +349,13 @@ export class ParticipantLayoutController {
         const track = this.trackElements.get(trackSid);
         if (!track || track.kind !== 'video') return;
         const view = this.participantViews.get(track.participantId);
-            if (view) {
-                const presenter = view.element.webSkelPresenter;
-                if (presenter && typeof presenter.clearVideoElement === 'function') {
-                    presenter.clearVideoElement();
-                } else {
-                const host = view.element.querySelector('[data-role="mediaHost"]');
-                const video = host?.querySelector('video');
-                if (video) {
-                    try { video.srcObject = null; } catch (_) {}
-                    video.remove();
-                }
+        if (view) {
+            if (!view.videoElements) {
+                view.videoElements = new Map();
             }
-            view.hasVideo = false;
-            view.videoLoading = false;
-            view.videoElement = null;
+            view.videoElements.delete(trackSid);
+            view.videoElement = this.getParticipantVideoElements(view)[0] || null;
+            this.syncParticipantVideoElements(view);
             this.applyParticipantViewState(view);
         }
         try { track.element.srcObject = null; } catch (_) {}
