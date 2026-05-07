@@ -76,34 +76,6 @@ export class LivekitRoomController {
         return preset?.resolution || fallback;
     }
 
-    getVideoEncoding(livekit, presetName, fallback) {
-        const preset = livekit?.VideoPresets?.[presetName];
-        return preset?.encoding || fallback;
-    }
-
-    getScreenShareEncoding(livekit, quality) {
-        const profile = this.getQualityProfile('screen', quality);
-        const preset = livekit?.ScreenSharePresets?.[profile.preset];
-        return preset?.encoding || profile.encoding;
-    }
-
-    getPublishDefaults(livekit) {
-        const audioPreset = livekit?.AudioPresets?.speech || livekit?.AudioPresets?.music || null;
-        const settings = this.getMediaQualitySettings();
-        const cameraProfile = this.getQualityProfile('camera', settings.cameraQuality);
-        const screenProfile = this.getQualityProfile('screen', settings.screenShareQuality);
-        return {
-            ...(audioPreset ? { audioPreset } : { audioBitrate: 64_000 }),
-            dtx: true,
-            red: true,
-            simulcast: false,
-            videoCodec: 'vp8',
-            videoEncoding: this.getVideoEncoding(livekit, cameraProfile.preset, cameraProfile.encoding),
-            screenShareEncoding: this.getScreenShareEncoding(livekit, screenProfile.preset),
-            stopMicTrackOnMute: false
-        };
-    }
-
     getVideoCaptureDefaults(livekit) {
         const settings = this.getMediaQualitySettings();
         const profile = this.getQualityProfile('camera', settings.cameraQuality);
@@ -133,7 +105,6 @@ export class LivekitRoomController {
             dynacast: false,
             audioCaptureDefaults,
             videoCaptureDefaults: this.getVideoCaptureDefaults(livekit),
-            publishDefaults: this.getPublishDefaults(livekit),
             stopLocalTrackOnUnpublish: true
         });
         this.room = room;
