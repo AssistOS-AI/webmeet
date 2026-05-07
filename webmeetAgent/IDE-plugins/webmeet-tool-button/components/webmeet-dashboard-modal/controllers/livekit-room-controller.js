@@ -96,7 +96,7 @@ export class LivekitRoomController {
             ...(audioPreset ? { audioPreset } : { audioBitrate: 64_000 }),
             dtx: true,
             red: true,
-            simulcast: true,
+            simulcast: false,
             videoCodec: 'vp8',
             videoEncoding: this.getVideoEncoding(livekit, cameraProfile.preset, cameraProfile.encoding),
             screenShareEncoding: this.getScreenShareEncoding(livekit, screenProfile.preset),

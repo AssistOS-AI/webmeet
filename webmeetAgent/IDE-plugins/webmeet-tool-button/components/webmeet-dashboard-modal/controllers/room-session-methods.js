@@ -7,16 +7,6 @@ export const roomSessionMethods = {
         }
         await this.disconnectRoom();
 
-        const remoteVideoRefreshCounts = new WeakMap();
-
-        const isRemoteVideoElementReady = (mediaElement) => {
-            if (!mediaElement) return false;
-            return Number(mediaElement.videoWidth || 0) > 0
-                || Number(mediaElement.videoHeight || 0) > 0
-                || Number(mediaElement.currentTime || 0) > 0
-                || Number(mediaElement.readyState || 0) >= HTMLMediaElement.HAVE_CURRENT_DATA;
-        };
-
         const renderPublication = (participant, publication, explicitTrack = null, TrackRef = null) => {
             const Track = TrackRef || window.LivekitClient?.Track;
             if (!Track) return;
@@ -39,14 +29,10 @@ export const roomSessionMethods = {
                 const mediaElement = track.attach();
                 mediaElement.autoplay = true;
                 mediaElement.playsInline = true;
-                const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
-                if (isLocalParticipant) {
+                if (participantId === this.room?.localParticipant?.identity) {
                     mediaElement.muted = true;
                 }
                 this.attachVideoTrack(participantId, trackId, mediaElement);
-                if (!isLocalParticipant) {
-                    scheduleRemoteVideoReadinessCheck(participant, publication, mediaElement, Track, 'render-video');
-                }
             } else if (track.kind === Track.Kind.Audio) {
                 const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
                 if (!isLocalParticipant) {
@@ -89,34 +75,6 @@ export const roomSessionMethods = {
             }
         };
 
-        const refreshRemoteVideoSubscription = (publication, participant, reason) => {
-            if (!publication || typeof publication.setSubscribed !== 'function') return;
-            const refreshCount = remoteVideoRefreshCounts.get(publication) || 0;
-            if (refreshCount >= 2) return;
-            remoteVideoRefreshCounts.set(publication, refreshCount + 1);
-            setPublicationSubscribed(publication, false, participant, `${reason}:refresh-off`);
-            window.setTimeout(() => {
-                setPublicationSubscribed(publication, true, participant, `${reason}:refresh-on`);
-            }, 900);
-        };
-
-        const scheduleRemoteVideoReadinessCheck = (participant, publication, mediaElement, TrackRef = null, reason = 'remote-video') => {
-            const Track = TrackRef || window.LivekitClient?.Track || null;
-            const isVideoTrack = Track
-                ? publication?.kind === Track.Kind.Video
-                : publication?.track?.kind === 'video';
-            if (!publication || !mediaElement || !isVideoTrack) return;
-
-            for (const delay of [1500, 3500, 7000]) {
-                window.setTimeout(() => {
-                    if (!this.room || isRemoteVideoElementReady(mediaElement) || publication.isMuted) return;
-                    const mediaStreamTrack = publication.track?.mediaStreamTrack || null;
-                    if (mediaStreamTrack && mediaStreamTrack.readyState !== 'live') return;
-                    refreshRemoteVideoSubscription(publication, participant, `${reason}:${delay}`);
-                }, delay);
-            }
-        };
-
         const subscribePublication = (publication, participant = null, TrackRef = null, reason = 'subscribe') => {
             const participantId = String(participant?.identity || '').trim();
             const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
@@ -137,19 +95,18 @@ export const roomSessionMethods = {
                     && mediaStreamTrack?.readyState === 'live'
                     && mediaStreamTrack.muted === true;
                 if (isStuckRemoteVideo) {
-                    refreshRemoteVideoSubscription(publication, participant, `${reason}:muted`);
+                    setPublicationSubscribed(publication, false, participant, `${reason}:muted-refresh-off`);
+                    window.setTimeout(() => {
+                        setPublicationSubscribed(publication, true, participant, `${reason}:muted-refresh-on`);
+                    }, 125);
                 }
                 return;
             }
 
             if (publication.isSubscribed && !publication.track) {
                 window.setTimeout(() => {
-                    if (publication.track) {
-                        setPublicationSubscribed(publication, true, participant, `${reason}:ensure-on`);
-                        return;
-                    }
-                    refreshRemoteVideoSubscription(publication, participant, `${reason}:missing-track`);
-                }, 500);
+                    setPublicationSubscribed(publication, true, participant, `${reason}:ensure-on`);
+                }, 75);
                 return;
             }
 
