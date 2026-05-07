@@ -61,12 +61,18 @@
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": false,
                     "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-livekit",
+                    "deriveName": "api-key",
                     "deriveBytes": 16
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
-                    "derive": "derived-master"
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-livekit",
+                    "deriveName": "api-secret"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -100,7 +106,10 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": false,
-                    "derive": "derived-master"
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-turn",
+                    "deriveName": "password"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -166,12 +175,18 @@
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": false,
                     "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-livekit",
+                    "deriveName": "api-key",
                     "deriveBytes": 16
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
-                    "derive": "derived-master"
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-livekit",
+                    "deriveName": "api-secret"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -205,7 +220,10 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": false,
-                    "derive": "derived-master"
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-turn",
+                    "deriveName": "password"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -269,12 +287,18 @@
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": true,
                     "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-livekit",
+                    "deriveName": "api-key",
                     "deriveBytes": 16
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": true,
-                    "derive": "derived-master"
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-livekit",
+                    "deriveName": "api-secret"
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -306,7 +330,10 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": true,
-                    "derive": "derived-master"
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-turn",
+                    "deriveName": "password"
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
