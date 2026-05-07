@@ -85,6 +85,12 @@ export class WebmeetMediaController {
         return profiles[quality] || profiles.h1080fps30;
     }
 
+    getScreenSharePublishOptions() {
+        return {
+            simulcast: false
+        };
+    }
+
     getAudioContextConstructor() {
         return globalThis.AudioContext || globalThis.webkitAudioContext || null;
     }
@@ -441,10 +447,15 @@ export class WebmeetMediaController {
             const localParticipant = room.localParticipant;
             const shouldEnableScreen = !this.isLocalSourceEnabled('screen');
             const options = this.getScreenShareQualityOptions();
+            const publishOptions = this.getScreenSharePublishOptions();
             try {
-                await localParticipant.setScreenShareEnabled(shouldEnableScreen, options);
+                await localParticipant.setScreenShareEnabled(shouldEnableScreen, options, publishOptions);
             } catch (_) {
-                await localParticipant.setScreenShareEnabled(shouldEnableScreen);
+                if (shouldEnableScreen) {
+                    await localParticipant.setScreenShareEnabled(true, undefined, publishOptions);
+                } else {
+                    await localParticipant.setScreenShareEnabled(false);
+                }
             }
             await this.waitForLocalSourceState('screen', shouldEnableScreen);
         });
