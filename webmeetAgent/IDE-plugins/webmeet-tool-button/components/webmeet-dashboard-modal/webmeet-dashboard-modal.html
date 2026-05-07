@@ -191,47 +191,91 @@
                             </div>
                         </div>
                         <div id="webmeetMediaSettingsPanel" class="webmeet-media-settings webmeet-hidden">
-                            <div class="webmeet-media-settings-row">
-                                <label for="webmeetAudioInputSelect">Microphone</label>
-                                <select id="webmeetAudioInputSelect" class="form-input"></select>
-                            </div>
-                            <div class="webmeet-media-settings-row">
-                                <label for="webmeetVideoInputSelect">Camera</label>
-                                <select id="webmeetVideoInputSelect" class="form-input"></select>
-                            </div>
-                            <div class="webmeet-media-settings-row">
-                                <label for="webmeetAudioOutputSelect">Speaker</label>
-                                <select id="webmeetAudioOutputSelect" class="form-input"></select>
-                            </div>
-                            <div class="webmeet-media-settings-row webmeet-media-slider-row">
-                                <div class="webmeet-media-slider-label">
-                                    <label for="webmeetMicrophoneGain">Microphone volume</label>
-                                    <span id="webmeetMicrophoneGainValue">100%</span>
+                            <section class="webmeet-media-settings-group" aria-label="Audio input">
+                                <div class="webmeet-media-settings-group-header">
+                                    <span>Input</span>
                                 </div>
-                                <input id="webmeetMicrophoneGain" type="range" min="0" max="2" step="0.05" value="1">
-                                <div id="webmeetMicrophoneGainWarning" class="webmeet-media-warning webmeet-hidden">High gain can distort audio.</div>
-                            </div>
-                            <div class="webmeet-media-settings-row webmeet-media-slider-row">
-                                <div class="webmeet-media-slider-label">
-                                    <label for="webmeetOutputVolume">Speaker volume</label>
-                                    <span id="webmeetOutputVolumeValue">100%</span>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetAudioInputSelect">Microphone</label>
+                                    <select id="webmeetAudioInputSelect" class="form-input"></select>
                                 </div>
-                                <input id="webmeetOutputVolume" type="range" min="0" max="1" step="0.05" value="1">
-                            </div>
-                            <div class="webmeet-media-settings-flags">
-                                <label class="webmeet-media-flag">
-                                    <input type="checkbox" id="webmeetAudioEchoCancellation">
-                                    Echo cancellation
-                                </label>
-                                <label class="webmeet-media-flag">
-                                    <input type="checkbox" id="webmeetAudioNoiseSuppression">
-                                    Noise suppression
-                                </label>
-                                <label class="webmeet-media-flag">
-                                    <input type="checkbox" id="webmeetAudioAutoGainControl">
-                                    Auto gain control
-                                </label>
-                            </div>
+                                <div class="webmeet-media-settings-row webmeet-media-slider-row">
+                                    <div class="webmeet-media-slider-label">
+                                        <label for="webmeetMicrophoneGain">Microphone volume</label>
+                                        <span id="webmeetMicrophoneGainValue">100%</span>
+                                    </div>
+                                    <input id="webmeetMicrophoneGain" type="range" min="0" max="2" step="0.05" value="1">
+                                    <div id="webmeetMicrophoneGainWarning" class="webmeet-media-warning webmeet-hidden">High gain can distort audio.</div>
+                                </div>
+                            </section>
+
+                            <section class="webmeet-media-settings-group" aria-label="Audio output">
+                                <div class="webmeet-media-settings-group-header">
+                                    <span>Output</span>
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetAudioOutputSelect">Speaker</label>
+                                    <select id="webmeetAudioOutputSelect" class="form-input"></select>
+                                </div>
+                                <div class="webmeet-media-settings-row webmeet-media-slider-row">
+                                    <div class="webmeet-media-slider-label">
+                                        <label for="webmeetOutputVolume">Speaker volume</label>
+                                        <span id="webmeetOutputVolumeValue">100%</span>
+                                    </div>
+                                    <input id="webmeetOutputVolume" type="range" min="0" max="1" step="0.05" value="1">
+                                </div>
+                            </section>
+
+                            <section class="webmeet-media-settings-group" aria-label="Video">
+                                <div class="webmeet-media-settings-group-header">
+                                    <span>Video</span>
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetVideoInputSelect">Camera</label>
+                                    <select id="webmeetVideoInputSelect" class="form-input"></select>
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetCameraQualitySelect">Camera quality</label>
+                                    <select id="webmeetCameraQualitySelect" class="form-input">
+                                        <option value="h360">360p / 24fps</option>
+                                        <option value="h540">540p / 30fps</option>
+                                        <option value="h720">720p / 30fps</option>
+                                        <option value="h1080">1080p / 30fps</option>
+                                    </select>
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetScreenShareQualitySelect">Screen share quality</label>
+                                    <select id="webmeetScreenShareQualitySelect" class="form-input">
+                                        <option value="h720fps15">720p / 15fps</option>
+                                        <option value="h720fps30">720p / 30fps</option>
+                                        <option value="h1080fps15">1080p / 15fps</option>
+                                        <option value="h1080fps30">1080p / 30fps</option>
+                                    </select>
+                                </div>
+                            </section>
+
+                            <section class="webmeet-media-settings-group webmeet-media-settings-group-wide" aria-label="Audio processing">
+                                <div class="webmeet-media-settings-group-header">
+                                    <span>Audio processing</span>
+                                </div>
+                                <div class="webmeet-media-settings-flags">
+                                    <label class="webmeet-media-flag">
+                                        <input type="checkbox" id="webmeetAudioEchoCancellation">
+                                        Echo cancellation
+                                    </label>
+                                    <label class="webmeet-media-flag">
+                                        <input type="checkbox" id="webmeetAudioNoiseSuppression">
+                                        Noise suppression
+                                    </label>
+                                    <label class="webmeet-media-flag">
+                                        <input type="checkbox" id="webmeetAudioAutoGainControl">
+                                        Auto gain control
+                                    </label>
+                                </div>
+                            </section>
+
+                            <div id="webmeetMediaDeviceWarnings" class="webmeet-media-device-warnings webmeet-hidden" aria-live="polite"></div>
+
                             <div class="webmeet-media-settings-actions">
                                 <button type="button" class="general-button subtle-button" data-local-action="refreshMediaDevices">Refresh devices</button>
                                 <button type="button" class="general-button" data-local-action="applyMediaSettings">Apply</button>

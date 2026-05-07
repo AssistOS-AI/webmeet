@@ -1,0 +1,109 @@
+import {
+    buildPublicWebMeetApiBaseUrl
+} from '../services/dashboard-utils.js';
+
+/**
+ * GuestSessionManager - Manages guest session lifecycle and public API calls
+ * Extracted from webmeet-dashboard-modal.js for better maintainability
+ */
+export class GuestSessionManager {
+    constructor(options = {}) {
+        this.getState = options.getState || (() => ({}));
+        this.setState = options.setState || (() => {});
+        this.getSession = options.getSession || (() => null);
+        this.setSession = options.setSession || (() => {});
+        this.setError = options.setError || console.error;
+        this.loadParticipantsForMeetings = options.loadParticipantsForMeetings || (() => Promise.resolve());
+        this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
+        this.renderAll = options.renderAll || (() => {});
+        this.connectRoom = options.connectRoom || (() => Promise.resolve());
+        this.hostContext = options.hostContext || {};
+
+        this.elements = {};
+    }
+
+    setElements(elements) {
+        this.elements = elements;
+    }
+
+    isGuestSession() {
+        const session = this.getSession();
+        return session?.guest === true || Boolean(session?.publicApiBaseUrl);
+    }
+
+    getGuestToken() {
+        const session = this.getSession();
+        return String(session?.participantToken || session?.guestToken || '').trim();
+    }
+
+    async bootstrapGuestSession(session) {
+        const meeting = session.meeting || {};
+        const publicApiBaseUrl = String(session.publicApiBaseUrl || buildPublicWebMeetApiBaseUrl()).trim();
+
+        this.setState({
+            workspaces: [{
+                id: meeting.workspaceId || '',
+                name: 'WebMeet',
+                rootPath: ''
+            }],
+            meetings: [meeting],
+            selectedWorkspaceId: meeting.workspaceId || '',
+            selectedMeetingId: meeting.id || '',
+            canManageRooms: false,
+            session: {
+                ...session,
+                meeting: meeting,
+                participantToken: session.participantToken,
+                participantIdentity: session.participantIdentity,
+                livekitUrl: session.livekitUrl,
+                participant: session.participant,
+                publicApiBaseUrl,
+                guest: true
+            }
+        });
+
+        this.renderAll();
+        await this.loadParticipantsForMeetings();
+        await this.loadMeetingDetails();
+        await this.connectRoom();
+    }
+
+    async callPublicGuestApi(meetingId, action, payload = {}) {
+        const session = this.getSession();
+        const baseUrl = String(session?.publicApiBaseUrl || buildPublicWebMeetApiBaseUrl()).trim();
+        const url = new URL(`${baseUrl}/meetings/${encodeURIComponent(meetingId)}/${action}`);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                guestToken: this.getGuestToken(),
+                participantId: String(session?.participantIdentity || '').trim(),
+                ...payload
+            })
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => 'Unknown error');
+            throw new Error(`Guest API error: ${response.status} - ${text}`);
+        }
+        return response.json();
+    }
+
+    async fetchPublicMeetingDetails(meetingId) {
+        const session = this.getSession();
+        const baseUrl = String(session?.publicApiBaseUrl || buildPublicWebMeetApiBaseUrl()).trim();
+        const url = `${baseUrl}/meetings/${encodeURIComponent(meetingId)}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => 'Unknown error');
+            throw new Error(`Failed to load meeting details: ${response.status} - ${text}`);
+        }
+        return response.json();
+    }
+
+}

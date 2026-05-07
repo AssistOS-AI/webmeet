@@ -22,6 +22,7 @@ export class WebMeetParticipantCard {
             displayName: String(element.getAttribute('data-display-name') || 'Participant').trim() || 'Participant',
             isLocal: parseBoolean(element.getAttribute('data-is-local')),
             hasVideo: parseBoolean(element.getAttribute('data-has-video')),
+            videoLoading: parseBoolean(element.getAttribute('data-video-loading')),
             isMicOn: parseBoolean(element.getAttribute('data-is-mic-on')),
             isMini: parseBoolean(element.getAttribute('data-is-mini')),
             isFocused: parseBoolean(element.getAttribute('data-is-focused'))
@@ -41,7 +42,8 @@ export class WebMeetParticipantCard {
             avatar: this.element.querySelector('[data-role="avatar"]'),
             footer: this.element.querySelector('[data-role="footer"]'),
             name: this.element.querySelector('[data-role="name"]'),
-            mic: this.element.querySelector('[data-role="mic"]')
+            mic: this.element.querySelector('[data-role="mic"]'),
+            videoLoading: this.element.querySelector('[data-role="videoLoading"]')
         };
         this.applyState();
         if (this.mediaElement && this.refs.mediaHost && !this.refs.mediaHost.contains(this.mediaElement)) {
@@ -69,7 +71,7 @@ export class WebMeetParticipantCard {
             this.refs.mediaHost.appendChild(this.mediaElement);
         }
         this.installMediaAspectObserver();
-        this.setState({ hasVideo: Boolean(this.mediaElement) });
+        this.setState({ hasVideo: Boolean(this.mediaElement), videoLoading: false });
     }
 
     clearVideoElement() {
@@ -101,6 +103,10 @@ export class WebMeetParticipantCard {
         this.refs.name.textContent = displayName;
         this.refs.avatar.textContent = initials;
         this.refs.fallback.style.display = this.state.hasVideo ? 'none' : 'flex';
+        this.element.classList.toggle('is-video-loading', Boolean(this.state.videoLoading));
+        if (this.refs.videoLoading) {
+            this.refs.videoLoading.style.display = this.state.videoLoading ? 'flex' : 'none';
+        }
 
         this.refs.mic.classList.toggle('is-on', Boolean(this.state.isMicOn));
         this.refs.mic.classList.toggle('is-off', !this.state.isMicOn);

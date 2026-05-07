@@ -14,7 +14,9 @@ export class WebmeetMediaController {
             noiseSuppression: true,
             autoGainControl: true,
             microphoneGain: 1,
-            outputVolume: 1
+            outputVolume: 1,
+            cameraQuality: 'h720',
+            screenShareQuality: 'h1080fps30'
         };
         this.inFlight = false;
         this.customMicrophone = null;
@@ -59,6 +61,28 @@ export class WebmeetMediaController {
 
     usesCustomMicrophoneGain() {
         return Math.abs(this.getMicrophoneGain() - 1) > 0.001;
+    }
+
+    getCameraQualityProfile() {
+        const quality = String(this.settings.cameraQuality || 'h720').trim();
+        const profiles = {
+            h360: { width: 640, height: 360, frameRate: 24 },
+            h540: { width: 960, height: 540, frameRate: 30 },
+            h720: { width: 1280, height: 720, frameRate: 30 },
+            h1080: { width: 1920, height: 1080, frameRate: 30 }
+        };
+        return profiles[quality] || profiles.h720;
+    }
+
+    getScreenShareQualityOptions() {
+        const quality = String(this.settings.screenShareQuality || 'h1080fps30').trim();
+        const profiles = {
+            h720fps15: { resolution: { width: 1280, height: 720, frameRate: 15 } },
+            h720fps30: { resolution: { width: 1280, height: 720, frameRate: 30 } },
+            h1080fps15: { resolution: { width: 1920, height: 1080, frameRate: 15 } },
+            h1080fps30: { resolution: { width: 1920, height: 1080, frameRate: 30 } }
+        };
+        return profiles[quality] || profiles.h1080fps30;
     }
 
     getAudioContextConstructor() {
@@ -222,6 +246,21 @@ export class WebmeetMediaController {
         return false;
     }
 
+    getActiveMicrophoneMediaStreamTrack(TrackRef = null) {
+        const sourceTrack = this.customMicrophone?.sourceStream?.getAudioTracks?.()?.[0] || null;
+        if (String(sourceTrack?.readyState || '').toLowerCase() === 'live') {
+            return sourceTrack;
+        }
+        const tracks = this.getLocalMicrophoneTracks(TrackRef);
+        for (const track of tracks) {
+            const mediaStreamTrack = track?.mediaStreamTrack || null;
+            if (String(mediaStreamTrack?.readyState || '').toLowerCase() === 'live') {
+                return mediaStreamTrack;
+            }
+        }
+        return null;
+    }
+
     hardStopMicrophoneTracks(TrackRef = null) {
         const tracks = this.getLocalMicrophoneTracks(TrackRef);
         for (const track of tracks) {
@@ -258,7 +297,10 @@ export class WebmeetMediaController {
         const deviceId = videoDeviceId
             ? ({ exact: videoDeviceId })
             : undefined;
-        return { deviceId };
+        return {
+            deviceId,
+            resolution: this.getCameraQualityProfile()
+        };
     }
 
     isLocalSourceEnabled(type, TrackRef = null) {
@@ -406,7 +448,12 @@ export class WebmeetMediaController {
                 await localParticipant.setCameraEnabled(false);
                 await this.waitForLocalSourceState('camera', false);
             }
-            await localParticipant.setScreenShareEnabled(shouldEnableScreen);
+            const options = this.getScreenShareQualityOptions();
+            try {
+                await localParticipant.setScreenShareEnabled(shouldEnableScreen, options);
+            } catch (_) {
+                await localParticipant.setScreenShareEnabled(shouldEnableScreen);
+            }
             await this.waitForLocalSourceState('screen', shouldEnableScreen);
         });
     }

@@ -40,6 +40,9 @@ export class ParticipantLayoutController {
                     <div class="wm-participant-fallback" data-role="fallback">
                         <div class="wm-participant-avatar" data-role="avatar">?</div>
                     </div>
+                    <div class="wm-participant-loading" data-role="videoLoading" aria-hidden="true">
+                        <span class="wm-participant-spinner"></span>
+                    </div>
                 </div>
                 <div class="wm-participant-footer" data-role="footer">
                     <span class="wm-participant-name" data-role="name">Participant</span>
@@ -72,10 +75,13 @@ export class ParticipantLayoutController {
         const name = view.element.querySelector('[data-role="name"]');
         const avatar = view.element.querySelector('[data-role="avatar"]');
         const fallback = view.element.querySelector('[data-role="fallback"]');
+        const videoLoading = view.element.querySelector('[data-role="videoLoading"]');
         const mic = view.element.querySelector('[data-role="mic"]');
         if (name) name.textContent = payload.displayName;
         if (avatar) avatar.textContent = this.buildInitials(payload.displayName);
         if (fallback) fallback.style.display = payload.hasVideo ? 'none' : 'flex';
+        view.element.classList.toggle('is-video-loading', Boolean(payload.videoLoading));
+        if (videoLoading) videoLoading.style.display = payload.videoLoading ? 'flex' : 'none';
         if (mic) {
             mic.classList.toggle('is-on', Boolean(payload.isMicOn));
             mic.classList.toggle('is-off', !payload.isMicOn);
@@ -106,6 +112,7 @@ export class ParticipantLayoutController {
             isLocal: Boolean(view.isLocal),
             isMicOn: Boolean(view.micOn),
             hasVideo: Boolean(view.hasVideo),
+            videoLoading: Boolean(view.videoLoading),
             isMini: Boolean(view.isMini),
             isFocused: Boolean(view.isFocused)
         };
@@ -114,6 +121,7 @@ export class ParticipantLayoutController {
         view.element.setAttribute('data-is-local', payload.isLocal ? 'true' : 'false');
         view.element.setAttribute('data-is-mic-on', payload.isMicOn ? 'true' : 'false');
         view.element.setAttribute('data-has-video', payload.hasVideo ? 'true' : 'false');
+        view.element.setAttribute('data-video-loading', payload.videoLoading ? 'true' : 'false');
         view.element.setAttribute('data-is-mini', payload.isMini ? 'true' : 'false');
         view.element.setAttribute('data-is-focused', payload.isFocused ? 'true' : 'false');
         const presenter = view.element.webSkelPresenter;
@@ -149,6 +157,7 @@ export class ParticipantLayoutController {
                 name: this.getParticipantDisplayName(participant),
                 isLocal: Boolean(participant.kind === 'local'),
                 hasVideo: false,
+                videoLoading: false,
                 micOn: false,
                 isMini: true,
                 isFocused: false,
@@ -224,6 +233,15 @@ export class ParticipantLayoutController {
         this.applyParticipantViewState(view);
     }
 
+    setParticipantVideoLoading(participantId, isLoading) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        const view = this.participantViews.get(id);
+        if (!view) return;
+        view.videoLoading = Boolean(isLoading);
+        this.applyParticipantViewState(view);
+    }
+
     attachVideoTrack(participantId, trackSid, mediaElement) {
         const id = String(participantId || '').trim();
         if (!id || !trackSid || !mediaElement) return;
@@ -257,6 +275,9 @@ export class ParticipantLayoutController {
             const host = view.element.querySelector('[data-role="mediaHost"]');
             const attached = Boolean(host && host.contains(mediaElement));
             view.hasVideo = attached;
+            if (attached) {
+                view.videoLoading = false;
+            }
             this.applyParticipantViewState(view);
             return attached;
         };
@@ -285,11 +306,11 @@ export class ParticipantLayoutController {
         const track = this.trackElements.get(trackSid);
         if (!track || track.kind !== 'video') return;
         const view = this.participantViews.get(track.participantId);
-        if (view) {
-            const presenter = view.element.webSkelPresenter;
-            if (presenter && typeof presenter.clearVideoElement === 'function') {
-                presenter.clearVideoElement();
-            } else {
+            if (view) {
+                const presenter = view.element.webSkelPresenter;
+                if (presenter && typeof presenter.clearVideoElement === 'function') {
+                    presenter.clearVideoElement();
+                } else {
                 const host = view.element.querySelector('[data-role="mediaHost"]');
                 const video = host?.querySelector('video');
                 if (video) {
@@ -298,6 +319,7 @@ export class ParticipantLayoutController {
                 }
             }
             view.hasVideo = false;
+            view.videoLoading = false;
             view.videoElement = null;
             this.applyParticipantViewState(view);
         }

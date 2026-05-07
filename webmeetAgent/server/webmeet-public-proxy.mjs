@@ -161,6 +161,20 @@ async function verifyRouterInvocationToken(invocationToken, { expectedTool, body
 }
 
 async function verifyRouterGuestInvocation(req, url) {
+    return verifyRouterInvocation(req, url, { requireGuest: true });
+}
+
+async function requirePloinkyGuestIdentity(req, res, url) {
+    const verified = await verifyRouterGuestInvocation(req, url);
+    if (verified.ok) return true;
+    writeResponse(res, 401, JSON.stringify({ error: 'Ploinky guest session required.' }), {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store'
+    });
+    return false;
+}
+
+async function verifyRouterInvocation(req, url, { requireGuest = false } = {}) {
     const authInfo = readPloinkyAuthInfo(req);
     const invocationToken = String(authInfo?.invocationToken || '').trim();
     if (!invocationToken) {
@@ -174,20 +188,16 @@ async function verifyRouterGuestInvocation(req, url) {
         return verified;
     }
     const { payload } = verified;
-    try {
-        if (!hasGuestRole(payload)) {
-            return { ok: false, reason: 'guest role required' };
-        }
-        return { ok: true, payload };
-    } catch (error) {
-        return { ok: false, reason: error?.message || String(error) };
+    if (requireGuest && !hasGuestRole(payload)) {
+        return { ok: false, reason: 'guest role required' };
     }
+    return { ok: true, payload };
 }
 
-async function requirePloinkyGuestIdentity(req, res, url) {
-    const verified = await verifyRouterGuestInvocation(req, url);
+async function requirePloinkyAuthenticatedIdentity(req, res, url) {
+    const verified = await verifyRouterInvocation(req, url, { requireGuest: false });
     if (verified.ok) return true;
-    writeResponse(res, 401, JSON.stringify({ error: 'Ploinky guest session required.' }), {
+    writeResponse(res, 401, JSON.stringify({ error: 'Ploinky authentication required.' }), {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-store'
     });
@@ -721,6 +731,22 @@ function isAllowedPublicApi(req, pathname) {
     );
 }
 
+function isAllowedAuthenticatedApi(req, pathname) {
+    // Allow all /api/* routes for authenticated users (via x-ploinky-auth-info header)
+    if (!pathname.startsWith('/api/')) return false;
+    // Exclude guest-only routes that require special handling
+    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat|guest-transcript)$/;
+    if (guestOnlyPattern.test(pathname)) return false;
+    // Already handled by isAllowedPublicApi (with guest token)
+    const eventsPattern = /^\/api\/meetings\/[^/]+\/events$/;
+    if (eventsPattern.test(pathname)) {
+        const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+        // If it has guest params, let isAllowedPublicApi handle it
+        if (url.searchParams.has('guestToken')) return false;
+    }
+    return true;
+}
+
 const server = http.createServer((req, res) => {
     handleRequest(req, res).catch((error) => {
         if (!res.headersSent) {
@@ -758,6 +784,12 @@ async function handleRequest(req, res) {
 
     if (isAllowedPublicApi(req, pathname)) {
         if (!(await requirePloinkyGuestIdentity(req, res, url))) return;
+        proxy(req, res, API_PORT, `${pathname}${url.search || ''}`);
+        return;
+    }
+
+    if (isAllowedAuthenticatedApi(req, pathname)) {
+        if (!(await requirePloinkyAuthenticatedIdentity(req, res, url))) return;
         proxy(req, res, API_PORT, `${pathname}${url.search || ''}`);
         return;
     }

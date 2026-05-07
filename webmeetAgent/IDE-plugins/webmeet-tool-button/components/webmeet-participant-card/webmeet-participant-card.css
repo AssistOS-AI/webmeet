@@ -86,6 +86,32 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     justify-content: center;
 }
 
+.wm-participant-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.36);
+    backdrop-filter: blur(2px);
+}
+
+.wm-participant-spinner {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 3px solid rgba(255, 255, 255, 0.32);
+    border-top-color: var(--white);
+    animation: wmParticipantSpin 0.8s linear infinite;
+}
+
+@keyframes wmParticipantSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .wm-participant-avatar {
     width: 86px;
     height: 86px;

@@ -10,8 +10,106 @@ export class LivekitRoomController {
                 echoCancellation: true,
                 noiseSuppression: true
             }));
+        this.getMediaQualitySettings = typeof options.getMediaQualitySettings === 'function'
+            ? options.getMediaQualitySettings
+            : (() => ({
+                cameraQuality: 'h720',
+                screenShareQuality: 'h1080fps30'
+            }));
         this.room = null;
         this.restoreRtcPeerConnection = null;
+    }
+
+    getQualityProfile(type, quality) {
+        const key = String(quality || '').trim();
+        const cameraProfiles = {
+            h360: {
+                preset: 'h360',
+                resolution: { width: 640, height: 360, frameRate: 24 },
+                encoding: { maxBitrate: 800_000, maxFramerate: 24 }
+            },
+            h540: {
+                preset: 'h540',
+                resolution: { width: 960, height: 540, frameRate: 30 },
+                encoding: { maxBitrate: 1_500_000, maxFramerate: 30 }
+            },
+            h720: {
+                preset: 'h720',
+                resolution: { width: 1280, height: 720, frameRate: 30 },
+                encoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+            },
+            h1080: {
+                preset: 'h1080',
+                resolution: { width: 1920, height: 1080, frameRate: 30 },
+                encoding: { maxBitrate: 4_500_000, maxFramerate: 30 }
+            }
+        };
+        const screenProfiles = {
+            h720fps15: {
+                preset: 'h720fps15',
+                resolution: { width: 1280, height: 720, frameRate: 15 },
+                encoding: { maxBitrate: 1_500_000, maxFramerate: 15 }
+            },
+            h720fps30: {
+                preset: 'h720fps30',
+                resolution: { width: 1280, height: 720, frameRate: 30 },
+                encoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+            },
+            h1080fps15: {
+                preset: 'h1080fps15',
+                resolution: { width: 1920, height: 1080, frameRate: 15 },
+                encoding: { maxBitrate: 2_500_000, maxFramerate: 15 }
+            },
+            h1080fps30: {
+                preset: 'h1080fps30',
+                resolution: { width: 1920, height: 1080, frameRate: 30 },
+                encoding: { maxBitrate: 3_500_000, maxFramerate: 30 }
+            }
+        };
+        const profiles = type === 'screen' ? screenProfiles : cameraProfiles;
+        const fallback = type === 'screen' ? screenProfiles.h1080fps30 : cameraProfiles.h720;
+        return profiles[key] || fallback;
+    }
+
+    getVideoResolution(livekit, presetName, fallback) {
+        const preset = livekit?.VideoPresets?.[presetName];
+        return preset?.resolution || fallback;
+    }
+
+    getVideoEncoding(livekit, presetName, fallback) {
+        const preset = livekit?.VideoPresets?.[presetName];
+        return preset?.encoding || fallback;
+    }
+
+    getScreenShareEncoding(livekit, quality) {
+        const profile = this.getQualityProfile('screen', quality);
+        const preset = livekit?.ScreenSharePresets?.[profile.preset];
+        return preset?.encoding || profile.encoding;
+    }
+
+    getPublishDefaults(livekit) {
+        const audioPreset = livekit?.AudioPresets?.speech || livekit?.AudioPresets?.music || null;
+        const settings = this.getMediaQualitySettings();
+        const cameraProfile = this.getQualityProfile('camera', settings.cameraQuality);
+        const screenProfile = this.getQualityProfile('screen', settings.screenShareQuality);
+        return {
+            ...(audioPreset ? { audioPreset } : { audioBitrate: 64_000 }),
+            dtx: true,
+            red: true,
+            simulcast: true,
+            videoCodec: 'vp8',
+            videoEncoding: this.getVideoEncoding(livekit, cameraProfile.preset, cameraProfile.encoding),
+            screenShareEncoding: this.getScreenShareEncoding(livekit, screenProfile.preset),
+            stopMicTrackOnMute: false
+        };
+    }
+
+    getVideoCaptureDefaults(livekit) {
+        const settings = this.getMediaQualitySettings();
+        const profile = this.getQualityProfile('camera', settings.cameraQuality);
+        return {
+            resolution: this.getVideoResolution(livekit, profile.preset, profile.resolution)
+        };
     }
 
     getRoom() {
@@ -31,7 +129,12 @@ export class LivekitRoomController {
         const rtcConfig = this.buildRtcConfigForSession(session);
 
         const room = new Room({
-            audioCaptureDefaults
+            adaptiveStream: true,
+            dynacast: true,
+            audioCaptureDefaults,
+            videoCaptureDefaults: this.getVideoCaptureDefaults(livekit),
+            publishDefaults: this.getPublishDefaults(livekit),
+            stopLocalTrackOnUnpublish: true
         });
         this.room = room;
         hooks.onRoomCreated?.({ room, livekit, Track, RoomEvent });

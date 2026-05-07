@@ -3,10 +3,10 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 10_000;
 export class MeetingPresenceController {
     constructor(options = {}) {
         this.runTool = options.runTool;
-        this.agentName = String(options.agentName || '').trim();
         this.heartbeatIntervalMs = Number(options.heartbeatIntervalMs) || DEFAULT_HEARTBEAT_INTERVAL_MS;
         this.getContext = typeof options.getContext === 'function' ? options.getContext : (() => ({}));
         this.shouldPing = typeof options.shouldPing === 'function' ? options.shouldPing : (() => true);
+        this.buildLeaveRequest = typeof options.buildLeaveRequest === 'function' ? options.buildLeaveRequest : null;
 
         this.heartbeatTimer = null;
         this.lastKeepaliveLeaveKey = '';
@@ -75,25 +75,18 @@ export class MeetingPresenceController {
     sendLeaveKeepalive(meetingId, participantId) {
         const safeMeetingId = String(meetingId || '').trim();
         const safeParticipantId = String(participantId || '').trim();
-        if (!safeMeetingId || !safeParticipantId || !this.agentName) return;
+        if (!safeMeetingId || !safeParticipantId) return;
         const key = `${safeMeetingId}:${safeParticipantId}`;
         if (this.lastKeepaliveLeaveKey === key) return;
         this.lastKeepaliveLeaveKey = key;
 
-        const payload = {
-            jsonrpc: '2.0',
-            id: `leave-${Date.now()}`,
-            method: 'tools/call',
-            params: {
-                name: 'webmeet_meeting_leave',
-                arguments: {
-                    meetingId: safeMeetingId,
-                    participantId: safeParticipantId
-                }
-            }
-        };
-        const body = JSON.stringify(payload);
-        const endpoint = `/mcps/${this.agentName}/mcp`;
+        const request = this.buildLeaveRequest?.({
+            meetingId: safeMeetingId,
+            participantId: safeParticipantId
+        });
+        const endpoint = String(request?.url || '').trim();
+        if (!endpoint) return;
+        const body = JSON.stringify(request?.body || { participantId: safeParticipantId });
         try {
             if (navigator?.sendBeacon) {
                 const blob = new Blob([body], { type: 'application/json' });
