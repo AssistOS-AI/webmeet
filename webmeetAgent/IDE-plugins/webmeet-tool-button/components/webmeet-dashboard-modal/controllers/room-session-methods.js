@@ -63,6 +63,7 @@ export const roomSessionMethods = {
                 || `${participantId}:${publication.source || publication.kind || track.kind || 'track'}`
             ).trim();
             if (!trackId) return;
+            const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
 
             if (track.kind === Track.Kind.Video) {
                 const existingTrackEntry = this.participantLayoutController.getTrackEntry(trackId);
@@ -105,7 +106,6 @@ export const roomSessionMethods = {
                     scheduleRemoteVideoReadinessDiagnostics(participant, publication, mediaElement, Track, 'render-video');
                 }
             } else if (track.kind === Track.Kind.Audio) {
-                const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
                 if (!isLocalParticipant) {
                     const mediaElement = track.attach();
                     mediaElement.autoplay = true;
@@ -264,7 +264,7 @@ export const roomSessionMethods = {
             },
             onTrackUnsubscribed: (_track, publication, participant, { Track }) => {
                 logMediaDiagnostic('room-track-unsubscribed', {
-                    participant: summarizeParticipant(_participant),
+                    participant: summarizeParticipant(participant),
                     publication: summarizePublication(publication),
                     track: summarizeTrack(_track)
                 });
