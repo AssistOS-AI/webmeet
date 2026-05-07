@@ -79,8 +79,8 @@ export const roomSessionMethods = {
                 const mediaElement = track.attach();
                 mediaElement.autoplay = true;
                 mediaElement.playsInline = true;
-                const isLocalParticipant = participantId === this.room?.localParticipant?.identity;
-                if (isLocalParticipant) {
+                mediaElement.dataset.trackSource = String(publication.source || '').trim();
+                if (participantId === this.room?.localParticipant?.identity) {
                     mediaElement.muted = true;
                 }
                 logMediaDiagnostic('video-track-attached', {
@@ -109,6 +109,7 @@ export const roomSessionMethods = {
                 if (!isLocalParticipant) {
                     const mediaElement = track.attach();
                     mediaElement.autoplay = true;
+                    mediaElement.dataset.trackSource = String(publication.source || '').trim();
                     void this.applyAudioOutputDeviceToElement(mediaElement);
                     this.attachAudioTrack(participantId, trackId, mediaElement);
                     this.applyOutputVolumePreviewToElement(mediaElement);
@@ -117,12 +118,46 @@ export const roomSessionMethods = {
             }
         };
 
-        const removePublication = (publication, TrackRef = null) => {
+        const removePublication = (publication, TrackRef = null, participant = null) => {
             const Track = TrackRef || window.LivekitClient?.Track;
-            const trackId = String(publication?.trackSid || '').trim();
-            if (!trackId) return;
-            const trackInfo = this.participantLayoutController.getTrackEntry(trackId);
-            this.removeTrack(trackId);
+            const publicationKind = Track && publication?.kind === Track.Kind.Video ? 'video'
+                : Track && publication?.kind === Track.Kind.Audio ? 'audio'
+                    : String(publication?.track?.kind || '').trim();
+            const participantId = String(participant?.identity || '').trim();
+            const source = String(publication?.source || '').trim();
+            const candidateTrackIds = [
+                publication?.trackSid,
+                publication?.track?.sid,
+                participantId && source ? `${participantId}:${source}` : '',
+                participantId && source && publicationKind ? `${participantId}:${source}:${publicationKind}` : '',
+                participantId && publicationKind ? `${participantId}:${publicationKind}` : ''
+            ].map((value) => String(value || '').trim()).filter(Boolean);
+            const trackIds = new Set(candidateTrackIds.filter((trackId) => (
+                this.participantLayoutController.getTrackEntry(trackId)
+            )));
+
+            if (!trackIds.size && participantId) {
+                for (const trackId of this.participantLayoutController.findTrackIdsForParticipant(participantId, {
+                    kind: publicationKind,
+                    source
+                })) {
+                    trackIds.add(trackId);
+                }
+            }
+            if (!trackIds.size && participantId && publicationKind === 'video' && !source) {
+                for (const trackId of this.participantLayoutController.findTrackIdsForParticipant(participantId, {
+                    kind: 'video'
+                })) {
+                    trackIds.add(trackId);
+                }
+            }
+            if (!trackIds.size) return;
+
+            let trackInfo = null;
+            for (const trackId of trackIds) {
+                trackInfo = trackInfo || this.participantLayoutController.getTrackEntry(trackId);
+                this.removeTrack(trackId);
+            }
             if (Track && (trackInfo?.kind === 'audio' || publication.kind === Track.Kind.Audio)) {
                 const participantId = String(trackInfo?.participantId || '').trim();
                 if (participantId) {
@@ -227,13 +262,13 @@ export const roomSessionMethods = {
                 renderPublication(participant, publication, track, Track);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
-            onTrackUnsubscribed: (_track, publication, _participant, { Track }) => {
+            onTrackUnsubscribed: (_track, publication, participant, { Track }) => {
                 logMediaDiagnostic('room-track-unsubscribed', {
                     participant: summarizeParticipant(_participant),
                     publication: summarizePublication(publication),
                     track: summarizeTrack(_track)
                 });
-                removePublication(publication, Track);
+                removePublication(publication, Track, participant);
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onLocalTrackPublished: (publication, { room, Track }) => {
@@ -250,7 +285,7 @@ export const roomSessionMethods = {
                 logMediaDiagnostic('room-local-track-unpublished', {
                     publication: summarizePublication(publication)
                 });
-                removePublication(publication, Track);
+                removePublication(publication, Track, this.room?.localParticipant || null);
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
@@ -272,7 +307,7 @@ export const roomSessionMethods = {
             },
             onParticipantDisconnected: (participant, { Track }) => {
                 for (const publication of participant.trackPublications.values()) {
-                    removePublication(publication, Track);
+                    removePublication(publication, Track, participant);
                 }
                 this.removeParticipantView(participant.identity);
                 this.syncParticipantsFromRoom(this.room, Track);
@@ -282,7 +317,7 @@ export const roomSessionMethods = {
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
                 if (isVideoTrack) {
-                    removePublication(publication, Track);
+                    removePublication(publication, Track, participant);
                 } else {
                     this.setParticipantMicState(participantId, false);
                 }

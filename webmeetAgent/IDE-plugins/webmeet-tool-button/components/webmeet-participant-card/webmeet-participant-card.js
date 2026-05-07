@@ -83,6 +83,13 @@ export class WebMeetParticipantCard {
     syncMediaElements() {
         const host = this.refs?.mediaHost || null;
         if (!host) return;
+        const keep = new Set(this.mediaElements);
+        for (const existing of host.querySelectorAll('video')) {
+            if (!keep.has(existing)) {
+                try { existing.srcObject = null; } catch (_) {}
+                existing.remove();
+            }
+        }
         for (const mediaElement of this.mediaElements) {
             if (!host.contains(mediaElement)) {
                 host.appendChild(mediaElement);

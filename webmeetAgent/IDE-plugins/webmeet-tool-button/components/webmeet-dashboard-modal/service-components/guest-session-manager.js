@@ -33,7 +33,7 @@ export class GuestSessionManager {
 
     getGuestToken() {
         const session = this.getSession();
-        return String(session?.participantToken || session?.guestToken || '').trim();
+        return String(session?.guestToken || '').trim();
     }
 
     async bootstrapGuestSession(session) {
@@ -54,6 +54,7 @@ export class GuestSessionManager {
                 ...session,
                 meeting: meeting,
                 participantToken: session.participantToken,
+                guestToken: session.guestToken,
                 participantIdentity: session.participantIdentity,
                 livekitUrl: session.livekitUrl,
                 participant: session.participant,

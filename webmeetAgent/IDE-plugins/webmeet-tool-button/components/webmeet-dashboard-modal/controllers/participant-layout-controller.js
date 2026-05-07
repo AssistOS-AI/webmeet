@@ -340,6 +340,7 @@ export class ParticipantLayoutController {
         this.trackElements.set(trackSid, {
             participantId: id,
             kind: 'video',
+            source: String(mediaElement.dataset?.trackSource || '').trim(),
             element: mediaElement
         });
         this.renderParticipantLayout();
@@ -374,6 +375,7 @@ export class ParticipantLayoutController {
         this.trackElements.set(trackSid, {
             participantId: id,
             kind: 'audio',
+            source: String(mediaElement.dataset?.trackSource || '').trim(),
             element: mediaElement
         });
     }
@@ -410,6 +412,21 @@ export class ParticipantLayoutController {
 
     getTrackEntry(trackSid) {
         return this.trackElements.get(trackSid);
+    }
+
+    findTrackIdsForParticipant(participantId, filters = {}) {
+        const id = String(participantId || '').trim();
+        const kind = String(filters.kind || '').trim();
+        const source = String(filters.source || '').trim();
+        if (!id) return [];
+        const matches = [];
+        for (const [trackSid, track] of this.trackElements.entries()) {
+            if (String(track?.participantId || '').trim() !== id) continue;
+            if (kind && String(track?.kind || '').trim() !== kind) continue;
+            if (source && String(track?.source || '').trim() !== source) continue;
+            matches.push(trackSid);
+        }
+        return matches;
     }
 
     getTrackEntries() {

@@ -881,6 +881,13 @@ export class WebMeetDashboardModal {
             const defaultName = String(this.state.session?.participant?.displayName || '').trim();
             await this.joinMeeting({ displayNameOverride: defaultName });
             this.setMobilePanel('room');
+        } catch (error) {
+            const message = String(error?.message || error || '').trim();
+            if (message.includes('Unsupported state or unable to authenticate data')) {
+                this.setError('Room data cannot be decrypted with the current WebMeet key. Restore the previous Ploinky master key or recreate the room.');
+            } else {
+                this.setError(message || 'Failed to join room.');
+            }
         } finally {
             if (this.state.joiningMeetingId === nextMeetingId) {
                 this.state.joiningMeetingId = '';
