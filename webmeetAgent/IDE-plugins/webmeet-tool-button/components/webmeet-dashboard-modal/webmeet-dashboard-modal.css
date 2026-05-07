@@ -441,6 +441,10 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     display: none;
 }
 
+.webmeet-header-rooms-button.webmeet-mobile-nav-button {
+    display: none;
+}
+
 .webmeet-mobile-nav-button {
     border: 1px solid transparent;
     border-radius: 8px;
@@ -1308,6 +1312,10 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     gap: 8px;
     min-width: 0;
     min-height: 34px;
+    background: var(--backlog-status-approved-glow);
+    padding: 5px;
+    border-radius: 5px;
+    width: calc(100% - 5px);
 }
 
 .webmeet-room-identity {
@@ -1784,6 +1792,10 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
         background: var(--menu-backgroud);
     }
 
+    .webmeet-meeting-row {
+        width: calc(100% - 20px);
+    }
+
     .webmeet-dashboard-modal[data-mobile-panel="info"] .webmeet-secondary-panels {
         display: flex !important;
         flex-direction: column;
@@ -1812,11 +1824,13 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
         border-top: none;
         flex: 1 1 auto;
     }
-    .webmeet-list-item{
+
+    .webmeet-list-item {
         min-height: 100px;
         border: 2px solid var(--border-strong);
         border-radius: unset;
     }
+
     .webmeet-chat-resizer,
     .webmeet-meeting-chat-toggle,
     .webmeet-video-grid-fullscreen-button {
