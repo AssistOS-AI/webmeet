@@ -104,9 +104,8 @@ export const roomSessionMethods = {
             }
 
             if (publication.isSubscribed && !publication.track) {
-                setPublicationSubscribed(publication, false, participant, `${reason}:refresh-off`);
                 window.setTimeout(() => {
-                    setPublicationSubscribed(publication, true, participant, `${reason}:refresh-on`);
+                    setPublicationSubscribed(publication, true, participant, `${reason}:ensure-on`);
                 }, 75);
                 return;
             }
