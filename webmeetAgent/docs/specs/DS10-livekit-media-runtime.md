@@ -79,7 +79,7 @@ LiveKit runs with `network.mode: "host"` (see `webmeetInfra` DS003). It binds `7
 
 `webmeetLivekitEgress` generated config must use:
 
-- `ws_url`, controlled by `WEBMEET_LIVEKIT_INTERNAL_WS_URL` (default `ws://host.containers.internal:7880`). Egress remains on the `webmeet` bridge and reaches host-network LiveKit through the runtime's host-gateway entry rather than the bridge alias.
+- `ws_url`, controlled by `WEBMEET_LIVEKIT_INTERNAL_WS_URL` (default `ws://host.containers.internal:7880`, or `ws://host.containers.internal:17880` in the `dev` profile). Egress remains on the `webmeet` bridge and reaches host-network LiveKit through the runtime's host-gateway entry rather than the bridge alias.
 - The same LiveKit API key/secret as the server.
 - `redis.address`, controlled by `WEBMEET_EGRESS_REDIS_ADDRESS` (default `webmeetRedis:6379`; the bridge alias still resolves for sibling bridge consumers).
 - `health_port: 7980`.
@@ -239,7 +239,7 @@ Important production variables:
 |---|---|
 | `WEBMEET_PUBLIC_LIVEKIT_URL` | Browser-reachable `ws://` or `wss://` LiveKit signaling URL. |
 | `WEBMEET_LIVEKIT_URL` | Server-side LiveKit API URL for `webmeetAgent`. With host-network LiveKit, set to `http://host.containers.internal:7880`. |
-| `WEBMEET_LIVEKIT_INTERNAL_WS_URL` | Internal WS URL the egress agent uses to reach LiveKit. Default `ws://host.containers.internal:7880`. |
+| `WEBMEET_LIVEKIT_INTERNAL_WS_URL` | Internal WS URL the egress agent uses to reach LiveKit. Default `ws://host.containers.internal:7880`; `dev` defaults to `ws://host.containers.internal:17880` to match the dev LiveKit signaling port. |
 | `WEBMEET_LIVEKIT_API_KEY` and `WEBMEET_LIVEKIT_API_SECRET` | Derived shared LiveKit credentials used by token signing and LiveKit server config. |
 | `WEBMEET_LIVEKIT_VERSION` | LiveKit server image tag. Default declared in manifest (`v1.11.0`). Override via repo var or `livekit_version` workflow input. |
 | `WEBMEET_LIVEKIT_USE_EXTERNAL_IP` | Controls LiveKit external IP discovery. |
@@ -250,7 +250,7 @@ Important production variables:
 | `WEBMEET_ICE_TRANSPORT_POLICY` | Browser ICE policy. Defaults to `all`; `relay` is a controlled diagnostic or network policy. |
 | `WEBMEET_TURN_*` | Coturn external address, realm, user, password, and relay port range returned as ICE servers when configured. |
 
-Cloudflare Tunnel can carry LiveKit HTTPS/WebSocket signaling, but public Tunnel hostnames are not a general UDP proxy for WebRTC media. When `livekit-skills.axiologic.dev` is fronted by an HTTP reverse proxy on the LiveKit host (Nginx on the host today, planned to move to a Ploinky-managed reverse-proxy + ACME agent pair), the proxy is responsible only for HTTPS/WebSocket signaling to LiveKit `7880/tcp`. WebRTC media must reach the LiveKit host candidates directly on `7882-7892/udp`, with `7881/tcp` left open as fallback. LiveKit's signaling listener cannot terminate TLS itself in `livekit-server 1.11`; the only TLS-aware options on that binary are `--turn-cert`/`--turn-key` for the TURN server, so a TLS terminator in front of `7880` remains required.
+Cloudflare Tunnel can carry LiveKit HTTPS/WebSocket signaling, but public Tunnel hostnames are not a general UDP proxy for WebRTC media. `livekit-skills.axiologic.dev` is fronted by the Ploinky-managed reverse-proxy + ACME agent pair `webmeetInfra/webmeetLivekitNginx` and `webmeetInfra/webmeetLivekitCertbot`, both chained automatically through `webmeetInfra/stack`'s `profiles.prod.enable` and gated to the `prod` profile by their preinstall scripts. The reverse proxy is responsible only for HTTPS/WebSocket signaling to LiveKit `7880/tcp`. WebRTC media must reach the LiveKit host candidates directly on `7882-7892/udp`, with `7881/tcp` left open as fallback. LiveKit's signaling listener cannot terminate TLS itself in `livekit-server 1.11`; the only TLS-aware options on that binary are `--turn-cert`/`--turn-key` for the TURN server, so a TLS terminator in front of `7880` remains required.
 
 For the direct-UDP topology, Cloudflare DNS for the LiveKit hostname must be a DNS-only `A` record to the LiveKit host rather than a Cloudflare Tunnel public hostname. `skills.axiologic.dev` may remain behind Cloudflare Tunnel because it carries the Explorer application plane, not LiveKit UDP media. The `cloudflared` connector that serves `skills.axiologic.dev` runs as a plain podman container with `--network=host` and `RestartPolicy=always` rather than as a Ploinky agent; this is a deliberate exception to keep the public ingress decoupled from the Ploinky agent lifecycle so deploys do not interrupt traffic to the dashboard.
 
@@ -290,6 +290,8 @@ Expected WebMeet containers:
 - `webmeetCoturn`
 - `webmeetLivekitServer`
 - `webmeetLivekitEgress`
+- `webmeetLivekitNginx` (prod profile only — chained via `stack`'s `profiles.prod.enable`)
+- `webmeetLivekitCertbot` (prod profile only — chained via `webmeetLivekitNginx`)
 - `stack`
 - `webmeetAgent`
 
