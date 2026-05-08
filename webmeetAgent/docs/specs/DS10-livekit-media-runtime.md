@@ -70,24 +70,20 @@ The checked-in LiveKit and egress YAML files in `webmeetInfra` are placeholders.
 - Optional `rtc.node_ip`, controlled by `WEBMEET_LIVEKIT_NODE_IP` when external IP discovery is disabled.
 - `rtc.force_tcp`, controlled by `WEBMEET_LIVEKIT_FORCE_TCP`.
 - `logging.level`, controlled by `WEBMEET_LIVEKIT_LOG_LEVEL`.
-- `redis.address: webmeetRedis:6379`.
+- `redis.address`, controlled by `WEBMEET_LIVEKIT_REDIS_ADDRESS` (default `127.0.0.1:6379` because LiveKit on host networking reaches Redis through the published host port).
 - A LiveKit `keys` map whose API key and secret match the values `webmeetAgent` uses to sign participant tokens.
 
-The `dev` profile publishes LiveKit as:
+The LiveKit container is pinned through `WEBMEET_LIVEKIT_VERSION`, which the manifest expands into `docker.io/livekit/livekit-server:${WEBMEET_LIVEKIT_VERSION}`. Operators set the version through the workspace var or the deploy-workflow input; the manifest must not reference `:latest`.
 
-- `17880:7880` for signaling and LiveKit API calls from the browser.
-- `17881:17881` for TCP media fallback.
-- `17882-17892:17882-17892/udp` for UDP media sockets.
-
-The `default` and `prod` profiles use `7880`, `7881`, and `7882-7892/udp`. The `prod` profile binds public-facing media ports to `0.0.0.0`.
+LiveKit runs with `network.mode: "host"` (see `webmeetInfra` DS003). It binds `7880/tcp`, `7881/tcp`, and `7882-7892/udp` directly on the host's network namespace; the manifest `ports` lists are probe metadata, not bridge port-publishes. The `dev` profile uses an alternate range (`17880`, `17881`, `17882-17892/udp`) to avoid colliding with a production-shape LiveKit on the same host. Bridge port-publishing for the LiveKit UDP range was removed because podman's UDP src-NAT path rewrites client addresses to bridge-internal IPs and breaks the SFU's server-initiated downlink.
 
 `webmeetLivekitEgress` generated config must use:
 
-- `ws_url: ws://webmeetLivekitServer:7880` for the internal WebSocket path egress uses to join rooms.
+- `ws_url`, controlled by `WEBMEET_LIVEKIT_INTERNAL_WS_URL` (default `ws://host.containers.internal:7880`). Egress remains on the `webmeet` bridge and reaches host-network LiveKit through the runtime's host-gateway entry rather than the bridge alias.
 - The same LiveKit API key/secret as the server.
-- `redis.address: webmeetRedis:6379`.
+- `redis.address`, controlled by `WEBMEET_EGRESS_REDIS_ADDRESS` (default `webmeetRedis:6379`; the bridge alias still resolves for sibling bridge consumers).
 - `health_port: 7980`.
-- `insecure: true`, because egress talks to LiveKit over the private `webmeet` container network.
+- `insecure: true`, because egress talks to LiveKit over the private host-gateway path inside the deployment host.
 
 Egress is a privileged media-processing container. It must stay off untrusted networks.
 
@@ -150,7 +146,7 @@ The WebMeet plugin uses the LiveKit browser client, so most low-level WebRTC beh
 
 Media is encrypted in transit on the browser-to-LiveKit and LiveKit-to-browser WebRTC hops. End-to-end media encryption is not configured in this codebase, so LiveKit is trusted infrastructure: it terminates the WebRTC transports, can access encoded media/data-channel payloads required for SFU routing, and then re-encrypts traffic for subscribers.
 
-Browser-facing LiveKit signaling/API traffic is encrypted in transit only when `WEBMEET_PUBLIC_LIVEKIT_URL` uses `wss://` and the deployment terminates TLS. Internal server-side API calls may use `http://webmeetLivekitServer:7880` on the private `webmeet` network.
+Browser-facing LiveKit signaling/API traffic is encrypted in transit only when `WEBMEET_PUBLIC_LIVEKIT_URL` uses `wss://` and the deployment terminates TLS. Internal server-side API calls go through `WEBMEET_LIVEKIT_URL`, which in the host-network production topology is `http://host.containers.internal:7880` (the runtime's host-gateway entry the bridge-side `webmeetAgent` uses to reach host-network LiveKit). The earlier bridge-alias form `http://webmeetLivekitServer:7880` no longer resolves and must not be used.
 
 ### WebMeet Browser Room Options
 
@@ -223,7 +219,7 @@ WebMeet uses different controls for application, media, recording, Redis, TURN, 
 | LiveKit participant access | Room-scoped LiveKit JWT signed by `WEBMEET_LIVEKIT_API_SECRET`. | Anyone who obtains a participant token can use its grants until expiry. |
 | LiveKit API and signaling | API key/secret stay server-side; public signaling should use TLS. | The signaling port is also the API surface; protect it with strong derived keys, firewalling, and TLS termination. |
 | LiveKit media transport | WebRTC encrypts media hops. | LiveKit is trusted with encoded media because E2EE is not configured. |
-| Redis | Private `webmeet` network runtime service. | Redis has no product-data role and must not be publicly exposed. |
+| Redis | Bridge-network runtime service with the host port published so host-network LiveKit can reach it via `127.0.0.1:6379`. | Redis has no product-data role and must not be publicly exposed beyond the deployment host loopback. |
 | TURN/STUN | Long-term coturn credentials, returned as ICE servers when configured. | TURN credentials are static; relay traffic can become a bandwidth bottleneck. |
 | Durable meeting data | AES-256-GCM meeting payloads with per-meeting DEKs wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. | Metadata outside encrypted payloads remains visible; recordings are file artifacts outside payload encryption. |
 
@@ -235,25 +231,28 @@ Logs and browser diagnostics must not expose secrets, cookies, bearer tokens, in
 
 `WEBMEET_PUBLIC_LIVEKIT_URL` is the browser-facing LiveKit signaling URL. It must be reachable from the browser and should be `wss://` for public deployments.
 
-`WEBMEET_LIVEKIT_URL` is the server-side LiveKit API URL used by `webmeetAgent` for egress control. It should remain internal, such as `http://webmeetLivekitServer:7880`, when possible.
+`WEBMEET_LIVEKIT_URL` is the server-side LiveKit API URL used by `webmeetAgent` for egress control. It must remain internal to the deployment host. With LiveKit on `network.mode: "host"`, the supported value for bridge-resident `webmeetAgent` is `http://host.containers.internal:7880`. The bridge-alias form `http://webmeetLivekitServer:7880` is retired because LiveKit no longer registers that DNS alias.
 
 Important production variables:
 
 | Variable | Contract |
 |---|---|
 | `WEBMEET_PUBLIC_LIVEKIT_URL` | Browser-reachable `ws://` or `wss://` LiveKit signaling URL. |
-| `WEBMEET_LIVEKIT_URL` | Server-side LiveKit API URL for `webmeetAgent`; prefer internal network routing. |
+| `WEBMEET_LIVEKIT_URL` | Server-side LiveKit API URL for `webmeetAgent`. With host-network LiveKit, set to `http://host.containers.internal:7880`. |
+| `WEBMEET_LIVEKIT_INTERNAL_WS_URL` | Internal WS URL the egress agent uses to reach LiveKit. Default `ws://host.containers.internal:7880`. |
 | `WEBMEET_LIVEKIT_API_KEY` and `WEBMEET_LIVEKIT_API_SECRET` | Derived shared LiveKit credentials used by token signing and LiveKit server config. |
+| `WEBMEET_LIVEKIT_VERSION` | LiveKit server image tag. Default declared in manifest (`v1.11.0`). Override via repo var or `livekit_version` workflow input. |
 | `WEBMEET_LIVEKIT_USE_EXTERNAL_IP` | Controls LiveKit external IP discovery. |
 | `WEBMEET_LIVEKIT_NODE_IP` | Explicit public node IP when external discovery is disabled. |
-| `WEBMEET_LIVEKIT_FORCE_TCP` | Forces LiveKit media over TCP when UDP is unavailable. Keep `false` when UDP media ports are directly reachable. |
+| `WEBMEET_LIVEKIT_FORCE_TCP` | Forces LiveKit media over TCP when UDP is unavailable. Keep `false` when UDP media ports are directly reachable; documented rollback knob if a future regression breaks UDP again. |
 | `WEBMEET_LIVEKIT_LOG_LEVEL` | LiveKit log verbosity. Use `debug` only temporarily and reset to `info`. |
+| `WEBMEET_LIVEKIT_REDIS_ADDRESS` | Redis address written into LiveKit's `redis.address`. Default `127.0.0.1:6379` because host-network LiveKit consumes Redis through the published host port. |
 | `WEBMEET_ICE_TRANSPORT_POLICY` | Browser ICE policy. Defaults to `all`; `relay` is a controlled diagnostic or network policy. |
 | `WEBMEET_TURN_*` | Coturn external address, realm, user, password, and relay port range returned as ICE servers when configured. |
 
-Cloudflare Tunnel can carry LiveKit HTTPS/WebSocket signaling, but public Tunnel hostnames are not a general UDP proxy for WebRTC media. When `livekit-skills.axiologic.dev` is served by Nginx on the LiveKit host, use Nginx only for HTTPS/WebSocket signaling to LiveKit `7880/tcp`. WebRTC media must reach the LiveKit host candidates directly on `7882-7892/udp`, with `7881/tcp` left open as fallback.
+Cloudflare Tunnel can carry LiveKit HTTPS/WebSocket signaling, but public Tunnel hostnames are not a general UDP proxy for WebRTC media. When `livekit-skills.axiologic.dev` is fronted by an HTTP reverse proxy on the LiveKit host (Nginx on the host today, planned to move to a Ploinky-managed reverse-proxy + ACME agent pair), the proxy is responsible only for HTTPS/WebSocket signaling to LiveKit `7880/tcp`. WebRTC media must reach the LiveKit host candidates directly on `7882-7892/udp`, with `7881/tcp` left open as fallback. LiveKit's signaling listener cannot terminate TLS itself in `livekit-server 1.11`; the only TLS-aware options on that binary are `--turn-cert`/`--turn-key` for the TURN server, so a TLS terminator in front of `7880` remains required.
 
-For the direct-UDP topology, Cloudflare DNS for the LiveKit hostname must be a DNS-only `A` record to the LiveKit/Nginx host rather than a Cloudflare Tunnel public hostname. `skills.axiologic.dev` may remain behind Cloudflare Tunnel because it carries the Explorer application plane, not LiveKit UDP media.
+For the direct-UDP topology, Cloudflare DNS for the LiveKit hostname must be a DNS-only `A` record to the LiveKit host rather than a Cloudflare Tunnel public hostname. `skills.axiologic.dev` may remain behind Cloudflare Tunnel because it carries the Explorer application plane, not LiveKit UDP media. The `cloudflared` connector that serves `skills.axiologic.dev` runs as a plain podman container with `--network=host` and `RestartPolicy=always` rather than as a Ploinky agent; this is a deliberate exception to keep the public ingress decoupled from the Ploinky agent lifecycle so deploys do not interrupt traffic to the dashboard.
 
 ### Capacity And Bottlenecks
 
