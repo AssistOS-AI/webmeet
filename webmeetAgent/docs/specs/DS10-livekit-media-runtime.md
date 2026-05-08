@@ -164,6 +164,8 @@ The WebMeet plugin creates a LiveKit `Room` with:
 
 Adaptive media optimizations stay disabled because the modal renders media elements after room events and needs remote video and screen-share downtracks to be negotiated immediately after subscription. Already-attached tracks must not be toggled off just because the browser reports a remote media track as muted before the first frame arrives.
 
+Remote video rendering must include bounded recovery for subscribed video publications whose attached media element remains without decoded frames after the initial readiness window. Recovery may detach the stale element and toggle the LiveKit publication subscription off and back on, but it must be limited per publication so a media-plane fault cannot create an endless subscription loop. Recovery diagnostics must summarize participant, publication, track, and element readiness without exposing tokens, SDP, ICE credentials, API keys, authorization values, or raw LiveKit payloads.
+
 With `WEBMEET_ICE_TRANSPORT_POLICY=all`, TURN remains a fallback and clients may still choose direct LiveKit media candidates when those work. Relay-only mode is a diagnostic or controlled-network policy, not the default.
 
 ### Screen Share Flow

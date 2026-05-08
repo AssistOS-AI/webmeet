@@ -15,6 +15,8 @@ export const roomSessionMethods = {
         }
         await this.disconnectRoom();
 
+        const remoteVideoRecoveryCounts = new WeakMap();
+
         const isRemoteVideoElementReady = (mediaElement) => {
             if (!mediaElement) return false;
             return Number(mediaElement.videoWidth || 0) > 0
@@ -22,6 +24,8 @@ export const roomSessionMethods = {
                 || Number(mediaElement.currentTime || 0) > 0
                 || Number(mediaElement.readyState || 0) >= HTMLMediaElement.HAVE_CURRENT_DATA;
         };
+
+        let refreshRemoteVideoSubscription = () => {};
 
         const scheduleRemoteVideoReadinessDiagnostics = (participant, publication, mediaElement, TrackRef = null, reason = 'remote-video') => {
             const Track = TrackRef || window.LivekitClient?.Track || null;
@@ -42,6 +46,9 @@ export const roomSessionMethods = {
                         publication: summarizePublication(publication),
                         videoElement: summarizeVideoElement(mediaElement)
                     });
+                    if (!isReady && delay >= 3500) {
+                        refreshRemoteVideoSubscription(publication, participant, `${reason}:not-ready:${delay}`);
+                    }
                 }, delay);
             }
         };
@@ -75,6 +82,9 @@ export const roomSessionMethods = {
                         trackId,
                         videoElement: summarizeVideoElement(existingTrackEntry.element)
                     });
+                    if (!isLocalParticipant && !isRemoteVideoElementReady(existingTrackEntry.element)) {
+                        refreshRemoteVideoSubscription(publication, participant, 'skip-existing-not-ready');
+                    }
                     return;
                 }
                 const mediaElement = track.attach();
@@ -198,6 +208,35 @@ export const roomSessionMethods = {
             }
         };
 
+        refreshRemoteVideoSubscription = (publication, participant, reason) => {
+            if (!publication || typeof publication.setSubscribed !== 'function') return;
+            if (publication.isMuted) return;
+            const track = publication.track || null;
+            const mediaStreamTrack = track?.mediaStreamTrack || null;
+            if (mediaStreamTrack && mediaStreamTrack.readyState !== 'live') return;
+            const refreshCount = remoteVideoRecoveryCounts.get(publication) || 0;
+            if (refreshCount >= 2) return;
+            remoteVideoRecoveryCounts.set(publication, refreshCount + 1);
+            const Track = window.LivekitClient?.Track || null;
+            logMediaDiagnostic('remote-video-subscription-refresh', {
+                reason,
+                attempt: refreshCount + 1,
+                participant: summarizeParticipant(participant),
+                publication: summarizePublication(publication),
+                track: summarizeTrack(track)
+            });
+            removePublication(publication, Track, participant);
+            setPublicationSubscribed(publication, false, participant, `${reason}:refresh-off`);
+            window.setTimeout(() => {
+                if (!this.room) return;
+                setPublicationSubscribed(publication, true, participant, `${reason}:refresh-on`);
+                window.setTimeout(() => {
+                    if (!this.room || !publication.track) return;
+                    renderPublication(participant, publication, publication.track, Track);
+                }, 900);
+            }, 250);
+        };
+
         const subscribePublication = (publication, participant = null, TrackRef = null, reason = 'subscribe') => {
             const participantId = String(participant?.identity || '').trim();
             const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
@@ -212,13 +251,29 @@ export const roomSessionMethods = {
             }
 
             if (publication.isSubscribed && publication.track) {
+                const Track = TrackRef || window.LivekitClient?.Track || null;
+                const isVideoTrack = Track
+                    ? publication.kind === Track.Kind.Video
+                    : publication.track.kind === 'video';
+                const mediaStreamTrack = publication.track.mediaStreamTrack || null;
+                const isStuckRemoteVideo = isVideoTrack
+                    && !publication.isMuted
+                    && mediaStreamTrack?.readyState === 'live'
+                    && mediaStreamTrack.muted === true;
+                if (isStuckRemoteVideo) {
+                    refreshRemoteVideoSubscription(publication, participant, `${reason}:muted-track`);
+                }
                 return;
             }
 
             if (publication.isSubscribed && !publication.track) {
                 window.setTimeout(() => {
-                    setPublicationSubscribed(publication, true, participant, `${reason}:ensure-on`);
-                }, 75);
+                    if (publication.track) {
+                        setPublicationSubscribed(publication, true, participant, `${reason}:ensure-on`);
+                        return;
+                    }
+                    refreshRemoteVideoSubscription(publication, participant, `${reason}:missing-track`);
+                }, 500);
                 return;
             }
 
