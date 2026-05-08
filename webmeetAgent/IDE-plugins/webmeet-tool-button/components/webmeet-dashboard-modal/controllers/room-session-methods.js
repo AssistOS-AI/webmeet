@@ -37,6 +37,7 @@ export const roomSessionMethods = {
             for (const delay of [1500, 3500, 7000]) {
                 window.setTimeout(() => {
                     if (!this.room) return;
+                    if (!mediaElement.isConnected) return;
                     const isReady = isRemoteVideoElementReady(mediaElement);
                     logMediaDiagnostic('remote-video-readiness-check', {
                         reason,
@@ -82,9 +83,6 @@ export const roomSessionMethods = {
                         trackId,
                         videoElement: summarizeVideoElement(existingTrackEntry.element)
                     });
-                    if (!isLocalParticipant && !isRemoteVideoElementReady(existingTrackEntry.element)) {
-                        refreshRemoteVideoSubscription(publication, participant, 'skip-existing-not-ready');
-                    }
                     return;
                 }
                 const mediaElement = track.attach();
