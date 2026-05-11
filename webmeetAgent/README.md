@@ -7,7 +7,7 @@
 - `webmeetAgent`
   - owner pentru MCP surface, bootstrap și runtime WebMeet
   - HTTP API pe `WEBMEET_API_PORT` (implicit `8791`)
-  - queue persistentă pentru jobs/events sub `.ploinky/webmeet`
+  - queue persistentă pentru jobs/events sub `.ploinky/data/webmeetAgent/data`
   - worker AI separat pornit din bootstrap
 - `webmeetInfra/stack`
   - dependența de infrastructură declarată de agent

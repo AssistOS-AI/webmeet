@@ -15,8 +15,8 @@
         "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
     },
     "volumes": {
-        "webmeetAgent/data": "/data",
-        "webmeet/recordings": "/recordings"
+        ".ploinky/data/webmeetAgent/data": "/data",
+        ".ploinky/data/webmeet/recordings": "/data/recordings"
     },
     "httpServices": [
         {
@@ -85,6 +85,11 @@
                     "default": "127.0.0.1"
                 },
                 {
+                    "name": "WEBMEET_TURN_HOST",
+                    "required": false,
+                    "default": "127.0.0.1"
+                },
+                {
                     "name": "WEBMEET_TURN_PORT",
                     "required": false,
                     "default": "3478"
@@ -129,7 +134,7 @@
                 {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
-                    "default": "/recordings"
+                    "default": "/data/recordings"
                 },
                 {
                     "name": "WEBMEET_API_PORT",
@@ -199,6 +204,11 @@
                     "default": "127.0.0.1"
                 },
                 {
+                    "name": "WEBMEET_TURN_HOST",
+                    "required": false,
+                    "default": "127.0.0.1"
+                },
+                {
                     "name": "WEBMEET_TURN_PORT",
                     "required": false,
                     "default": "13478"
@@ -243,7 +253,7 @@
                 {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
-                    "default": "/recordings"
+                    "default": "/data/recordings"
                 },
                 {
                     "name": "WEBMEET_API_PORT",
@@ -277,11 +287,13 @@
                 },
                 {
                     "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
-                    "required": true
+                    "required": true,
+                    "default": "wss://livekit-skills.axiologic.dev"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_URL",
-                    "required": true
+                    "required": true,
+                    "default": "http://host.containers.internal:7880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
@@ -302,11 +314,17 @@
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
-                    "required": true
+                    "required": true,
+                    "default": "http://webmeetLivekitEgress:7980"
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",
-                    "required": true
+                    "required": false
+                },
+                {
+                    "name": "WEBMEET_TURN_HOST",
+                    "required": true,
+                    "default": "livekit-skills.axiologic.dev"
                 },
                 {
                     "name": "WEBMEET_TURN_PORT",
@@ -320,7 +338,7 @@
                 {
                     "name": "WEBMEET_TURN_REALM",
                     "required": false,
-                    "default": "webmeet.local"
+                    "default": "skills.axiologic.dev"
                 },
                 {
                     "name": "WEBMEET_TURN_USER",
@@ -353,7 +371,7 @@
                 {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
-                    "default": "/recordings"
+                    "default": "/data/recordings"
                 },
                 {
                     "name": "WEBMEET_API_PORT",

@@ -647,9 +647,9 @@ export function createStoreContext(startDir = '') {
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
         egressUrl: String(process.env.WEBMEET_EGRESS_URL || '').trim(),
-        recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/recordings').trim() || '/recordings',
+        recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/data/recordings').trim() || '/data/recordings',
         turn: {
-            host: String(process.env.WEBMEET_TURN_EXTERNAL_IP || '').trim(),
+            host: String(process.env.WEBMEET_TURN_EXTERNAL_IP || process.env.WEBMEET_TURN_HOST || '').trim(),
             port: String(process.env.WEBMEET_TURN_PORT || '').trim(),
             explicitUrls: String(process.env.WEBMEET_TURN_URLS || '').trim(),
             username: String(process.env.WEBMEET_TURN_USER || '').trim(),

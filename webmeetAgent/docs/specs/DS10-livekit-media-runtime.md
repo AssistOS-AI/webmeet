@@ -26,7 +26,7 @@ WebMeet has separate planes with different owners and failure modes:
 | Media plane | Live microphone, camera, screen share, data-channel delivery, WebRTC transport negotiation, RTP/RTCP forwarding | `webmeetLivekitServer` through browser LiveKit clients |
 | Recording plane | Room composite capture, rendering/compositing, MP4 encoding, file writes | `webmeetLivekitEgress` |
 | LiveKit runtime state | LiveKit room/node state, message bus behavior, egress coordination | `webmeetRedis` |
-| Durable WebMeet state | Meeting records, encrypted payloads, chat, transcript, jobs, artifact metadata | `.ploinky/webmeet` and `webmeet/recordings` |
+| Durable WebMeet state | Meeting records, encrypted payloads, chat, transcript, jobs, artifact metadata | `.ploinky/data/webmeetAgent/data` and `.ploinky/data/webmeet/recordings` |
 
 The practical invariant is that MCP/API latency is not the live media path. After a browser joins LiveKit, live packets flow between the browser and LiveKit; `webmeetAgent` remains in the command and persistence path.
 
@@ -51,8 +51,8 @@ The relevant `webmeetInfra` agents are:
 |---|---|---|
 | `webmeetRedis` | Redis runtime state for LiveKit and egress | Redis state is infrastructure state, not the WebMeet durable meeting store. |
 | `webmeetCoturn` | TURN/STUN relay | Returned to browsers as ICE servers only when TURN env vars are configured. |
-| `webmeetLivekitServer` | LiveKit SFU, signaling, API, WebRTC transport | Depends on Redis; generated config is mounted at `/code/livekit.yaml`. |
-| `webmeetLivekitEgress` | Recording worker | Depends on LiveKit and Redis; mounts `webmeet/recordings` at `/recordings`; uses `SYS_ADMIN` required by the upstream image. |
+| `webmeetLivekitServer` | LiveKit SFU, signaling, API, WebRTC transport | Depends on Redis; generated config is mounted at `/working-data/generated/livekit.yaml`. |
+| `webmeetLivekitEgress` | Recording worker | Depends on LiveKit and Redis; mounts `.ploinky/data/webmeet/recordings` at `/data/recordings`; uses `SYS_ADMIN` required by the upstream image. |
 | `webmeetInfra/stack` | Dependency bundle/readiness marker | Lets Ploinky enable/start the media infrastructure as one dependency node. |
 
 Expected WebMeet-related startup order is Redis/coturn first, LiveKit server second, egress third, stack fourth, `webmeetAgent` fifth, and Explorer last. The exact waves also include the other Explorer dependencies.
@@ -96,7 +96,7 @@ For authenticated Explorer users:
 1. The WebMeet plugin calls `webmeet_workspace_list`.
 2. `webmeetAgent` derives the workspace id from the workspace root and ensures a workspace record.
 3. The plugin calls `webmeet_meeting_list`.
-4. `webmeetAgent` reads `.ploinky/webmeet/meetings/*.json`, filters active rooms for the workspace, and returns room cards.
+4. `webmeetAgent` reads its mounted data directory (`/data/meetings/*.json`, backed by `.ploinky/data/webmeetAgent/data/meetings/*.json`), filters active rooms for the workspace, and returns room cards.
 5. Admin users can create, rename, delete, and expose guest invite links. Non-admin users can see and join active rooms returned for the workspace.
 
 For guests:
@@ -192,7 +192,7 @@ Redis must not be treated as the source of truth for:
 - recording artifact metadata.
 - media packets or MP4 recordings.
 
-Durable WebMeet records live under `.ploinky/webmeet`, and recording files live under `webmeet/recordings`.
+Durable WebMeet records live under `.ploinky/data/webmeetAgent/data`, and recording files live under `.ploinky/data/webmeet/recordings`.
 
 ### Recording And Egress Boundary
 
@@ -201,7 +201,7 @@ The browser does not directly control egress. Recording starts and stops through
 1. Browser calls `webmeet_recording_start` or `webmeet_recording_stop`.
 2. `webmeetAgent` calls LiveKit's egress API with a short-lived server JWT granting recording permissions.
 3. LiveKit assigns egress through the LiveKit/Redis control plane.
-4. Egress subscribes to room media, composites/renders, encodes MP4, and writes under `/recordings`.
+4. Egress subscribes to room media, composites/renders, encodes MP4, and writes under `/data/recordings`.
 5. `webmeetAgent` persists recording artifact metadata.
 
 `WEBMEET_EGRESS_URL` can appear in recording metadata, but actual egress control calls use `WEBMEET_LIVEKIT_URL` and LiveKit's `/twirp/livekit.Egress/*` API.
@@ -233,17 +233,21 @@ Logs and browser diagnostics must not expose secrets, cookies, bearer tokens, in
 
 `WEBMEET_LIVEKIT_URL` is the server-side LiveKit API URL used by `webmeetAgent` for egress control. It must remain internal to the deployment host. With LiveKit on `network.mode: "host"` in production, the supported value for bridge-resident `webmeetAgent` is `http://host.containers.internal:7880`; with LiveKit on the `webmeet` bridge in `default` and `dev`, the supported values are the `webmeetLivekitServer` alias on the profile's signaling port.
 
+The production profile declares non-sensitive WebMeet topology defaults for the Axiologic deployment (`wss://livekit-skills.axiologic.dev`, `http://host.containers.internal:7880`, egress bridge URL, TURN realm, and TURN hostname). A fresh production workspace can therefore start from the profile alone. Operators may still override those defaults with Ploinky vars when deploying the same agents behind another hostname or when coturn needs an explicit external IP.
+
 Important production variables:
 
 | Variable | Contract |
 |---|---|
-| `WEBMEET_PUBLIC_LIVEKIT_URL` | Browser-reachable `ws://` or `wss://` LiveKit signaling URL. |
+| `WEBMEET_PUBLIC_LIVEKIT_URL` | Browser-reachable `ws://` or `wss://` LiveKit signaling URL. Prod profile default: `wss://livekit-skills.axiologic.dev`. |
 | `WEBMEET_LIVEKIT_URL` | Server-side LiveKit API URL for `webmeetAgent`. Use `http://webmeetLivekitServer:7880` in `default`, `http://webmeetLivekitServer:17880` in `dev`, and `http://host.containers.internal:7880` with host-network LiveKit in `prod`. |
 | `WEBMEET_LIVEKIT_INTERNAL_WS_URL` | Internal WS URL the egress agent uses to reach LiveKit. Defaults are `ws://webmeetLivekitServer:7880` in `default`, `ws://webmeetLivekitServer:17880` in `dev`, and `ws://host.containers.internal:7880` in `prod`. |
 | `WEBMEET_LIVEKIT_API_KEY` and `WEBMEET_LIVEKIT_API_SECRET` | Derived shared LiveKit credentials used by token signing and LiveKit server config. |
 | `WEBMEET_LIVEKIT_VERSION` | LiveKit server image tag. Default declared in manifest (`v1.11.0`). Override via repo var or `livekit_version` workflow input. |
 | `WEBMEET_LIVEKIT_USE_EXTERNAL_IP` | Controls LiveKit external IP discovery. |
 | `WEBMEET_LIVEKIT_NODE_IP` | Explicit public node IP when external discovery is disabled. |
+| `WEBMEET_TURN_HOST` | Browser-facing TURN hostname and coturn hostname-to-IP resolution source. Prod profile default: `livekit-skills.axiologic.dev`. |
+| `WEBMEET_TURN_EXTERNAL_IP` | Optional explicit coturn external IP override. In prod, the manifest default is `auto`, which resolves `WEBMEET_TURN_HOST` at startup. |
 | `WEBMEET_LIVEKIT_FORCE_TCP` | Forces LiveKit media over TCP when UDP is unavailable. Keep `false` when UDP media ports are directly reachable; documented rollback knob if a future regression breaks UDP again. |
 | `WEBMEET_LIVEKIT_LOG_LEVEL` | LiveKit log verbosity. Use `debug` only temporarily and reset to `info`. |
 | `WEBMEET_LIVEKIT_REDIS_ADDRESS` | Redis address written into LiveKit's `redis.address`. Defaults to `webmeetRedis:6379` in bridge profiles and falls back to `127.0.0.1:6379` in `prod` because host-network LiveKit consumes Redis through the published host port. |
