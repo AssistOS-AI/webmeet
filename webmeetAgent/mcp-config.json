@@ -171,7 +171,7 @@
     {
       "name": "webmeet_agent_attach",
       "title": "WebMeet Attach Agent",
-      "description": "Attach an AI agent to a meeting.",
+      "description": "Explicitly dispatch the self-hosted LiveKit AI agent to a meeting.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
@@ -184,7 +184,7 @@
     {
       "name": "webmeet_agent_list",
       "title": "WebMeet List Agents",
-      "description": "List AI agents attached to a meeting.",
+      "description": "List LiveKit AI agent dispatch metadata for a meeting.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {

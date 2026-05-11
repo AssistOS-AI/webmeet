@@ -315,10 +315,11 @@ async function handler(req, res) {
                 return;
             }
             const body = await readBody(req);
-            json(res, 201, attachMeetingAgent(context, {
+            json(res, 201, await attachMeetingAgent(context, {
                 meetingId,
                 agentType: String(body.agentType || '').trim(),
-                mode: String(body.mode || '').trim()
+                mode: String(body.mode || '').trim(),
+                authInfo: getActor(body)
             }));
             return;
         }

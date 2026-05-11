@@ -29,7 +29,7 @@ webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI participants, meetin
 
 ## Runtime Defaults
 
-Runs `scripts/startAgent.sh`, the WebMeet API, worker, public proxy, and AgentServer in `node:20-alpine` on the `webmeet` network.
+Runs `scripts/startAgent.sh`, the WebMeet API, self-hosted LiveKit agent runtime, public proxy, and AgentServer in `node:20` on the `webmeet` network.
 
 ## Key Paths
 

@@ -197,7 +197,7 @@ async function dispatch(toolName, args, context, authInfo) {
         if (!SUPPORTED_AGENT_MODES.has(mode)) {
             throw new Error(`Unsupported mode "${mode}".`);
         }
-        return attachMeetingAgent(context, { meetingId, agentType, mode });
+        return attachMeetingAgent(context, { meetingId, agentType, mode, authInfo });
     }
     case 'webmeet_agent_list':
         return { agents: listMeetingAgents(context, getRequiredString(args, 'meetingId')) };

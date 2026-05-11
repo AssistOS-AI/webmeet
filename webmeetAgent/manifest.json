@@ -1,6 +1,6 @@
 {
     "agent": "sh /code/scripts/startAgent.sh",
-    "container": "node:20-alpine",
+    "container": "node:20",
     "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and meeting artifacts.",
     "network": {
         "name": "webmeet",
@@ -132,6 +132,21 @@
                     "default": "WebMeetAgent"
                 },
                 {
+                    "name": "WEBMEET_LIVEKIT_AGENT_NAME",
+                    "required": false,
+                    "default": "webmeet-agent"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_AGENT_LOG_LEVEL",
+                    "required": false,
+                    "default": "info"
+                },
+                {
+                    "name": "WEBMEET_AGENT_API_URL",
+                    "required": false,
+                    "default": ""
+                },
+                {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
                     "default": "/data/recordings"
@@ -140,11 +155,6 @@
                     "name": "WEBMEET_API_PORT",
                     "required": false,
                     "default": "8791"
-                },
-                {
-                    "name": "WEBMEET_WORKER_POLL_MS",
-                    "required": false,
-                    "default": "400"
                 }
             ]
         },
@@ -251,6 +261,21 @@
                     "default": "WebMeetAgent"
                 },
                 {
+                    "name": "WEBMEET_LIVEKIT_AGENT_NAME",
+                    "required": false,
+                    "default": "webmeet-agent"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_AGENT_LOG_LEVEL",
+                    "required": false,
+                    "default": "info"
+                },
+                {
+                    "name": "WEBMEET_AGENT_API_URL",
+                    "required": false,
+                    "default": ""
+                },
+                {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
                     "default": "/data/recordings"
@@ -259,11 +284,6 @@
                     "name": "WEBMEET_API_PORT",
                     "required": false,
                     "default": "8791"
-                },
-                {
-                    "name": "WEBMEET_WORKER_POLL_MS",
-                    "required": false,
-                    "default": "400"
                 }
             ]
         },
@@ -369,6 +389,21 @@
                     "default": "WebMeetAgent"
                 },
                 {
+                    "name": "WEBMEET_LIVEKIT_AGENT_NAME",
+                    "required": false,
+                    "default": "webmeet-agent"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_AGENT_LOG_LEVEL",
+                    "required": false,
+                    "default": "info"
+                },
+                {
+                    "name": "WEBMEET_AGENT_API_URL",
+                    "required": false,
+                    "default": ""
+                },
+                {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
                     "default": "/data/recordings"
@@ -377,11 +412,6 @@
                     "name": "WEBMEET_API_PORT",
                     "required": false,
                     "default": "8791"
-                },
-                {
-                    "name": "WEBMEET_WORKER_POLL_MS",
-                    "required": false,
-                    "default": "400"
                 }
             ]
         }

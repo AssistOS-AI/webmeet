@@ -6,6 +6,22 @@ export const dashboardRenderMethods = {
         if (this.createRoomButton) {
             this.createRoomButton.classList.toggle('webmeet-hidden', !canManageRooms);
         }
+        const canUseAiAgents = canManageRooms && !this.isGuestSession();
+        if (this.aiTabButton) {
+            this.aiTabButton.classList.toggle('webmeet-hidden', !canUseAiAgents);
+            if (!canUseAiAgents && this.aiTabButton.classList.contains('webmeet-tab-active')) {
+                const transcriptTabButton = this.element.querySelector('[data-tab="transcript"]');
+                const transcriptTab = this.element.querySelector('#webmeetTranscriptTab');
+                const aiTab = this.element.querySelector('#webmeetAiTab');
+                this.aiTabButton.classList.remove('webmeet-tab-active');
+                transcriptTabButton?.classList.add('webmeet-tab-active');
+                aiTab?.classList.add('webmeet-hidden');
+                transcriptTab?.classList.remove('webmeet-hidden');
+            }
+        }
+        if (this.aiAdminActions) {
+            this.aiAdminActions.classList.toggle('webmeet-hidden', !canUseAiAgents);
+        }
         this.renderWorkspaceList();
         this.renderMeetingList();
         this.renderMeetingSummary();

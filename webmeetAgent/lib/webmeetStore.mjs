@@ -5,8 +5,7 @@ import crypto from 'node:crypto';
 import { getWorkspacePaths } from './workspacePaths.mjs';
 import { resolveVarValue } from './secretVars.mjs';
 import { createWrappedDek, decryptPayload, deriveMasterKey, encryptPayload, unwrapDek } from './webmeetCrypto.mjs';
-import { generateAssistantReply, generateObserverSummary, generateScribeOutput } from './webmeetLLM.mjs';
-import { appendEventLog, enqueueJob, waitForJob } from './webmeetQueue.mjs';
+import { appendEventLog } from './webmeetQueue.mjs';
 
 const MASTER_KEY_VAR = 'PLOINKY_WEBMEET_MASTER_KEY';
 const RETENTION_DAYS_VAR = 'PLOINKY_WEBMEET_RETENTION_DAYS';
@@ -209,11 +208,7 @@ function createMeetingPayload() {
         artifacts: [],
         tasks: [],
         decisions: [],
-        events: [],
-        observerState: {
-            summary: '',
-            updatedAt: null
-        }
+        events: []
     };
 }
 
@@ -445,51 +440,178 @@ function createLiveKitToken(context, { roomName, identity, name }) {
     return `${header}.${payload}.${signature}`;
 }
 
-function buildRecentTranscriptText(payload, limit = 12) {
-    return payload.transcriptSegments
-        .slice(-limit)
-        .map((entry) => `${entry.speakerName || entry.speakerId || 'speaker'}: ${entry.text || ''}`)
-        .join('\n');
-}
-
-function buildRecentChatText(payload, limit = 12) {
-    return payload.chatMessages
-        .slice(-limit)
-        .map((entry) => `${entry.authorName || entry.authorId || 'user'}: ${entry.message || ''}`)
-        .join('\n');
-}
-
-async function refreshObserverState(context, meetingId) {
-    const record = loadMeetingRecord(context, meetingId);
-    const payload = decryptMeetingPayload(context, record);
-    const observer = payload.agents.find((entry) => entry.agentType === 'observer' && entry.mode === 'passive');
-    if (!observer) {
+function createLiveKitRoomAdminToken(context, roomName) {
+    if (!context.livekitApiKey || !context.livekitApiSecret) {
         return null;
     }
-    let summary = '';
-    try {
-        summary = await generateObserverSummary({
-            meetingTitle: record.title,
-            chatText: buildRecentChatText(payload),
-            transcriptText: buildRecentTranscriptText(payload),
-            previousSummary: payload.observerState?.summary || ''
-        });
-    } catch (_error) {
-        summary = [
-            'Topics:',
-            buildRecentChatText(payload, 4) || 'No recent chat.',
-            '',
-            'Transcript:',
-            buildRecentTranscriptText(payload, 4) || 'No recent transcript.'
-        ].join('\n');
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({
+        iss: context.livekitApiKey,
+        sub: `${context.agentName || 'WebMeetAgent'}:dispatcher`,
+        iat: now,
+        nbf: now,
+        exp: now + 60 * 10,
+        video: {
+            room: roomName,
+            roomAdmin: true
+        }
+    })).toString('base64url');
+    const signature = crypto
+        .createHmac('sha256', context.livekitApiSecret)
+        .update(`${header}.${payload}`)
+        .digest('base64url');
+    return `${header}.${payload}.${signature}`;
+}
+
+function normalizeLiveKitHttpUrl(value) {
+    const raw = String(value || '').trim().replace(/\/+$/g, '');
+    if (!raw) return '';
+    if (raw.startsWith('wss://')) return `https://${raw.slice(6)}`;
+    if (raw.startsWith('ws://')) return `http://${raw.slice(5)}`;
+    return raw;
+}
+
+async function callLiveKitAgentDispatchApi(context, methodName, roomName, body) {
+    const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
+    if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
+        throw new Error('LiveKit agent dispatch is not configured.');
     }
-    mutateMeeting(context, meetingId, (_record, nextPayload) => {
-        nextPayload.observerState = {
-            summary,
-            updatedAt: nowIso()
-        };
+    const token = createLiveKitRoomAdminToken(context, roomName);
+    if (!token) {
+        throw new Error('LiveKit admin token could not be created.');
+    }
+    const response = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/${methodName}`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body || {})
     });
-    return summary;
+    const text = await response.text();
+    let parsed = null;
+    try {
+        parsed = text ? JSON.parse(text) : null;
+    } catch {
+        parsed = null;
+    }
+    if (!response.ok) {
+        const detail = parsed?.msg || parsed?.message || text || `${response.status} ${response.statusText}`;
+        throw new Error(`LiveKit agent dispatch failed: ${detail}`);
+    }
+    return parsed || {};
+}
+
+async function callLiveKitRoomApi(context, methodName, roomName, body) {
+    const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
+    if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
+        throw new Error('LiveKit room API is not configured.');
+    }
+    const token = createLiveKitRoomAdminToken(context, roomName);
+    if (!token) {
+        throw new Error('LiveKit admin token could not be created.');
+    }
+    const response = await fetch(`${baseUrl}/twirp/livekit.RoomService/${methodName}`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body || {})
+    });
+    const text = await response.text();
+    let parsed = null;
+    try {
+        parsed = text ? JSON.parse(text) : null;
+    } catch {
+        parsed = null;
+    }
+    if (!response.ok) {
+        const detail = parsed?.msg || parsed?.message || text || `${response.status} ${response.statusText}`;
+        throw new Error(`LiveKit room API failed: ${detail}`);
+    }
+    return parsed || {};
+}
+
+function getAgentDispatchId(dispatch) {
+    return String(dispatch?.id || dispatch?.dispatchId || dispatch?.dispatch_id || '').trim();
+}
+
+function getAgentDispatches(response) {
+    const dispatches = response?.agentDispatches || response?.agent_dispatches || [];
+    return Array.isArray(dispatches) ? dispatches : [];
+}
+
+function isDeletedLiveKitDispatch(dispatch) {
+    const deletedAt = dispatch?.state?.deletedAt || dispatch?.state?.deleted_at || '0';
+    return String(deletedAt || '0') !== '0';
+}
+
+function getParticipantAttributes(participant) {
+    return participant?.attributes && typeof participant.attributes === 'object' ? participant.attributes : {};
+}
+
+function isMatchingLiveKitAgentParticipant(context, metadata, participant) {
+    const attributes = getParticipantAttributes(participant);
+    return String(participant?.kind || '').toUpperCase() === 'AGENT'
+        && String(attributes.webmeetAgent || '').toLowerCase() === 'true'
+        && String(attributes.webmeetAgentName || '') === String(context.livekitAgentName || '')
+        && String(attributes.webmeetMeetingId || '') === String(metadata.meetingId || '')
+        && String(attributes.webmeetAgentType || '') === String(metadata.agentType || '')
+        && String(attributes.webmeetAgentMode || '') === String(metadata.mode || '');
+}
+
+async function getLiveKitAgentParticipant(context, roomName, metadata) {
+    const response = await callLiveKitRoomApi(context, 'ListParticipants', roomName, { room: roomName });
+    const participants = Array.isArray(response.participants) ? response.participants : [];
+    return participants.find((participant) => isMatchingLiveKitAgentParticipant(context, metadata, participant)) || null;
+}
+
+async function waitForLiveKitAgentDispatch(context, roomName, dispatchId, metadata) {
+    if (!dispatchId) {
+        throw new Error('LiveKit dispatch response did not include a dispatch id.');
+    }
+    const deadline = Date.now() + 10_000;
+    let latest = null;
+    let participant = null;
+    while (Date.now() < deadline) {
+        const response = await callLiveKitAgentDispatchApi(context, 'ListDispatch', roomName, {
+            room: roomName,
+            dispatchId
+        });
+        const dispatches = getAgentDispatches(response);
+        latest = dispatches[0] || latest;
+        participant = await getLiveKitAgentParticipant(context, roomName, metadata);
+        if (latest && !isDeletedLiveKitDispatch(latest) && participant) {
+            return {
+                dispatch: latest,
+                participant
+            };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    try {
+        await callLiveKitAgentDispatchApi(context, 'DeleteDispatch', roomName, {
+            room: roomName,
+            dispatchId
+        });
+    } catch {
+        // Keep the original dispatch failure as the user-facing error.
+    }
+    throw new Error('LiveKit agent runtime did not accept the dispatch.');
+}
+
+async function getLiveKitAgentDispatch(context, roomName, dispatchId) {
+    if (!dispatchId) {
+        return null;
+    }
+    const response = await callLiveKitAgentDispatchApi(context, 'ListDispatch', roomName, {
+        room: roomName,
+        dispatchId
+    });
+    const dispatches = getAgentDispatches(response);
+    return dispatches[0] || null;
 }
 
 function buildMeetingView(record) {
@@ -521,7 +643,6 @@ export function getMeeting(context, meetingId, authInfo = null) {
         meeting,
         participants: payload.members,
         agents: payload.agents,
-        observerState: payload.observerState,
         recordings: payload.recordings
     };
 }
@@ -556,84 +677,6 @@ export function listMeetingEvents(context, meetingId, { afterId = '' } = {}) {
         .filter((event) => String(event?.id || '').trim() !== afterEventId);
 }
 
-export function buildMeetingAiContext(context, meetingId) {
-    cleanupMeetingPresence(context, meetingId);
-    const record = loadMeetingRecord(context, meetingId);
-    const payload = decryptMeetingPayload(context, record);
-    return {
-        meeting: buildMeetingView(record),
-        observerSummary: payload.observerState?.summary || '',
-        chatText: buildRecentChatText(payload, 50),
-        transcriptText: buildRecentTranscriptText(payload, 50),
-        tasks: payload.tasks.map((entry) => ({ ...entry })),
-        decisions: payload.decisions.map((entry) => ({ ...entry })),
-        agents: payload.agents.map((entry) => ({ ...entry })),
-        payload
-    };
-}
-
-export function persistObserverSummary(context, meetingId, summary) {
-    mutateMeeting(context, meetingId, (_record, payload) => {
-        payload.observerState = {
-            summary: String(summary || '').trim(),
-            updatedAt: nowIso()
-        };
-    });
-    return getMeeting(context, meetingId).observerState;
-}
-
-export function persistAssistantMessage(context, meetingId, { agentId, message }) {
-    let assistantMessage = null;
-    mutateMeeting(context, meetingId, (_record, payload) => {
-        assistantMessage = {
-            id: randomId('chat'),
-            meetingId,
-            authorId: agentId,
-            authorName: context.agentName,
-            message: String(message || '').trim(),
-            kind: 'agent',
-            createdAt: nowIso()
-        };
-        payload.chatMessages.push(assistantMessage);
-        recordMeetingEvent(context, meetingId, payload, 'chat.message.created', { meetingId, chatMessageId: assistantMessage.id, kind: 'agent' });
-    });
-    return assistantMessage;
-}
-
-export function finalizeMeetingWithScribe(context, meetingId, { summary, tasks = [], decisions = [] }) {
-    let artifact = null;
-    let meeting = null;
-    mutateMeeting(context, meetingId, (record, payload) => {
-        record.status = 'closed';
-        record.closedAt = record.closedAt || nowIso();
-        for (const title of decisions.map((entry) => String(entry || '').trim()).filter(Boolean)) {
-            if (!payload.decisions.some((entry) => entry.title === title)) {
-                payload.decisions.push({ id: randomId('decision'), title, createdAt: nowIso() });
-            }
-        }
-        for (const item of tasks) {
-            const title = String(item?.title || '').trim();
-            if (!title || payload.tasks.some((entry) => entry.title === title)) {
-                continue;
-            }
-            payload.tasks.push({ id: randomId('task'), title, status: String(item?.status || 'open'), createdAt: nowIso() });
-        }
-        artifact = {
-            id: randomId('artifact'),
-            type: 'minutes-of-meeting',
-            title: `${record.title} Minutes`,
-            body: String(summary || '').trim(),
-            createdAt: nowIso()
-        };
-        payload.artifacts.push(artifact);
-        meeting = buildMeetingView(record);
-        recordMeetingEvent(context, meetingId, payload, 'meeting.ended', { meetingId });
-        recordMeetingEvent(context, meetingId, payload, 'artifact.created', { meetingId, artifactId: artifact.id });
-    });
-    const payload = decryptMeetingPayload(context, loadMeetingRecord(context, meetingId));
-    return { meeting, artifact, tasks: payload.tasks, decisions: payload.decisions };
-}
-
 export function createStoreContext(startDir = '') {
     const paths = getWorkspacePaths(startDir);
     ensureDirs(paths);
@@ -646,6 +689,7 @@ export function createStoreContext(startDir = '') {
         livekitApiUrl: String(process.env.WEBMEET_LIVEKIT_URL || '').trim(),
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
+        livekitAgentName: String(process.env.WEBMEET_LIVEKIT_AGENT_NAME || 'webmeet-agent').trim() || 'webmeet-agent',
         egressUrl: String(process.env.WEBMEET_EGRESS_URL || '').trim(),
         recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/data/recordings').trim() || '/data/recordings',
         turn: {
@@ -931,8 +975,7 @@ export function getGuestMeetingDetails(context, { meetingId, guestToken, partici
         recordings: payload.recordings,
         tasks: payload.tasks,
         decisions: payload.decisions,
-        agents: payload.agents,
-        observerState: payload.observerState
+        agents: payload.agents
     };
 }
 
@@ -1054,32 +1097,12 @@ export function listMeetingChat(context, meetingId) {
 export async function appendMeetingChat(context, { meetingId, authorId, authorName, message }) {
     cleanupMeetingPresence(context, meetingId);
     let chatMessage = null;
-    let shouldRefreshObserver = false;
-    let assistantAgent = null;
     mutateMeeting(context, meetingId, (_record, payload) => {
         chatMessage = { id: randomId('chat'), meetingId, authorId, authorName, message, kind: 'user', createdAt: nowIso() };
         payload.chatMessages.push(chatMessage);
         recordMeetingEvent(context, meetingId, payload, 'chat.message.created', { meetingId, chatMessageId: chatMessage.id });
-        shouldRefreshObserver = payload.agents.some((entry) => entry.agentType === 'observer' && entry.mode === 'passive');
-        if (message.includes(`@${context.agentName}`)) {
-            assistantAgent = payload.agents.find((entry) => entry.agentType === 'assistant_on_mention' && entry.mode === 'on_mention') || null;
-            if (assistantAgent) recordMeetingEvent(context, meetingId, payload, 'agent.mentioned', { meetingId, agentName: context.agentName });
-        }
     });
-    let assistantMessage = null;
-    if (shouldRefreshObserver) {
-        enqueueJob(context.workspaceRoot, 'observer_refresh', { meetingId });
-    }
-    if (assistantAgent) {
-        const job = enqueueJob(context.workspaceRoot, 'assistant_reply', {
-            meetingId,
-            agentId: assistantAgent.id,
-            userMessage: message
-        });
-        const completed = await waitForJob(context.workspaceRoot, job.id, 15000);
-        assistantMessage = completed.result?.assistantMessage || null;
-    }
-    return { message: chatMessage, assistantMessage };
+    return { message: chatMessage };
 }
 
 export async function appendGuestMeetingChat(context, { meetingId, guestToken, participantId, message }) {
@@ -1099,16 +1122,11 @@ export async function appendGuestMeetingChat(context, { meetingId, guestToken, p
 export async function appendMeetingTranscript(context, { meetingId, speakerId, speakerName, text }) {
     cleanupMeetingPresence(context, meetingId);
     let segment = null;
-    let shouldRefreshObserver = false;
     mutateMeeting(context, meetingId, (_record, payload) => {
         segment = { id: randomId('transcript'), meetingId, speakerId, speakerName, text, createdAt: nowIso() };
         payload.transcriptSegments.push(segment);
         recordMeetingEvent(context, meetingId, payload, 'transcript.updated', { meetingId, segmentId: segment.id });
-        shouldRefreshObserver = payload.agents.some((entry) => entry.agentType === 'observer' && entry.mode === 'passive');
     });
-    if (shouldRefreshObserver) {
-        enqueueJob(context.workspaceRoot, 'observer_refresh', { meetingId });
-    }
     return segment;
 }
 
@@ -1131,12 +1149,74 @@ export function listMeetingTranscript(context, meetingId) {
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).transcriptSegments;
 }
 
-export function attachMeetingAgent(context, { meetingId, agentType, mode }) {
+export async function attachMeetingAgent(context, { meetingId, agentType, mode, authInfo = null }) {
     cleanupMeetingPresence(context, meetingId);
+    assertAdminAuthInfo(authInfo);
+    const record = loadMeetingRecord(context, meetingId);
+    const currentPayload = decryptMeetingPayload(context, record);
+    const currentAgent = currentPayload.agents.find((entry) => (
+        entry.agentType === agentType && entry.mode === mode && !entry.deletedAt
+    ));
+    const metadata = {
+        meetingId: record.meetingId,
+        workspaceId: record.workspaceId,
+        roomType: record.roomType || 'team',
+        agentType,
+        mode
+    };
+    if (currentAgent) {
+        const currentDispatch = await getLiveKitAgentDispatch(context, record.roomName, currentAgent.dispatchId);
+        const currentParticipant = currentDispatch && !isDeletedLiveKitDispatch(currentDispatch)
+            ? await getLiveKitAgentParticipant(context, record.roomName, metadata)
+            : null;
+        if (currentParticipant) {
+            return {
+                ...currentAgent,
+                dispatch: currentDispatch,
+                participant: currentParticipant,
+                status: 'dispatched'
+            };
+        }
+    }
+    const dispatch = await callLiveKitAgentDispatchApi(context, 'CreateDispatch', record.roomName, {
+        agentName: context.livekitAgentName,
+        room: record.roomName,
+        metadata: JSON.stringify(metadata)
+    });
+    const dispatchId = getAgentDispatchId(dispatch);
+    const confirmation = await waitForLiveKitAgentDispatch(context, record.roomName, dispatchId, metadata);
     let agent = null;
     mutateMeeting(context, meetingId, (_record, payload) => {
-        agent = { id: randomId('agent'), meetingId, agentType, mode, createdAt: nowIso() };
-        payload.agents.push(agent);
+        const targetAgent = currentAgent
+            ? payload.agents.find((entry) => entry.id === currentAgent.id)
+            : null;
+        agent = targetAgent || {
+            id: randomId('agent'),
+            meetingId,
+            agentType,
+            mode,
+            createdAt: nowIso()
+        };
+        Object.assign(agent, {
+            agentName: context.livekitAgentName,
+            dispatchId,
+            participantIdentity: confirmation.participant.identity || '',
+            participantSid: confirmation.participant.sid || '',
+            dispatch: confirmation.dispatch,
+            participant: confirmation.participant,
+            status: 'dispatched',
+            updatedAt: nowIso()
+        });
+        if (!targetAgent) {
+            payload.agents.push(agent);
+        }
+        recordMeetingEvent(context, meetingId, payload, 'agent.dispatched', {
+            meetingId,
+            agentId: agent.id,
+            agentType,
+            mode,
+            dispatchId: agent.dispatchId
+        });
     });
     return agent;
 }

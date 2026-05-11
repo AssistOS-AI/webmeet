@@ -225,9 +225,13 @@ export const meetingActionMethods = {
             this.setError('Select a meeting before attaching AI agents.');
             return;
         }
-        await runTool('webmeet_agent_attach', { meetingId: meeting.id, agentType, mode });
-        await this.loadMeetingDetails();
-        this.renderAll();
+        try {
+            await runTool('webmeet_agent_attach', { meetingId: meeting.id, agentType, mode });
+            await this.loadMeetingDetails();
+            this.renderAll();
+        } catch (error) {
+            this.setError(error instanceof Error ? error.message : String(error));
+        }
     },
 
     async startRecording() {

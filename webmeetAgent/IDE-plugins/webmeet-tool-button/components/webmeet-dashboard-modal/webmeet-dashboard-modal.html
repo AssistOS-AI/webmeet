@@ -341,9 +341,10 @@
             <!-- Secondary panels (Transcript, Artifacts, Recordings) in tabs -->
             <div class="webmeet-secondary-panels">
                 <div class="webmeet-tabs">
-                    <button class="webmeet-tab webmeet-tab-active" data-tab="transcript">Transcript</button>
-                    <button class="webmeet-tab" data-tab="artifacts">Artifacts</button>
-                    <button class="webmeet-tab" data-tab="recordings">Recordings</button>
+                    <button type="button" class="webmeet-tab webmeet-tab-active" data-local-action="switchSecondaryTab" data-tab="transcript">Transcript</button>
+                    <button type="button" class="webmeet-tab" data-local-action="switchSecondaryTab" data-tab="artifacts">Artifacts</button>
+                    <button type="button" class="webmeet-tab" data-local-action="switchSecondaryTab" data-tab="recordings">Recordings</button>
+                    <button type="button" class="webmeet-tab webmeet-hidden" id="webmeetAiTabButton" data-local-action="switchSecondaryTab" data-tab="ai">AI</button>
                     <button type="button" class="webmeet-collapse-button collapsed" data-collapse="transcript">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="18 15 12 9 6 15"></polyline>
@@ -368,6 +369,14 @@
                 <div class="webmeet-panel-content webmeet-hidden" id="webmeetRecordingsTab">
                     <div id="webmeetRecordingList" class="webmeet-scroll-list"></div>
                 </div>
+                <div class="webmeet-panel-content webmeet-hidden" id="webmeetAiTab">
+                    <div class="webmeet-actions-row" id="webmeetAiAdminActions">
+                        <button type="button" class="general-button subtle-button" data-local-action="attachObserver">Observer</button>
+                        <button type="button" class="general-button subtle-button" data-local-action="attachAssistant">Assistant</button>
+                        <button type="button" class="general-button subtle-button" data-local-action="attachScribe">Scribe</button>
+                    </div>
+                    <div id="webmeetAgentList" class="webmeet-scroll-list"></div>
+                </div>
             </div>
 
             <!-- Debug panel (hidden) -->
@@ -376,21 +385,8 @@
                 <textarea id="webmeetJoinPayload" class="form-input webmeet-code" rows="5" readonly></textarea>
             </div>
 
-            <!-- Dev grid (hidden) -->
-            <div class="webmeet-content-grid webmeet-dev-grid webmeet-hidden">
-                <div class="webmeet-panel">
-                    <div class="webmeet-panel-header"><span>Tasks</span></div>
-                    <div id="webmeetTaskList" class="webmeet-scroll-list"></div>
-                </div>
-                <div class="webmeet-panel">
-                    <div class="webmeet-panel-header"><span>Decisions</span></div>
-                    <div id="webmeetDecisionList" class="webmeet-scroll-list"></div>
-                </div>
-                <div class="webmeet-panel">
-                    <div class="webmeet-panel-header"><span>AI agents</span></div>
-                    <div id="webmeetAgentList" class="webmeet-scroll-list"></div>
-                </div>
-            </div>
+            <div id="webmeetTaskList" class="webmeet-hidden"></div>
+            <div id="webmeetDecisionList" class="webmeet-hidden"></div>
         </section>
     </div>
 </div>

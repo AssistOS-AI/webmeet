@@ -235,6 +235,10 @@ export class WebMeetDashboardModal {
                 'appendTranscript',
                 'startAutoTranscript',
                 'stopAutoTranscript',
+                'switchSecondaryTab',
+                'attachObserver',
+                'attachAssistant',
+                'attachScribe',
                 'selectMeeting',
                 'selectAndJoinMeeting'
             ];
@@ -244,7 +248,7 @@ export class WebMeetDashboardModal {
             });
         }
 
-        // Add event listeners for tabs and collapse (not WebSkel actions)
+        // Add event listeners for mobile panels and collapse controls that are not WebSkel actions.
         this.element.addEventListener('click', this.handleClick);
     }
 
@@ -252,35 +256,6 @@ export class WebMeetDashboardModal {
         const mobilePanelButton = event.target?.closest?.('[data-mobile-panel]');
         if (mobilePanelButton) {
             this.setMobilePanel(String(mobilePanelButton.dataset.mobilePanel || 'room').trim());
-            return;
-        }
-
-        // Handle tab switching
-        const tabButton = event.target?.closest?.('[data-tab]');
-        if (tabButton) {
-            const tabId = String(tabButton.dataset.tab || '').trim();
-            const tabGroup = tabButton.closest('.webmeet-tabs');
-
-            // Update active state for tab buttons in this group
-            tabGroup.querySelectorAll('.webmeet-tab').forEach(btn => {
-                btn.classList.toggle('webmeet-tab-active', btn.dataset.tab === tabId);
-            });
-
-            // Handle secondary tabs (transcript, artifacts, recordings)
-            const secondaryTabs = ['transcript', 'artifacts', 'recordings'];
-            if (secondaryTabs.includes(tabId)) {
-                secondaryTabs.forEach(t => {
-                    const tabContent = this.element.querySelector(`#webmeet${t.charAt(0).toUpperCase() + t.slice(1)}Tab`);
-                    if (tabContent) {
-                        if (t === tabId) {
-                            tabContent.classList.remove('webmeet-hidden');
-                        } else {
-                            tabContent.classList.add('webmeet-hidden');
-                        }
-                    }
-                });
-            }
-
             return;
         }
 
@@ -305,6 +280,28 @@ export class WebMeetDashboardModal {
         }
     };
 
+    switchSecondaryTab(element) {
+        const tabButton = element?.closest?.('[data-tab]');
+        const tabId = String(tabButton?.dataset?.tab || '').trim();
+        const secondaryTabs = ['transcript', 'artifacts', 'recordings', 'ai'];
+        if (!tabButton || !secondaryTabs.includes(tabId)) {
+            return;
+        }
+        if (tabId === 'ai' && (!this.canManageRooms() || this.isGuestSession())) {
+            this.setError('Only admin can manage AI agents.');
+            return;
+        }
+        const tabGroup = tabButton.closest('.webmeet-tabs');
+        tabGroup?.querySelectorAll('.webmeet-tab').forEach((button) => {
+            button.classList.toggle('webmeet-tab-active', button.dataset.tab === tabId);
+        });
+        secondaryTabs.forEach((tabName) => {
+            const panelId = `webmeet${tabName.charAt(0).toUpperCase()}${tabName.slice(1)}Tab`;
+            const tabContent = this.element.querySelector(`#${panelId}`);
+            tabContent?.classList.toggle('webmeet-hidden', tabName !== tabId);
+        });
+    }
+
     cacheElements() {
         this.workspaceList = this.element.querySelector('#webmeetWorkspaceList');
         this.currentWorkspace = this.element.querySelector('#webmeetCurrentWorkspace');
@@ -326,6 +323,8 @@ export class WebMeetDashboardModal {
         this.taskList = this.element.querySelector('#webmeetTaskList');
         this.decisionList = this.element.querySelector('#webmeetDecisionList');
         this.agentList = this.element.querySelector('#webmeetAgentList');
+        this.aiTabButton = this.element.querySelector('#webmeetAiTabButton');
+        this.aiAdminActions = this.element.querySelector('#webmeetAiAdminActions');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
         this.videoGridEmpty = this.element.querySelector('#webmeetVideoEmpty');

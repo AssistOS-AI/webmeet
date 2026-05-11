@@ -51,10 +51,12 @@ for name in \
     WEBMEET_TURN_MAX_PORT \
     WEBMEET_ROOM_PREFIX \
     WEBMEET_AGENT_NAME \
+    WEBMEET_LIVEKIT_AGENT_NAME \
+    WEBMEET_LIVEKIT_AGENT_LOG_LEVEL \
+    WEBMEET_AGENT_API_URL \
     WEBMEET_DATA_DIR \
     WEBMEET_RECORDINGS_DIR \
-    WEBMEET_API_PORT \
-    WEBMEET_WORKER_POLL_MS
+    WEBMEET_API_PORT
 do
     export_if_present "$name"
 done
@@ -62,8 +64,14 @@ done
 mkdir -p "${WEBMEET_DATA_DIR:-/data}"
 chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null || true
 
+if [ -f /code/package.json ] && [ ! -d /code/node_modules/@livekit/agents ]; then
+    (cd /code && npm install --omit=dev --package-lock=false)
+fi
+
+node --input-type=module -e "await import('@livekit/agents')" >/tmp/webmeet-livekit-agent-deps.out 2>/tmp/webmeet-livekit-agent-deps.err
+
 node /code/server/webmeet-api.mjs >/tmp/webmeet-api.out 2>/tmp/webmeet-api.err &
-node /code/server/webmeet-worker.mjs >/tmp/webmeet-worker.out 2>/tmp/webmeet-worker.err &
+node /code/server/livekit-agent.mjs >/tmp/webmeet-livekit-agent.out 2>/tmp/webmeet-livekit-agent.err &
 PORT="${WEBMEET_MCP_PORT:-7001}" sh /Agent/server/AgentServer.sh >/tmp/webmeet-mcp.out 2>/tmp/webmeet-mcp.err &
 
 exec node /code/server/webmeet-public-proxy.mjs

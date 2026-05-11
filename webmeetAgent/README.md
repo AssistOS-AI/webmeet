@@ -7,8 +7,8 @@
 - `webmeetAgent`
   - owner pentru MCP surface, bootstrap și runtime WebMeet
   - HTTP API pe `WEBMEET_API_PORT` (implicit `8791`)
-  - queue persistentă pentru jobs/events sub `.ploinky/data/webmeetAgent/data`
-  - worker AI separat pornit din bootstrap
+  - event log persistent sub `.ploinky/webmeet`
+  - runtime self-hosted pentru LiveKit Agents, atașat explicit în camere de admin
 - `webmeetInfra/stack`
   - dependența de infrastructură declarată de agent
   - include LiveKit, egress și restul serviciilor necesare runtime-ului WebMeet
@@ -22,7 +22,7 @@ Manifestul agentului:
 - pornește `AgentServer`
 - pornește în paralel:
   - `server/webmeet-api.mjs`
-  - `server/webmeet-worker.mjs`
+  - `server/livekit-agent.mjs`
 
 Explorer trebuie doar să enable-uiască `webmeetAgent` și pluginul `webmeet`.
 Provisioning-ul pentru LiveKit nu mai aparține host-ului Explorer sau unui flow separat din Ploinky.
@@ -68,11 +68,10 @@ UI-ul Explorer suportă:
 - append manual de transcript
 - captură automată din browser prin `SpeechRecognition` / `webkitSpeechRecognition`, dacă browserul o expune
 
-## AI workers
+## AI agents
 
-Workerul separat consumă jobs persistente pentru:
-- `observer_refresh`
-- `assistant_reply`
-- `scribe_finalize`
+WebMeet folosește LiveKit Agents self-hosted, nu LiveKit Cloud și nu LiveKit Inference implicit. Agentul este pornit local prin `server/livekit-agent.mjs`, se înregistrează cu `WEBMEET_LIVEKIT_AGENT_NAME` și este atașat în camere prin explicit dispatch de către admin.
 
-Rezultatele sunt persistate în store-ul WebMeet și vizibile în UI.
+Agent attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
+
+Store-ul WebMeet păstrează doar metadata de dispatch, chat/transcript, recordings și artifacts. Nu mai există proces AI local store-based care simulează observer/assistant/scribe în store.
