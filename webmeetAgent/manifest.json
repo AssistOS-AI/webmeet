@@ -169,7 +169,7 @@
                 {
                     "name": "WEBMEET_LIVEKIT_URL",
                     "required": false,
-                    "default": "http://webmeetLivekitServer:7880"
+                    "default": "http://webmeetLivekitServer:17880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
