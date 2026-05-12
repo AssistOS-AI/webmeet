@@ -76,6 +76,7 @@ export class WebMeetDashboardModal {
             },
             mediaDeviceWarnings: [],
             mediaSettingsPanelVisible: false,
+            mediaSettingsDraft: null,
             participantAudioSettings: {},
             participants: [],
             chatSidebarVisible: true,

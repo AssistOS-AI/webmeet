@@ -32,8 +32,12 @@ export const mediaSettingsMethods = {
         if (this.mediaSettingsPanel?.dataset?.boundInputHandlers === 'true') {
             return;
         }
+        const syncDraftFromControls = () => {
+            this.syncMediaSettingsDraftFromInputs();
+        };
         const updateMicrophoneGainPreview = () => {
             const microphoneGain = this.normalizeMicrophoneGain(this.microphoneGainInput?.value);
+            syncDraftFromControls();
             if (this.microphoneGainValue) {
                 this.microphoneGainValue.textContent = this.formatPercent(microphoneGain);
             }
@@ -43,17 +47,28 @@ export const mediaSettingsMethods = {
         };
         const updateOutputVolumePreview = () => {
             const outputVolume = this.normalizeOutputVolume(this.outputVolumeInput?.value);
-            this.state.mediaSettings = {
-                ...this.state.mediaSettings,
-                outputVolume
-            };
+            syncDraftFromControls();
             if (this.outputVolumeValue) {
                 this.outputVolumeValue.textContent = this.formatPercent(outputVolume);
             }
             this.applyOutputVolumePreviewToAllAudioElements(outputVolume);
         };
+        const handleSelectOrCheckboxChange = () => {
+            syncDraftFromControls();
+        };
         this.microphoneGainInput?.addEventListener?.('input', updateMicrophoneGainPreview);
         this.outputVolumeInput?.addEventListener?.('input', updateOutputVolumePreview);
+        this.audioInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.videoInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.audioOutputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.cameraQualitySelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.screenShareQualitySelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.echoCancellationInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.echoCancellationInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.noiseSuppressionInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.noiseSuppressionInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.autoGainControlInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.autoGainControlInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
         if (this.mediaSettingsPanel?.dataset) {
             this.mediaSettingsPanel.dataset.boundInputHandlers = 'true';
         }
@@ -87,6 +102,45 @@ export const mediaSettingsMethods = {
         } catch {
             return fallback;
         }
+    },
+
+    normalizeMediaSettings(settings = {}) {
+        return {
+            audioInputDeviceId: String(settings.audioInputDeviceId || '').trim(),
+            videoInputDeviceId: String(settings.videoInputDeviceId || '').trim(),
+            audioOutputDeviceId: String(settings.audioOutputDeviceId || '').trim(),
+            echoCancellation: settings.echoCancellation !== false,
+            noiseSuppression: settings.noiseSuppression !== false,
+            autoGainControl: settings.autoGainControl !== false,
+            microphoneGain: this.normalizeMicrophoneGain(settings.microphoneGain),
+            outputVolume: this.normalizeOutputVolume(settings.outputVolume),
+            cameraQuality: this.normalizeCameraQuality(settings.cameraQuality),
+            screenShareQuality: this.normalizeScreenShareQuality(settings.screenShareQuality)
+        };
+    },
+
+    cloneCurrentMediaSettings() {
+        return this.normalizeMediaSettings(this.state.mediaSettings);
+    },
+
+    getCurrentMediaSettingsForPanel() {
+        if (this.state.mediaSettingsPanelVisible && this.state.mediaSettingsDraft) {
+            return this.normalizeMediaSettings(this.state.mediaSettingsDraft);
+        }
+        return this.cloneCurrentMediaSettings();
+    },
+
+    beginMediaSettingsDraft() {
+        this.state.mediaSettingsDraft = this.cloneCurrentMediaSettings();
+    },
+
+    clearMediaSettingsDraft() {
+        this.state.mediaSettingsDraft = null;
+    },
+
+    syncMediaSettingsDraftFromInputs() {
+        if (!this.state.mediaSettingsPanelVisible) return;
+        this.state.mediaSettingsDraft = this.collectMediaSettingsFromInputs();
     },
 
     normalizeMicrophoneGain(value) {
@@ -442,7 +496,7 @@ export const mediaSettingsMethods = {
         return [];
     },
 
-    async collectMediaDeviceWarnings(settings = this.state.mediaSettings, options = {}) {
+    async collectMediaDeviceWarnings(settings = this.getCurrentMediaSettingsForPanel(), options = {}) {
         const warnings = this.getStaticMediaDeviceWarnings(settings);
         if (options.testMicrophone) {
             warnings.push(...await this.collectMicrophoneSignalWarnings(settings));
@@ -488,7 +542,7 @@ export const mediaSettingsMethods = {
                 audioOutput: devices.filter((d) => d.kind === 'audiooutput')
             };
             this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
-                this.state.mediaSettings,
+                this.getCurrentMediaSettingsForPanel(),
                 { testMicrophone: requestAudioPermission }
             );
         } catch (_) {
@@ -523,23 +577,46 @@ export const mediaSettingsMethods = {
     },
 
     renderMediaSettingsPanel() {
-        const settings = this.state.mediaSettings;
-        this.renderMediaDeviceOptions(this.audioInputSelect, this.mediaDevices.audioInput, settings.audioInputDeviceId, 'Microphone');
-        this.renderMediaDeviceOptions(this.videoInputSelect, this.mediaDevices.videoInput, settings.videoInputDeviceId, 'Camera');
-        this.renderMediaDeviceOptions(this.audioOutputSelect, this.mediaDevices.audioOutput, settings.audioOutputDeviceId, 'Speaker');
+        const settings = this.getCurrentMediaSettingsForPanel();
+        const syncSelectOptions = (selectElement, devices, selectedId, emptyLabel) => {
+            if (!selectElement) return;
+            const currentValue = String(selectElement.value || '').trim();
+            const shouldPreserveCurrentValue = this.state.mediaSettingsPanelVisible
+                && this.state.mediaSettingsDraft
+                && currentValue === String(selectedId || '').trim();
+            this.renderMediaDeviceOptions(
+                selectElement,
+                devices,
+                shouldPreserveCurrentValue ? currentValue : selectedId,
+                emptyLabel
+            );
+        };
+        syncSelectOptions(this.audioInputSelect, this.mediaDevices.audioInput, settings.audioInputDeviceId, 'Microphone');
+        syncSelectOptions(this.videoInputSelect, this.mediaDevices.videoInput, settings.videoInputDeviceId, 'Camera');
+        syncSelectOptions(this.audioOutputSelect, this.mediaDevices.audioOutput, settings.audioOutputDeviceId, 'Speaker');
         if (this.cameraQualitySelect) this.cameraQualitySelect.value = this.normalizeCameraQuality(settings.cameraQuality);
         if (this.screenShareQualitySelect) this.screenShareQualitySelect.value = this.normalizeScreenShareQuality(settings.screenShareQuality);
-        if (this.echoCancellationInput) this.echoCancellationInput.checked = Boolean(settings.echoCancellation);
-        if (this.noiseSuppressionInput) this.noiseSuppressionInput.checked = Boolean(settings.noiseSuppression);
-        if (this.autoGainControlInput) this.autoGainControlInput.checked = Boolean(settings.autoGainControl);
+        if (this.echoCancellationInput && document.activeElement !== this.echoCancellationInput) {
+            this.echoCancellationInput.checked = Boolean(settings.echoCancellation);
+        }
+        if (this.noiseSuppressionInput && document.activeElement !== this.noiseSuppressionInput) {
+            this.noiseSuppressionInput.checked = Boolean(settings.noiseSuppression);
+        }
+        if (this.autoGainControlInput && document.activeElement !== this.autoGainControlInput) {
+            this.autoGainControlInput.checked = Boolean(settings.autoGainControl);
+        }
         const microphoneGain = this.normalizeMicrophoneGain(settings.microphoneGain);
         const outputVolume = this.normalizeOutputVolume(settings.outputVolume);
-        if (this.microphoneGainInput) this.microphoneGainInput.value = String(microphoneGain);
+        if (this.microphoneGainInput && document.activeElement !== this.microphoneGainInput) {
+            this.microphoneGainInput.value = String(microphoneGain);
+        }
         if (this.microphoneGainValue) this.microphoneGainValue.textContent = this.formatPercent(microphoneGain);
         if (this.microphoneGainWarning) {
             this.microphoneGainWarning.classList.toggle('webmeet-hidden', microphoneGain <= 1.25);
         }
-        if (this.outputVolumeInput) this.outputVolumeInput.value = String(outputVolume);
+        if (this.outputVolumeInput && document.activeElement !== this.outputVolumeInput) {
+            this.outputVolumeInput.value = String(outputVolume);
+        }
         if (this.outputVolumeValue) this.outputVolumeValue.textContent = this.formatPercent(outputVolume);
         if (this.mediaDeviceWarnings) {
             const warnings = Array.isArray(this.state.mediaDeviceWarnings) ? this.state.mediaDeviceWarnings : [];
@@ -559,9 +636,11 @@ export const mediaSettingsMethods = {
     toggleMediaSettings() {
         this.state.mediaSettingsPanelVisible = !this.state.mediaSettingsPanelVisible;
         if (this.state.mediaSettingsPanelVisible) {
+            this.beginMediaSettingsDraft();
             this.state.activeMobilePanel = 'settings';
             this.applyMobilePanelState?.();
         } else if (this.state.activeMobilePanel === 'settings') {
+            this.clearMediaSettingsDraft();
             this.state.activeMobilePanel = 'room';
             this.applyMobilePanelState?.();
         }
@@ -572,7 +651,7 @@ export const mediaSettingsMethods = {
     },
 
     collectMediaSettingsFromInputs() {
-        return {
+        return this.normalizeMediaSettings({
             audioInputDeviceId: String(this.audioInputSelect?.value || '').trim(),
             videoInputDeviceId: String(this.videoInputSelect?.value || '').trim(),
             audioOutputDeviceId: String(this.audioOutputSelect?.value || '').trim(),
@@ -583,7 +662,7 @@ export const mediaSettingsMethods = {
             outputVolume: this.normalizeOutputVolume(this.outputVolumeInput?.value),
             cameraQuality: this.normalizeCameraQuality(this.cameraQualitySelect?.value),
             screenShareQuality: this.normalizeScreenShareQuality(this.screenShareQualitySelect?.value)
-        };
+        });
     },
 
     async applyAudioOutputDeviceToElement(mediaElement) {
@@ -645,7 +724,9 @@ export const mediaSettingsMethods = {
     },
 
     async applyMediaSettings() {
-        this.state.mediaSettings = this.collectMediaSettingsFromInputs();
+        this.state.mediaSettings = this.state.mediaSettingsDraft
+            ? this.normalizeMediaSettings(this.state.mediaSettingsDraft)
+            : this.collectMediaSettingsFromInputs();
         this.mediaController.setSettings(this.state.mediaSettings);
         this.persistMediaSettings();
         this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
@@ -655,6 +736,7 @@ export const mediaSettingsMethods = {
         await this.applyAudioOutputDeviceToAllTracks();
         await this.reapplyActiveInputDevices();
         this.state.mediaSettingsPanelVisible = false;
+        this.clearMediaSettingsDraft();
         this.renderMediaSettingsPanel();
         this.setError(this.state.mediaDeviceWarnings[0] || 'Media settings applied.');
     },
