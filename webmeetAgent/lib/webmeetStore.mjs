@@ -1166,6 +1166,48 @@ export function listMeetingTranscript(context, meetingId) {
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).transcriptSegments;
 }
 
+function formatTranscriptMarkdown(record, payload) {
+    const title = String(record?.title || 'WebMeet transcript').trim() || 'WebMeet transcript';
+    const segments = Array.isArray(payload?.transcriptSegments) ? payload.transcriptSegments : [];
+    const lines = [
+        `# ${title}`,
+        '',
+        `Meeting: ${record?.meetingId || ''}`,
+        `Generated: ${nowIso()}`,
+        ''
+    ];
+    if (!segments.length) {
+        lines.push('_No transcript segments recorded._', '');
+        return lines.join('\n');
+    }
+    for (const segment of segments) {
+        const speakerName = String(segment?.speakerName || segment?.speakerId || 'Speaker').trim() || 'Speaker';
+        const timestamp = String(segment?.startedAt || segment?.createdAt || '').trim();
+        const source = String(segment?.source || '').trim();
+        lines.push(`## ${speakerName}${timestamp ? ` - ${timestamp}` : ''}${source ? ` (${source})` : ''}`);
+        lines.push('');
+        lines.push(String(segment?.text || '').trim());
+        lines.push('');
+    }
+    return lines.join('\n');
+}
+
+export function formatMeetingTranscriptMarkdown(context, meetingId) {
+    cleanupMeetingPresence(context, meetingId);
+    const record = loadMeetingRecord(context, meetingId);
+    const payload = decryptMeetingPayload(context, record);
+    return formatTranscriptMarkdown(record, payload);
+}
+
+export function formatGuestMeetingTranscriptMarkdown(context, { meetingId, guestToken, participantId }) {
+    cleanupMeetingPresence(context, meetingId);
+    const record = loadMeetingRecord(context, meetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    const payload = decryptMeetingPayload(context, record);
+    assertGuestParticipant(payload, participantId);
+    return formatTranscriptMarkdown(record, payload);
+}
+
 export async function attachMeetingAgent(context, { meetingId, agentType, mode, authInfo = null }) {
     cleanupMeetingPresence(context, meetingId);
     assertAdminAuthInfo(authInfo);
