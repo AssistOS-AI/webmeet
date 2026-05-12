@@ -45,6 +45,11 @@
             "type": "modal"
         },
         {
+            "component": "webmeet-participant-audio-modal",
+            "presenter": "WebmeetParticipantAudioModal",
+            "type": "modal"
+        },
+        {
             "component": "webmeet-room-ai-menu"
         },
         {

@@ -6,6 +6,8 @@ function escapeHtml(value) {
         .replaceAll('"', '&quot;');
 }
 
+const PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY = 'webmeet.participantAudioSettings';
+
 export const mediaSettingsMethods = {
     registerMediaDeviceChangeHandler() {
         if (this.handleMediaDeviceChange || !navigator?.mediaDevices?.addEventListener) {
@@ -99,6 +101,121 @@ export const mediaSettingsMethods = {
         return Math.min(1, Math.max(0, numberValue));
     },
 
+    normalizeParticipantAudioVolume(value) {
+        return this.normalizeOutputVolume(value);
+    },
+
+    normalizeParticipantAudioSettings(value) {
+        const normalized = {
+            muted: Boolean(value?.muted),
+            volume: this.normalizeParticipantAudioVolume(value?.volume)
+        };
+        if (!normalized.muted && Math.abs(normalized.volume - 1) < 0.001) {
+            return { muted: false, volume: 1 };
+        }
+        return normalized;
+    },
+
+    hasParticipantAudioOverrides(settings) {
+        const normalized = this.normalizeParticipantAudioSettings(settings);
+        return normalized.muted || Math.abs(normalized.volume - 1) >= 0.001;
+    },
+
+    getParticipantAudioSettingsMeetingId() {
+        return String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+    },
+
+    loadParticipantAudioSettings() {
+        const meetingId = this.getParticipantAudioSettingsMeetingId();
+        this.state.participantAudioSettings = {};
+        if (!meetingId) return this.state.participantAudioSettings;
+        try {
+            const raw = String(window?.localStorage?.getItem(PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY) || '').trim();
+            if (!raw) return this.state.participantAudioSettings;
+            const parsed = JSON.parse(raw);
+            const storedByMeeting = parsed && typeof parsed === 'object' ? parsed[meetingId] : null;
+            if (!storedByMeeting || typeof storedByMeeting !== 'object') {
+                return this.state.participantAudioSettings;
+            }
+            const next = {};
+            for (const [participantId, value] of Object.entries(storedByMeeting)) {
+                const id = String(participantId || '').trim();
+                if (!id) continue;
+                const normalized = this.normalizeParticipantAudioSettings(value);
+                if (!this.hasParticipantAudioOverrides(normalized)) continue;
+                next[id] = normalized;
+            }
+            this.state.participantAudioSettings = next;
+        } catch (_) {
+            this.state.participantAudioSettings = {};
+        }
+        return this.state.participantAudioSettings;
+    },
+
+    persistParticipantAudioSettings() {
+        const meetingId = this.getParticipantAudioSettingsMeetingId();
+        if (!meetingId) return;
+        try {
+            const raw = String(window?.localStorage?.getItem(PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY) || '').trim();
+            const parsed = raw ? JSON.parse(raw) : {};
+            const store = parsed && typeof parsed === 'object' ? parsed : {};
+            const nextMeetingSettings = {};
+            for (const [participantId, value] of Object.entries(this.state.participantAudioSettings || {})) {
+                const id = String(participantId || '').trim();
+                if (!id) continue;
+                const normalized = this.normalizeParticipantAudioSettings(value);
+                if (!this.hasParticipantAudioOverrides(normalized)) continue;
+                nextMeetingSettings[id] = normalized;
+            }
+            if (Object.keys(nextMeetingSettings).length) {
+                store[meetingId] = nextMeetingSettings;
+            } else {
+                delete store[meetingId];
+            }
+            window?.localStorage?.setItem(PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY, JSON.stringify(store));
+        } catch (_) {
+            // ignore storage failures
+        }
+    },
+
+    getParticipantAudioSettings(participantId) {
+        const id = String(participantId || '').trim();
+        if (!id) {
+            return this.normalizeParticipantAudioSettings({});
+        }
+        const current = this.state.participantAudioSettings && typeof this.state.participantAudioSettings === 'object'
+            ? this.state.participantAudioSettings[id]
+            : null;
+        return this.normalizeParticipantAudioSettings(current);
+    },
+
+    setParticipantAudioSettings(participantId, settings) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        const normalized = this.normalizeParticipantAudioSettings(settings);
+        this.state.participantAudioSettings = {
+            ...(this.state.participantAudioSettings || {})
+        };
+        if (this.hasParticipantAudioOverrides(normalized)) {
+            this.state.participantAudioSettings[id] = normalized;
+        } else {
+            delete this.state.participantAudioSettings[id];
+        }
+        this.persistParticipantAudioSettings();
+    },
+
+    getParticipantAudioState(participant) {
+        const participantId = String(participant?.identity || participant || '').trim();
+        const participantView = this.participantLayoutController.getParticipantView?.(participantId) || null;
+        const isLocal = participant?.kind === 'local' || Boolean(participantView?.isLocal);
+        const settings = this.getParticipantAudioSettings(participantId);
+        return {
+            canConfigureAudio: !isLocal && Boolean(participantId),
+            hasCustomAudioSettings: !isLocal && this.hasParticipantAudioOverrides(settings),
+            isAudioMutedLocally: !isLocal && Boolean(settings.muted)
+        };
+    },
+
     normalizeCameraQuality(value) {
         const quality = String(value || '').trim();
         return ['h360', 'h540', 'h720', 'h1080'].includes(quality) ? quality : 'h720';
@@ -124,10 +241,16 @@ export const mediaSettingsMethods = {
 
     applyOutputVolumePreviewToElement(mediaElement, outputVolume = this.getCurrentOutputVolume()) {
         if (!mediaElement) return;
-        const volume = this.normalizeOutputVolume(outputVolume);
+        const participantId = String(mediaElement.dataset?.participantId || '').trim();
+        const participantSettings = this.getParticipantAudioSettings(participantId);
+        const volume = this.normalizeOutputVolume(
+            this.normalizeOutputVolume(outputVolume) * this.normalizeParticipantAudioVolume(participantSettings.volume)
+        );
         mediaElement.volume = volume;
-        mediaElement.muted = volume === 0;
-        mediaElement.dataset.webmeetOutputVolume = String(volume);
+        mediaElement.muted = Boolean(participantSettings.muted) || volume === 0;
+        mediaElement.dataset.webmeetOutputVolume = String(this.normalizeOutputVolume(outputVolume));
+        mediaElement.dataset.webmeetParticipantVolume = String(participantSettings.volume);
+        mediaElement.dataset.webmeetParticipantMuted = participantSettings.muted ? 'true' : 'false';
     },
 
     applyOutputVolumePreviewToAllAudioElements(outputVolume = this.getCurrentOutputVolume()) {
@@ -141,6 +264,18 @@ export const mediaSettingsMethods = {
             if (handled.has(mediaElement)) continue;
             this.applyOutputVolumePreviewToElement(mediaElement, outputVolume);
         }
+    },
+
+    applyParticipantAudioSettingsToParticipant(participantId, outputVolume = this.getCurrentOutputVolume()) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        for (const trackId of this.participantLayoutController.findTrackIdsForParticipant(id, { kind: 'audio' })) {
+            const trackEntry = this.participantLayoutController.getTrackEntry(trackId);
+            if (!trackEntry?.element) continue;
+            trackEntry.element.dataset.participantId = id;
+            this.applyOutputVolumePreviewToElement(trackEntry.element, outputVolume);
+        }
+        this.participantLayoutController.refreshParticipantAudioState?.(id);
     },
 
     normalizeDeviceLabel(label) {
@@ -456,6 +591,9 @@ export const mediaSettingsMethods = {
         if (!mediaElement) {
             return;
         }
+        if (!String(mediaElement.dataset?.participantId || '').trim()) {
+            mediaElement.dataset.participantId = String(mediaElement.closest?.('[data-participant-id]')?.dataset?.participantId || '').trim();
+        }
         this.applyOutputVolumePreviewToElement(mediaElement, this.getCurrentOutputVolume());
         if (typeof mediaElement.setSinkId === 'function') {
             try {
@@ -519,5 +657,37 @@ export const mediaSettingsMethods = {
         this.state.mediaSettingsPanelVisible = false;
         this.renderMediaSettingsPanel();
         this.setError(this.state.mediaDeviceWarnings[0] || 'Media settings applied.');
+    },
+
+    async openParticipantAudioSettings(target) {
+        const source = target?.target || target;
+        const participantId = String(
+            source?.dataset?.participantId
+            || source?.closest?.('[data-participant-id]')?.dataset?.participantId
+            || ''
+        ).trim();
+        if (!participantId) return;
+        const participantView = this.participantLayoutController.getParticipantView?.(participantId) || null;
+        if (!participantView || participantView.isLocal) {
+            return;
+        }
+        const currentSettings = this.getParticipantAudioSettings(participantId);
+        const result = await assistOS.UI.showModal('webmeet-participant-audio-modal', {
+            participantId,
+            participantName: participantView.name || participantId,
+            volume: String(currentSettings.volume),
+            muted: currentSettings.muted ? 'true' : 'false'
+        }, true);
+        if (!result) return;
+        if (result.reset === true) {
+            this.setParticipantAudioSettings(participantId, { muted: false, volume: 1 });
+        } else {
+            this.setParticipantAudioSettings(participantId, {
+                muted: result.muted,
+                volume: result.volume
+            });
+        }
+        this.applyParticipantAudioSettingsToParticipant(participantId);
+        this.renderParticipantLayout();
     }
 };

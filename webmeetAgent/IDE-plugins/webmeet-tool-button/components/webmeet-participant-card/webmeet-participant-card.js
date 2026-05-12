@@ -29,7 +29,10 @@ export class WebMeetParticipantCard {
             isFocused: parseBoolean(element.getAttribute('data-is-focused')),
             isAgent: parseBoolean(element.getAttribute('data-is-agent')),
             agentId: String(element.getAttribute('data-agent-id') || '').trim(),
-            canDetachAgent: parseBoolean(element.getAttribute('data-can-detach-agent'))
+            canDetachAgent: parseBoolean(element.getAttribute('data-can-detach-agent')),
+            canConfigureAudio: parseBoolean(element.getAttribute('data-can-configure-audio')),
+            hasCustomAudioSettings: parseBoolean(element.getAttribute('data-has-custom-audio-settings')),
+            isAudioMutedLocally: parseBoolean(element.getAttribute('data-is-audio-muted-locally'))
         };
         this.invalidate();
     }
@@ -37,6 +40,7 @@ export class WebMeetParticipantCard {
     beforeRender() {
         this.displayName = this.state.displayName;
         this.initials = buildInitials(this.state.displayName);
+        this.participantId = this.state.participantId;
         this.agentId = this.state.agentId;
     }
 
@@ -48,6 +52,7 @@ export class WebMeetParticipantCard {
             footer: this.element.querySelector('[data-role="footer"]'),
             name: this.element.querySelector('[data-role="name"]'),
             mic: this.element.querySelector('[data-role="mic"]'),
+            audioSettings: this.element.querySelector('[data-role="audioSettings"]'),
             agentDetach: this.element.querySelector('[data-role="agentDetach"]'),
             videoLoading: this.element.querySelector('[data-role="videoLoading"]')
         };
@@ -136,6 +141,7 @@ export class WebMeetParticipantCard {
         this.element.dataset.participantId = String(this.state.participantId || '').trim();
         this.element.dataset.agentId = String(this.state.agentId || '').trim();
         this.element.dataset.local = this.state.isLocal ? 'true' : 'false';
+        this.element.dataset.hasCustomAudioSettings = this.state.hasCustomAudioSettings ? 'true' : 'false';
         this.refs.name.textContent = displayName;
         this.refs.avatar.textContent = initials;
         this.refs.fallback.style.display = this.state.hasVideo ? 'none' : 'flex';
@@ -149,6 +155,25 @@ export class WebMeetParticipantCard {
         const micLabel = this.state.isMicOn ? 'Microphone on' : 'Microphone off';
         this.refs.mic.title = micLabel;
         this.refs.mic.setAttribute('aria-label', micLabel);
+
+        if (this.refs.audioSettings) {
+            const participantId = String(this.state.participantId || '').trim();
+            const showAudioSettings = Boolean(this.state.canConfigureAudio && participantId);
+            const hasCustomAudioSettings = Boolean(this.state.hasCustomAudioSettings);
+            const isMutedLocally = Boolean(this.state.isAudioMutedLocally);
+            let audioLabel = 'Audio settings';
+            if (isMutedLocally) {
+                audioLabel = 'Audio settings (muted locally)';
+            } else if (hasCustomAudioSettings) {
+                audioLabel = 'Audio settings applied';
+            }
+            this.refs.audioSettings.style.display = showAudioSettings ? 'inline-flex' : 'none';
+            this.refs.audioSettings.dataset.participantId = participantId;
+            this.refs.audioSettings.classList.toggle('is-active', hasCustomAudioSettings);
+            this.refs.audioSettings.classList.toggle('is-muted', isMutedLocally);
+            this.refs.audioSettings.title = audioLabel;
+            this.refs.audioSettings.setAttribute('aria-label', audioLabel);
+        }
 
         if (this.refs.agentDetach) {
             const agentId = String(this.state.agentId || '').trim();

@@ -76,6 +76,7 @@ export class WebMeetDashboardModal {
             },
             mediaDeviceWarnings: [],
             mediaSettingsPanelVisible: false,
+            participantAudioSettings: {},
             participants: [],
             chatSidebarVisible: true,
             activeMobilePanel: 'room',
@@ -98,7 +99,8 @@ export class WebMeetDashboardModal {
         this.participantLayoutController = new ParticipantLayoutController({
             getParticipantDisplayName: (participant) => this.getParticipantDisplayName(participant),
             getAgentForParticipant: (participant) => this.getAgentForParticipant(participant),
-            canDetachAgent: () => this.canManageRooms() && !this.isGuestSession()
+            canDetachAgent: () => this.canManageRooms() && !this.isGuestSession(),
+            getParticipantAudioState: (participant) => this.getParticipantAudioState(participant)
         });
         this.meetingDetailsLoadSeq = 0;
         this.cachedStableParticipantId = '';
@@ -233,6 +235,7 @@ export class WebMeetDashboardModal {
                 'toggleMediaSettings',
                 'applyMediaSettings',
                 'refreshMediaDevices',
+                'openParticipantAudioSettings',
                 'focusParticipantCard',
                 'sendChat',
                 'appendTranscript',
@@ -592,8 +595,10 @@ export class WebMeetDashboardModal {
             this.state.agents = [];
             this.state.session = null;
             this.state.participants = [];
+            this.state.participantAudioSettings = {};
             return;
         }
+        this.loadParticipantAudioSettings();
         if (this.isGuestSession()) {
             try {
                 const details = await this.fetchPublicMeetingDetails(meeting.id);
@@ -656,6 +661,7 @@ export class WebMeetDashboardModal {
             this.state.agents = [];
             this.state.session = null;
             this.state.participants = [];
+            this.state.participantAudioSettings = {};
             this.setError('Room is no longer available. Refreshing rooms.');
             return;
         }

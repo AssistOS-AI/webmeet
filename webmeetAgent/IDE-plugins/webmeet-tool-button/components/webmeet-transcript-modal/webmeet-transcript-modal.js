@@ -6,7 +6,7 @@ export class WebmeetTranscriptModal {
         this.invalidate = invalidate;
         this.meetingId = this.element.getAttribute('data-meetingId');
         this.meetingTitle = this.element.getAttribute('data-meetingTitle');
-        
+
         this.state = {
             transcript: []
         };

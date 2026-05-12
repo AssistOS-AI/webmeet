@@ -191,6 +191,40 @@ webmeet-participant-card.is-focused .wm-participant-footer {
     flex: 0 0 22px;
 }
 
+.wm-participant-audio-settings {
+    display: none;
+    width: 22px;
+    height: 22px;
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 22px;
+    color: var(--text-soft);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    cursor: pointer;
+    padding: 0;
+}
+
+.wm-participant-audio-settings:hover,
+.wm-participant-audio-settings:focus-visible {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.wm-participant-audio-settings.is-active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.wm-participant-audio-settings.is-muted {
+    color: var(--red);
+    border-color: color-mix(in srgb, var(--red) 42%, transparent);
+    background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+
 .wm-participant-agent-detach {
     display: none;
     width: 22px;
@@ -247,6 +281,10 @@ webmeet-participant-card.is-mini .wm-participant-avatar {
 webmeet-participant-card.is-mini .wm-participant-footer {
     margin-top: 4px;
     padding: 4px 5px;
+}
+
+webmeet-participant-card.is-mini .wm-participant-audio-settings {
+    display: inline-flex;
 }
 
 webmeet-participant-card.is-mini .wm-participant-name {

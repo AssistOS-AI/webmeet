@@ -9,6 +9,13 @@ export class ParticipantLayoutController {
         this.canDetachAgent = typeof options.canDetachAgent === 'function'
             ? options.canDetachAgent
             : (() => false);
+        this.getParticipantAudioState = typeof options.getParticipantAudioState === 'function'
+            ? options.getParticipantAudioState
+            : (() => ({
+                canConfigureAudio: false,
+                hasCustomAudioSettings: false,
+                isAudioMutedLocally: false
+            }));
 
         this.videoGrid = null;
         this.videoGridAll = null;
@@ -56,7 +63,10 @@ export class ParticipantLayoutController {
             isFocused: Boolean(view.isFocused),
             isAgent: Boolean(view.isAgent),
             agentId: String(view.agentId || '').trim(),
-            canDetachAgent: Boolean(view.canDetachAgent)
+            canDetachAgent: Boolean(view.canDetachAgent),
+            canConfigureAudio: Boolean(view.canConfigureAudio),
+            hasCustomAudioSettings: Boolean(view.hasCustomAudioSettings),
+            isAudioMutedLocally: Boolean(view.isAudioMutedLocally)
         };
         view.element.dataset.participantId = payload.participantId;
         view.element.dataset.agentId = payload.agentId;
@@ -69,6 +79,9 @@ export class ParticipantLayoutController {
         view.element.setAttribute('data-is-focused', payload.isFocused ? 'true' : 'false');
         view.element.setAttribute('data-is-agent', payload.isAgent ? 'true' : 'false');
         view.element.setAttribute('data-can-detach-agent', payload.canDetachAgent ? 'true' : 'false');
+        view.element.setAttribute('data-can-configure-audio', payload.canConfigureAudio ? 'true' : 'false');
+        view.element.setAttribute('data-has-custom-audio-settings', payload.hasCustomAudioSettings ? 'true' : 'false');
+        view.element.setAttribute('data-is-audio-muted-locally', payload.isAudioMutedLocally ? 'true' : 'false');
         const presenter = view.element.webSkelPresenter;
         if (presenter && typeof presenter.setState === 'function') {
             presenter.setState(payload);
@@ -89,6 +102,7 @@ export class ParticipantLayoutController {
         let view = this.participantViews.get(id);
         const agent = this.getAgentForParticipant(participant);
         const isAgent = Boolean(agent);
+        const audioState = this.getParticipantAudioState(participant);
         if (!view) {
             const element = document.createElement('webmeet-participant-card');
             element.setAttribute('data-presenter', 'webmeet-participant-card');
@@ -105,6 +119,9 @@ export class ParticipantLayoutController {
                 isAgent,
                 agentId: String(agent?.id || '').trim(),
                 canDetachAgent: isAgent && this.canDetachAgent(),
+                canConfigureAudio: Boolean(audioState?.canConfigureAudio),
+                hasCustomAudioSettings: Boolean(audioState?.hasCustomAudioSettings),
+                isAudioMutedLocally: Boolean(audioState?.isAudioMutedLocally),
                 isMini: true,
                 isFocused: false,
                 element,
@@ -117,6 +134,9 @@ export class ParticipantLayoutController {
             view.isAgent = isAgent;
             view.agentId = String(agent?.id || '').trim();
             view.canDetachAgent = isAgent && this.canDetachAgent();
+            view.canConfigureAudio = Boolean(audioState?.canConfigureAudio);
+            view.hasCustomAudioSettings = Boolean(audioState?.hasCustomAudioSettings);
+            view.isAudioMutedLocally = Boolean(audioState?.isAudioMutedLocally);
             if (!view.videoElements) {
                 view.videoElements = new Map();
             }
@@ -167,7 +187,7 @@ export class ParticipantLayoutController {
     }
 
     focusParticipantCard(target) {
-        if (target?.closest?.('[data-role="agentDetach"]')) return;
+        if (target?.closest?.('[data-role="agentDetach"]') || target?.closest?.('[data-role="audioSettings"]')) return;
         const participantId = String(target?.dataset?.participantId || '').trim();
         if (!participantId) return;
         if (this.focusedParticipantId === participantId) {
@@ -213,6 +233,21 @@ export class ParticipantLayoutController {
         const view = this.participantViews.get(id);
         if (!view) return;
         view.micOn = Boolean(isMicOn);
+        this.applyParticipantViewState(view);
+    }
+
+    refreshParticipantAudioState(participantId) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        const view = this.participantViews.get(id);
+        if (!view) return;
+        const audioState = this.getParticipantAudioState({
+            identity: id,
+            kind: view.isLocal ? 'local' : 'remote'
+        });
+        view.canConfigureAudio = Boolean(audioState?.canConfigureAudio);
+        view.hasCustomAudioSettings = Boolean(audioState?.hasCustomAudioSettings);
+        view.isAudioMutedLocally = Boolean(audioState?.isAudioMutedLocally);
         this.applyParticipantViewState(view);
     }
 
@@ -294,6 +329,7 @@ export class ParticipantLayoutController {
         const id = String(participantId || '').trim();
         if (!id || !trackSid || !mediaElement) return;
         mediaElement.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+        mediaElement.dataset.participantId = id;
         const view = this.participantViews.get(id);
         if (view?.element && !view.element.contains(mediaElement)) {
             view.element.appendChild(mediaElement);
