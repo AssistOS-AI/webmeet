@@ -513,15 +513,25 @@ export class WebMeetDashboardModal {
 
     async loadParticipantsForMeetings() {
         const meetings = Array.isArray(this.state.meetings) ? this.state.meetings : [];
-        const mapMeetingRoster = (details) => {
+        const mapMeetingRoster = (details, meetingId) => {
             const participants = Array.isArray(details?.participants) ? details.participants : [];
             const agents = Array.isArray(details?.agents)
                 ? details.agents.filter((entry) => entry && !entry.deletedAt && String(entry.status || '').trim() !== 'stopped')
                 : [];
+            const previousRoster = Array.isArray(this.state.meetingParticipantsById?.[meetingId])
+                ? this.state.meetingParticipantsById[meetingId]
+                : [];
+            const previousMicStateById = new Map(
+                previousRoster.map((entry) => [String(entry?.id || '').trim(), entry?.micOn])
+            );
             const roster = participants.map((entry) => ({
                 id: String(entry?.id || '').trim(),
                 name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant',
-                micOn: typeof entry?.micOn === 'boolean' ? entry.micOn : false,
+                micOn: typeof entry?.micOn === 'boolean'
+                    ? entry.micOn
+                    : (typeof previousMicStateById.get(String(entry?.id || '').trim()) === 'boolean'
+                        ? previousMicStateById.get(String(entry?.id || '').trim())
+                        : false),
                 isAgent: false
             })).filter((entry) => entry.id);
             for (const agent of agents) {
@@ -538,7 +548,9 @@ export class WebMeetDashboardModal {
                 roster.push({
                     id: participantIdentity,
                     name: `${label} (AI)`,
-                    micOn: false,
+                    micOn: typeof previousMicStateById.get(participantIdentity) === 'boolean'
+                        ? previousMicStateById.get(participantIdentity)
+                        : false,
                     isAgent: true
                 });
             }
@@ -551,7 +563,7 @@ export class WebMeetDashboardModal {
                 try {
                     const details = await this.fetchPublicMeetingDetails(meeting.id);
                     this.state.meetingParticipantsById = {
-                        [meeting.id]: mapMeetingRoster(details)
+                        [meeting.id]: mapMeetingRoster(details, meeting.id)
                     };
                 } catch (error) {
                     this.state.meetingParticipantsById = {};
@@ -572,7 +584,7 @@ export class WebMeetDashboardModal {
                 nextMap[meeting.id] = [];
                 continue;
             }
-            nextMap[meeting.id] = mapMeetingRoster(result.value);
+            nextMap[meeting.id] = mapMeetingRoster(result.value, meeting.id);
         }
         this.state.meetingParticipantsById = nextMap;
     }
