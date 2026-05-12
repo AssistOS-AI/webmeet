@@ -20,10 +20,12 @@ WebMeet AI participants are real self-hosted LiveKit Agents. WebMeet must not si
 
 ## Runtime
 
-When launched by Ploinky, `webmeetLivekitAiAgent/server/livekit-agent.mjs` runs as its own Ploinky agent on the `webmeet` network. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs. When the worker is still preparing or has failed, WebMeet still starts the API, public proxy, and MCP server without requiring `@livekit/agents` inside `webmeetAgent`.
+When launched by Ploinky, `webmeetLivekitAiAgent/server/livekit-agent.mjs` runs as its own Ploinky agent: on the `webmeet` bridge in `default` and `dev`, and on the host network in `prod`. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs. When the worker is still preparing or has failed, WebMeet still starts the API, public proxy, and MCP server without requiring `@livekit/agents` inside `webmeetAgent`.
+
+The production worker uses `network.mode: "host"` to match production LiveKit's host-network media topology. In that profile the worker uses `WEBMEET_LIVEKIT_AGENT_URL=http://127.0.0.1:7880`, while bridge-resident `webmeetAgent` continues to use `WEBMEET_LIVEKIT_URL=http://host.containers.internal:7880` for control-plane calls. `webmeetAgent` publishes localhost-only prod ports for its public proxy and internal API so the host-network worker can reach `http://127.0.0.1:18791` for chat and transcript persistence without creating a public bypass around the Ploinky router.
 
 `webmeetAgent/scripts/startAgent.sh` must not import `@livekit/agents`, start `server/livekit-agent.mjs`, or depend on the worker dependency cache. Admin dispatch attempts go directly through LiveKit and succeed only when the separate worker accepts the dispatch and appears as a real LiveKit `AGENT` participant.
 
 ## Validation
 
-Validation requires syntax checks for the WebMeet API, store, tool, public proxy, and `webmeetLivekitAiAgent` entrypoint, plus a runtime smoke test where an admin dispatches the agent and the agent appears as a LiveKit participant.
+Validation requires syntax checks for the WebMeet API, store, tool, public proxy, and `webmeetLivekitAiAgent` entrypoint, plus a runtime smoke test where an admin dispatches the assistant agent and the scribe agent. The assistant check must confirm a real LiveKit `AGENT` participant appears. The scribe check must confirm a real LiveKit `AGENT` participant appears and that microphone audio produces persisted transcript segments.
