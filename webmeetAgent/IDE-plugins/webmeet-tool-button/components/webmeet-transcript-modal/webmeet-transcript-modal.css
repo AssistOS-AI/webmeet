@@ -27,7 +27,7 @@
 
 .webmeet-details-modal .modal-body {
     flex: 1;
-    overflow: hidden;
+    overflow: auto;
     display: flex;
     flex-direction: column;
     padding: 16px;
