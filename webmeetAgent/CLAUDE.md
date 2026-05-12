@@ -2,7 +2,7 @@
 
 ## Scope
 
-webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI participants, meeting artifacts, the WebMeet IDE plugin, and the public guest invite service.
+webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI dispatch metadata, meeting artifacts, the WebMeet IDE plugin, and the public guest invite service.
 
 ## Mandatory Reading Order
 
@@ -29,7 +29,7 @@ webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI participants, meetin
 
 ## Runtime Defaults
 
-Runs `scripts/startAgent.sh`, the WebMeet API, self-hosted LiveKit agent runtime, public proxy, and AgentServer in `node:20` on the `webmeet` network.
+Runs `scripts/startAgent.sh`, the WebMeet API, public proxy, and AgentServer in `node:20` on the `webmeet` network. The optional self-hosted LiveKit AI worker is owned by the separate `webmeetLivekitAiAgent` Ploinky agent.
 
 ## Key Paths
 

@@ -9,7 +9,8 @@
         ]
     },
     "enable": [
-        "webmeetInfra/stack"
+        "webmeetInfra/stack",
+        "webmeetLivekitAiAgent global no-wait"
     ],
     "repos": {
         "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
@@ -142,16 +143,6 @@
                     "default": "webmeet-agent"
                 },
                 {
-                    "name": "WEBMEET_LIVEKIT_AGENT_LOG_LEVEL",
-                    "required": false,
-                    "default": "info"
-                },
-                {
-                    "name": "WEBMEET_AGENT_API_URL",
-                    "required": false,
-                    "default": ""
-                },
-                {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
                     "default": "/data/recordings"
@@ -276,16 +267,6 @@
                     "default": "webmeet-agent"
                 },
                 {
-                    "name": "WEBMEET_LIVEKIT_AGENT_LOG_LEVEL",
-                    "required": false,
-                    "default": "info"
-                },
-                {
-                    "name": "WEBMEET_AGENT_API_URL",
-                    "required": false,
-                    "default": ""
-                },
-                {
                     "name": "WEBMEET_RECORDINGS_DIR",
                     "required": false,
                     "default": "/data/recordings"
@@ -407,16 +388,6 @@
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",
                     "required": false,
                     "default": "webmeet-agent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT_LOG_LEVEL",
-                    "required": false,
-                    "default": "info"
-                },
-                {
-                    "name": "WEBMEET_AGENT_API_URL",
-                    "required": false,
-                    "default": ""
                 },
                 {
                     "name": "WEBMEET_RECORDINGS_DIR",

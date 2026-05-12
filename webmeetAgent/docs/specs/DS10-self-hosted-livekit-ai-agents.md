@@ -14,12 +14,21 @@ WebMeet AI participants are real self-hosted LiveKit Agents. WebMeet must not si
 - WebMeet store persists dispatch metadata, chat, transcript, recordings, artifacts, tasks, and decisions. It does not create fake AI participants.
 - Guest users and normal logged-in users can see AI output but cannot attach, control, or finalize agents.
 - LiveKit Cloud and LiveKit Inference are not required or enabled implicitly. Provider credentials for LLM/STT/TTS must be configured explicitly.
-- The AI worker is optional and disabled by default through `WEBMEET_LIVEKIT_AGENT_ENABLED=false`. Base WebMeet startup must not install the worker's native LiveKit dependency tree; admin attach requests must fail clearly while the worker is disabled.
+- The AI worker is optional and owned by the separate `webmeetLivekitAiAgent` Ploinky agent. It may be launched by Explorer through a no-wait dependency edge, but it must never block default WebMeet readiness.
+- `WEBMEET_LIVEKIT_AGENT_ENABLED=false` disables WebMeet admin dispatch by default. Operators must set this guard to `true` and confirm the background worker is running before admin attach requests can dispatch AI participants.
+- Base WebMeet startup must not install the worker's native LiveKit dependency tree; that dependency tree belongs only to `webmeetLivekitAiAgent/package.json`.
 
 ## Runtime
 
-When enabled, `server/livekit-agent.mjs` runs as a separate process beside the WebMeet API, public proxy, and MCP server. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs. When disabled, WebMeet still starts the API, public proxy, and MCP server without requiring `@livekit/agents`.
+When launched by Ploinky, `webmeetLivekitAiAgent/server/livekit-agent.mjs` runs as its own Ploinky agent on the `webmeet` network. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs. When the worker is still preparing or has failed, WebMeet still starts the API, public proxy, and MCP server without requiring `@livekit/agents` inside `webmeetAgent`.
+
+Operator dispatch opt-in:
+
+```bash
+ploinky var WEBMEET_LIVEKIT_AGENT_ENABLED true
+ploinky start explorer 8080
+```
 
 ## Validation
 
-Validation requires syntax checks for the WebMeet API, store, tool, public proxy, and LiveKit agent entrypoint, plus a runtime smoke test where an admin dispatches the agent and the agent appears as a LiveKit participant.
+Validation requires syntax checks for the WebMeet API, store, tool, public proxy, and `webmeetLivekitAiAgent` entrypoint, plus a runtime smoke test where an admin dispatches the agent and the agent appears as a LiveKit participant.

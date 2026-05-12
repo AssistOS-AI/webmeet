@@ -41,7 +41,7 @@ Agent-local contract:
 - Authentication: Workspace room operations require authenticated route/MCP context; guest room entry is limited to the manifest-declared public service with scoped forced guest sessions. Manifest guest: none.
 - HTTP service surface: Declares `/public-services/webmeet/` -> `/api/` with `auth: "guest"`, `guestScope: "webmeet-public-service"`, and `forceGuest: true`. Manifest httpServices: {"externalPrefix":"/public-services/webmeet/","internalPrefix":"/api/","auth":"guest","guestScope":"webmeet-public-service","forceGuest":true,"notFoundMessage":"WebMeet route not found."}.
 - Persistent state: Meeting data lives under `/data`; recordings live under `/data/recordings`; LiveKit secrets stay server-side. Manifest volumes must use `.ploinky` host paths: {".ploinky/data/webmeetAgent/data":"/data",".ploinky/data/webmeet/recordings":"/data/recordings"}.
-- Dependencies: Base WebMeet startup must use only Ploinky's shared prepared dependency cache and must not declare a `webmeetAgent/package.json` that forces an agent-specific npm install during Explorer startup. The optional LiveKit AI worker is disabled unless `WEBMEET_LIVEKIT_AGENT_ENABLED=true`; when enabled, its native LiveKit worker dependencies must be prepared before startup rather than installed inside the long-lived service container.
+- Dependencies: Base WebMeet startup must use only Ploinky's shared prepared dependency cache and must not declare a `webmeetAgent/package.json` that forces an agent-specific npm install during Explorer startup. The optional LiveKit AI worker is owned by the separate `webmeetLivekitAiAgent` Ploinky agent and is disabled for dispatch unless `WEBMEET_LIVEKIT_AGENT_ENABLED=true`. Its native LiveKit worker dependencies must be prepared under `webmeetLivekitAiAgent`, never inside the long-lived `webmeetAgent` service container.
 - Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` is the WebMeet data-encryption key for meeting payload DEK wrapping and must be derived from `PLOINKY_DERIVED_MASTER_KEY` through manifest `derive: "derived-master"`. New payloads must not use `PLOINKY_DERIVED_MASTER_KEY` directly; a legacy unwrap path may exist only to migrate old records into the dedicated WebMeet key.
 - Documentation: `docs/index.html`
 - Validation: Run WebMeet proxy/plugin syntax checks and a Ploinky guest invite smoke test for auth or route changes.
@@ -58,10 +58,10 @@ Coding work often starts from an individual agent directory, where only local gu
 Response:
 Ploinky establishes who the caller is and signs the invocation path, but domain ownership remains inside the agent. The agent knows which files, records, rooms, leads, secrets, repositories, media objects, or infrastructure controls are safe for that caller. Each agent must therefore enforce its own resource policy after reading verified auth context.
 
-### Question #3: Why is the LiveKit AI worker disabled by default?
+### Question #3: Why is the LiveKit AI worker a separate agent?
 
 Response:
-The WebMeet API, public proxy, MCP tools, room state, chat, camera, screen share, TURN, LiveKit server, and recording flows do not require the self-hosted AI worker package. The worker package pulls native LiveKit runtime assets and a large transitive dependency tree, so making it part of default Explorer startup can block fresh Ubuntu installs before the meeting service is usable. Base startup therefore remains lightweight, and AI participant dispatch fails clearly unless the optional worker has been enabled and prepared.
+The WebMeet API, public proxy, MCP tools, room state, chat, camera, screen share, TURN, LiveKit server, and recording flows do not require the self-hosted AI worker package. The worker package pulls native LiveKit runtime assets and a large transitive dependency tree, so making it part of default Explorer startup can block fresh Ubuntu installs before the meeting service is usable. Keeping it in `webmeetLivekitAiAgent` preserves a lightweight base start while still letting operators opt in to real LiveKit AI participants.
 
 ## Conclusion
 

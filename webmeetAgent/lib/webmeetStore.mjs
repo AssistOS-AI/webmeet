@@ -1159,7 +1159,7 @@ export async function attachMeetingAgent(context, { meetingId, agentType, mode, 
     cleanupMeetingPresence(context, meetingId);
     assertAdminAuthInfo(authInfo);
     if (!context.livekitAgentEnabled) {
-        throw new Error('LiveKit AI worker is disabled. Set WEBMEET_LIVEKIT_AGENT_ENABLED=true and prepare the optional worker dependencies before attaching meeting agents.');
+        throw new Error('LiveKit AI worker dispatch is disabled. Set WEBMEET_LIVEKIT_AGENT_ENABLED=true and run the webmeetLivekitAiAgent Ploinky agent before attaching meeting agents.');
     }
     const record = loadMeetingRecord(context, meetingId);
     const currentPayload = decryptMeetingPayload(context, record);
