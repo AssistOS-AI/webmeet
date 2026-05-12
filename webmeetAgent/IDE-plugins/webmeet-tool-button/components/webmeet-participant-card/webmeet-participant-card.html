@@ -10,6 +10,12 @@
     </div>
     <div class="wm-participant-footer" data-role="footer">
         <span class="wm-participant-name" data-role="name">$$displayName</span>
+        <button type="button" class="wm-participant-agent-detach" data-role="agentDetach" data-local-action="detachAgentFromCard" data-agent-id="$$agentId" title="Disable agent" aria-label="Disable agent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+            </svg>
+        </button>
         <span class="wm-participant-mic is-off" data-role="mic" title="Microphone off" aria-label="Microphone off">
             <svg class="wm-mic-on" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>

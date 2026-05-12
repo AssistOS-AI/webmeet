@@ -8,6 +8,34 @@ export const participantViewMethods = {
         ).trim() || 'Participant';
     },
 
+    getAgentForParticipant(participant) {
+        const identity = String(participant?.identity || '').trim();
+        if (!identity) return null;
+        const attributes = participant?.attributes && typeof participant.attributes === 'object'
+            ? participant.attributes
+            : {};
+        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const activeAgents = Array.isArray(this.state.agents)
+            ? this.state.agents.filter((entry) => entry && !entry.deletedAt && String(entry.status || '').trim() !== 'stopped')
+            : [];
+        return activeAgents.find((entry) => {
+            const participantIdentity = String(entry.participantIdentity || entry.participant?.identity || '').trim();
+            if (participantIdentity && participantIdentity === identity) {
+                return true;
+            }
+            if (String(attributes.webmeetAgent || '').toLowerCase() !== 'true') {
+                return false;
+            }
+            if (meetingId && String(attributes.webmeetMeetingId || '').trim() !== meetingId) {
+                return false;
+            }
+            const agentType = String(entry.agentType || '').trim();
+            const agentMode = String(entry.mode || '').trim();
+            return String(attributes.webmeetAgentType || '').trim() === agentType
+                && String(attributes.webmeetAgentMode || '').trim() === agentMode;
+        }) || null;
+    },
+
     setVideoGridEmptyState(message) {
         this.participantLayoutController.setVideoGridEmptyState(message);
     },
@@ -96,12 +124,14 @@ export const participantViewMethods = {
         const items = [{
             identity: room.localParticipant?.identity || this.state.session?.participantIdentity || '',
             name: room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
+            attributes: room.localParticipant?.attributes || {},
             kind: 'local'
         }];
         for (const participant of room.remoteParticipants.values()) {
             items.push({
                 identity: participant.identity || '',
                 name: participant.name || participant.identity || 'Remote',
+                attributes: participant.attributes || {},
                 kind: 'remote'
             });
         }
@@ -129,6 +159,7 @@ export const participantViewMethods = {
             this.state.meetingParticipantsById[this.selectedMeeting.id] = items.map((entry) => ({
                 id: entry.identity,
                 name: entry.name,
+                isAgent: Boolean(this.getAgentForParticipant(entry)),
                 micOn: Boolean(
                     this.participantLayoutController
                         .getParticipantView?.(entry.identity)

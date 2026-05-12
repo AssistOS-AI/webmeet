@@ -1,0 +1,110 @@
+{
+  "container": "python:3.12-slim",
+  "entrypoint": "/bin/sh",
+  "start": "/code/scripts/startAgent.sh",
+  "about": "WebMeet self-hosted Faster-Whisper speech-to-text service.",
+  "readiness": {
+    "protocol": "tcp"
+  },
+  "network": {
+    "name": "webmeet",
+    "aliases": [
+      "webmeetStt"
+    ]
+  },
+  "volumes": {
+    ".ploinky/data/webmeetStt": "/data"
+  },
+  "profiles": {
+    "default": {
+      "env": [
+        {
+          "name": "WEBMEET_STT_PORT",
+          "required": false,
+          "default": "9000"
+        },
+        {
+          "name": "WHISPER_MODEL",
+          "required": false,
+          "default": "base"
+        },
+        {
+          "name": "WHISPER_LANGUAGE",
+          "required": false,
+          "default": "auto"
+        },
+        {
+          "name": "WHISPER_DEVICE",
+          "required": false,
+          "default": "cpu"
+        },
+        {
+          "name": "WHISPER_COMPUTE_TYPE",
+          "required": false,
+          "default": "int8"
+        }
+      ],
+      "ports": ["127.0.0.1:19000:9000"]
+    },
+    "dev": {
+      "env": [
+        {
+          "name": "WEBMEET_STT_PORT",
+          "required": false,
+          "default": "9000"
+        },
+        {
+          "name": "WHISPER_MODEL",
+          "required": false,
+          "default": "base"
+        },
+        {
+          "name": "WHISPER_LANGUAGE",
+          "required": false,
+          "default": "auto"
+        },
+        {
+          "name": "WHISPER_DEVICE",
+          "required": false,
+          "default": "cpu"
+        },
+        {
+          "name": "WHISPER_COMPUTE_TYPE",
+          "required": false,
+          "default": "int8"
+        }
+      ],
+      "ports": ["127.0.0.1:19000:9000"]
+    },
+    "prod": {
+      "env": [
+        {
+          "name": "WEBMEET_STT_PORT",
+          "required": false,
+          "default": "9000"
+        },
+        {
+          "name": "WHISPER_MODEL",
+          "required": false,
+          "default": "base"
+        },
+        {
+          "name": "WHISPER_LANGUAGE",
+          "required": false,
+          "default": "auto"
+        },
+        {
+          "name": "WHISPER_DEVICE",
+          "required": false,
+          "default": "cpu"
+        },
+        {
+          "name": "WHISPER_COMPUTE_TYPE",
+          "required": false,
+          "default": "int8"
+        }
+      ],
+      "ports": ["127.0.0.1:19000:9000"]
+    }
+  }
+}

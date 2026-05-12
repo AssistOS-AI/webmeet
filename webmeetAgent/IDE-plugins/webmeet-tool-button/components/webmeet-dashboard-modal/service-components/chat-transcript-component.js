@@ -11,6 +11,7 @@ export class ChatTranscriptComponent {
         this.isGuestSession = options.isGuestSession || (() => false);
         this.sendPublicChat = options.sendPublicChat;
         this.callPublicGuestApi = options.callPublicGuestApi;
+        this.canManageArtifacts = options.canManageArtifacts || (() => false);
         this.getState = options.getState || (() => ({}));
         this.setState = options.setState || (() => {});
         this.setError = options.setError || console.error;
@@ -33,6 +34,10 @@ export class ChatTranscriptComponent {
 
     async sendChat() {
         const meeting = this.getSelectedMeeting();
+        if (this.isGuestSession() || !this.canManageArtifacts()) {
+            this.setError('Only admin can append transcript.');
+            return;
+        }
         if (!meeting) {
             this.setError('Select a meeting first.');
             return;
@@ -126,14 +131,6 @@ export class ChatTranscriptComponent {
         const speakerName = String(this.elements.transcriptSpeaker?.value || session.participant?.displayName || '').trim();
         if (!text || !speakerName) return;
 
-        if (this.isGuestSession()) {
-            await this.callPublicGuestApi(meeting.id, 'guest-transcript', { text });
-            this.elements.transcriptInput.value = '';
-            await this.loadMeetingDetails();
-            this.requestRenderAll();
-            return;
-        }
-
         await runTool('webmeet_transcript_append', {
             meetingId: meeting.id,
             speakerId: session.participantIdentity,
@@ -146,6 +143,10 @@ export class ChatTranscriptComponent {
     }
 
     startSpeechRecognition() {
+        if (this.isGuestSession() || !this.canManageArtifacts()) {
+            this.setError('Only admin can append transcript.');
+            return;
+        }
         const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!Recognition) {
             this.setState({ transcriptState: 'Unavailable' });
@@ -182,13 +183,6 @@ export class ChatTranscriptComponent {
             }
             const text = chunks.join(' ').trim();
             if (!text) return;
-
-            if (this.isGuestSession()) {
-                await this.callPublicGuestApi(meeting.id, 'guest-transcript', { text });
-                await this.loadMeetingDetails();
-                this.requestRenderAll();
-                return;
-            }
 
             const session = this.getSession();
             await runTool('webmeet_transcript_append', {

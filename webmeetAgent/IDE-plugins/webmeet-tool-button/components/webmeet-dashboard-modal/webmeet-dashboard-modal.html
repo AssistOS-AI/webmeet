@@ -325,8 +325,8 @@
                     <div class="webmeet-panel-header">
                         <span>Chat</span>
                     </div>
-                    <div id="webmeetChatList" class="webmeet-scroll-list webmeet-collapsible expanded" data-collapsible="chat"></div>
-                    <div class="webmeet-compose webmeet-collapsible expanded" data-collapsible="chat">
+                    <div id="webmeetChatList" class="webmeet-scroll-list"></div>
+                    <div class="webmeet-compose">
                         <textarea id="webmeetChatInput" class="form-input" rows="2" placeholder="Type a message..."></textarea>
                         <button type="button" class="general-button" data-local-action="sendChat" title="Send message" aria-label="Send message">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -335,47 +335,6 @@
                             </svg>
                         </button>
                     </div>
-                </div>
-            </div>
-
-            <!-- Secondary panels (Transcript, Artifacts, Recordings) in tabs -->
-            <div class="webmeet-secondary-panels">
-                <div class="webmeet-tabs">
-                    <button type="button" class="webmeet-tab webmeet-tab-active" data-local-action="switchSecondaryTab" data-tab="transcript">Transcript</button>
-                    <button type="button" class="webmeet-tab" data-local-action="switchSecondaryTab" data-tab="artifacts">Artifacts</button>
-                    <button type="button" class="webmeet-tab" data-local-action="switchSecondaryTab" data-tab="recordings">Recordings</button>
-                    <button type="button" class="webmeet-tab webmeet-hidden" id="webmeetAiTabButton" data-local-action="switchSecondaryTab" data-tab="ai">AI</button>
-                    <button type="button" class="webmeet-collapse-button collapsed" data-collapse="transcript">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="18 15 12 9 6 15"></polyline>
-                        </svg>
-                    </button>
-                </div>
-                <div class="webmeet-panel-content" id="webmeetTranscriptTab">
-                    <div id="webmeetTranscriptList" class="webmeet-scroll-list webmeet-collapsible" data-collapsible="transcript"></div>
-                    <div class="webmeet-compose webmeet-collapsible" data-collapsible="transcript">
-                        <input id="webmeetTranscriptSpeaker" class="form-input" placeholder="Speaker name">
-                        <div class="webmeet-actions-row">
-                            <button type="button" class="general-button subtle-button" data-local-action="startAutoTranscript">Start auto</button>
-                            <button type="button" class="general-button subtle-button" data-local-action="stopAutoTranscript">Stop auto</button>
-                        </div>
-                        <textarea id="webmeetTranscriptInput" class="form-input" rows="2" placeholder="Append transcript..."></textarea>
-                        <button type="button" class="general-button" data-local-action="appendTranscript">Append</button>
-                    </div>
-                </div>
-                <div class="webmeet-panel-content webmeet-hidden" id="webmeetArtifactsTab">
-                    <div id="webmeetArtifactList" class="webmeet-scroll-list"></div>
-                </div>
-                <div class="webmeet-panel-content webmeet-hidden" id="webmeetRecordingsTab">
-                    <div id="webmeetRecordingList" class="webmeet-scroll-list"></div>
-                </div>
-                <div class="webmeet-panel-content webmeet-hidden" id="webmeetAiTab">
-                    <div class="webmeet-actions-row" id="webmeetAiAdminActions">
-                        <button type="button" class="general-button subtle-button" data-local-action="attachObserver">Observer</button>
-                        <button type="button" class="general-button subtle-button" data-local-action="attachAssistant">Assistant</button>
-                        <button type="button" class="general-button subtle-button" data-local-action="attachScribe">Scribe</button>
-                    </div>
-                    <div id="webmeetAgentList" class="webmeet-scroll-list"></div>
                 </div>
             </div>
 

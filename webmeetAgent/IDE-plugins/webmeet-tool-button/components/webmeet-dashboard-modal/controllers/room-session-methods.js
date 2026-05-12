@@ -406,6 +406,14 @@ export const roomSessionMethods = {
                         this.renderFeedLists();
                     } else if (data.type === 'meeting.renamed') {
                         this.applyMeetingRename(data.meetingId, data.title, data.updatedAt || '');
+                    } else if ((data.type === 'agent.dispatched' || data.type === 'agent.detached') && data.meetingId === this.selectedMeeting?.id) {
+                        void (async () => {
+                            await this.loadMeetingDetails();
+                            if (this.room && window.LivekitClient?.Track) {
+                                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+                            }
+                            this.renderAll();
+                        })();
                     }
                 } catch (err) {
                     // Ignore malformed data-channel messages from other clients.

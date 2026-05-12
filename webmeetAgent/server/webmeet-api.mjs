@@ -6,16 +6,19 @@ import { URL } from 'node:url';
 import {
     appendMeetingChat,
     appendGuestMeetingChat,
-    appendGuestMeetingTranscript,
     appendMeetingTranscript,
     attachMeetingAgent,
     createMeeting,
     createStoreContext,
     createWorkspace,
+    detachMeetingAgent,
+    formatGuestMeetingTranscriptMarkdown,
+    formatMeetingTranscriptMarkdown,
     getMeeting,
     getGuestMeetingDetails,
     joinMeeting,
     joinGuestMeeting,
+    isAdminAuthInfo,
     leaveGuestMeeting,
     leaveMeeting,
     pingGuestMeetingPresence,
@@ -33,15 +36,24 @@ import {
 
 const PORT = Number.parseInt(process.env.WEBMEET_API_PORT || '8791', 10);
 const SSE_KEEPALIVE_MS = 15_000;
+const AGENT_INTERNAL_TOKEN = String(process.env.WEBMEET_AGENT_INTERNAL_TOKEN || '').trim();
 
 function json(res, status, payload) {
     res.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS'
     });
     res.end(`${JSON.stringify(payload)}\n`);
+}
+
+function textResponse(res, status, body, headers = {}) {
+    res.writeHead(status, {
+        'Access-Control-Allow-Origin': '*',
+        ...headers
+    });
+    res.end(body);
 }
 
 async function readBody(req) {
@@ -56,6 +68,32 @@ async function readBody(req) {
 function getActor(body) {
     const actor = body?.actor;
     return actor && typeof actor === 'object' ? actor : null;
+}
+
+function getRequestActor(req, body = null) {
+    const bodyActor = getActor(body);
+    if (bodyActor) return bodyActor;
+    const raw = String(req.headers?.['x-ploinky-auth-info'] || '').trim();
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function assertAdminRequest(req, body = null) {
+    if (!isAdminAuthInfo(getRequestActor(req, body))) {
+        throw new Error('Access denied: only admin can access meeting administrative data.');
+    }
+}
+
+function assertInternalAgentAccess(req) {
+    const header = String(req.headers?.authorization || '').trim();
+    const token = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+    if (!AGENT_INTERNAL_TOKEN || token !== AGENT_INTERNAL_TOKEN) {
+        throw new Error('Access denied: invalid internal agent token.');
+    }
 }
 
 function sseWrite(res, event) {
@@ -140,17 +178,19 @@ function matchRoute(method, pathname) {
         ['meetings.guest.leave', 'POST', /^\/api\/meetings\/([^/]+)\/guest-leave$/],
         ['meetings.guest.presence', 'POST', /^\/api\/meetings\/([^/]+)\/guest-presence$/],
         ['chat.guest.send', 'POST', /^\/api\/meetings\/([^/]+)\/guest-chat$/],
-        ['transcript.guest.append', 'POST', /^\/api\/meetings\/([^/]+)\/guest-transcript$/],
         ['meetings.leave', 'POST', /^\/api\/meetings\/([^/]+)\/leave$/],
         ['meetings.presence', 'POST', /^\/api\/meetings\/([^/]+)\/presence$/],
         ['chat.list', 'GET', /^\/api\/meetings\/([^/]+)\/chat$/],
         ['chat.send', 'POST', /^\/api\/meetings\/([^/]+)\/chat$/],
         ['agents.list', 'GET', /^\/api\/meetings\/([^/]+)\/agents$/],
         ['agents.attach', 'POST', /^\/api\/meetings\/([^/]+)\/agents$/],
+        ['agents.detach', 'DELETE', /^\/api\/meetings\/([^/]+)\/agents\/([^/]+)$/],
         ['recording.start', 'POST', /^\/api\/meetings\/([^/]+)\/recording\/start$/],
         ['recording.stop', 'POST', /^\/api\/meetings\/([^/]+)\/recording\/stop$/],
         ['transcript.list', 'GET', /^\/api\/meetings\/([^/]+)\/transcript$/],
+        ['transcript.download', 'GET', /^\/api\/meetings\/([^/]+)\/transcript\/download$/],
         ['transcript.append', 'POST', /^\/api\/meetings\/([^/]+)\/transcript$/],
+        ['transcript.internal.append', 'POST', /^\/internal\/meetings\/([^/]+)\/transcript$/],
         ['artifacts.list', 'GET', /^\/api\/meetings\/([^/]+)\/artifacts$/],
         ['tasks.list', 'GET', /^\/api\/meetings\/([^/]+)\/tasks$/],
         ['decisions.list', 'GET', /^\/api\/meetings\/([^/]+)\/decisions$/]
@@ -197,7 +237,11 @@ async function handler(req, res) {
         if (route.name === 'meetings.list' || route.name === 'meetings.create') {
             const [workspaceId] = route.params;
             if (route.name === 'meetings.list') {
-                json(res, 200, { meetings: listMeetings(context, workspaceId) });
+                const authInfo = getRequestActor(req);
+                json(res, 200, {
+                    meetings: listMeetings(context, workspaceId, authInfo),
+                    canManageRooms: isAdminAuthInfo(authInfo)
+                });
                 return;
             }
             const body = await readBody(req);
@@ -308,10 +352,20 @@ async function handler(req, res) {
             }));
             return;
         }
-        if (route.name === 'agents.list' || route.name === 'agents.attach') {
+        if (route.name === 'agents.list' || route.name === 'agents.attach' || route.name === 'agents.detach') {
             const meetingId = route.params[0];
             if (route.name === 'agents.list') {
+                assertAdminRequest(req);
                 json(res, 200, { agents: listMeetingAgents(context, meetingId) });
+                return;
+            }
+            if (route.name === 'agents.detach') {
+                const body = await readBody(req);
+                json(res, 200, await detachMeetingAgent(context, {
+                    meetingId,
+                    agentId: route.params[1],
+                    authInfo: getActor(body)
+                }));
                 return;
             }
             const body = await readBody(req);
@@ -324,47 +378,87 @@ async function handler(req, res) {
             return;
         }
         if (route.name === 'recording.start') {
+            const body = await readBody(req);
+            assertAdminRequest(req, body);
             json(res, 200, await startMeetingRecording(context, route.params[0]));
             return;
         }
         if (route.name === 'recording.stop') {
+            const body = await readBody(req);
+            assertAdminRequest(req, body);
             json(res, 200, await stopMeetingRecording(context, route.params[0]));
             return;
         }
         if (route.name === 'transcript.list') {
+            assertAdminRequest(req);
             json(res, 200, { transcript: listMeetingTranscript(context, route.params[0]) });
             return;
         }
+        if (route.name === 'transcript.download') {
+            const format = String(url.searchParams.get('format') || 'md').trim().toLowerCase() || 'md';
+            if (format !== 'md') {
+                throw new Error('Unsupported transcript download format.');
+            }
+            const guestToken = String(url.searchParams.get('guestToken') || '').trim();
+            const participantId = String(url.searchParams.get('participantId') || '').trim();
+            const content = guestToken && participantId
+                ? formatGuestMeetingTranscriptMarkdown(context, {
+                    meetingId: route.params[0],
+                    guestToken,
+                    participantId
+                })
+                : (() => {
+                    assertAdminRequest(req);
+                    getMeeting(context, route.params[0]);
+                    return formatMeetingTranscriptMarkdown(context, route.params[0]);
+                })();
+            textResponse(res, 200, content, {
+                'Content-Type': 'text/markdown; charset=utf-8',
+                'Content-Disposition': `attachment; filename="webmeet-transcript-${route.params[0]}.md"`
+            });
+            return;
+        }
         if (route.name === 'transcript.append') {
+            const body = await readBody(req);
+            assertAdminRequest(req, body);
+            json(res, 201, await appendMeetingTranscript(context, {
+                meetingId: route.params[0],
+                speakerId: String(body.speakerId || '').trim(),
+                speakerName: String(body.speakerName || '').trim(),
+                text: String(body.text || '').trim(),
+                startedAt: String(body.startedAt || '').trim(),
+                endedAt: String(body.endedAt || '').trim(),
+                source: String(body.source || 'manual').trim()
+            }));
+            return;
+        }
+        if (route.name === 'transcript.internal.append') {
+            assertInternalAgentAccess(req);
             const body = await readBody(req);
             json(res, 201, await appendMeetingTranscript(context, {
                 meetingId: route.params[0],
                 speakerId: String(body.speakerId || '').trim(),
                 speakerName: String(body.speakerName || '').trim(),
-                text: String(body.text || '').trim()
-            }));
-            return;
-        }
-        if (route.name === 'transcript.guest.append') {
-            const body = await readBody(req);
-            json(res, 201, await appendGuestMeetingTranscript(context, {
-                meetingId: route.params[0],
-                guestToken: String(body.guestToken || '').trim(),
-                participantId: String(body.participantId || '').trim(),
-                text: String(body.text || '').trim()
+                text: String(body.text || '').trim(),
+                startedAt: String(body.startedAt || '').trim(),
+                endedAt: String(body.endedAt || '').trim(),
+                source: 'scribe'
             }));
             return;
         }
         if (route.name === 'artifacts.list') {
+            assertAdminRequest(req);
             json(res, 200, listMeetingArtifacts(context, route.params[0]));
             return;
         }
         if (route.name === 'tasks.list') {
+            assertAdminRequest(req);
             const payload = listMeetingArtifacts(context, route.params[0]);
             json(res, 200, { tasks: payload.tasks });
             return;
         }
         if (route.name === 'decisions.list') {
+            assertAdminRequest(req);
             const payload = listMeetingArtifacts(context, route.params[0]);
             json(res, 200, { decisions: payload.decisions });
             return;
@@ -374,7 +468,7 @@ async function handler(req, res) {
         const guestRoute = route.name === 'meetings.join.guest'
             || route.name.startsWith('meetings.guest.')
             || route.name.startsWith('chat.guest.')
-            || route.name.startsWith('transcript.guest.');
+            || (route.name === 'transcript.download' && url.searchParams.has('guestToken'));
         if (guestRoute) {
             json(res, 403, { error: 'Guest access denied.' });
             return;

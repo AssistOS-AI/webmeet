@@ -721,13 +721,16 @@ function isAllowedPublicApi(req, pathname) {
         const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
         return url.searchParams.has('guestToken') && url.searchParams.has('participantId');
     }
+    if (method === 'GET' && /^\/api\/meetings\/[^/]+\/transcript\/download$/.test(pathname)) {
+        const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+        return url.searchParams.has('guestToken') && url.searchParams.has('participantId');
+    }
     return method === 'POST' && (
         /^\/api\/meetings\/[^/]+\/join-guest$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-state$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-leave$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-presence$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-chat$/.test(pathname)
-        || /^\/api\/meetings\/[^/]+\/guest-transcript$/.test(pathname)
     );
 }
 
@@ -735,7 +738,7 @@ function isAllowedAuthenticatedApi(req, pathname) {
     // Allow all /api/* routes for authenticated users (via x-ploinky-auth-info header)
     if (!pathname.startsWith('/api/')) return false;
     // Exclude guest-only routes that require special handling
-    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat|guest-transcript)$/;
+    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat)$/;
     if (guestOnlyPattern.test(pathname)) return false;
     // Already handled by isAllowedPublicApi (with guest token)
     const eventsPattern = /^\/api\/meetings\/[^/]+\/events$/;

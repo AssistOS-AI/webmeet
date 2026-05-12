@@ -6,6 +6,7 @@ import {
     createStoreContext,
     createWorkspace,
     deleteMeeting,
+    detachMeetingAgent,
     getMeeting,
     isAdminAuthInfo,
     joinGuestMeeting,
@@ -42,6 +43,12 @@ const { authInfoFromInvocation } = await loadInvocationAuth();
 const TOOL_NAME = String(process.env.TOOL_NAME || '').trim();
 const SUPPORTED_AGENT_TYPES = new Set(['observer', 'assistant_on_mention', 'scribe']);
 const SUPPORTED_AGENT_MODES = new Set(['passive', 'on_mention', 'post_event']);
+
+function assertAdminTool(authInfo) {
+    if (!isAdminAuthInfo(authInfo)) {
+        throw new Error('Access denied: only admin can access meeting artifacts.');
+    }
+}
 
 function safeParseJson(text) {
     try {
@@ -179,6 +186,7 @@ async function dispatch(toolName, args, context, authInfo) {
             message: getRequiredString(args, 'message')
         });
     case 'webmeet_transcript_append':
+        assertAdminTool(authInfo);
         return appendMeetingTranscript(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             speakerId: getRequiredString(args, 'speakerId'),
@@ -186,6 +194,7 @@ async function dispatch(toolName, args, context, authInfo) {
             text: getRequiredString(args, 'text')
         });
     case 'webmeet_transcript_list':
+        assertAdminTool(authInfo);
         return { transcript: listMeetingTranscript(context, getRequiredString(args, 'meetingId')) };
     case 'webmeet_agent_attach': {
         const meetingId = getRequiredString(args, 'meetingId');
@@ -200,12 +209,22 @@ async function dispatch(toolName, args, context, authInfo) {
         return attachMeetingAgent(context, { meetingId, agentType, mode, authInfo });
     }
     case 'webmeet_agent_list':
+        assertAdminTool(authInfo);
         return { agents: listMeetingAgents(context, getRequiredString(args, 'meetingId')) };
+    case 'webmeet_agent_detach':
+        return detachMeetingAgent(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            agentId: getRequiredString(args, 'agentId'),
+            authInfo
+        });
     case 'webmeet_recording_start':
+        assertAdminTool(authInfo);
         return startMeetingRecording(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_recording_stop':
+        assertAdminTool(authInfo);
         return stopMeetingRecording(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_artifact_list':
+        assertAdminTool(authInfo);
         return listMeetingArtifacts(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_delete_meeting':
         return deleteMeeting(context, getRequiredString(args, 'meetingId'), authInfo);

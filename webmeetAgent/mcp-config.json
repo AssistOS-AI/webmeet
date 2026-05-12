@@ -193,6 +193,18 @@
       "env": { "TOOL_NAME": "webmeet_agent_list" }
     },
     {
+      "name": "webmeet_agent_detach",
+      "title": "WebMeet Detach Agent",
+      "description": "Stop a self-hosted LiveKit AI agent in a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "agentId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_agent_detach" }
+    },
+    {
       "name": "webmeet_recording_start",
       "title": "WebMeet Start Recording",
       "description": "Start a real LiveKit Egress recording for a meeting.",

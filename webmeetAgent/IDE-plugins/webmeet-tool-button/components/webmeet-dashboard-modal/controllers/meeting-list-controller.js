@@ -50,8 +50,8 @@ export class MeetingListController {
                     </div>
                     ${isJoining ? '<span class="webmeet-room-join-spinner" aria-hidden="true"></span>' : ''}
                 </div>
-                ${canManageRooms ? `
-                    <div class="webmeet-room-actions" aria-label="Room actions">
+                <div class="webmeet-room-actions" aria-label="Room actions">
+                    ${canManageRooms ? `
                         ${isGuestRoom ? `
                             <button type="button" class="webmeet-room-action-button" data-local-action="copyGuestInviteLink" data-id="${escapeHtml(entry.id)}" title="Copy invite link" aria-label="Copy invite link">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -75,8 +75,16 @@ export class MeetingListController {
                                 <path d="M14 11v5"></path>
                             </svg>
                         </button>
-                    </div>
-                ` : ''}
+                        <button type="button" class="webmeet-room-action-button" data-local-action="showRoomAiMenu" data-id="${escapeHtml(entry.id)}" title="AI & Insights" aria-label="AI & Insights">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>
+                                <path d="m5 3 1 1"></path>
+                                <path d="m19 17 1 1"></path>
+                                <path d="m19 3 1 1"></path>
+                                <path d="m5 17 1 1"></path>
+                            </svg>
+                        </button>` : ''}
+                </div>
                 ${this.renderMeetingParticipants(meetingParticipantsById, entry.id)}
             </div>
         `;}).join('') || '<div class="webmeet-room-empty">No rooms yet.</div>';
@@ -112,6 +120,7 @@ export class MeetingListController {
                             `}
                         </span>
                         <span class="webmeet-room-participant-name">${escapeHtml(participant.name || 'Participant')}</span>
+                        ${participant.isAgent ? '<span class="webmeet-room-participant-badge">AI</span>' : ''}
                     </div>
                 `).join('')}
             </div>

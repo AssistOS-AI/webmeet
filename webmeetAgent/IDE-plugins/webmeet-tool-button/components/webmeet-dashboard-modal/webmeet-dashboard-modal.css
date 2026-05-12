@@ -540,35 +540,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-/* Tabs */
-.webmeet-tabs {
-    display: flex;
-    gap: 4px;
-}
-
-.webmeet-tab {
-    background: var(--gray-button-background);
-    border: 1px solid var(--gray-button-border);
-    padding: 6px 12px;
-    border-radius: 6px;
-    color: var(--text-soft);
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.webmeet-tab:hover {
-    background: var(--option-hover);
-    color: var(--text);
-}
-
-.webmeet-tab-active {
-    background: var(--accent);
-    color: var(--white);
-    border-color: var(--accent);
-}
-
 .webmeet-chat-content,
 .webmeet-live-content {
     flex: 1;
@@ -734,31 +705,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     width: 16px;
     height: 16px;
     rotate: 45deg;
-}
-
-/* Secondary panels */
-.webmeet-secondary-panels {
-    border-top: 1px solid var(--border-strong);
-    padding: 16px;
-    background: var(--menu-backgroud);
-    min-height: 0;
-}
-
-.webmeet-panel-content {
-    margin-top: 12px;
-    min-height: 0;
-}
-
-.webmeet-secondary-panels .webmeet-panel-content {
-    max-height: 200px;
-    overflow: auto;
-}
-
-.webmeet-secondary-panels .webmeet-compose {
-    margin-top: 12px;
-    padding: 0;
-    border: none;
-    background: transparent;
 }
 
 /* Video grid for live room */
@@ -1146,7 +1092,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 }
 
 .webmeet-scroll-list {
-    max-height: 200px;
     overflow: auto;
     padding-right: 4px;
 }
@@ -1531,16 +1476,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 
 .subtle-button:hover {
     background: var(--option-hover);
-}
-
-.danger-button {
-    background: var(--red);
-    color: var(--white);
-}
-
-.danger-button:hover {
-    background: var(--red);
-    opacity: 0.9;
 }
 
 /* shadcn/ui style form inputs */

@@ -25,6 +25,29 @@
             "type": "modal"
         },
         {
+            "component": "webmeet-transcript-modal",
+            "presenter": "WebmeetTranscriptModal",
+            "type": "modal"
+        },
+        {
+            "component": "webmeet-artifacts-modal",
+            "presenter": "WebmeetArtifactsModal",
+            "type": "modal"
+        },
+        {
+            "component": "webmeet-recordings-modal",
+            "presenter": "WebmeetRecordingsModal",
+            "type": "modal"
+        },
+        {
+            "component": "webmeet-ai-modal",
+            "presenter": "WebmeetAiModal",
+            "type": "modal"
+        },
+        {
+            "component": "webmeet-room-ai-menu"
+        },
+        {
             "component": "webmeet-participant-card",
             "presenter": "WebMeetParticipantCard"
         }

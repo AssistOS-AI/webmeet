@@ -53,6 +53,10 @@ for name in \
     WEBMEET_AGENT_NAME \
     WEBMEET_LIVEKIT_AGENT_ENABLED \
     WEBMEET_LIVEKIT_AGENT_NAME \
+    WEBMEET_LIVEKIT_AGENT_LOG_LEVEL \
+    WEBMEET_AGENT_API_URL \
+    WEBMEET_STT_URL \
+    WEBMEET_AGENT_INTERNAL_TOKEN \
     WEBMEET_DATA_DIR \
     WEBMEET_RECORDINGS_DIR \
     WEBMEET_API_PORT
@@ -72,8 +76,13 @@ is_enabled() {
 
 node /code/server/webmeet-api.mjs >/tmp/webmeet-api.out 2>/tmp/webmeet-api.err &
 if is_enabled "${WEBMEET_LIVEKIT_AGENT_ENABLED:-false}"; then
-    printf '%s\n' 'WEBMEET_LIVEKIT_AGENT_ENABLED is true; LiveKit AI worker must be run by the webmeetLivekitAiAgent Ploinky agent.' >/tmp/webmeet-livekit-agent.out
-    : >/tmp/webmeet-livekit-agent.err
+    if ! node --input-type=module -e "await import('@livekit/agents')" >/tmp/webmeet-livekit-agent-deps.out 2>/tmp/webmeet-livekit-agent-deps.err; then
+        echo "webmeetAgent LiveKit AI worker dependency cache is missing @livekit/agents." >&2
+        echo "Disable WEBMEET_LIVEKIT_AGENT_ENABLED or prepare the optional LiveKit AI worker dependencies before starting WebMeet." >&2
+        cat /tmp/webmeet-livekit-agent-deps.err >&2 || true
+        exit 1
+    fi
+    node /code/server/livekit-agent.mjs >/tmp/webmeet-livekit-agent.out 2>/tmp/webmeet-livekit-agent.err &
 else
     printf '%s\n' 'WEBMEET_LIVEKIT_AGENT_ENABLED is not true; LiveKit AI worker is disabled.' >/tmp/webmeet-livekit-agent.out
     : >/tmp/webmeet-livekit-agent.err

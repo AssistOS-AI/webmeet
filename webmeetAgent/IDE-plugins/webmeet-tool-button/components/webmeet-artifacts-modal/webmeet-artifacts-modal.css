@@ -1,0 +1,115 @@
+.webmeet-details-modal {
+    display: flex;
+    flex-direction: column;
+    background: var(--file-exp-panel);
+    border-radius: 12px;
+    overflow: hidden;
+    width: 600px;
+    max-width: 90vw;
+    height: 600px;
+    max-height: 80vh;
+}
+
+.webmeet-details-modal .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--menu-backgroud);
+}
+
+.webmeet-details-modal .modal-title {
+    color: var(--text);
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.webmeet-details-modal .modal-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+}
+
+.webmeet-details-modal .close {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.webmeet-details-modal .close:hover {
+    background: var(--option-hover);
+}
+
+.webmeet-details-modal .close-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--text);
+}
+
+/* Reusing existing styles from main dashboard */
+.webmeet-details-modal .webmeet-panel-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.webmeet-details-modal .webmeet-scroll-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 8px;
+}
+
+.webmeet-details-modal .webmeet-feed-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.webmeet-details-modal .webmeet-chat-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+    color: var(--text-soft);
+}
+
+.webmeet-details-modal .webmeet-chat-author {
+    font-weight: 600;
+}
+
+.webmeet-details-modal .webmeet-chat-text {
+    line-height: 1.4;
+    white-space: pre-wrap;
+}
+
+.webmeet-details-modal .webmeet-compose {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-strong);
+}
+
+.webmeet-details-modal .webmeet-actions-row {
+    display: flex;
+    gap: 8px;
+}

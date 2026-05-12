@@ -48,7 +48,7 @@ export class WebMeetDashboardModal {
             selectedWorkspaceId: '',
             selectedMeetingId: '',
             joiningMeetingId: '',
-            canManageRooms: undefined,
+            canManageRooms: false,
             session: null,
             roomState: 'Disconnected',
             transcriptState: 'Idle',
@@ -96,7 +96,9 @@ export class WebMeetDashboardModal {
         this.speechRecognition = null;
         this.meetingListController = new MeetingListController();
         this.participantLayoutController = new ParticipantLayoutController({
-            getParticipantDisplayName: (participant) => this.getParticipantDisplayName(participant)
+            getParticipantDisplayName: (participant) => this.getParticipantDisplayName(participant),
+            getAgentForParticipant: (participant) => this.getAgentForParticipant(participant),
+            canDetachAgent: () => this.canManageRooms() && !this.isGuestSession()
         });
         this.meetingDetailsLoadSeq = 0;
         this.cachedStableParticipantId = '';
@@ -167,6 +169,7 @@ export class WebMeetDashboardModal {
             isGuestSession: () => this.isGuestSession(),
             sendPublicChat: (meetingId, message) => this.sendPublicChat(meetingId, message),
             callPublicGuestApi: (meetingId, action, payload) => this.callPublicGuestApi(meetingId, action, payload),
+            canManageArtifacts: () => this.canManageRooms(),
             getState: () => this.state,
             setState: (updates) => Object.assign(this.state, updates),
             setError: (msg) => this.setError(msg),
@@ -235,12 +238,18 @@ export class WebMeetDashboardModal {
                 'appendTranscript',
                 'startAutoTranscript',
                 'stopAutoTranscript',
-                'switchSecondaryTab',
                 'attachObserver',
                 'attachAssistant',
                 'attachScribe',
+                'detachAgent',
+                'detachAgentFromCard',
                 'selectMeeting',
-                'selectAndJoinMeeting'
+                'selectAndJoinMeeting',
+                'openTranscript',
+                'openArtifacts',
+                'openRecordings',
+                'openAI',
+                'showRoomAiMenu'
             ];
 
             actions.forEach(action => {
@@ -280,28 +289,6 @@ export class WebMeetDashboardModal {
         }
     };
 
-    switchSecondaryTab(element) {
-        const tabButton = element?.closest?.('[data-tab]');
-        const tabId = String(tabButton?.dataset?.tab || '').trim();
-        const secondaryTabs = ['transcript', 'artifacts', 'recordings', 'ai'];
-        if (!tabButton || !secondaryTabs.includes(tabId)) {
-            return;
-        }
-        if (tabId === 'ai' && (!this.canManageRooms() || this.isGuestSession())) {
-            this.setError('Only admin can manage AI agents.');
-            return;
-        }
-        const tabGroup = tabButton.closest('.webmeet-tabs');
-        tabGroup?.querySelectorAll('.webmeet-tab').forEach((button) => {
-            button.classList.toggle('webmeet-tab-active', button.dataset.tab === tabId);
-        });
-        secondaryTabs.forEach((tabName) => {
-            const panelId = `webmeet${tabName.charAt(0).toUpperCase()}${tabName.slice(1)}Tab`;
-            const tabContent = this.element.querySelector(`#${panelId}`);
-            tabContent?.classList.toggle('webmeet-hidden', tabName !== tabId);
-        });
-    }
-
     cacheElements() {
         this.workspaceList = this.element.querySelector('#webmeetWorkspaceList');
         this.currentWorkspace = this.element.querySelector('#webmeetCurrentWorkspace');
@@ -315,16 +302,8 @@ export class WebMeetDashboardModal {
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
-        this.transcriptList = this.element.querySelector('#webmeetTranscriptList');
-        this.transcriptSpeaker = this.element.querySelector('#webmeetTranscriptSpeaker');
-        this.transcriptInput = this.element.querySelector('#webmeetTranscriptInput');
-        this.artifactList = this.element.querySelector('#webmeetArtifactList');
-        this.recordingList = this.element.querySelector('#webmeetRecordingList');
         this.taskList = this.element.querySelector('#webmeetTaskList');
         this.decisionList = this.element.querySelector('#webmeetDecisionList');
-        this.agentList = this.element.querySelector('#webmeetAgentList');
-        this.aiTabButton = this.element.querySelector('#webmeetAiTabButton');
-        this.aiAdminActions = this.element.querySelector('#webmeetAiAdminActions');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
         this.videoGridEmpty = this.element.querySelector('#webmeetVideoEmpty');
@@ -359,7 +338,6 @@ export class WebMeetDashboardModal {
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
-        this.secondaryPanels = this.element.querySelector('.webmeet-secondary-panels');
         this.mobileNav = this.element.querySelector('.webmeet-mobile-nav');
         this.mobileNavButtons = Array.from(this.element.querySelectorAll('[data-mobile-panel]'));
         this.meetingListController.setElement(this.meetingList);
@@ -371,9 +349,7 @@ export class WebMeetDashboardModal {
 
         // Set elements on new modular components
         this.chatComponent?.setElements({
-            chatInput: this.chatInput,
-            transcriptInput: this.transcriptInput,
-            transcriptSpeaker: this.transcriptSpeaker
+            chatInput: this.chatInput
         });
 
         this.applyChatSidebarWidth();
@@ -531,19 +507,45 @@ export class WebMeetDashboardModal {
 
     async loadParticipantsForMeetings() {
         const meetings = Array.isArray(this.state.meetings) ? this.state.meetings : [];
+        const mapMeetingRoster = (details) => {
+            const participants = Array.isArray(details?.participants) ? details.participants : [];
+            const agents = Array.isArray(details?.agents)
+                ? details.agents.filter((entry) => entry && !entry.deletedAt && String(entry.status || '').trim() !== 'stopped')
+                : [];
+            const roster = participants.map((entry) => ({
+                id: String(entry?.id || '').trim(),
+                name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant',
+                micOn: typeof entry?.micOn === 'boolean' ? entry.micOn : false,
+                isAgent: false
+            })).filter((entry) => entry.id);
+            for (const agent of agents) {
+                const participantIdentity = String(agent?.participantIdentity || agent?.participant?.identity || '').trim();
+                if (!participantIdentity || roster.some((entry) => entry.id === participantIdentity)) {
+                    continue;
+                }
+                const label = String(
+                    agent?.participant?.name
+                    || agent?.participant?.identity
+                    || agent?.agentType
+                    || 'AI Agent'
+                ).trim() || 'AI Agent';
+                roster.push({
+                    id: participantIdentity,
+                    name: `${label} (AI)`,
+                    micOn: false,
+                    isAgent: true
+                });
+            }
+            return roster;
+        };
         if (this.isGuestSession()) {
             // For guest, load participants from the single meeting via public API
             const meeting = meetings[0];
             if (meeting?.id) {
                 try {
                     const details = await this.fetchPublicMeetingDetails(meeting.id);
-                    const participants = Array.isArray(details?.participants) ? details.participants : [];
                     this.state.meetingParticipantsById = {
-                        [meeting.id]: participants.map((entry) => ({
-                            id: String(entry?.id || '').trim(),
-                            name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant',
-                            micOn: typeof entry?.micOn === 'boolean' ? entry.micOn : false
-                        }))
+                        [meeting.id]: mapMeetingRoster(details)
                     };
                 } catch (error) {
                     this.state.meetingParticipantsById = {};
@@ -564,12 +566,7 @@ export class WebMeetDashboardModal {
                 nextMap[meeting.id] = [];
                 continue;
             }
-            const participants = Array.isArray(result.value?.participants) ? result.value.participants : [];
-            nextMap[meeting.id] = participants.map((entry) => ({
-                id: String(entry?.id || '').trim(),
-                name: String(entry?.displayName || entry?.id || 'Participant').trim() || 'Participant',
-                micOn: typeof entry?.micOn === 'boolean' ? entry.micOn : false
-            }));
+            nextMap[meeting.id] = mapMeetingRoster(result.value);
         }
         this.state.meetingParticipantsById = nextMap;
     }
@@ -623,16 +620,21 @@ export class WebMeetDashboardModal {
             return;
         }
         let chatPayload;
-        let transcriptPayload;
-        let artifactPayload;
-        let agentPayload;
+        let transcriptPayload = { transcript: [] };
+        let artifactPayload = { artifacts: [], recordings: [], tasks: [], decisions: [] };
+        let agentPayload = { agents: [] };
         try {
-            [chatPayload, transcriptPayload, artifactPayload, agentPayload] = await Promise.all([
-                runTool('webmeet_chat_list', { meetingId: meeting.id }),
-                runTool('webmeet_transcript_list', { meetingId: meeting.id }),
-                runTool('webmeet_artifact_list', { meetingId: meeting.id }),
-                runTool('webmeet_agent_list', { meetingId: meeting.id })
-            ]);
+            const canManageMeetingData = this.canManageRooms();
+            if (canManageMeetingData) {
+                [chatPayload, transcriptPayload, artifactPayload, agentPayload] = await Promise.all([
+                    runTool('webmeet_chat_list', { meetingId: meeting.id }),
+                    runTool('webmeet_transcript_list', { meetingId: meeting.id }),
+                    runTool('webmeet_artifact_list', { meetingId: meeting.id }),
+                    runTool('webmeet_agent_list', { meetingId: meeting.id })
+                ]);
+            } else {
+                chatPayload = await runTool('webmeet_chat_list', { meetingId: meeting.id });
+            }
         } catch (error) {
             if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
             if (!isMissingMeetingError(error)) {
@@ -754,6 +756,17 @@ export class WebMeetDashboardModal {
         for (const eventName of ['participant.joined', 'participant.left', 'participant.timed_out']) {
             this.meetingEventsSource.addEventListener(eventName, (event) => {
                 void this.handleParticipantRosterEvent(event);
+            });
+        }
+        for (const eventName of ['agent.dispatched', 'agent.detached', 'transcript.updated']) {
+            this.meetingEventsSource.addEventListener(eventName, () => {
+                void (async () => {
+                    await this.loadMeetingDetails();
+                    if (this.room && window.LivekitClient?.Track) {
+                        this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+                    }
+                    this.renderAll();
+                })();
             });
         }
         // Handle 404 or other errors gracefully - don't spam console

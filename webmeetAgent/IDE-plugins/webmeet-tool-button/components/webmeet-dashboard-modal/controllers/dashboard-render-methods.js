@@ -6,22 +6,6 @@ export const dashboardRenderMethods = {
         if (this.createRoomButton) {
             this.createRoomButton.classList.toggle('webmeet-hidden', !canManageRooms);
         }
-        const canUseAiAgents = canManageRooms && !this.isGuestSession();
-        if (this.aiTabButton) {
-            this.aiTabButton.classList.toggle('webmeet-hidden', !canUseAiAgents);
-            if (!canUseAiAgents && this.aiTabButton.classList.contains('webmeet-tab-active')) {
-                const transcriptTabButton = this.element.querySelector('[data-tab="transcript"]');
-                const transcriptTab = this.element.querySelector('#webmeetTranscriptTab');
-                const aiTab = this.element.querySelector('#webmeetAiTab');
-                this.aiTabButton.classList.remove('webmeet-tab-active');
-                transcriptTabButton?.classList.add('webmeet-tab-active');
-                aiTab?.classList.add('webmeet-hidden');
-                transcriptTab?.classList.remove('webmeet-hidden');
-            }
-        }
-        if (this.aiAdminActions) {
-            this.aiAdminActions.classList.toggle('webmeet-hidden', !canUseAiAgents);
-        }
         this.renderWorkspaceList();
         this.renderMeetingList();
         this.renderMeetingSummary();
@@ -82,6 +66,7 @@ export const dashboardRenderMethods = {
     },
 
     renderMeetingSummary() {
+        const canManageRooms = this.canManageRooms();
         const meeting = this.selectedMeeting;
         const isJoined = !!this.state.session?.participantIdentity;
 
@@ -98,9 +83,6 @@ export const dashboardRenderMethods = {
         }
         if (this.mainContent) {
             this.mainContent.classList.toggle('webmeet-hidden', !isJoined);
-        }
-        if (this.secondaryPanels) {
-            this.secondaryPanels.classList.toggle('webmeet-hidden', !isJoined);
         }
         if (!isJoined && this.state.videoGridFullscreen) {
             this.state.videoGridFullscreen = false;
@@ -124,7 +106,7 @@ export const dashboardRenderMethods = {
         // Update recording button
         const latestRecording = [...(Array.isArray(this.state.recordings) ? this.state.recordings : [])].reverse()[0] || null;
         if (this.recordingButton) {
-            this.recordingButton.classList.toggle('webmeet-hidden', this.isGuestSession());
+            this.recordingButton.classList.toggle('webmeet-hidden', !canManageRooms);
             if (latestRecording && latestRecording.status === 'recording') {
                 this.recordingButton.classList.add('active');
                 this.recordingButton.title = 'Stop recording';
@@ -165,6 +147,7 @@ export const dashboardRenderMethods = {
 
     renderFeedLists() {
         const renderFeed = (target, entries, formatter, shouldScroll = false, emptyHtml = '<div class="webmeet-feed-item">No data yet.</div>') => {
+            if (!target) return;
             const safeEntries = Array.isArray(entries) ? entries : [];
             target.innerHTML = safeEntries.map(formatter).join('') || emptyHtml;
             if (shouldScroll) {
@@ -190,34 +173,16 @@ export const dashboardRenderMethods = {
             </div>
         `, true, '<div class="webmeet-chat-empty">No messages yet. Start the conversation.</div>');
 
-        renderFeed(this.transcriptList, this.state.transcript, (entry) => `
+        renderFeed(this.transcriptListSidebar, this.state.transcript, (entry) => `
             <div class="webmeet-feed-item">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.speakerName || entry.speakerId || 'speaker')}</strong>
-                    <span>${escapeHtml(formatDate(entry.createdAt))}</span>
+                <div class="webmeet-chat-meta">
+                    <strong class="webmeet-chat-author">${escapeHtml(entry.speakerName || entry.speakerId || 'unknown')}</strong>
+                    <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.startedAt || entry.createdAt))}</span>
                 </div>
-                <div>${escapeHtml(entry.text || '')}</div>
+                <div class="webmeet-chat-text">${escapeHtml(entry.text || '')}</div>
             </div>
-        `);
-        renderFeed(this.artifactList, this.state.artifacts, (entry) => `
-            <div class="webmeet-feed-item">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.title || entry.type || 'artifact')}</strong>
-                    <span>${escapeHtml(formatDate(entry.createdAt))}</span>
-                </div>
-                <pre class="webmeet-code">${escapeHtml(entry.body || '')}</pre>
-            </div>
-        `);
-        renderFeed(this.recordingList, this.state.recordings, (entry) => `
-            <div class="webmeet-feed-item">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.id || 'recording')}</strong>
-                    <span>${escapeHtml(entry.status || '')}</span>
-                </div>
-                <div>${escapeHtml(entry.filePath || '')}</div>
-                <div>${escapeHtml(formatDate(entry.startedAt || entry.createdAt))}</div>
-            </div>
-        `);
+        `, true, '<div class="webmeet-chat-empty">No transcript yet.</div>');
+
         renderFeed(this.taskList, this.state.tasks, (entry) => `
             <div class="webmeet-feed-item">
                 <strong>${escapeHtml(entry.title || '')}</strong>
@@ -229,15 +194,6 @@ export const dashboardRenderMethods = {
                 <strong>${escapeHtml(entry.title || '')}</strong>
             </div>
         `);
-        renderFeed(this.agentList, this.state.agents, (entry) => `
-            <div class="webmeet-feed-item">
-                <div class="webmeet-list-item-header">
-                    <strong>${escapeHtml(entry.agentType || '')}</strong>
-                    <span>${escapeHtml(entry.mode || '')}</span>
-                </div>
-            </div>
-        `);
-
     }
 
 };

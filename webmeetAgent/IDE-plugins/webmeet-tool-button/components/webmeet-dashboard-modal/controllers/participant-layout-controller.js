@@ -3,6 +3,12 @@ export class ParticipantLayoutController {
         this.getParticipantDisplayName = typeof options.getParticipantDisplayName === 'function'
             ? options.getParticipantDisplayName
             : ((participant) => String(participant?.identity || 'Participant'));
+        this.getAgentForParticipant = typeof options.getAgentForParticipant === 'function'
+            ? options.getAgentForParticipant
+            : (() => null);
+        this.canDetachAgent = typeof options.canDetachAgent === 'function'
+            ? options.canDetachAgent
+            : (() => false);
 
         this.videoGrid = null;
         this.videoGridAll = null;
@@ -21,73 +27,6 @@ export class ParticipantLayoutController {
     setVideoGridEmptyState(message) {
         if (this.videoGridEmpty) {
             this.videoGridEmpty.textContent = String(message || 'Join a meeting to attach media tracks.');
-        }
-    }
-
-    buildInitials(name) {
-        const text = String(name || '').trim();
-        if (!text) return '?';
-        const chunks = text.split(/\s+/).filter(Boolean);
-        return chunks.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';
-    }
-
-    ensureNativeParticipantMarkup(element) {
-        if (!element || element.querySelector('[data-role="mediaHost"]')) return;
-        element.innerHTML = `
-            <div class="wm-participant-shell">
-                <div class="wm-participant-stage">
-                    <div class="wm-participant-media" data-role="mediaHost"></div>
-                    <div class="wm-participant-fallback" data-role="fallback">
-                        <div class="wm-participant-avatar" data-role="avatar">?</div>
-                    </div>
-                    <div class="wm-participant-loading" data-role="videoLoading" aria-hidden="true">
-                        <span class="wm-participant-spinner"></span>
-                    </div>
-                </div>
-                <div class="wm-participant-footer" data-role="footer">
-                    <span class="wm-participant-name" data-role="name">Participant</span>
-                    <span class="wm-participant-mic is-off" data-role="mic" title="Microphone off" aria-label="Microphone off">
-                        <svg class="wm-mic-on" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                            <line x1="12" y1="19" x2="12" y2="23"></line>
-                            <line x1="8" y1="23" x2="16" y2="23"></line>
-                        </svg>
-                        <svg class="wm-mic-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <line x1="1" y1="1" x2="23" y2="23"></line>
-                            <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.18"></path>
-                            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
-                            <line x1="12" y1="19" x2="12" y2="23"></line>
-                            <line x1="8" y1="23" x2="16" y2="23"></line>
-                        </svg>
-                    </span>
-                </div>
-            </div>
-        `;
-    }
-
-    applyNativeParticipantState(view, payload) {
-        this.ensureNativeParticipantMarkup(view.element);
-        view.element.classList.toggle('is-mini', Boolean(payload.isMini));
-        view.element.classList.toggle('is-focused', Boolean(payload.isFocused));
-        view.element.dataset.local = payload.isLocal ? 'true' : 'false';
-
-        const name = view.element.querySelector('[data-role="name"]');
-        const avatar = view.element.querySelector('[data-role="avatar"]');
-        const fallback = view.element.querySelector('[data-role="fallback"]');
-        const videoLoading = view.element.querySelector('[data-role="videoLoading"]');
-        const mic = view.element.querySelector('[data-role="mic"]');
-        if (name) name.textContent = payload.displayName;
-        if (avatar) avatar.textContent = this.buildInitials(payload.displayName);
-        if (fallback) fallback.style.display = payload.hasVideo ? 'none' : 'flex';
-        view.element.classList.toggle('is-video-loading', Boolean(payload.videoLoading));
-        if (videoLoading) videoLoading.style.display = payload.videoLoading ? 'flex' : 'none';
-        if (mic) {
-            mic.classList.toggle('is-on', Boolean(payload.isMicOn));
-            mic.classList.toggle('is-off', !payload.isMicOn);
-            const micLabel = payload.isMicOn ? 'Microphone on' : 'Microphone off';
-            mic.title = micLabel;
-            mic.setAttribute('aria-label', micLabel);
         }
     }
 
@@ -114,9 +53,13 @@ export class ParticipantLayoutController {
             hasVideo: Boolean(view.hasVideo),
             videoLoading: Boolean(view.videoLoading),
             isMini: Boolean(view.isMini),
-            isFocused: Boolean(view.isFocused)
+            isFocused: Boolean(view.isFocused),
+            isAgent: Boolean(view.isAgent),
+            agentId: String(view.agentId || '').trim(),
+            canDetachAgent: Boolean(view.canDetachAgent)
         };
         view.element.dataset.participantId = payload.participantId;
+        view.element.dataset.agentId = payload.agentId;
         view.element.setAttribute('data-display-name', payload.displayName);
         view.element.setAttribute('data-is-local', payload.isLocal ? 'true' : 'false');
         view.element.setAttribute('data-is-mic-on', payload.isMicOn ? 'true' : 'false');
@@ -124,11 +67,11 @@ export class ParticipantLayoutController {
         view.element.setAttribute('data-video-loading', payload.videoLoading ? 'true' : 'false');
         view.element.setAttribute('data-is-mini', payload.isMini ? 'true' : 'false');
         view.element.setAttribute('data-is-focused', payload.isFocused ? 'true' : 'false');
+        view.element.setAttribute('data-is-agent', payload.isAgent ? 'true' : 'false');
+        view.element.setAttribute('data-can-detach-agent', payload.canDetachAgent ? 'true' : 'false');
         const presenter = view.element.webSkelPresenter;
         if (presenter && typeof presenter.setState === 'function') {
             presenter.setState(payload);
-        } else {
-            this.applyNativeParticipantState(view, payload);
         }
         const videoElements = this.getParticipantVideoElements(view);
         if (videoElements.length) {
@@ -136,17 +79,6 @@ export class ParticipantLayoutController {
                 presenter.setVideoElements(videoElements);
             } else if (presenter && typeof presenter.setVideoElement === 'function') {
                 presenter.setVideoElement(videoElements[0]);
-            } else {
-                const mediaHost = view.element.querySelector('[data-role="mediaHost"]');
-                if (mediaHost) {
-                    for (const videoElement of videoElements) {
-                        if (!mediaHost.contains(videoElement)) {
-                            mediaHost.appendChild(videoElement);
-                        }
-                    }
-                    mediaHost.classList.toggle('has-multiple-videos', videoElements.length > 1);
-                    mediaHost.dataset.videoCount = String(videoElements.length);
-                }
             }
         }
     }
@@ -155,6 +87,8 @@ export class ParticipantLayoutController {
         const id = String(participant?.identity || '').trim();
         if (!id || !this.videoGrid) return null;
         let view = this.participantViews.get(id);
+        const agent = this.getAgentForParticipant(participant);
+        const isAgent = Boolean(agent);
         if (!view) {
             const element = document.createElement('webmeet-participant-card');
             element.setAttribute('data-presenter', 'webmeet-participant-card');
@@ -168,6 +102,9 @@ export class ParticipantLayoutController {
                 hasVideo: false,
                 videoLoading: false,
                 micOn: false,
+                isAgent,
+                agentId: String(agent?.id || '').trim(),
+                canDetachAgent: isAgent && this.canDetachAgent(),
                 isMini: true,
                 isFocused: false,
                 element,
@@ -177,6 +114,9 @@ export class ParticipantLayoutController {
         } else {
             view.name = this.getParticipantDisplayName(participant);
             view.isLocal = Boolean(participant.kind === 'local');
+            view.isAgent = isAgent;
+            view.agentId = String(agent?.id || '').trim();
+            view.canDetachAgent = isAgent && this.canDetachAgent();
             if (!view.videoElements) {
                 view.videoElements = new Map();
             }
@@ -227,6 +167,7 @@ export class ParticipantLayoutController {
     }
 
     focusParticipantCard(target) {
+        if (target?.closest?.('[data-role="agentDetach"]')) return;
         const participantId = String(target?.dataset?.participantId || '').trim();
         if (!participantId) return;
         if (this.focusedParticipantId === participantId) {
@@ -264,21 +205,6 @@ export class ParticipantLayoutController {
             return;
         }
 
-        const host = view.element.querySelector('[data-role="mediaHost"]');
-        if (!host) return;
-        const keep = new Set(videoElements);
-        for (const existing of host.querySelectorAll('video')) {
-            if (!keep.has(existing)) {
-                existing.remove();
-            }
-        }
-        for (const videoElement of videoElements) {
-            if (!host.contains(videoElement)) {
-                host.appendChild(videoElement);
-            }
-        }
-        host.classList.toggle('has-multiple-videos', videoElements.length > 1);
-        host.dataset.videoCount = String(videoElements.length);
     }
 
     setParticipantMicState(participantId, isMicOn) {

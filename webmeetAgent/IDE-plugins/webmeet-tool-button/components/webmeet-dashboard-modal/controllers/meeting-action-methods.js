@@ -226,8 +226,72 @@ export const meetingActionMethods = {
             return;
         }
         try {
-            await runTool('webmeet_agent_attach', { meetingId: meeting.id, agentType, mode });
+            const agent = await runTool('webmeet_agent_attach', { meetingId: meeting.id, agentType, mode });
             await this.loadMeetingDetails();
+            if (this.room && window.LivekitClient?.Track) {
+                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+            }
+            try {
+                await this.publishRealtimePayload({
+                    type: 'agent.dispatched',
+                    meetingId: meeting.id,
+                    agentId: agent?.id || '',
+                    agentType,
+                    mode
+                });
+            } catch (_) {
+                // Persisted dispatch already succeeded; realtime delivery is best effort.
+            }
+            this.renderAll();
+        } catch (error) {
+            this.setError(error instanceof Error ? error.message : String(error));
+        }
+    },
+
+    async detachAgent(target) {
+        const source = target?.target || target;
+        const agentId = String(source?.dataset?.agentId || source?.dataset?.id || '').trim();
+        await this.detachAgentById(agentId);
+    },
+
+    async detachAgentFromCard(target) {
+        const source = target?.target || target;
+        const agentId = String(source?.dataset?.agentId || source?.closest?.('[data-agent-id]')?.dataset?.agentId || '').trim();
+        await this.detachAgentById(agentId);
+    },
+
+    async detachAgentById(agentId) {
+        if (this.isGuestSession() || !this.canManageRooms()) {
+            this.setError('Only admin can disable meeting agents.');
+            return;
+        }
+        const meeting = this.selectedMeeting;
+        if (!meeting) {
+            this.setError('Select a meeting before disabling AI agents.');
+            return;
+        }
+        const id = String(agentId || '').trim();
+        if (!id) {
+            this.setError('AI agent unavailable.');
+            return;
+        }
+        try {
+            const stoppedAgent = await runTool('webmeet_agent_detach', { meetingId: meeting.id, agentId: id });
+            await this.loadMeetingDetails();
+            if (this.room && window.LivekitClient?.Track) {
+                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+            }
+            try {
+                await this.publishRealtimePayload({
+                    type: 'agent.detached',
+                    meetingId: meeting.id,
+                    agentId: id,
+                    agentType: stoppedAgent?.agentType || '',
+                    mode: stoppedAgent?.mode || ''
+                });
+            } catch (_) {
+                // Persisted detach already succeeded; realtime delivery is best effort.
+            }
             this.renderAll();
         } catch (error) {
             this.setError(error instanceof Error ? error.message : String(error));
@@ -235,7 +299,7 @@ export const meetingActionMethods = {
     },
 
     async startRecording() {
-        if (this.isGuestSession()) {
+        if (!this.canManageRooms()) {
             this.setError('Only admin can manage recording.');
             return;
         }
@@ -250,7 +314,7 @@ export const meetingActionMethods = {
     },
 
     async stopRecording() {
-        if (this.isGuestSession()) {
+        if (!this.canManageRooms()) {
             this.setError('Only admin can manage recording.');
             return;
         }
@@ -296,6 +360,64 @@ export const meetingActionMethods = {
         await runTool('webmeet_delete_meeting', { meetingId: meeting.id });
         await this.loadMeetings();
         this.renderAll();
+    },
+
+    async openTranscript(target) {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can view transcripts.');
+            return;
+        }
+        const meeting = this.getMeetingFromActionTarget(target);
+        if (!meeting) return;
+        await assistOS.UI.showModal('webmeet-transcript-modal', {
+            meetingId: meeting.id,
+            meetingTitle: meeting.title
+        }, true);
+    },
+
+    async openArtifacts(target) {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can view artifacts.');
+            return;
+        }
+        const meeting = this.getMeetingFromActionTarget(target);
+        if (!meeting) return;
+        await assistOS.UI.showModal('webmeet-artifacts-modal', {
+            meetingId: meeting.id,
+            meetingTitle: meeting.title
+        }, true);
+    },
+
+    async openRecordings(target) {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can view recordings.');
+            return;
+        }
+        const meeting = this.getMeetingFromActionTarget(target);
+        if (!meeting) return;
+        await assistOS.UI.showModal('webmeet-recordings-modal', {
+            meetingId: meeting.id,
+            meetingTitle: meeting.title
+        }, true);
+    },
+
+    async openAI(target) {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can manage AI agents.');
+            return;
+        }
+        const meeting = this.getMeetingFromActionTarget(target);
+        if (!meeting) return;
+        await assistOS.UI.showModal('webmeet-ai-modal', {
+            meetingId: meeting.id,
+            meetingTitle: meeting.title
+        }, true);
+    },
+
+    async showRoomAiMenu(target) {
+        const meeting = this.getMeetingFromActionTarget(target);
+        if (!meeting) return;
+        await assistOS.UI.showActionBox(target, meeting.id, 'webmeet-room-ai-menu', 'append', { id: meeting.id });
     }
 
 };

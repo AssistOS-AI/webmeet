@@ -26,7 +26,10 @@ export class WebMeetParticipantCard {
             videoLoading: parseBoolean(element.getAttribute('data-video-loading')),
             isMicOn: parseBoolean(element.getAttribute('data-is-mic-on')),
             isMini: parseBoolean(element.getAttribute('data-is-mini')),
-            isFocused: parseBoolean(element.getAttribute('data-is-focused'))
+            isFocused: parseBoolean(element.getAttribute('data-is-focused')),
+            isAgent: parseBoolean(element.getAttribute('data-is-agent')),
+            agentId: String(element.getAttribute('data-agent-id') || '').trim(),
+            canDetachAgent: parseBoolean(element.getAttribute('data-can-detach-agent'))
         };
         this.invalidate();
     }
@@ -34,6 +37,7 @@ export class WebMeetParticipantCard {
     beforeRender() {
         this.displayName = this.state.displayName;
         this.initials = buildInitials(this.state.displayName);
+        this.agentId = this.state.agentId;
     }
 
     afterRender() {
@@ -44,6 +48,7 @@ export class WebMeetParticipantCard {
             footer: this.element.querySelector('[data-role="footer"]'),
             name: this.element.querySelector('[data-role="name"]'),
             mic: this.element.querySelector('[data-role="mic"]'),
+            agentDetach: this.element.querySelector('[data-role="agentDetach"]'),
             videoLoading: this.element.querySelector('[data-role="videoLoading"]')
         };
         this.applyState();
@@ -127,7 +132,9 @@ export class WebMeetParticipantCard {
         const initials = buildInitials(displayName);
         this.element.classList.toggle('is-mini', Boolean(this.state.isMini));
         this.element.classList.toggle('is-focused', Boolean(this.state.isFocused));
+        this.element.classList.toggle('is-agent', Boolean(this.state.isAgent));
         this.element.dataset.participantId = String(this.state.participantId || '').trim();
+        this.element.dataset.agentId = String(this.state.agentId || '').trim();
         this.element.dataset.local = this.state.isLocal ? 'true' : 'false';
         this.refs.name.textContent = displayName;
         this.refs.avatar.textContent = initials;
@@ -142,6 +149,13 @@ export class WebMeetParticipantCard {
         const micLabel = this.state.isMicOn ? 'Microphone on' : 'Microphone off';
         this.refs.mic.title = micLabel;
         this.refs.mic.setAttribute('aria-label', micLabel);
+
+        if (this.refs.agentDetach) {
+            const agentId = String(this.state.agentId || '').trim();
+            const showDetach = Boolean(this.state.isAgent && this.state.canDetachAgent && agentId);
+            this.refs.agentDetach.style.display = showDetach ? 'inline-flex' : 'none';
+            this.refs.agentDetach.dataset.agentId = agentId;
+        }
     }
 
     installMediaAspectObserver() {
