@@ -151,6 +151,14 @@
                     "name": "WEBMEET_API_PORT",
                     "required": false,
                     "default": "8791"
+                },
+                {
+                    "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
+                    "required": false,
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-agent",
+                    "deriveName": "internal-token"
                 }
             ]
         },
@@ -275,6 +283,14 @@
                     "name": "WEBMEET_API_PORT",
                     "required": false,
                     "default": "8791"
+                },
+                {
+                    "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
+                    "required": false,
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-agent",
+                    "deriveName": "internal-token"
                 }
             ]
         },
@@ -398,6 +414,14 @@
                     "name": "WEBMEET_API_PORT",
                     "required": false,
                     "default": "8791"
+                },
+                {
+                    "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
+                    "required": false,
+                    "derive": "derived-master",
+                    "deriveRepoName": "webmeet",
+                    "deriveAgentName": "shared-agent",
+                    "deriveName": "internal-token"
                 }
             ]
         }
