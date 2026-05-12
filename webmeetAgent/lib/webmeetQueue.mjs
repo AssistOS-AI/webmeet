@@ -33,3 +33,12 @@ export function appendEventLog(startDir, meetingId, event) {
     const filePath = path.join(paths.eventsDir, meetingId, `${event.createdAt || nowIso()}-${eventId}.json`.replaceAll(':', '-'));
     writeJson(filePath, event);
 }
+
+export function appendWorkspaceEventLog(startDir, workspaceId, event) {
+    const paths = createQueueContext(startDir);
+    const eventId = String(event?.id || randomId('event')).trim();
+    const safeWorkspaceId = String(workspaceId || '').trim();
+    if (!safeWorkspaceId) return;
+    const filePath = path.join(paths.eventsDir, 'workspaces', safeWorkspaceId, `${event.createdAt || nowIso()}-${eventId}.json`.replaceAll(':', '-'));
+    writeJson(filePath, event);
+}

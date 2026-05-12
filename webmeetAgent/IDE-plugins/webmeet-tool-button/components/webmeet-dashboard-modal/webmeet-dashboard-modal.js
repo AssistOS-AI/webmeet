@@ -85,6 +85,9 @@ export class WebMeetDashboardModal {
         };
         this.room = null;
         this.meetingEventsSource = null;
+        this.workspaceEventsSource = null;
+        this.workspaceMeetingsRefreshTimer = null;
+        this.workspaceRosterRefreshTimer = null;
         this.roomController = new LivekitRoomController({
             ensureLiveKitClient,
             buildRtcConfigForSession,
@@ -394,6 +397,9 @@ export class WebMeetDashboardModal {
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
         this.stopMeetingEvents();
+        this.stopWorkspaceEvents();
+        this.clearWorkspaceMeetingsRefreshTimer();
+        this.clearWorkspaceRosterRefreshTimer();
         this.unregisterMediaDeviceChangeHandler();
         this.presenceController.teardown();
         if (this.state.session?.participantIdentity) {
@@ -415,6 +421,7 @@ export class WebMeetDashboardModal {
             this.state.selectedWorkspaceId = this.state.workspaces[0]?.id || '';
             if (this.state.selectedWorkspaceId) {
                 await this.loadMeetings();
+                this.startWorkspaceEvents();
             }
             this.renderAll();
         } catch (error) {
@@ -494,6 +501,51 @@ export class WebMeetDashboardModal {
         if (this.state.selectedMeetingId) {
             await this.loadMeetingDetails({ expectedMeetingId: this.state.selectedMeetingId });
         }
+    }
+
+    async refreshMeetingsFromWorkspaceEvent() {
+        if (this.isGuestSession() || !this.state.selectedWorkspaceId) return;
+        const previousSelectedMeetingId = String(this.state.selectedMeetingId || '').trim();
+        await this.loadMeetings();
+        if (previousSelectedMeetingId && this.state.meetings.some((entry) => entry.id === previousSelectedMeetingId)) {
+            this.state.selectedMeetingId = previousSelectedMeetingId;
+        }
+        this.renderAll();
+    }
+
+    async refreshWorkspaceRosterFromEvent() {
+        if (this.isGuestSession() || !this.state.selectedWorkspaceId || !this.state.meetings.length) return;
+        await this.loadParticipantsForMeetings();
+        this.renderMeetingList();
+        this.renderMeetingSummary();
+    }
+
+    scheduleWorkspaceMeetingsRefresh() {
+        this.clearWorkspaceMeetingsRefreshTimer();
+        this.workspaceMeetingsRefreshTimer = window.setTimeout(() => {
+            this.workspaceMeetingsRefreshTimer = null;
+            void this.refreshMeetingsFromWorkspaceEvent();
+        }, 100);
+    }
+
+    scheduleWorkspaceRosterRefresh() {
+        this.clearWorkspaceRosterRefreshTimer();
+        this.workspaceRosterRefreshTimer = window.setTimeout(() => {
+            this.workspaceRosterRefreshTimer = null;
+            void this.refreshWorkspaceRosterFromEvent();
+        }, 100);
+    }
+
+    clearWorkspaceMeetingsRefreshTimer() {
+        if (!this.workspaceMeetingsRefreshTimer) return;
+        window.clearTimeout(this.workspaceMeetingsRefreshTimer);
+        this.workspaceMeetingsRefreshTimer = null;
+    }
+
+    clearWorkspaceRosterRefreshTimer() {
+        if (!this.workspaceRosterRefreshTimer) return;
+        window.clearTimeout(this.workspaceRosterRefreshTimer);
+        this.workspaceRosterRefreshTimer = null;
     }
 
     async refreshMeetingsAfterMissingMeeting(missingMeetingId) {
@@ -801,6 +853,44 @@ export class WebMeetDashboardModal {
         if (!this.meetingEventsSource) return;
         try { this.meetingEventsSource.close(); } catch (_) {}
         this.meetingEventsSource = null;
+    }
+
+    startWorkspaceEvents() {
+        this.stopWorkspaceEvents();
+        const workspaceId = String(this.state.selectedWorkspaceId || '').trim();
+        if (!workspaceId || this.isGuestSession() || typeof EventSource !== 'function') return;
+        const baseUrl = buildAuthenticatedWebMeetApiBaseUrl();
+        const url = new URL(`${baseUrl}/workspaces/${encodeURIComponent(workspaceId)}/events`);
+        this.workspaceEventsSource = new EventSource(url.toString(), { withCredentials: true });
+        this.workspaceEventsSource.addEventListener('meeting.created', () => {
+            this.scheduleWorkspaceMeetingsRefresh();
+        });
+        this.workspaceEventsSource.addEventListener('meeting.renamed', (event) => {
+            try {
+                const payload = JSON.parse(String(event.data || '{}'));
+                this.applyMeetingRename(
+                    payload?.payload?.meetingId || payload?.meetingId,
+                    payload?.payload?.title || payload?.title,
+                    payload?.createdAt || ''
+                );
+            } catch (_) {
+                this.scheduleWorkspaceMeetingsRefresh();
+            }
+        });
+        for (const eventName of ['participant.joined', 'participant.left', 'participant.timed_out', 'agent.dispatched', 'agent.detached']) {
+            this.workspaceEventsSource.addEventListener(eventName, () => {
+                this.scheduleWorkspaceRosterRefresh();
+            });
+        }
+        this.workspaceEventsSource.onerror = () => {
+            this.stopWorkspaceEvents();
+        };
+    }
+
+    stopWorkspaceEvents() {
+        if (!this.workspaceEventsSource) return;
+        try { this.workspaceEventsSource.close(); } catch (_) {}
+        this.workspaceEventsSource = null;
     }
 
 

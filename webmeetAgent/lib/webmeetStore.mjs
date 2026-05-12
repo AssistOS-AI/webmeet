@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { getWorkspacePaths } from './workspacePaths.mjs';
 import { resolveVarValue } from './secretVars.mjs';
 import { createWrappedDek, decryptPayload, deriveMasterKey, encryptPayload, unwrapDek } from './webmeetCrypto.mjs';
-import { appendEventLog } from './webmeetQueue.mjs';
+import { appendEventLog, appendWorkspaceEventLog } from './webmeetQueue.mjs';
 
 const MASTER_KEY_VAR = 'PLOINKY_WEBMEET_MASTER_KEY';
 const RETENTION_DAYS_VAR = 'PLOINKY_WEBMEET_RETENTION_DAYS';
@@ -23,6 +23,14 @@ const ACTIVE_RECORDING_STATUSES = new Set([
     'EGRESS_STARTING',
     'EGRESS_ACTIVE',
     'EGRESS_LIMIT_REACHED'
+]);
+const WORKSPACE_EVENT_TYPES = new Set([
+    'meeting.renamed',
+    'participant.joined',
+    'participant.left',
+    'participant.timed_out',
+    'agent.dispatched',
+    'agent.detached'
 ]);
 
 function nowIso() {
@@ -300,6 +308,31 @@ function addMeetingEvent(payload, type, data = {}) {
 function recordMeetingEvent(context, meetingId, payload, type, data = {}) {
     const event = addMeetingEvent(payload, type, data);
     appendEventLog(context.workspaceRoot, meetingId, event);
+    if (WORKSPACE_EVENT_TYPES.has(type)) {
+        try {
+            const record = loadMeetingRecord(context, meetingId);
+            if (record?.workspaceId) {
+                appendWorkspaceEventLog(context.workspaceRoot, record.workspaceId, event);
+            }
+        } catch (_) {
+            // Meeting creation records workspace events after the meeting file exists.
+        }
+    }
+    return event;
+}
+
+function createStandaloneEvent(type, data = {}) {
+    return {
+        id: randomId('event'),
+        type,
+        payload: data,
+        createdAt: nowIso()
+    };
+}
+
+function recordWorkspaceEvent(context, workspaceId, type, data = {}) {
+    const event = createStandaloneEvent(type, data);
+    appendWorkspaceEventLog(context.workspaceRoot, workspaceId, event);
     return event;
 }
 
@@ -677,6 +710,36 @@ export function listMeetingEvents(context, meetingId, { afterId = '' } = {}) {
         .filter((event) => String(event?.id || '').trim() !== afterEventId);
 }
 
+export function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {}) {
+    const targetWorkspaceId = String(workspaceId || '').trim();
+    if (!targetWorkspaceId) return [];
+    const eventsDir = path.join(context.eventsDir, 'workspaces', targetWorkspaceId);
+    if (!fs.existsSync(eventsDir)) return [];
+    const afterEventId = String(afterId || '').trim();
+    let foundAfter = !afterEventId;
+    return fs.readdirSync(eventsDir)
+        .filter((name) => name.endsWith('.json'))
+        .sort()
+        .map((name) => {
+            try {
+                return readJsonFile(path.join(eventsDir, name));
+            } catch (_) {
+                return null;
+            }
+        })
+        .filter(Boolean)
+        .filter((event) => {
+            const eventId = String(event?.id || '').trim();
+            if (!afterEventId) return true;
+            if (foundAfter) return true;
+            if (eventId === afterEventId) {
+                foundAfter = true;
+            }
+            return false;
+        })
+        .filter((event) => String(event?.id || '').trim() !== afterEventId);
+}
+
 export function createStoreContext(startDir = '') {
     const paths = getWorkspacePaths(startDir);
     ensureDirs(paths);
@@ -877,7 +940,7 @@ export function createMeeting(context, { workspaceId, title, roomType = 'team', 
     }
     const validRoomType = roomType === 'guest' ? 'guest' : 'team';
     const record = createMeetingRecord(context, effectiveWorkspaceId, title, validRoomType);
-    return {
+    const meeting = {
         id: record.meetingId,
         workspaceId: record.workspaceId,
         title: record.title,
@@ -888,6 +951,11 @@ export function createMeeting(context, { workspaceId, title, roomType = 'team', 
         createdAt: record.createdAt,
         closedAt: record.closedAt
     };
+    recordWorkspaceEvent(context, effectiveWorkspaceId, 'meeting.created', {
+        workspaceId: effectiveWorkspaceId,
+        meeting
+    });
+    return meeting;
 }
 
 export function joinGuestMeeting(context, { meetingId, guestToken, displayName, participantId }) {

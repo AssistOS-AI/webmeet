@@ -29,6 +29,7 @@ import {
     listMeetingEvents,
     listMeetings,
     listMeetingTranscript,
+    listWorkspaceEvents,
     listWorkspaces,
     startMeetingRecording,
     stopMeetingRecording
@@ -163,11 +164,53 @@ function sendMeetingEvents(req, res, context, meetingId, { afterId = '', url = n
     req.on('error', cleanup);
 }
 
+function sendWorkspaceEvents(req, res, context, workspaceId, { afterId = '' } = {}) {
+    const targetWorkspaceId = String(workspaceId || '').trim();
+    const authInfo = getRequestActor(req);
+    listMeetings(context, targetWorkspaceId, authInfo);
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-store, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.write(': connected\n\n');
+    let lastEventId = String(afterId || '').trim();
+    const sendBacklog = () => {
+        for (const event of listWorkspaceEvents(context, targetWorkspaceId, { afterId: lastEventId })) {
+            sseWrite(res, event);
+            lastEventId = String(event?.id || lastEventId).trim();
+        }
+    };
+    sendBacklog();
+
+    const eventsDir = path.join(context.eventsDir, 'workspaces', targetWorkspaceId);
+    fs.mkdirSync(eventsDir, { recursive: true });
+    const watcher = fs.watch(eventsDir, () => {
+        try {
+            sendBacklog();
+        } catch (_) {
+            // Keep the stream open; the next workspace event can still be delivered.
+        }
+    });
+    const keepalive = setInterval(() => {
+        res.write(': keepalive\n\n');
+    }, SSE_KEEPALIVE_MS);
+    const cleanup = () => {
+        clearInterval(keepalive);
+        try { watcher.close(); } catch (_) {}
+    };
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+}
+
 function matchRoute(method, pathname) {
     const routes = [
         ['healthz', 'GET', /^\/healthz$/],
         ['workspaces.list', 'GET', /^\/api\/workspaces$/],
         ['workspaces.create', 'POST', /^\/api\/workspaces$/],
+        ['workspaces.events', 'GET', /^\/api\/workspaces\/([^/]+)\/events$/],
         ['meetings.list', 'GET', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.create', 'POST', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.get', 'GET', /^\/api\/meetings\/([^/]+)$/],
@@ -232,6 +275,12 @@ async function handler(req, res) {
         if (route.name === 'workspaces.create') {
             const body = await readBody(req);
             json(res, 200, createWorkspace(context, { name: String(body.name || '').trim() }));
+            return;
+        }
+        if (route.name === 'workspaces.events') {
+            sendWorkspaceEvents(req, res, context, route.params[0], {
+                afterId: getLastEventId(req, url)
+            });
             return;
         }
         if (route.name === 'meetings.list' || route.name === 'meetings.create') {
