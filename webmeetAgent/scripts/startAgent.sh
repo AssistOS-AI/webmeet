@@ -64,11 +64,12 @@ done
 mkdir -p "${WEBMEET_DATA_DIR:-/data}"
 chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null || true
 
-if [ -f /code/package.json ] && [ ! -d /code/node_modules/@livekit/agents ]; then
-    (cd /code && npm install --omit=dev --package-lock=false)
+if ! node --input-type=module -e "await import('@livekit/agents')" >/tmp/webmeet-livekit-agent-deps.out 2>/tmp/webmeet-livekit-agent-deps.err; then
+    echo "webmeetAgent dependency cache is missing @livekit/agents." >&2
+    echo "Run 'ploinky deps prepare AchillesIDE/webmeetAgent' or restart the workspace so Ploinky can rebuild the prepared cache." >&2
+    cat /tmp/webmeet-livekit-agent-deps.err >&2 || true
+    exit 1
 fi
-
-node --input-type=module -e "await import('@livekit/agents')" >/tmp/webmeet-livekit-agent-deps.out 2>/tmp/webmeet-livekit-agent-deps.err
 
 node /code/server/webmeet-api.mjs >/tmp/webmeet-api.out 2>/tmp/webmeet-api.err &
 node /code/server/livekit-agent.mjs >/tmp/webmeet-livekit-agent.out 2>/tmp/webmeet-livekit-agent.err &
