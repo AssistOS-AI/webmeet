@@ -1125,11 +1125,22 @@ export async function appendGuestMeetingChat(context, { meetingId, guestToken, p
     });
 }
 
-export async function appendMeetingTranscript(context, { meetingId, speakerId, speakerName, text }) {
+export async function appendMeetingTranscript(context, { meetingId, speakerId, speakerName, text, startedAt = '', endedAt = '', source = 'manual' }) {
     cleanupMeetingPresence(context, meetingId);
     let segment = null;
     mutateMeeting(context, meetingId, (_record, payload) => {
-        segment = { id: randomId('transcript'), meetingId, speakerId, speakerName, text, createdAt: nowIso() };
+        const createdAt = nowIso();
+        segment = {
+            id: randomId('transcript'),
+            meetingId,
+            speakerId,
+            speakerName,
+            text,
+            startedAt: String(startedAt || createdAt),
+            endedAt: String(endedAt || ''),
+            source: String(source || 'manual'),
+            createdAt
+        };
         payload.transcriptSegments.push(segment);
         recordMeetingEvent(context, meetingId, payload, 'transcript.updated', { meetingId, segmentId: segment.id });
     });
@@ -1233,6 +1244,51 @@ export async function attachMeetingAgent(context, { meetingId, agentType, mode, 
 export function listMeetingAgents(context, meetingId) {
     cleanupMeetingPresence(context, meetingId);
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).agents;
+}
+
+export async function detachMeetingAgent(context, { meetingId, agentId, authInfo = null }) {
+    cleanupMeetingPresence(context, meetingId);
+    assertAdminAuthInfo(authInfo);
+    const targetAgentId = String(agentId || '').trim();
+    if (!targetAgentId) {
+        throw new Error('Missing agentId.');
+    }
+    const record = loadMeetingRecord(context, meetingId);
+    const currentPayload = decryptMeetingPayload(context, record);
+    const currentAgent = currentPayload.agents.find((entry) => (
+        String(entry?.id || '') === targetAgentId && !entry.deletedAt
+    ));
+    if (!currentAgent) {
+        throw new Error('Meeting agent not found.');
+    }
+    if (currentAgent.dispatchId) {
+        try {
+            await callLiveKitAgentDispatchApi(context, 'DeleteDispatch', record.roomName, {
+                room: record.roomName,
+                dispatchId: currentAgent.dispatchId
+            });
+        } catch {
+            // Persist the detach even if LiveKit already removed the dispatch.
+        }
+    }
+    let detachedAgent = null;
+    mutateMeeting(context, meetingId, (_record, payload) => {
+        const targetAgent = payload.agents.find((entry) => String(entry?.id || '') === targetAgentId);
+        if (!targetAgent) return;
+        Object.assign(targetAgent, {
+            status: 'detached',
+            deletedAt: nowIso(),
+            updatedAt: nowIso()
+        });
+        detachedAgent = { ...targetAgent };
+        recordMeetingEvent(context, meetingId, payload, 'agent.detached', {
+            meetingId,
+            agentId: targetAgentId,
+            agentType: targetAgent.agentType || '',
+            mode: targetAgent.mode || ''
+        });
+    });
+    return detachedAgent || { id: targetAgentId, status: 'detached' };
 }
 
 export async function startMeetingRecording(context, meetingId) {
