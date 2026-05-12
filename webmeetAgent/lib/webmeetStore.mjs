@@ -25,11 +25,6 @@ const ACTIVE_RECORDING_STATUSES = new Set([
     'EGRESS_LIMIT_REACHED'
 ]);
 
-function isTruthyEnv(value) {
-    const normalized = String(value || '').trim().toLowerCase();
-    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
-
 function nowIso() {
     return new Date().toISOString();
 }
@@ -694,7 +689,6 @@ export function createStoreContext(startDir = '') {
         livekitApiUrl: String(process.env.WEBMEET_LIVEKIT_URL || '').trim(),
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
-        livekitAgentEnabled: isTruthyEnv(process.env.WEBMEET_LIVEKIT_AGENT_ENABLED),
         livekitAgentName: String(process.env.WEBMEET_LIVEKIT_AGENT_NAME || 'webmeet-agent').trim() || 'webmeet-agent',
         egressUrl: String(process.env.WEBMEET_EGRESS_URL || '').trim(),
         recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/data/recordings').trim() || '/data/recordings',
@@ -1211,9 +1205,6 @@ export function formatGuestMeetingTranscriptMarkdown(context, { meetingId, guest
 export async function attachMeetingAgent(context, { meetingId, agentType, mode, authInfo = null }) {
     cleanupMeetingPresence(context, meetingId);
     assertAdminAuthInfo(authInfo);
-    if (!context.livekitAgentEnabled) {
-        throw new Error('LiveKit AI worker dispatch is disabled. Set WEBMEET_LIVEKIT_AGENT_ENABLED=true and run the webmeetLivekitAiAgent Ploinky agent before attaching meeting agents.');
-    }
     const record = loadMeetingRecord(context, meetingId);
     const currentPayload = decryptMeetingPayload(context, record);
     const currentAgent = currentPayload.agents.find((entry) => (

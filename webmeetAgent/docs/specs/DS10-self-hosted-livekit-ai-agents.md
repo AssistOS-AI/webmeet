@@ -15,7 +15,6 @@ WebMeet AI participants are real self-hosted LiveKit Agents. WebMeet must not si
 - Guest users and normal logged-in users can see AI output but cannot attach, control, or finalize agents.
 - LiveKit Cloud and LiveKit Inference are not required or enabled implicitly. Provider credentials for LLM/STT/TTS must be configured explicitly.
 - The AI worker is optional and owned by the separate `webmeetLivekitAiAgent` Ploinky agent. It may be launched by Explorer through a no-wait dependency edge, but it must never block default WebMeet readiness.
-- `WEBMEET_LIVEKIT_AGENT_ENABLED=false` disables WebMeet admin dispatch by default. Operators must set this guard to `true` and confirm the background worker is running before admin attach requests can dispatch AI participants.
 - Base WebMeet startup must not install the worker's native LiveKit dependency tree; that dependency tree belongs only to `webmeetLivekitAiAgent/package.json`.
 - Scribe agents use the internal `webmeetStt` service through `WEBMEET_STT_URL` and persist transcript segments through `webmeetAgent` with the shared derived `WEBMEET_AGENT_INTERNAL_TOKEN`; neither value should require manual local setup.
 
@@ -23,14 +22,7 @@ WebMeet AI participants are real self-hosted LiveKit Agents. WebMeet must not si
 
 When launched by Ploinky, `webmeetLivekitAiAgent/server/livekit-agent.mjs` runs as its own Ploinky agent on the `webmeet` network. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs. When the worker is still preparing or has failed, WebMeet still starts the API, public proxy, and MCP server without requiring `@livekit/agents` inside `webmeetAgent`.
 
-`WEBMEET_LIVEKIT_AGENT_ENABLED` is only the `webmeetAgent` dispatch guard. It must not cause `webmeetAgent/scripts/startAgent.sh` to import `@livekit/agents`, start `server/livekit-agent.mjs`, or depend on the worker dependency cache.
-
-Operator dispatch opt-in:
-
-```bash
-ploinky var WEBMEET_LIVEKIT_AGENT_ENABLED true
-ploinky start explorer 8080
-```
+`webmeetAgent/scripts/startAgent.sh` must not import `@livekit/agents`, start `server/livekit-agent.mjs`, or depend on the worker dependency cache. Admin dispatch attempts go directly through LiveKit and succeed only when the separate worker accepts the dispatch and appears as a real LiveKit `AGENT` participant.
 
 ## Validation
 

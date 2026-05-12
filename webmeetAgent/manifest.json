@@ -133,11 +133,6 @@
                     "default": "WebMeetAgent"
                 },
                 {
-                    "name": "WEBMEET_LIVEKIT_AGENT_ENABLED",
-                    "required": false,
-                    "default": "false"
-                },
-                {
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",
                     "required": false,
                     "default": "webmeet-agent"
@@ -265,11 +260,6 @@
                     "default": "WebMeetAgent"
                 },
                 {
-                    "name": "WEBMEET_LIVEKIT_AGENT_ENABLED",
-                    "required": false,
-                    "default": "false"
-                },
-                {
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",
                     "required": false,
                     "default": "webmeet-agent"
@@ -394,11 +384,6 @@
                     "name": "WEBMEET_AGENT_NAME",
                     "required": false,
                     "default": "WebMeetAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT_ENABLED",
-                    "required": false,
-                    "default": "false"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",

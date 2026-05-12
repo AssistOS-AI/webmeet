@@ -51,7 +51,6 @@ for name in \
     WEBMEET_TURN_MAX_PORT \
     WEBMEET_ROOM_PREFIX \
     WEBMEET_AGENT_NAME \
-    WEBMEET_LIVEKIT_AGENT_ENABLED \
     WEBMEET_LIVEKIT_AGENT_NAME \
     WEBMEET_LIVEKIT_AGENT_LOG_LEVEL \
     WEBMEET_AGENT_API_URL \
@@ -66,21 +65,9 @@ done
 mkdir -p "${WEBMEET_DATA_DIR:-/data}"
 chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null || true
 
-is_enabled() {
-    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
-        1|true|yes|on) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 node /code/server/webmeet-api.mjs >/tmp/webmeet-api.out 2>/tmp/webmeet-api.err &
-if is_enabled "${WEBMEET_LIVEKIT_AGENT_ENABLED:-false}"; then
-    printf '%s\n' 'WEBMEET_LIVEKIT_AGENT_ENABLED is true; AI dispatch is enabled and the worker is owned by webmeetLivekitAiAgent.' >/tmp/webmeet-livekit-agent.out
-    : >/tmp/webmeet-livekit-agent.err
-else
-    printf '%s\n' 'WEBMEET_LIVEKIT_AGENT_ENABLED is not true; LiveKit AI worker is disabled.' >/tmp/webmeet-livekit-agent.out
-    : >/tmp/webmeet-livekit-agent.err
-fi
+printf '%s\n' 'LiveKit AI worker is owned by the separate webmeetLivekitAiAgent Ploinky agent.' >/tmp/webmeet-livekit-agent.out
+: >/tmp/webmeet-livekit-agent.err
 PORT="${WEBMEET_MCP_PORT:-7001}" sh /Agent/server/AgentServer.sh >/tmp/webmeet-mcp.out 2>/tmp/webmeet-mcp.err &
 
 exec node /code/server/webmeet-public-proxy.mjs

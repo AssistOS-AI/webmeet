@@ -8,7 +8,7 @@
   - owns the WebMeet MCP surface, public guest service, and meeting runtime API
   - serves the HTTP API on `WEBMEET_API_PORT` (`8791` by default)
   - stores persistent meeting data under `.ploinky/data/webmeetAgent/data`
-  - creates explicit LiveKit AI dispatches when `WEBMEET_LIVEKIT_AGENT_ENABLED=true`
+  - creates explicit LiveKit AI dispatches for the separate worker
 - `webmeetInfra/stack`
   - provides the WebMeet media infrastructure declared by the manifest
   - includes LiveKit Server, LiveKit Egress, Redis, Coturn, and profile-specific production TLS services
@@ -34,13 +34,6 @@ Explorer only needs to enable `webmeetAgent` and the `webmeet` plugin for normal
 ## Optional AI Worker
 
 WebMeet uses self-hosted LiveKit Agents for AI participants. The worker is not simulated in the WebMeet store and is not LiveKit Cloud or LiveKit Inference.
-
-To opt in to AI dispatch:
-
-```bash
-ploinky var WEBMEET_LIVEKIT_AGENT_ENABLED true
-ploinky start explorer 8080
-```
 
 The worker registers with `WEBMEET_LIVEKIT_AGENT_NAME` and is attached to rooms by explicit admin dispatch. The no-wait background launch must have completed successfully before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
 
