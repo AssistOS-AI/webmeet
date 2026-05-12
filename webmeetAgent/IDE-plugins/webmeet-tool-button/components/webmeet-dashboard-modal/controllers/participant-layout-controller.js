@@ -20,6 +20,7 @@ export class ParticipantLayoutController {
         this.videoGrid = null;
         this.videoGridAll = null;
         this.videoGridEmpty = null;
+        this.videoGridThumbnails = null;
         this.trackElements = new Map();
         this.participantViews = new Map();
         this.focusedParticipantId = '';
@@ -29,6 +30,7 @@ export class ParticipantLayoutController {
         this.videoGrid = elements.videoGrid || null;
         this.videoGridAll = elements.videoGridAll || null;
         this.videoGridEmpty = elements.videoGridEmpty || null;
+        this.videoGridThumbnails = elements.videoGridThumbnails || null;
     }
 
     setVideoGridEmptyState(message) {
@@ -41,6 +43,7 @@ export class ParticipantLayoutController {
         const participantCount = this.participantViews.size;
         const hasParticipants = participantCount > 0;
         const hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId));
+        const useMobileThumbnailStrip = this.shouldUseMobileThumbnailStrip(hasFocusedParticipant);
         if (this.videoGridEmpty) {
             this.videoGridEmpty.classList.toggle('webmeet-hidden', hasParticipants);
         }
@@ -48,6 +51,16 @@ export class ParticipantLayoutController {
             this.videoGridAll.classList.toggle('webmeet-hidden', !hasParticipants);
             this.videoGridAll.classList.toggle('has-focus', hasFocusedParticipant);
         }
+        if (this.videoGridThumbnails) {
+            const showThumbnails = Boolean(useMobileThumbnailStrip && participantCount > 1);
+            this.videoGridThumbnails.classList.toggle('webmeet-hidden', !showThumbnails);
+            this.videoGridThumbnails.classList.toggle('has-focus', showThumbnails);
+        }
+    }
+
+    shouldUseMobileThumbnailStrip(hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId))) {
+        if (!hasFocusedParticipant) return false;
+        return Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches);
     }
 
     applyParticipantViewState(view) {
@@ -149,10 +162,14 @@ export class ParticipantLayoutController {
         if (!this.videoGrid || !this.videoGridAll) return;
         if (!this.participantViews.size) {
             this.focusedParticipantId = '';
+            if (this.videoGridThumbnails) {
+                this.videoGridThumbnails.innerHTML = '';
+            }
             this.syncVideoGridVisibility();
             return;
         }
         const hasFocusedParticipant = Boolean(this.focusedParticipantId && this.participantViews.has(this.focusedParticipantId));
+        const useMobileThumbnailStrip = this.shouldUseMobileThumbnailStrip(hasFocusedParticipant);
         if (!hasFocusedParticipant) {
             this.focusedParticipantId = '';
             for (const view of this.participantViews.values()) {
@@ -163,6 +180,9 @@ export class ParticipantLayoutController {
                 }
                 this.applyParticipantViewState(view);
             }
+            if (this.videoGridThumbnails) {
+                this.videoGridThumbnails.innerHTML = '';
+            }
             this.syncVideoGridVisibility();
             return;
         }
@@ -171,10 +191,16 @@ export class ParticipantLayoutController {
             const isFocused = view.id === this.focusedParticipantId;
             view.isFocused = isFocused;
             view.isMini = !isFocused;
-            if (view.element.parentElement !== this.videoGridAll) {
-                this.videoGridAll.appendChild(view.element);
+            const targetContainer = useMobileThumbnailStrip && !isFocused && this.videoGridThumbnails
+                ? this.videoGridThumbnails
+                : this.videoGridAll;
+            if (view.element.parentElement !== targetContainer) {
+                targetContainer.appendChild(view.element);
             }
             this.applyParticipantViewState(view);
+        }
+        if (useMobileThumbnailStrip && this.videoGridThumbnails) {
+            this.videoGridThumbnails.scrollLeft = 0;
         }
         this.syncVideoGridVisibility();
     }
@@ -416,6 +442,9 @@ export class ParticipantLayoutController {
                 presenter.clearVideoElement();
             }
             view.element.remove();
+        }
+        if (this.videoGridThumbnails) {
+            this.videoGridThumbnails.innerHTML = '';
         }
         this.trackElements.clear();
         this.participantViews.clear();

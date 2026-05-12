@@ -312,6 +312,7 @@ export class WebMeetDashboardModal {
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
         this.videoGridEmpty = this.element.querySelector('#webmeetVideoEmpty');
         this.videoGridAll = this.element.querySelector('#webmeetVideoAll');
+        this.videoGridThumbnails = this.element.querySelector('#webmeetVideoThumbnails');
         this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
         this.micButton = this.element.querySelector('#webmeetMicButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');
@@ -348,7 +349,8 @@ export class WebMeetDashboardModal {
         this.participantLayoutController.setElements({
             videoGrid: this.videoGrid,
             videoGridAll: this.videoGridAll,
-            videoGridEmpty: this.videoGridEmpty
+            videoGridEmpty: this.videoGridEmpty,
+            videoGridThumbnails: this.videoGridThumbnails
         });
 
         // Set elements on new modular components

@@ -225,6 +225,15 @@ webmeet-participant-card.is-focused .wm-participant-footer {
     background: color-mix(in srgb, var(--red) 14%, transparent);
 }
 
+.wm-participant-audio-settings .wm-audio-off,
+.wm-participant-audio-settings.is-muted .wm-audio-on {
+    display: none;
+}
+
+.wm-participant-audio-settings.is-muted .wm-audio-off {
+    display: block;
+}
+
 .wm-participant-agent-detach {
     display: none;
     width: 22px;
