@@ -14,10 +14,11 @@ WebMeet AI participants are real self-hosted LiveKit Agents. WebMeet must not si
 - WebMeet store persists dispatch metadata, chat, transcript, recordings, artifacts, tasks, and decisions. It does not create fake AI participants.
 - Guest users and normal logged-in users can see AI output but cannot attach, control, or finalize agents.
 - LiveKit Cloud and LiveKit Inference are not required or enabled implicitly. Provider credentials for LLM/STT/TTS must be configured explicitly.
+- The AI worker is optional and disabled by default through `WEBMEET_LIVEKIT_AGENT_ENABLED=false`. Base WebMeet startup must not install the worker's native LiveKit dependency tree; admin attach requests must fail clearly while the worker is disabled.
 
 ## Runtime
 
-`server/livekit-agent.mjs` runs as a separate process beside the WebMeet API, public proxy, and MCP server. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs.
+When enabled, `server/livekit-agent.mjs` runs as a separate process beside the WebMeet API, public proxy, and MCP server. The process connects to the self-hosted LiveKit server and waits for explicit dispatch jobs. When disabled, WebMeet still starts the API, public proxy, and MCP server without requiring `@livekit/agents`.
 
 ## Validation
 
