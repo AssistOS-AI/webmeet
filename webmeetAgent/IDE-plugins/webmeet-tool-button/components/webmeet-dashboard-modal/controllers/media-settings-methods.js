@@ -300,11 +300,13 @@ export const mediaSettingsMethods = {
         const volume = this.normalizeOutputVolume(
             this.normalizeOutputVolume(outputVolume) * this.normalizeParticipantAudioVolume(participantSettings.volume)
         );
-        mediaElement.volume = volume;
-        mediaElement.muted = Boolean(participantSettings.muted) || volume === 0;
+        const isDeafened = Boolean(this.state.mediaDeafened);
+        mediaElement.volume = isDeafened ? 0 : volume;
+        mediaElement.muted = isDeafened || Boolean(participantSettings.muted) || volume === 0;
         mediaElement.dataset.webmeetOutputVolume = String(this.normalizeOutputVolume(outputVolume));
         mediaElement.dataset.webmeetParticipantVolume = String(participantSettings.volume);
         mediaElement.dataset.webmeetParticipantMuted = participantSettings.muted ? 'true' : 'false';
+        mediaElement.dataset.webmeetDeafened = isDeafened ? 'true' : 'false';
     },
 
     applyOutputVolumePreviewToAllAudioElements(outputVolume = this.getCurrentOutputVolume()) {
@@ -323,13 +325,41 @@ export const mediaSettingsMethods = {
     applyParticipantAudioSettingsToParticipant(participantId, outputVolume = this.getCurrentOutputVolume()) {
         const id = String(participantId || '').trim();
         if (!id) return;
+        let applied = false;
         for (const trackId of this.participantLayoutController.findTrackIdsForParticipant(id, { kind: 'audio' })) {
             const trackEntry = this.participantLayoutController.getTrackEntry(trackId);
             if (!trackEntry?.element) continue;
             trackEntry.element.dataset.participantId = id;
             this.applyOutputVolumePreviewToElement(trackEntry.element, outputVolume);
+            applied = true;
+        }
+        for (const mediaElement of this.element.querySelectorAll('audio')) {
+            const elementParticipantId = String(
+                mediaElement.dataset?.participantId
+                || mediaElement.closest?.('[data-participant-id]')?.dataset?.participantId
+                || ''
+            ).trim();
+            if (elementParticipantId !== id) continue;
+            mediaElement.dataset.participantId = id;
+            this.applyOutputVolumePreviewToElement(mediaElement, outputVolume);
+            applied = true;
         }
         this.participantLayoutController.refreshParticipantAudioState?.(id);
+        return applied;
+    },
+
+    previewParticipantAudioSettings(settings = {}) {
+        const participantId = String(settings.participantId || '').trim();
+        if (!participantId) return;
+        this.setParticipantAudioSettings(participantId, {
+            muted: settings.muted,
+            volume: settings.volume
+        });
+        this.applyParticipantAudioSettingsToParticipant(participantId);
+    },
+
+    handleParticipantAudioPreview(event) {
+        this.previewParticipantAudioSettings(event?.detail || {});
     },
 
     normalizeDeviceLabel(label) {
@@ -631,9 +661,18 @@ export const mediaSettingsMethods = {
         if (this.mediaSettingsButton) {
             this.mediaSettingsButton.classList.toggle('active', this.state.mediaSettingsPanelVisible);
         }
+        if (this.applyMediaSettingsButton) {
+            const isApplying = Boolean(this.state.mediaSettingsApplying);
+            this.applyMediaSettingsButton.classList.toggle('is-loading', isApplying);
+            this.applyMediaSettingsButton.disabled = isApplying;
+            this.applyMediaSettingsButton.setAttribute('aria-busy', isApplying ? 'true' : 'false');
+        }
     },
 
     toggleMediaSettings() {
+        if (this.state.mediaSettingsApplying) {
+            return;
+        }
         this.state.mediaSettingsPanelVisible = !this.state.mediaSettingsPanelVisible;
         if (this.state.mediaSettingsPanelVisible) {
             this.beginMediaSettingsDraft();
@@ -696,7 +735,8 @@ export const mediaSettingsMethods = {
     },
 
     async reapplyActiveInputDevices() {
-        if (!this.room?.localParticipant) return;
+        const errors = [];
+        if (!this.room?.localParticipant) return errors;
         if (this.state.media.microphone) {
             await this.runMediaToggleWithLoading('microphone', () => this.mediaController.restartMicrophone());
         }
@@ -704,9 +744,15 @@ export const mediaSettingsMethods = {
             try {
                 await this.room.localParticipant.setCameraEnabled(false);
                 const camOptions = this.mediaController.getCameraEnableOptions();
-                await this.room.localParticipant.setCameraEnabled(true, camOptions);
-            } catch (_) {
-                // ignore input restart errors
+                const publishOptions = this.mediaController.getCameraPublishOptions();
+                try {
+                    await this.room.localParticipant.setCameraEnabled(true, camOptions, publishOptions);
+                } catch (_) {
+                    await this.room.localParticipant.setCameraEnabled(true);
+                    errors.push('Selected camera settings could not be used. WebMeet is using browser default camera settings.');
+                }
+            } catch (error) {
+                errors.push(error instanceof Error ? error.message : 'Camera settings could not be applied.');
             }
         }
         if (this.state.media.screen) {
@@ -717,28 +763,45 @@ export const mediaSettingsMethods = {
                     this.mediaController.getScreenShareQualityOptions(),
                     this.mediaController.getScreenSharePublishOptions()
                 );
-            } catch (_) {
-                // ignore screen restart errors
+            } catch (error) {
+                errors.push(error instanceof Error ? error.message : 'Screen share settings could not be applied.');
             }
         }
+        return errors;
     },
 
     async applyMediaSettings() {
+        if (this.state.mediaSettingsApplying) {
+            return;
+        }
+        this.state.mediaSettingsApplying = true;
         this.state.mediaSettings = this.state.mediaSettingsDraft
             ? this.normalizeMediaSettings(this.state.mediaSettingsDraft)
             : this.collectMediaSettingsFromInputs();
-        this.mediaController.setSettings(this.state.mediaSettings);
-        this.persistMediaSettings();
-        this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
-            this.state.mediaSettings,
-            { testMicrophone: true }
-        );
-        await this.applyAudioOutputDeviceToAllTracks();
-        await this.reapplyActiveInputDevices();
-        this.state.mediaSettingsPanelVisible = false;
-        this.clearMediaSettingsDraft();
         this.renderMediaSettingsPanel();
-        this.setError(this.state.mediaDeviceWarnings[0] || 'Media settings applied.');
+        try {
+            this.mediaController.setSettings(this.state.mediaSettings);
+            this.persistMediaSettings();
+            this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
+                this.state.mediaSettings,
+                { testMicrophone: true }
+            );
+            await this.applyAudioOutputDeviceToAllTracks();
+            const inputErrors = await this.reapplyActiveInputDevices();
+            this.state.mediaSettingsPanelVisible = false;
+            if (this.state.activeMobilePanel === 'settings') {
+                this.state.activeMobilePanel = 'room';
+                this.applyMobilePanelState?.();
+            }
+            this.clearMediaSettingsDraft();
+            this.renderMediaSettingsPanel();
+            this.setError(inputErrors[0] || this.state.mediaDeviceWarnings[0] || 'Media settings applied.');
+        } finally {
+            this.state.mediaSettingsApplying = false;
+            if (this.state.mediaSettingsPanelVisible) {
+                this.renderMediaSettingsPanel();
+            }
+        }
     },
 
     async openParticipantAudioSettings(target) {
@@ -761,15 +824,16 @@ export const mediaSettingsMethods = {
             muted: currentSettings.muted ? 'true' : 'false'
         }, true);
         if (!result) return;
+        const resultParticipantId = String(result.participantId || participantId).trim();
         if (result.reset === true) {
-            this.setParticipantAudioSettings(participantId, { muted: false, volume: 1 });
+            this.setParticipantAudioSettings(resultParticipantId, { muted: false, volume: 1 });
         } else {
-            this.setParticipantAudioSettings(participantId, {
+            this.setParticipantAudioSettings(resultParticipantId, {
                 muted: result.muted,
                 volume: result.volume
             });
         }
-        this.applyParticipantAudioSettingsToParticipant(participantId);
+        this.applyParticipantAudioSettingsToParticipant(resultParticipantId);
         this.renderParticipantLayout();
     }
 };

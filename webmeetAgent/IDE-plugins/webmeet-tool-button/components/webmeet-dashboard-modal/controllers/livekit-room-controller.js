@@ -1,4 +1,8 @@
 import { logMediaDiagnostic } from '../services/media-diagnostics.js';
+import {
+    getLiveKitProfileResolution,
+    getMediaQualityProfile
+} from './media-quality-profiles.js';
 
 export class LivekitRoomController {
     constructor(options = {}) {
@@ -23,66 +27,22 @@ export class LivekitRoomController {
     }
 
     getQualityProfile(type, quality) {
-        const key = String(quality || '').trim();
-        const cameraProfiles = {
-            h360: {
-                preset: 'h360',
-                resolution: { width: 640, height: 360, frameRate: 24 },
-                encoding: { maxBitrate: 800_000, maxFramerate: 24 }
-            },
-            h540: {
-                preset: 'h540',
-                resolution: { width: 960, height: 540, frameRate: 30 },
-                encoding: { maxBitrate: 1_500_000, maxFramerate: 30 }
-            },
-            h720: {
-                preset: 'h720',
-                resolution: { width: 1280, height: 720, frameRate: 30 },
-                encoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-            },
-            h1080: {
-                preset: 'h1080',
-                resolution: { width: 1920, height: 1080, frameRate: 30 },
-                encoding: { maxBitrate: 4_500_000, maxFramerate: 30 }
-            }
-        };
-        const screenProfiles = {
-            h720fps15: {
-                preset: 'h720fps15',
-                resolution: { width: 1280, height: 720, frameRate: 15 },
-                encoding: { maxBitrate: 1_500_000, maxFramerate: 15 }
-            },
-            h720fps30: {
-                preset: 'h720fps30',
-                resolution: { width: 1280, height: 720, frameRate: 30 },
-                encoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-            },
-            h1080fps15: {
-                preset: 'h1080fps15',
-                resolution: { width: 1920, height: 1080, frameRate: 15 },
-                encoding: { maxBitrate: 2_500_000, maxFramerate: 15 }
-            },
-            h1080fps30: {
-                preset: 'h1080fps30',
-                resolution: { width: 1920, height: 1080, frameRate: 30 },
-                encoding: { maxBitrate: 3_500_000, maxFramerate: 30 }
-            }
-        };
-        const profiles = type === 'screen' ? screenProfiles : cameraProfiles;
-        const fallback = type === 'screen' ? screenProfiles.h1080fps30 : cameraProfiles.h720;
-        return profiles[key] || fallback;
-    }
-
-    getVideoResolution(livekit, presetName, fallback) {
-        const preset = livekit?.VideoPresets?.[presetName];
-        return preset?.resolution || fallback;
+        return getMediaQualityProfile(type, quality);
     }
 
     getVideoCaptureDefaults(livekit) {
         const settings = this.getMediaQualitySettings();
         const profile = this.getQualityProfile('camera', settings.cameraQuality);
         return {
-            resolution: this.getVideoResolution(livekit, profile.preset, profile.resolution)
+            resolution: getLiveKitProfileResolution(livekit, 'camera', profile)
+        };
+    }
+
+    getPublishDefaults() {
+        const settings = this.getMediaQualitySettings();
+        const profile = this.getQualityProfile('camera', settings.cameraQuality);
+        return {
+            videoEncoding: { ...profile.encoding }
         };
     }
 
@@ -107,6 +67,7 @@ export class LivekitRoomController {
             dynacast: false,
             audioCaptureDefaults,
             videoCaptureDefaults: this.getVideoCaptureDefaults(livekit),
+            publishDefaults: this.getPublishDefaults(),
             stopLocalTrackOnUnpublish: true
         });
         this.room = room;

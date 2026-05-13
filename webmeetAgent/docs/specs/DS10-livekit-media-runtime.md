@@ -173,8 +173,11 @@ Camera and screen share may be active at the same time. They are separate LiveKi
 
 The current WebMeet media controller:
 
-- applies screen-share capture quality from `screenShareQuality`.
+- applies camera capture and publish quality from `cameraQuality`.
+- applies screen-share capture and publish quality from `screenShareQuality`.
 - publishes screen share with `simulcast: false`.
+- supports local deafen, which mutes remote playback in the current browser and disables the local microphone when enabled.
+- lets users choose microphone, camera, speaker, microphone gain, speaker volume, audio processing flags, camera quality, and screen-share quality from the media settings panel.
 - emits media diagnostics only when an explicit debug flag such as `WEBMEET_MEDIA_DEBUG` or `webmeetMediaDebug=1` is enabled.
 
 Diagnostics must summarize room, track, publication, candidate, and video-element state without logging tokens, SDP blobs, ICE credentials, API keys, or authorization values.

@@ -57,6 +57,7 @@ export class WebMeetDashboardModal {
                 camera: false,
                 screen: false
             },
+            mediaDeafened: false,
             mediaLoading: {
                 microphone: false,
                 camera: false,
@@ -76,6 +77,7 @@ export class WebMeetDashboardModal {
             },
             mediaDeviceWarnings: [],
             mediaSettingsPanelVisible: false,
+            mediaSettingsApplying: false,
             mediaSettingsDraft: null,
             participantAudioSettings: {},
             participants: [],
@@ -88,6 +90,7 @@ export class WebMeetDashboardModal {
         this.workspaceEventsSource = null;
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
+        this.handleParticipantAudioPreviewEvent = (event) => this.handleParticipantAudioPreview(event);
         this.roomController = new LivekitRoomController({
             ensureLiveKitClient,
             buildRtcConfigForSession,
@@ -213,6 +216,7 @@ export class WebMeetDashboardModal {
         this.registerWindowPresenceHandlers();
         this.registerMediaDeviceChangeHandler();
         this.registerMediaSettingsInputHandlers();
+        window.addEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         this.renderMediaSettingsPanel();
         void this.refreshMediaDevices({ requestPermission: false, showToast: false });
         await this.bootstrap();
@@ -231,6 +235,7 @@ export class WebMeetDashboardModal {
                 'leaveMeeting',
                 'toggleRecording',
                 'toggleMicrophone',
+                'toggleDeafen',
                 'toggleCamera',
                 'toggleScreenShare',
                 'toggleVideoGridFullscreen',
@@ -318,6 +323,7 @@ export class WebMeetDashboardModal {
         this.videoGridThumbnails = this.element.querySelector('#webmeetVideoThumbnails');
         this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
         this.micButton = this.element.querySelector('#webmeetMicButton');
+        this.deafenButton = this.element.querySelector('#webmeetDeafenButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');
         this.screenShareButton = this.element.querySelector('#webmeetScreenShareButton');
         this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
@@ -328,6 +334,7 @@ export class WebMeetDashboardModal {
         this.createRoomButton = this.element.querySelector('#webmeetCreateRoomButton');
         this.fullscreenButton = this.element.querySelector('#webmeetModalFullscreen');
         this.mediaSettingsButton = this.element.querySelector('#webmeetMediaSettingsButton');
+        this.applyMediaSettingsButton = this.element.querySelector('#webmeetApplyMediaSettingsButton');
         this.mediaSettingsPanel = this.element.querySelector('#webmeetMediaSettingsPanel');
         this.audioInputSelect = this.element.querySelector('#webmeetAudioInputSelect');
         this.videoInputSelect = this.element.querySelector('#webmeetVideoInputSelect');
@@ -365,35 +372,6 @@ export class WebMeetDashboardModal {
         this.applyMobilePanelState();
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
         this.stopMeetingEvents();
@@ -401,6 +379,7 @@ export class WebMeetDashboardModal {
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();
         this.unregisterMediaDeviceChangeHandler();
+        window.removeEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         this.presenceController.teardown();
         if (this.state.session?.participantIdentity) {
             void this.unjoinCurrentSession({ preserveDisplayName: false });
@@ -1058,14 +1037,6 @@ export class WebMeetDashboardModal {
     async stopAutoTranscript() {
         this.stopSpeechRecognition();
     }
-
-
-
-
-
-
-
-
 
     async closeModal(target) {
         if (this.state.session?.participantIdentity) {

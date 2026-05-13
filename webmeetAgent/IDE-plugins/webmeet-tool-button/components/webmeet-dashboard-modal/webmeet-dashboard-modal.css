@@ -925,6 +925,34 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     gap: 8px;
 }
 
+.webmeet-apply-media-settings-button {
+    position: relative;
+    min-width: 74px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.webmeet-apply-media-settings-button:disabled {
+    cursor: wait;
+    opacity: 0.78;
+}
+
+.webmeet-apply-media-settings-button.is-loading .webmeet-button-label {
+    opacity: 0;
+}
+
+.webmeet-apply-media-settings-button.is-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border: 2px solid color-mix(in srgb, currentColor 32%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: webmeet-spin 0.8s linear infinite;
+}
+
 .webmeet-video-grid-fullscreen-button .icon-exit {
     display: none;
 }
@@ -1039,6 +1067,22 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 .webmeet-icon-button.active .icon-on,
 .webmeet-icon-button .icon-off {
     display: block;
+}
+
+.webmeet-deafen-button.active .icon-on {
+    display: none;
+}
+
+.webmeet-deafen-button.active .icon-off {
+    display: block;
+}
+
+.webmeet-deafen-button:not(.active) .icon-on {
+    display: block;
+}
+
+.webmeet-deafen-button:not(.active) .icon-off {
+    display: none;
 }
 
 .webmeet-icon-button svg {

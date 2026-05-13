@@ -126,6 +126,12 @@ export const dashboardRenderMethods = {
         if (this.micButton) {
             this.micButton.classList.toggle('active', this.state.media.microphone);
         }
+        if (this.deafenButton) {
+            const isDeafened = Boolean(this.state.mediaDeafened);
+            this.deafenButton.classList.toggle('active', isDeafened);
+            this.deafenButton.title = isDeafened ? 'Undeafen' : 'Deafen';
+            this.deafenButton.setAttribute('aria-label', isDeafened ? 'Undeafen' : 'Deafen');
+        }
         if (this.cameraButton) {
             this.cameraButton.classList.toggle('active', this.state.media.camera);
         }
@@ -141,6 +147,10 @@ export const dashboardRenderMethods = {
             button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
         };
         setMediaButtonLoading(this.micButton, 'microphone');
+        if (this.deafenButton) {
+            this.deafenButton.disabled = mediaBusy;
+            this.deafenButton.setAttribute('aria-busy', 'false');
+        }
         setMediaButtonLoading(this.cameraButton, 'camera');
         setMediaButtonLoading(this.screenShareButton, 'screen');
     },

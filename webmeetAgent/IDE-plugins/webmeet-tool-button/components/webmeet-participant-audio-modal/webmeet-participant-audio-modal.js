@@ -2,12 +2,20 @@ export class WebmeetParticipantAudioModal {
     constructor(element, invalidate) {
         this.element = element;
         this.invalidate = invalidate;
-        this.participantId = String(this.element.getAttribute('data-participantId') || '').trim();
-        this.participantName = String(this.element.getAttribute('data-participantName') || 'Participant').trim() || 'Participant';
+        this.participantId = this.getDataAttribute('participantId', 'participant-id');
+        this.participantName = this.getDataAttribute('participantName', 'participant-name') || 'Participant';
         this.initialVolume = this.normalizeVolume(this.element.getAttribute('data-volume'));
         this.initialMuted = String(this.element.getAttribute('data-muted') || '').toLowerCase() === 'true';
         this.result = null;
         this.invalidate();
+    }
+
+    getDataAttribute(...names) {
+        for (const name of names) {
+            const value = String(this.element.getAttribute(`data-${name}`) || '').trim();
+            if (value) return value;
+        }
+        return '';
     }
 
     beforeRender() {
@@ -20,6 +28,7 @@ export class WebmeetParticipantAudioModal {
         this.volumeValue = this.element.querySelector('[data-role="volumeValue"]');
         this.muteInput = this.element.querySelector('[data-role="muteInput"]');
         this.volumeInput?.addEventListener?.('input', this.handleVolumeInput);
+        this.muteInput?.addEventListener?.('change', this.handleMuteChange);
         this.syncPreview();
     }
 
@@ -35,6 +44,11 @@ export class WebmeetParticipantAudioModal {
 
     handleVolumeInput = () => {
         this.syncPreview();
+        this.dispatchPreview();
+    };
+
+    handleMuteChange = () => {
+        this.dispatchPreview();
     };
 
     syncPreview() {
@@ -44,11 +58,35 @@ export class WebmeetParticipantAudioModal {
         }
     }
 
+    getCurrentSettings() {
+        return {
+            participantId: this.participantId,
+            volume: this.normalizeVolume(this.volumeInput?.value),
+            muted: Boolean(this.muteInput?.checked)
+        };
+    }
+
+    dispatchPreview(settings = this.getCurrentSettings()) {
+        window.dispatchEvent(new CustomEvent('webmeet:participant-audio-preview', {
+            detail: settings
+        }));
+    }
+
     closeModal() {
+        this.dispatchPreview({
+            participantId: this.participantId,
+            volume: this.initialVolume,
+            muted: this.initialMuted
+        });
         assistOS.UI.closeModal(this.element, null);
     }
 
     resetSettings() {
+        this.dispatchPreview({
+            participantId: this.participantId,
+            volume: 1,
+            muted: false
+        });
         assistOS.UI.closeModal(this.element, {
             participantId: this.participantId,
             reset: true
@@ -56,10 +94,12 @@ export class WebmeetParticipantAudioModal {
     }
 
     saveSettings() {
+        const settings = this.getCurrentSettings();
+        this.dispatchPreview(settings);
         assistOS.UI.closeModal(this.element, {
-            participantId: this.participantId,
-            volume: this.normalizeVolume(this.volumeInput?.value),
-            muted: Boolean(this.muteInput?.checked)
+            participantId: settings.participantId,
+            volume: settings.volume,
+            muted: settings.muted
         });
     }
 }

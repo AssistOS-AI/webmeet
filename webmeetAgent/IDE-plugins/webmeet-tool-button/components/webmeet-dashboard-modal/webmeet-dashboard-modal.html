@@ -163,6 +163,19 @@
                                     <line x1="8" y1="23" x2="16" y2="23"></line>
                                 </svg>
                             </button>
+                            <button type="button" class="webmeet-icon-button webmeet-deafen-button" data-local-action="toggleDeafen" id="webmeetDeafenButton" title="Deafen" aria-label="Deafen">
+                                <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M3 14v-2a9 9 0 0 1 18 0v2"></path>
+                                    <path d="M5 14h3v7H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2z"></path>
+                                    <path d="M16 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-3v-7z"></path>
+                                </svg>
+                                <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    <path d="M3 14v-2a9 9 0 0 1 11.5-8.64"></path>
+                                    <path d="M5 14h3v7H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2z"></path>
+                                    <path d="M16 14h3a2 2 0 0 1 2 2v3"></path>
+                                </svg>
+                            </button>
                             <button type="button" class="webmeet-icon-button" data-local-action="toggleCamera" id="webmeetCameraButton" title="Toggle Camera">
                                 <!-- Cam ON icon -->
                                 <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -282,6 +295,15 @@
                                         <option value="h1080">1080p / 30fps</option>
                                     </select>
                                 </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetScreenShareQualitySelect">Screen share quality</label>
+                                    <select id="webmeetScreenShareQualitySelect" class="form-input">
+                                        <option value="h720fps15">720p / 15fps</option>
+                                        <option value="h720fps30">720p / 30fps</option>
+                                        <option value="h1080fps15">1080p / 15fps</option>
+                                        <option value="h1080fps30">1080p / 30fps</option>
+                                    </select>
+                                </div>
                             </section>
 
                             <section class="webmeet-media-settings-group webmeet-media-settings-group-wide" aria-label="Audio processing">
@@ -308,7 +330,9 @@
 
                             <div class="webmeet-media-settings-actions">
                                 <button type="button" class="general-button subtle-button" data-local-action="refreshMediaDevices">Refresh devices</button>
-                                <button type="button" class="general-button" data-local-action="applyMediaSettings">Apply</button>
+                                <button type="button" class="general-button webmeet-apply-media-settings-button" id="webmeetApplyMediaSettingsButton" data-local-action="applyMediaSettings">
+                                    <span class="webmeet-button-label">Apply</span>
+                                </button>
                             </div>
                         </div>
                     </div>

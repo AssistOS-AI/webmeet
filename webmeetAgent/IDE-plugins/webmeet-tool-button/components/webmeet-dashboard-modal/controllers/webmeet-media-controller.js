@@ -2,6 +2,7 @@ import {
     logMediaDiagnostic,
     summarizePublication
 } from '../services/media-diagnostics.js';
+import { getMediaQualityProfile } from './media-quality-profiles.js';
 
 export class WebmeetMediaController {
     constructor(options = {}) {
@@ -69,30 +70,28 @@ export class WebmeetMediaController {
     }
 
     getCameraQualityProfile() {
-        const quality = String(this.settings.cameraQuality || 'h720').trim();
-        const profiles = {
-            h360: { width: 640, height: 360, frameRate: 24 },
-            h540: { width: 960, height: 540, frameRate: 30 },
-            h720: { width: 1280, height: 720, frameRate: 30 },
-            h1080: { width: 1920, height: 1080, frameRate: 30 }
-        };
-        return profiles[quality] || profiles.h720;
+        return getMediaQualityProfile('camera', this.settings.cameraQuality);
     }
 
     getScreenShareQualityOptions() {
-        const quality = String(this.settings.screenShareQuality || 'h1080fps30').trim();
-        const profiles = {
-            h720fps15: { resolution: { width: 1280, height: 720, frameRate: 15 } },
-            h720fps30: { resolution: { width: 1280, height: 720, frameRate: 30 } },
-            h1080fps15: { resolution: { width: 1920, height: 1080, frameRate: 15 } },
-            h1080fps30: { resolution: { width: 1920, height: 1080, frameRate: 30 } }
+        const profile = getMediaQualityProfile('screen', this.settings.screenShareQuality);
+        return {
+            resolution: { ...profile.resolution }
         };
-        return profiles[quality] || profiles.h1080fps30;
+    }
+
+    getCameraPublishOptions() {
+        const profile = this.getCameraQualityProfile();
+        return {
+            videoEncoding: { ...profile.encoding }
+        };
     }
 
     getScreenSharePublishOptions() {
+        const profile = getMediaQualityProfile('screen', this.settings.screenShareQuality);
         return {
-            simulcast: false
+            simulcast: false,
+            videoEncoding: { ...profile.encoding }
         };
     }
 
@@ -310,7 +309,7 @@ export class WebmeetMediaController {
             : undefined;
         return {
             deviceId,
-            resolution: this.getCameraQualityProfile()
+            resolution: { ...this.getCameraQualityProfile().resolution }
         };
     }
 
@@ -430,10 +429,12 @@ export class WebmeetMediaController {
             const shouldEnableCamera = !this.isLocalSourceEnabled('camera');
             if (shouldEnableCamera) {
                 const options = this.getCameraEnableOptions();
+                const publishOptions = this.getCameraPublishOptions();
                 try {
-                    await localParticipant.setCameraEnabled(true, options);
+                    await localParticipant.setCameraEnabled(true, options, publishOptions);
                 } catch (_) {
                     await localParticipant.setCameraEnabled(true);
+                    this.onError('Selected camera quality could not be used. WebMeet is using browser default camera settings.');
                 }
             } else {
                 await localParticipant.setCameraEnabled(false);

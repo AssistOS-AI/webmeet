@@ -450,6 +450,7 @@ export const roomSessionMethods = {
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
+        this.state.mediaDeafened = false;
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
         this.state.videoGridFullscreen = false;
@@ -472,7 +473,24 @@ export const roomSessionMethods = {
     },
 
     async toggleMicrophone() {
+        if (this.state.mediaDeafened && !this.state.media.microphone) {
+            this.state.mediaDeafened = false;
+            this.applyOutputVolumePreviewToAllAudioElements();
+        }
         await this.runMediaToggleWithLoading('microphone', () => this.mediaController.toggleMicrophone());
+    },
+
+    async toggleDeafen() {
+        if (!this.state.session?.participantIdentity) return;
+        if (Object.values(this.state.mediaLoading || {}).some(Boolean)) return;
+        const shouldDeafen = !this.state.mediaDeafened;
+        this.state.mediaDeafened = shouldDeafen;
+        this.applyOutputVolumePreviewToAllAudioElements();
+        if (shouldDeafen && this.state.media.microphone) {
+            await this.toggleMicrophone();
+        } else {
+            this.renderMeetingSummary();
+        }
     },
 
     async toggleCamera() {
