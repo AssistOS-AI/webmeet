@@ -18,7 +18,7 @@ export class WebmeetMediaController {
             audioOutputDeviceId: '',
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true,
+            autoGainControl: false,
             microphoneGain: 1,
             outputVolume: 1,
             cameraQuality: 'h720',
