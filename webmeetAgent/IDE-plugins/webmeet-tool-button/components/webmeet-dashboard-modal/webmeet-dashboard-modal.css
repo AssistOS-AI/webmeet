@@ -987,16 +987,26 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 .webmeet-recording-button .icon-off {
     display: none;
 }
-
-.webmeet-leave-button {
-    border-color: var(--red);
-    color: var(--red);
+.webmeet-media-toggles{
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 0 10px 0 0;
+}
+.webmeet-icon-button.webmeet-leave-button {
+    background-color: #ed4245; /* Discord Red */
+    border-color: #ed4245;
+    color: white;
+    box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
 }
 
 .webmeet-leave-button:hover {
-    background: var(--red);
-    border-color: var(--red);
-    color: var(--white);
+    background-color: #c03537;
+    border-color: #c03537;
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(237, 66, 69, 0.45);
 }
 
 .webmeet-icon-button {
