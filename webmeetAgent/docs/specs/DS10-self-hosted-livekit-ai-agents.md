@@ -8,10 +8,12 @@ WebMeet AI participants are real self-hosted LiveKit Agents. WebMeet must not si
 
 - AI participants are attached by explicit LiveKit agent dispatch only.
 - The dispatching tool is admin-only and uses the self-hosted LiveKit API configured by `WEBMEET_LIVEKIT_URL`, `WEBMEET_LIVEKIT_API_KEY`, and `WEBMEET_LIVEKIT_API_SECRET`.
+- Dispatch is rejected for empty rooms because AI agents must not remain in a room without a human participant.
 - The LiveKit agent runtime registers with `WEBMEET_LIVEKIT_AGENT_NAME`; setting this name disables automatic dispatch and requires admin action per room.
 - A successful attach requires a real LiveKit agent participant in the target room. A `CreateDispatch` HTTP 200 response is not enough, because LiveKit can persist a dispatch record while no worker has accepted the job.
 - Agent participants must expose LiveKit participant attributes for `webmeetAgent`, `webmeetAgentName`, `webmeetMeetingId`, `webmeetAgentType`, and `webmeetAgentMode` so WebMeet can confirm the exact dispatched runtime participant without simulating presence.
 - WebMeet store persists dispatch metadata, chat, transcript, recordings, artifacts, tasks, and decisions. It does not create fake AI participants.
+- When no human participants remain in a WebMeet room after explicit leave or stale-presence cleanup, WebMeet must detach every active LiveKit AI agent dispatch for that room and emit `agent.detached` events with `reason: "no_human_participants"`.
 - Guest users and normal logged-in users can see AI output but cannot attach, control, or finalize agents.
 - LiveKit Cloud and LiveKit Inference are not required or enabled implicitly. Provider credentials for LLM/STT/TTS must be configured explicitly.
 - The AI worker is optional and owned by the separate `webmeetLivekitAiAgent` Ploinky agent. It may be launched by Explorer through a no-wait dependency edge, but it must never block default WebMeet readiness.

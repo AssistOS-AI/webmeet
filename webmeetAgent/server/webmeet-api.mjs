@@ -344,7 +344,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.guest.leave') {
             const body = await readBody(req);
-            json(res, 200, leaveGuestMeeting(context, {
+            json(res, 200, await leaveGuestMeeting(context, {
                 meetingId: route.params[0],
                 guestToken: String(body.guestToken || '').trim(),
                 participantId: String(body.participantId || '').trim()
@@ -362,7 +362,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.leave') {
             const body = await readBody(req);
-            json(res, 200, leaveMeeting(context, {
+            json(res, 200, await leaveMeeting(context, {
                 meetingId: route.params[0],
                 participantId: String(body.participantId || '').trim()
             }));

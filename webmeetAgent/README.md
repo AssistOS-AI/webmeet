@@ -39,6 +39,8 @@ The worker registers with `WEBMEET_LIVEKIT_AGENT_NAME` and is attached to rooms 
 
 The WebMeet store persists only dispatch metadata, chat, transcript, recordings, and artifacts. It does not create fake AI participants.
 
+WebMeet rejects AI dispatch for empty rooms. When the last human participant leaves a room or times out from stale presence cleanup, WebMeet automatically detaches every active AI dispatch for that room.
+
 ## HTTP API
 
 Default port: `8791`
