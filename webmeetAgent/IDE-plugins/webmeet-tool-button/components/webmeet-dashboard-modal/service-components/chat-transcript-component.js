@@ -34,10 +34,6 @@ export class ChatTranscriptComponent {
 
     async sendChat() {
         const meeting = this.getSelectedMeeting();
-        if (this.isGuestSession() || !this.canManageArtifacts()) {
-            this.setError('Only admin can append transcript.');
-            return;
-        }
         if (!meeting) {
             this.setError('Select a meeting first.');
             return;

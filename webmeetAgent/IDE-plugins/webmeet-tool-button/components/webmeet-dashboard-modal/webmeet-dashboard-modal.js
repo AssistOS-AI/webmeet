@@ -93,6 +93,7 @@ export class WebMeetDashboardModal {
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
         this.handleParticipantAudioPreviewEvent = (event) => this.handleParticipantAudioPreview(event);
+        this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
         this.roomController = new LivekitRoomController({
             ensureLiveKitClient,
             buildRtcConfigForSession,
@@ -273,6 +274,14 @@ export class WebMeetDashboardModal {
 
         // Add event listeners for mobile panels and collapse controls that are not WebSkel actions.
         this.element.addEventListener('click', this.handleClick);
+        this.chatInput?.addEventListener?.('keydown', this.handleChatInputKeydown);
+    }
+
+    onChatInputKeydown(event) {
+        if (event.key !== 'Enter' || event.isComposing) return;
+        if (event.shiftKey || event.altKey || event.ctrlKey) return;
+        event.preventDefault();
+        void this.sendChat();
     }
 
     handleClick = (event) => {
@@ -378,6 +387,7 @@ export class WebMeetDashboardModal {
 
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
+        this.chatInput?.removeEventListener?.('keydown', this.handleChatInputKeydown);
         this.stopMeetingEvents();
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
