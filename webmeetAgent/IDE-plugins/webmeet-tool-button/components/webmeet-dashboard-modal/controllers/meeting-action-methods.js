@@ -157,10 +157,19 @@ export const meetingActionMethods = {
     },
 
     async leaveMeeting() {
+        if (this.state.leavingMeeting) return;
         const wasGuestSession = this.isGuestSession();
-        await this.unjoinCurrentSession({ preserveDisplayName: false });
-        if (wasGuestSession && typeof this.hostContext?.onGuestExit === 'function') {
-            this.hostContext.onGuestExit();
+        this.state.leavingMeeting = true;
+        this.state.roomState = 'Disconnecting';
+        this.renderAll();
+        try {
+            await this.unjoinCurrentSession({ preserveDisplayName: false });
+            if (wasGuestSession && typeof this.hostContext?.onGuestExit === 'function') {
+                this.hostContext.onGuestExit();
+            }
+        } finally {
+            this.state.leavingMeeting = false;
+            this.renderAll();
         }
     },
 
@@ -171,6 +180,8 @@ export const meetingActionMethods = {
         const preservedName = String(this.state.session?.participant?.displayName || '').trim();
         const wasGuestSession = this.isGuestSession();
         this.stopPresenceHeartbeat();
+        this.stopSpeechRecognition();
+        await this.disconnectRoom();
 
         if (previousMeetingId && previousParticipantId && wasGuestSession) {
             try {
@@ -190,8 +201,6 @@ export const meetingActionMethods = {
         }
 
         this.removeParticipantFromMeetingList(previousMeetingId, previousParticipantId);
-        this.stopSpeechRecognition();
-        await this.disconnectRoom();
         this.state.session = preserveDisplayName && preservedName ? { participant: { displayName: preservedName } } : null;
         if (!wasGuestSession) {
             await this.loadParticipantsForMeetings();

@@ -48,6 +48,7 @@ export class WebMeetDashboardModal {
             selectedWorkspaceId: '',
             selectedMeetingId: '',
             joiningMeetingId: '',
+            leavingMeeting: false,
             canManageRooms: false,
             session: null,
             roomState: 'Disconnected',
@@ -58,6 +59,7 @@ export class WebMeetDashboardModal {
                 screen: false
             },
             mediaDeafened: false,
+            mediaDeafenRestoreMicrophone: false,
             mediaLoading: {
                 microphone: false,
                 camera: false,
@@ -322,6 +324,8 @@ export class WebMeetDashboardModal {
         this.videoGridAll = this.element.querySelector('#webmeetVideoAll');
         this.videoGridThumbnails = this.element.querySelector('#webmeetVideoThumbnails');
         this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
+        this.leaveButton = this.element.querySelector('#webmeetLeaveButton');
+        this.exitOverlay = this.element.querySelector('#webmeetExitOverlay');
         this.micButton = this.element.querySelector('#webmeetMicButton');
         this.deafenButton = this.element.querySelector('#webmeetDeafenButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');

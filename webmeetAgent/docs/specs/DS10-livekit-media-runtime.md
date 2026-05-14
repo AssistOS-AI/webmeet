@@ -176,8 +176,9 @@ The current WebMeet media controller:
 - applies camera capture and publish quality from `cameraQuality`.
 - applies screen-share capture and publish quality from `screenShareQuality`.
 - publishes screen share with `simulcast: false`.
-- supports local deafen, which mutes remote playback in the current browser and disables the local microphone when enabled.
+- supports local deafen, which mutes remote playback in the current browser, disables the local microphone when enabled, and restores the microphone on undeafen only when it was enabled before deafen.
 - lets users choose microphone, camera, speaker, microphone gain, speaker volume, audio processing flags, camera quality, and screen-share quality from the media settings panel.
+- stops local microphone, camera, and screen-share tracks and mutes/unsubscribes remote playback before the application leave request when a user exits a room.
 - emits media diagnostics only when an explicit debug flag such as `WEBMEET_MEDIA_DEBUG` or `webmeetMediaDebug=1` is enabled.
 
 Diagnostics must summarize room, track, publication, candidate, and video-element state without logging tokens, SDP blobs, ICE credentials, API keys, or authorization values.
