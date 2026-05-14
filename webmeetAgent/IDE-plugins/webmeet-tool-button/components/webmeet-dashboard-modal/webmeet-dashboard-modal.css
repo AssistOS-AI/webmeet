@@ -261,6 +261,30 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     animation: fadeIn 0.3s ease;
 }
 
+.webmeet-exit-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: color-mix(in srgb, var(--file-exp-panel) 84%, transparent);
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 600;
+    pointer-events: all;
+}
+
+.webmeet-exit-spinner {
+    width: 22px;
+    height: 22px;
+    border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: webmeet-spin 0.8s linear infinite;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -389,6 +413,37 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 .webmeet-panel-actions {
     display: flex;
     gap: 8px;
+}
+
+.webmeet-create-room-button {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border-strong));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    color: var(--accent);
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.webmeet-create-room-button:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--white);
+}
+
+.webmeet-create-room-button:active {
+    transform: translateY(1px);
+}
+
+.webmeet-create-room-button svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
 }
 
 .webmeet-sidebar .webmeet-panel-header span {
@@ -632,9 +687,8 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 }
 
 #webmeetChatSidebar .webmeet-panel-header {
-    padding: 12px 14px;
+    padding: 7px 14px;
     border-bottom: 1px solid var(--border-strong);
-    background: color-mix(in srgb, var(--surface) 88%, var(--inactive-element) 12%);
 }
 
 #webmeetChatSidebar .webmeet-panel-header span {
@@ -683,7 +737,6 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     border-radius: 8px;
     line-height: 1.35;
     border: none;
-    background: color-mix(in srgb, var(--inactive-element) 72%, var(--surface) 28%);
     overflow-y: auto;
 }
 
@@ -987,16 +1040,26 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 .webmeet-recording-button .icon-off {
     display: none;
 }
-
-.webmeet-leave-button {
-    border-color: var(--red);
-    color: var(--red);
+.webmeet-media-toggles{
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 0 10px 0 0;
+}
+.webmeet-icon-button.webmeet-leave-button {
+    background-color: #ed4245; /* Discord Red */
+    border-color: #ed4245;
+    color: white;
+    box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
 }
 
 .webmeet-leave-button:hover {
-    background: var(--red);
-    border-color: var(--red);
-    color: var(--white);
+    background-color: #c03537;
+    border-color: #c03537;
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(237, 66, 69, 0.45);
 }
 
 .webmeet-icon-button {
@@ -1189,6 +1252,7 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     padding: 2px 8px;
     border-radius: 4px;
     transition: background 0.12s ease;
+    background: var(--light-gray-border);
 }
 
 .webmeet-chat-entry:hover {
@@ -1196,7 +1260,7 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 }
 
 .webmeet-chat-entry.webmeet-chat-entry-self {
-    align-items: flex-end;
+    align-items: flex-start;
 }
 
 .webmeet-chat-message-content {
@@ -1218,7 +1282,8 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 }
 
 .webmeet-chat-entry.webmeet-chat-entry-self .webmeet-chat-meta {
-    justify-content: flex-end;
+    justify-content: flex-start;
+    background: var(--bg-active);
 }
 
 .webmeet-chat-author {

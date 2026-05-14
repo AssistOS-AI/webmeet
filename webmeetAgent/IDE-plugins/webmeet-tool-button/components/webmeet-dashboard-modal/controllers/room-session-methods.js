@@ -451,6 +451,7 @@ export const roomSessionMethods = {
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
         this.state.mediaDeafened = false;
+        this.state.mediaDeafenRestoreMicrophone = false;
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
         this.state.videoGridFullscreen = false;
@@ -466,8 +467,53 @@ export const roomSessionMethods = {
         }
     },
 
-    async disconnectRoom() {
-        if (!this.roomController.getRoom()) return;
+    muteRoomPlaybackElements() {
+        const mediaElements = [
+            ...this.participantLayoutController.getTrackEntries()
+                .filter((entry) => entry?.kind === 'audio' || entry?.kind === 'video')
+                .map((entry) => entry.element)
+                .filter(Boolean),
+            ...Array.from(this.element?.querySelectorAll?.('audio, video') || [])
+        ];
+        for (const mediaElement of new Set(mediaElements)) {
+            try { mediaElement.muted = true; } catch (_) {}
+            try { mediaElement.volume = 0; } catch (_) {}
+            try { mediaElement.pause?.(); } catch (_) {}
+        }
+    },
+
+    unsubscribeRemotePublications(room = this.roomController.getRoom()) {
+        for (const participant of room?.remoteParticipants?.values?.() || []) {
+            for (const publication of participant?.trackPublications?.values?.() || []) {
+                try {
+                    const result = publication?.setSubscribed?.(false);
+                    if (result && typeof result.catch === 'function') {
+                        result.catch(() => {});
+                    }
+                } catch (_) {
+                    // Ignore subscription changes rejected during disconnect.
+                }
+            }
+        }
+    },
+
+    async stopRoomMediaBeforeDisconnect(room = this.roomController.getRoom()) {
+        this.muteRoomPlaybackElements();
+        this.unsubscribeRemotePublications(room);
+        await this.mediaController.stopAllLocalMedia(room);
+        this.state.mediaDeafened = true;
+        this.state.mediaDeafenRestoreMicrophone = false;
+        this.state.media = { microphone: false, camera: false, screen: false };
+        this.state.mediaLoading = { microphone: false, camera: false, screen: false };
+        this.renderMeetingSummary();
+    },
+
+    async disconnectRoom(options = {}) {
+        const room = this.roomController.getRoom();
+        if (!room) return;
+        if (options.stopMediaFirst !== false) {
+            await this.stopRoomMediaBeforeDisconnect(room);
+        }
         await this.roomController.disconnect();
         this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: true });
     },
@@ -475,6 +521,7 @@ export const roomSessionMethods = {
     async toggleMicrophone() {
         if (this.state.mediaDeafened && !this.state.media.microphone) {
             this.state.mediaDeafened = false;
+            this.state.mediaDeafenRestoreMicrophone = false;
             this.applyOutputVolumePreviewToAllAudioElements();
         }
         await this.runMediaToggleWithLoading('microphone', () => this.mediaController.toggleMicrophone());
@@ -484,11 +531,26 @@ export const roomSessionMethods = {
         if (!this.state.session?.participantIdentity) return;
         if (Object.values(this.state.mediaLoading || {}).some(Boolean)) return;
         const shouldDeafen = !this.state.mediaDeafened;
+        const shouldRestoreMicrophone = !shouldDeafen
+            && Boolean(this.state.mediaDeafenRestoreMicrophone)
+            && !this.state.media.microphone;
+        if (shouldDeafen) {
+            this.state.mediaDeafenRestoreMicrophone = Boolean(this.state.media.microphone);
+        }
         this.state.mediaDeafened = shouldDeafen;
         this.applyOutputVolumePreviewToAllAudioElements();
         if (shouldDeafen && this.state.media.microphone) {
             await this.toggleMicrophone();
+        } else if (shouldRestoreMicrophone) {
+            try {
+                await this.toggleMicrophone();
+            } finally {
+                this.state.mediaDeafenRestoreMicrophone = false;
+            }
         } else {
+            if (!shouldDeafen) {
+                this.state.mediaDeafenRestoreMicrophone = false;
+            }
             this.renderMeetingSummary();
         }
     },

@@ -48,6 +48,7 @@ export class WebMeetDashboardModal {
             selectedWorkspaceId: '',
             selectedMeetingId: '',
             joiningMeetingId: '',
+            leavingMeeting: false,
             canManageRooms: false,
             session: null,
             roomState: 'Disconnected',
@@ -58,6 +59,7 @@ export class WebMeetDashboardModal {
                 screen: false
             },
             mediaDeafened: false,
+            mediaDeafenRestoreMicrophone: false,
             mediaLoading: {
                 microphone: false,
                 camera: false,
@@ -91,6 +93,7 @@ export class WebMeetDashboardModal {
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
         this.handleParticipantAudioPreviewEvent = (event) => this.handleParticipantAudioPreview(event);
+        this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
         this.roomController = new LivekitRoomController({
             ensureLiveKitClient,
             buildRtcConfigForSession,
@@ -271,6 +274,14 @@ export class WebMeetDashboardModal {
 
         // Add event listeners for mobile panels and collapse controls that are not WebSkel actions.
         this.element.addEventListener('click', this.handleClick);
+        this.chatInput?.addEventListener?.('keydown', this.handleChatInputKeydown);
+    }
+
+    onChatInputKeydown(event) {
+        if (event.key !== 'Enter' || event.isComposing) return;
+        if (event.shiftKey || event.altKey || event.ctrlKey) return;
+        event.preventDefault();
+        void this.sendChat();
     }
 
     handleClick = (event) => {
@@ -322,6 +333,8 @@ export class WebMeetDashboardModal {
         this.videoGridAll = this.element.querySelector('#webmeetVideoAll');
         this.videoGridThumbnails = this.element.querySelector('#webmeetVideoThumbnails');
         this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
+        this.leaveButton = this.element.querySelector('#webmeetLeaveButton');
+        this.exitOverlay = this.element.querySelector('#webmeetExitOverlay');
         this.micButton = this.element.querySelector('#webmeetMicButton');
         this.deafenButton = this.element.querySelector('#webmeetDeafenButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');
@@ -374,6 +387,7 @@ export class WebMeetDashboardModal {
 
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
+        this.chatInput?.removeEventListener?.('keydown', this.handleChatInputKeydown);
         this.stopMeetingEvents();
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();

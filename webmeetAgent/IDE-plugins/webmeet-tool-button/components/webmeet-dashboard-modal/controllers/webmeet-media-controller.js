@@ -291,6 +291,55 @@ export class WebmeetMediaController {
         }
     }
 
+    hardStopTrack(track) {
+        if (!track) return;
+        try {
+            if (typeof track.stop === 'function') {
+                track.stop();
+                return;
+            }
+        } catch (_) {
+            // continue to fallback stop path
+        }
+        try {
+            track.mediaStreamTrack?.stop?.();
+        } catch (_) {
+            // ignore best-effort stop errors
+        }
+    }
+
+    hardStopAllLocalPublishedTracks(room = this.getRoom()) {
+        const publications = room?.localParticipant?.trackPublications?.values?.() || [];
+        for (const publication of publications) {
+            this.hardStopTrack(publication?.track || null);
+        }
+    }
+
+    async stopAllLocalMedia(room = this.getRoom()) {
+        this.hardStopMicrophoneTracks();
+        await this.stopCustomMicrophoneCapture();
+        const localParticipant = room?.localParticipant || null;
+        if (localParticipant) {
+            for (const action of [
+                () => localParticipant.setMicrophoneEnabled?.(false),
+                () => localParticipant.setCameraEnabled?.(false),
+                () => localParticipant.setScreenShareEnabled?.(false)
+            ]) {
+                try {
+                    const result = action();
+                    if (result && typeof result.then === 'function') {
+                        await result;
+                    }
+                } catch (_) {
+                    // keep shutting down the remaining local sources
+                }
+            }
+        }
+        this.hardStopAllLocalPublishedTracks(room);
+        const localId = String(room?.localParticipant?.identity || '').trim();
+        this.onMediaStateChange({ microphone: false, camera: false, screen: false }, localId);
+    }
+
     async waitForMicrophoneHardStopped(timeoutMs = 1500) {
         const start = Date.now();
         while ((Date.now() - start) < timeoutMs) {

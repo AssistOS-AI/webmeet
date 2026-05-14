@@ -32,6 +32,7 @@ const WORKSPACE_EVENT_TYPES = new Set([
     'agent.dispatched',
     'agent.detached'
 ]);
+const pendingEmptyRoomAgentDetachments = new Set();
 
 function nowIso() {
     return new Date().toISOString();
@@ -336,6 +337,88 @@ function recordWorkspaceEvent(context, workspaceId, type, data = {}) {
     return event;
 }
 
+function isActiveMeetingAgent(agent) {
+    const status = String(agent?.status || '').trim().toLowerCase();
+    return Boolean(agent)
+        && !agent.deletedAt
+        && status !== 'detached'
+        && status !== 'stopped';
+}
+
+function hasHumanMeetingMembers(payload) {
+    return Array.isArray(payload?.members) && payload.members.length > 0;
+}
+
+function markActiveAgentsDetached(context, meetingId, reason) {
+    const detachedAgents = [];
+    mutateMeeting(context, meetingId, (_record, payload) => {
+        if (hasHumanMeetingMembers(payload)) return;
+        const activeAgents = Array.isArray(payload.agents)
+            ? payload.agents.filter(isActiveMeetingAgent)
+            : [];
+        for (const agent of activeAgents) {
+            const detachedAt = nowIso();
+            Object.assign(agent, {
+                status: 'detached',
+                deletedAt: detachedAt,
+                updatedAt: detachedAt,
+                detachReason: reason
+            });
+            detachedAgents.push({ ...agent });
+            recordMeetingEvent(context, meetingId, payload, 'agent.detached', {
+                meetingId,
+                agentId: agent.id || '',
+                agentType: agent.agentType || '',
+                mode: agent.mode || '',
+                reason
+            });
+        }
+    });
+    return detachedAgents;
+}
+
+async function deleteLiveKitAgentDispatch(context, record, agent) {
+    const dispatchId = String(agent?.dispatchId || '').trim();
+    if (!dispatchId) return;
+    try {
+        await callLiveKitAgentDispatchApi(context, 'DeleteDispatch', record.roomName, {
+            room: record.roomName,
+            dispatchId
+        });
+    } catch {
+        // Persisted metadata is still detached when LiveKit already removed the dispatch.
+    }
+}
+
+async function detachActiveAgentsWhenRoomHasNoHumans(context, meetingId, reason = 'no_human_participants') {
+    const record = loadMeetingRecord(context, meetingId);
+    const payload = decryptMeetingPayload(context, record);
+    if (hasHumanMeetingMembers(payload)) {
+        return [];
+    }
+    if (!Array.isArray(payload.agents) || !payload.agents.some(isActiveMeetingAgent)) {
+        return [];
+    }
+    const detachedAgents = markActiveAgentsDetached(context, meetingId, reason);
+    for (const agent of detachedAgents) {
+        await deleteLiveKitAgentDispatch(context, record, agent);
+    }
+    return detachedAgents;
+}
+
+function scheduleEmptyRoomAgentDetach(context, meetingId, reason = 'no_human_participants') {
+    const targetMeetingId = String(meetingId || '').trim();
+    if (!targetMeetingId || pendingEmptyRoomAgentDetachments.has(targetMeetingId)) return;
+    pendingEmptyRoomAgentDetachments.add(targetMeetingId);
+    setTimeout(() => {
+        detachActiveAgentsWhenRoomHasNoHumans(context, targetMeetingId, reason)
+            .catch(() => {})
+            .finally(() => {
+                pendingEmptyRoomAgentDetachments.delete(targetMeetingId);
+            });
+    }, 0);
+}
+
 function cleanupStaleMembers(context, meetingId, payload) {
     const now = Date.now();
     const ttlMs = getPresenceTtlMs(context.workspaceRoot);
@@ -360,6 +443,9 @@ function cleanupStaleMembers(context, meetingId, payload) {
                 participantId
             });
         }
+        if (kept.length === 0) {
+            scheduleEmptyRoomAgentDetach(context, meetingId, 'no_human_participants');
+        }
     }
     return removed;
 }
@@ -368,6 +454,9 @@ function cleanupMeetingPresence(context, meetingId) {
     let removedCount = 0;
     mutateMeeting(context, meetingId, (_record, payload) => {
         removedCount = cleanupStaleMembers(context, meetingId, payload).length;
+        if (!hasHumanMeetingMembers(payload)) {
+            scheduleEmptyRoomAgentDetach(context, meetingId, 'no_human_participants');
+        }
     });
     return removedCount;
 }
@@ -1055,7 +1144,7 @@ export function pingGuestMeetingPresence(context, { meetingId, guestToken, parti
     return pingMeetingPresence(context, { meetingId, participantId });
 }
 
-export function leaveGuestMeeting(context, { meetingId, guestToken, participantId }) {
+export async function leaveGuestMeeting(context, { meetingId, guestToken, participantId }) {
     const record = loadMeetingRecord(context, meetingId);
     assertGuestMeetingAccess(record, guestToken);
     const payload = decryptMeetingPayload(context, record);
@@ -1103,12 +1192,13 @@ export function joinMeeting(context, { meetingId, displayName, participantId, au
     };
 }
 
-export function leaveMeeting(context, { meetingId, participantId }) {
+export async function leaveMeeting(context, { meetingId, participantId }) {
     const targetParticipantId = String(participantId || '').trim();
     if (!targetParticipantId) {
         throw new Error('Missing participantId.');
     }
     let removedParticipant = null;
+    let noHumanParticipantsRemain = false;
     mutateMeeting(context, meetingId, (_record, payload) => {
         const existingMembers = Array.isArray(payload.members) ? payload.members : [];
         const nextMembers = existingMembers.filter((entry) => {
@@ -1125,11 +1215,16 @@ export function leaveMeeting(context, { meetingId, participantId }) {
                 participantId: targetParticipantId
             });
         }
+        noHumanParticipantsRemain = nextMembers.length === 0;
     });
+    const detachedAgents = noHumanParticipantsRemain
+        ? await detachActiveAgentsWhenRoomHasNoHumans(context, meetingId, 'no_human_participants')
+        : [];
     return {
         ok: true,
         removed: Boolean(removedParticipant),
-        participantId: targetParticipantId
+        participantId: targetParticipantId,
+        detachedAgents
     };
 }
 
@@ -1275,6 +1370,9 @@ export async function attachMeetingAgent(context, { meetingId, agentType, mode, 
     assertAdminAuthInfo(authInfo);
     const record = loadMeetingRecord(context, meetingId);
     const currentPayload = decryptMeetingPayload(context, record);
+    if (!hasHumanMeetingMembers(currentPayload)) {
+        throw new Error('Cannot attach AI agents to an empty room.');
+    }
     const currentAgent = currentPayload.agents.find((entry) => (
         entry.agentType === agentType && entry.mode === mode && !entry.deletedAt
     ));

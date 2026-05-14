@@ -69,9 +69,14 @@ export const dashboardRenderMethods = {
         const canManageRooms = this.canManageRooms();
         const meeting = this.selectedMeeting;
         const isJoined = !!this.state.session?.participantIdentity;
+        const isLeaving = Boolean(this.state.leavingMeeting);
 
         if (this.dashboardModalRoot) {
             this.dashboardModalRoot.classList.toggle('is-joined', isJoined);
+            this.dashboardModalRoot.classList.toggle('is-leaving-room', isLeaving);
+        }
+        if (this.exitOverlay) {
+            this.exitOverlay.classList.toggle('webmeet-hidden', !isLeaving);
         }
         
         // Toggle welcome screen vs meeting UI
@@ -138,7 +143,7 @@ export const dashboardRenderMethods = {
         if (this.screenShareButton) {
             this.screenShareButton.classList.toggle('active', this.state.media.screen);
         }
-        const mediaBusy = Object.values(this.state.mediaLoading || {}).some(Boolean);
+        const mediaBusy = Object.values(this.state.mediaLoading || {}).some(Boolean) || isLeaving;
         const setMediaButtonLoading = (button, type) => {
             if (!button) return;
             const isLoading = Boolean(this.state.mediaLoading?.[type]);
@@ -153,6 +158,17 @@ export const dashboardRenderMethods = {
         }
         setMediaButtonLoading(this.cameraButton, 'camera');
         setMediaButtonLoading(this.screenShareButton, 'screen');
+        if (this.leaveButton) {
+            this.leaveButton.classList.toggle('is-loading', isLeaving);
+            this.leaveButton.disabled = isLeaving;
+            this.leaveButton.setAttribute('aria-busy', isLeaving ? 'true' : 'false');
+        }
+        if (this.mediaSettingsButton) {
+            this.mediaSettingsButton.disabled = isLeaving;
+        }
+        if (this.recordingButton) {
+            this.recordingButton.disabled = isLeaving;
+        }
     },
 
     renderFeedLists() {
