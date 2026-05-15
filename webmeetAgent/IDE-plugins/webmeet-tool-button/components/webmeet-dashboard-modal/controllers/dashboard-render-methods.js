@@ -1,4 +1,5 @@
 import { escapeHtml, formatDate } from '../services/dashboard-utils.js';
+import { renderMessageWithMentionHighlights } from '../services/chat-autocomplete/index.js';
 
 export const dashboardRenderMethods = {
     renderAll() {
@@ -181,6 +182,8 @@ export const dashboardRenderMethods = {
             }
         };
 
+        const knownAgentTokens = this.chatComponent?.getKnownAgentTokens?.() || [];
+        const chatMessageHtml = (message) => renderMessageWithMentionHighlights(message || '', knownAgentTokens);
         renderFeed(this.chatList, this.state.chat, (entry) => `
             <div class="webmeet-feed-item">
                 <div class="webmeet-chat-entry ${
@@ -193,7 +196,7 @@ export const dashboardRenderMethods = {
                             <strong class="webmeet-chat-author">${escapeHtml(entry.authorName || entry.authorId || 'unknown')}</strong>
                             <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.createdAt))}</span>
                         </div>
-                        <div class="webmeet-chat-text">${escapeHtml(entry.message || '')}</div>
+                        <div class="webmeet-chat-text">${chatMessageHtml(entry.message)}</div>
                     </div>
                 </div>
             </div>

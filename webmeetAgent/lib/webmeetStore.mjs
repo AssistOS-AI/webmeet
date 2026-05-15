@@ -1257,11 +1257,22 @@ export function listMeetingChat(context, meetingId) {
     return decryptMeetingPayload(context, loadMeetingRecord(context, meetingId)).chatMessages;
 }
 
-export async function appendMeetingChat(context, { meetingId, authorId, authorName, message }) {
+export async function appendMeetingChat(context, { meetingId, authorId, authorName, message, kind = 'user', metadata = null }) {
     cleanupMeetingPresence(context, meetingId);
     let chatMessage = null;
     mutateMeeting(context, meetingId, (_record, payload) => {
-        chatMessage = { id: randomId('chat'), meetingId, authorId, authorName, message, kind: 'user', createdAt: nowIso() };
+        chatMessage = {
+            id: randomId('chat'),
+            meetingId,
+            authorId,
+            authorName,
+            message,
+            kind: String(kind || 'user').trim() || 'user',
+            createdAt: nowIso()
+        };
+        if (metadata && typeof metadata === 'object') {
+            chatMessage.metadata = metadata;
+        }
         payload.chatMessages.push(chatMessage);
         recordMeetingEvent(context, meetingId, payload, 'chat.message.created', { meetingId, chatMessageId: chatMessage.id });
     });
