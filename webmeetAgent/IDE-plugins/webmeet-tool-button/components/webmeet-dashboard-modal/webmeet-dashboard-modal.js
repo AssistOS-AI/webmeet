@@ -388,6 +388,7 @@ export class WebMeetDashboardModal {
     afterUnload() {
         this.element.removeEventListener('click', this.handleClick);
         this.chatInput?.removeEventListener?.('keydown', this.handleChatInputKeydown);
+        this.chatComponent?.destroyChatAutocomplete?.();
         this.stopMeetingEvents();
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();

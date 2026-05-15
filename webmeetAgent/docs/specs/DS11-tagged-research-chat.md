@@ -47,6 +47,25 @@ discarding the user message.
 Public guest HTTP chat does not currently dispatch research tags because it
 does not carry the router invocation token needed for delegated MCP calls.
 
+The WebMeet IDE chat composer exposes a Ploinky-style `@` autocomplete that is
+visually integrated into the WebMeet chat panel. The menu groups suggestions
+into `Agents` and `Files and folders`. The `Agents` group is sourced from a
+WebMeet-owned canonical catalog that must include `@open-interpreter` so the
+default research relay is always discoverable. The `Files and folders` group
+queries the Explorer host's `search_files` tool, mirroring the Ploinky picker
+without exposing Soul Gateway keys, invocation tokens, or any other provider
+secrets to the browser. WebMeet's compose autocomplete is a WebMeet-owned
+adapter that mirrors Ploinky behavior; it does not embed the Ploinky webchat
+runtime and does not couple Ploinky modules to WebMeet. The adapter must keep
+the existing `webmeet_chat_send` path; selecting a suggestion only mutates the
+text in `#webmeetChatInput` and never bypasses chat persistence. Sent WebMeet
+chat messages must render known `@`-mentions (such as the canonical
+`@open-interpreter`) in bold, while unknown mentions stay as ordinary chat and
+must not produce relay errors. While composing, WebMeet should mirror this
+known/selected mention emphasis with a non-interactive textarea overlay so the
+underlying input, caret, keyboard shortcuts, and send-on-Enter behavior remain
+unchanged.
+
 ## Decisions & Questions
 
 ### Question #1: Why dispatch after persisting the user message?
@@ -68,6 +87,17 @@ Response:
 Relay result messages are rendered in the same chat stream as user messages.
 Reserving the prefix prevents authenticated tool callers from spoofing research
 agent output while preserving normal participant ids for public guest chat.
+
+### Question #4: Why a WebMeet-owned autocomplete adapter instead of reusing Ploinky's composer?
+
+Response:
+Ploinky's composer autocomplete is bound to its `.wa-composer` ancestor and
+theme variables, which do not exist in the AssistOSExplorer host that loads
+the WebMeet IDE plugin. The plugin must not embed the Ploinky webchat runtime
+or couple Ploinky framework modules to WebMeet-specific behavior, so WebMeet
+ships its own adapter that mirrors the Ploinky semantics while keeping the
+WebMeet data sources (canonical agent catalog and the Explorer `search_files`
+tool) on the WebMeet side.
 
 ## Conclusion
 
