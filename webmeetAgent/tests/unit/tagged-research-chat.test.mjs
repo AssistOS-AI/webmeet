@@ -75,6 +75,11 @@ function startStubRouter(handler) {
             };
             calls.push(call);
             const response = handler(call);
+            if (Object.hasOwn(response, 'rawBody')) {
+                res.writeHead(response.status || 200, { 'content-type': response.contentType || 'text/plain' });
+                res.end(String(response.rawBody || ''));
+                return;
+            }
             res.writeHead(response.status || 200, { 'content-type': 'application/json' });
             res.end(JSON.stringify(response.body || {}));
         });
@@ -169,6 +174,31 @@ describe('WebMeet tagged research chat', () => {
             assert.equal(messages[0].authorId, 'local:admin');
             assert.equal(messages[1].authorId, 'research:open-interpreter');
             assert.equal(messages[1].message, 'Research result.');
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+        }
+    });
+
+    it('reports a clear deployment error when the research relay route is missing', async () => {
+        const { server, port, calls } = await startStubRouter(() => ({
+            status: 404,
+            rawBody: 'API Route not found'
+        }));
+        try {
+            configureRelayEnv(port);
+            const { context, authInfo, meeting } = makeContext();
+            const result = await dispatch('webmeet_chat_send', {
+                meetingId: meeting.id,
+                message: '@open-interpreter Give status.'
+            }, context, authInfo);
+            const messages = listMeetingChat(context, meeting.id);
+            assert.equal(calls.length, 1);
+            assert.equal(result.researchTask.ok, false);
+            assert.match(result.researchTask.error, /Research relay agent "researchRelay" is not routed by Ploinky/);
+            assert.match(result.researchTask.error, /Enable copilot-agents\/research-agents/);
+            assert.equal(messages.length, 2);
+            assert.equal(messages[1].authorName, 'Research Relay');
+            assert.match(messages[1].message, /Research relay agent "researchRelay" is not routed by Ploinky/);
         } finally {
             await new Promise((resolve) => server.close(resolve));
         }

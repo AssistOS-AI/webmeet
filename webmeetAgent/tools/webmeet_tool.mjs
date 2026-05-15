@@ -221,11 +221,13 @@ async function callAgentTool(agent, toolName, input, invocationToken, options = 
             })
         });
         const text = await response.text();
-        let parsed = null;
-        try {
-            parsed = text ? JSON.parse(text) : null;
-        } catch (error) {
-            throw new Error(`invalid MCP response: ${error.message}`);
+        const parsed = text ? safeParseJson(text) : null;
+        if (!parsed) {
+            const bodyText = String(text || '').trim();
+            if (response.status === 404 && /API Route not found|Endpoint not found/i.test(bodyText)) {
+                throw new Error(`Research relay agent "${agent}" is not routed by Ploinky. Enable copilot-agents/research-agents and restart the workspace before using @open-interpreter from WebMeet.`);
+            }
+            throw new Error(`invalid MCP response from ${agent}: ${bodyText || `HTTP ${response.status}`}`);
         }
         if (!response.ok) {
             throw new Error(parsed?.error?.message || `Router responded ${response.status}`);

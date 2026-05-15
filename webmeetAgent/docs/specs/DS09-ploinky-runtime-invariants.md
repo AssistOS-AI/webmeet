@@ -34,6 +34,8 @@ File and static-content handling must stay workspace-confined. Paths must be res
 
 Logs and user-facing errors must not expose secrets, cookies, bearer tokens, invocation JWTs, API keys, raw prompts, hidden policy text, or internal payloads. Detailed diagnostics belong behind explicit debug modes and must still redact sensitive values before persistence.
 
+Browser realtime refreshes driven by meeting/workspace server-sent events are best-effort. They must catch transient MCP client resets, session refreshes, and stale-room races without creating unhandled promise rejections or console error loops. Direct user-initiated actions must continue to surface actionable failures through the WebMeet UI.
+
 Agent-local contract:
 
 - Manifest: `webmeetAgent/manifest.json`

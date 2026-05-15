@@ -514,11 +514,32 @@ export class WebMeetDashboardModal {
         this.renderMeetingSummary();
     }
 
+    async refreshMeetingDetailsFromRealtimeEvent() {
+        const selectedMeetingId = String(this.state.selectedMeetingId || '').trim();
+        try {
+            await this.loadMeetingDetails({ expectedMeetingId: selectedMeetingId });
+            if (this.room && window.LivekitClient?.Track) {
+                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+            }
+            this.renderAll();
+        } catch (_) {
+            // Realtime events are best-effort; direct user actions still surface failures.
+        }
+    }
+
+    runBestEffortRealtimeRefresh(refreshFn) {
+        void Promise.resolve()
+            .then(() => refreshFn())
+            .catch(() => {
+                // Avoid unhandled promise rejections for transient MCP/session resets.
+            });
+    }
+
     scheduleWorkspaceMeetingsRefresh() {
         this.clearWorkspaceMeetingsRefreshTimer();
         this.workspaceMeetingsRefreshTimer = window.setTimeout(() => {
             this.workspaceMeetingsRefreshTimer = null;
-            void this.refreshMeetingsFromWorkspaceEvent();
+            this.runBestEffortRealtimeRefresh(() => this.refreshMeetingsFromWorkspaceEvent());
         }, 100);
     }
 
@@ -526,7 +547,7 @@ export class WebMeetDashboardModal {
         this.clearWorkspaceRosterRefreshTimer();
         this.workspaceRosterRefreshTimer = window.setTimeout(() => {
             this.workspaceRosterRefreshTimer = null;
-            void this.refreshWorkspaceRosterFromEvent();
+            this.runBestEffortRealtimeRefresh(() => this.refreshWorkspaceRosterFromEvent());
         }, 100);
     }
 
@@ -827,13 +848,7 @@ export class WebMeetDashboardModal {
         }
         for (const eventName of ['agent.dispatched', 'agent.detached', 'transcript.updated']) {
             this.meetingEventsSource.addEventListener(eventName, () => {
-                void (async () => {
-                    await this.loadMeetingDetails();
-                    if (this.room && window.LivekitClient?.Track) {
-                        this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
-                    }
-                    this.renderAll();
-                })();
+                this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
             });
         }
         // Handle 404 or other errors gracefully - don't spam console

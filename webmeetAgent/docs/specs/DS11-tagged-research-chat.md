@@ -42,7 +42,11 @@ guest-token participant validation path.
 
 If the research relay is unavailable or a backend is not configured, WebMeet
 should append a natural-language error from `Research Relay` rather than
-discarding the user message.
+discarding the user message. A Ploinky `API Route not found` response for the
+configured relay agent means the research bundle is not routed in the current
+workspace; the appended error must name that deployment problem and direct the
+operator to enable `copilot-agents/research-agents` before retrying
+`@open-interpreter`.
 
 Public guest HTTP chat does not currently dispatch research tags because it
 does not carry the router invocation token needed for delegated MCP calls.
