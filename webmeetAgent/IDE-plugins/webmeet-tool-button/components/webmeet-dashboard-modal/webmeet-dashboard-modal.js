@@ -13,7 +13,11 @@ import {
     ChatTranscriptComponent,
     GuestSessionManager
 } from './service-components/index.js';
-import { ensureLiveKitClient } from './services/livekit-loader.js';
+import {
+    ensureBackgroundEffectsModule,
+    ensureLiveKitClient,
+    getBackgroundEffectsAssetPaths
+} from './services/livekit-loader.js';
 import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
 import { runWebMeetTool } from './services/webmeet-api-client.js';
 import {
@@ -75,7 +79,11 @@ export class WebMeetDashboardModal {
                 microphoneGain: 1,
                 outputVolume: 1,
                 cameraQuality: 'h720',
-                screenShareQuality: 'h1080fps30'
+                screenShareQuality: 'h1080fps30',
+                backgroundMode: 'none',
+                backgroundBlurRadius: 12,
+                backgroundImageDataUrl: '',
+                backgroundImageName: ''
             },
             mediaDeviceWarnings: [],
             mediaSettingsPanelVisible: false,
@@ -151,6 +159,8 @@ export class WebMeetDashboardModal {
         this.mediaController = new WebmeetMediaController({
             getRoom: () => this.room,
             getTrack: () => window.LivekitClient?.Track || null,
+            ensureBackgroundEffectsModule,
+            getBackgroundEffectsAssetPaths,
             onMediaStateChange: (next, localParticipantId) => {
                 this.state.media = next;
                 if (localParticipantId) {
@@ -244,6 +254,7 @@ export class WebMeetDashboardModal {
                 'toggleFullscreen',
                 'toggleChatSidebar',
                 'toggleMediaSettings',
+                'closeMediaSettings',
                 'applyMediaSettings',
                 'refreshMediaDevices',
                 'openParticipantAudioSettings',
@@ -361,6 +372,17 @@ export class WebMeetDashboardModal {
         this.microphoneGainWarning = this.element.querySelector('#webmeetMicrophoneGainWarning');
         this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
         this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
+        this.backgroundEffectSelect = this.element.querySelector('#webmeetBackgroundEffectSelect');
+        this.backgroundBlurInput = this.element.querySelector('#webmeetBackgroundBlurRadius');
+        this.backgroundBlurValue = this.element.querySelector('#webmeetBackgroundBlurValue');
+        this.backgroundBlurRow = this.element.querySelector('#webmeetBackgroundBlurRow');
+        this.backgroundImageInput = this.element.querySelector('#webmeetBackgroundImageInput');
+        this.backgroundImageRow = this.element.querySelector('#webmeetBackgroundImageRow');
+        this.backgroundImagePreview = this.element.querySelector('#webmeetBackgroundImagePreview');
+        this.backgroundImagePreviewImage = this.element.querySelector('#webmeetBackgroundImagePreviewImage');
+        this.backgroundImageName = this.element.querySelector('#webmeetBackgroundImageName');
+        this.backgroundImageRemoveButton = this.element.querySelector('#webmeetBackgroundImageRemoveButton');
+        this.backgroundImageWarning = this.element.querySelector('#webmeetBackgroundImageWarning');
         this.mediaDeviceWarnings = this.element.querySelector('#webmeetMediaDeviceWarnings');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');

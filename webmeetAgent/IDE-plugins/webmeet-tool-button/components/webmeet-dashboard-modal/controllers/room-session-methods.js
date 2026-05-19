@@ -329,6 +329,11 @@ export const roomSessionMethods = {
                     publication: summarizePublication(publication)
                 });
                 renderPublication(room.localParticipant, publication, null, Track);
+                if (publication?.source === Track?.Source?.Camera) {
+                    void this.mediaController.syncBackgroundEffect().catch((error) => {
+                        this.setError(error instanceof Error ? error.message : 'Background effect could not be applied.');
+                    });
+                }
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);

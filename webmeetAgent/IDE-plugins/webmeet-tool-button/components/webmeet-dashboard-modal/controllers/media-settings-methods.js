@@ -7,6 +7,7 @@ function escapeHtml(value) {
 }
 
 const PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY = 'webmeet.participantAudioSettings';
+const MEDIA_SETTINGS_STORAGE_KEY = 'webmeet.mediaSettings';
 
 export const mediaSettingsMethods = {
     registerMediaDeviceChangeHandler() {
@@ -55,6 +56,14 @@ export const mediaSettingsMethods = {
         };
         const handleSelectOrCheckboxChange = () => {
             syncDraftFromControls();
+            this.renderMediaSettingsPanel();
+        };
+        const updateBackgroundBlurPreview = () => {
+            const blurRadius = this.normalizeBackgroundBlurRadius(this.backgroundBlurInput?.value);
+            syncDraftFromControls();
+            if (this.backgroundBlurValue) {
+                this.backgroundBlurValue.textContent = `${blurRadius}px`;
+            }
         };
         this.microphoneGainInput?.addEventListener?.('input', updateMicrophoneGainPreview);
         this.outputVolumeInput?.addEventListener?.('input', updateOutputVolumePreview);
@@ -69,6 +78,16 @@ export const mediaSettingsMethods = {
         this.noiseSuppressionInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.autoGainControlInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.autoGainControlInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.backgroundEffectSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.backgroundEffectSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.backgroundBlurInput?.addEventListener?.('input', updateBackgroundBlurPreview);
+        this.backgroundImageInput?.addEventListener?.('change', async (event) => {
+            await this.handleBackgroundImageSelection(event?.target?.files);
+        });
+        this.backgroundImageRemoveButton?.addEventListener?.('click', (event) => {
+            event.preventDefault();
+            this.removeDraftBackgroundImage();
+        });
         if (this.mediaSettingsPanel?.dataset) {
             this.mediaSettingsPanel.dataset.boundInputHandlers = 'true';
         }
@@ -85,10 +104,14 @@ export const mediaSettingsMethods = {
             microphoneGain: 1,
             outputVolume: 1,
             cameraQuality: 'h720',
-            screenShareQuality: 'h1080fps30'
+            screenShareQuality: 'h1080fps30',
+            backgroundMode: 'none',
+            backgroundBlurRadius: 12,
+            backgroundImageDataUrl: '',
+            backgroundImageName: ''
         };
         try {
-            const raw = String(window?.localStorage?.getItem('webmeet.mediaSettings') || '').trim();
+            const raw = String(window?.localStorage?.getItem(MEDIA_SETTINGS_STORAGE_KEY) || '').trim();
             if (!raw) return fallback;
             const parsed = JSON.parse(raw);
             return {
@@ -97,7 +120,11 @@ export const mediaSettingsMethods = {
                 microphoneGain: this.normalizeMicrophoneGain(parsed?.microphoneGain),
                 outputVolume: this.normalizeOutputVolume(parsed?.outputVolume),
                 cameraQuality: this.normalizeCameraQuality(parsed?.cameraQuality),
-                screenShareQuality: this.normalizeScreenShareQuality(parsed?.screenShareQuality)
+                screenShareQuality: this.normalizeScreenShareQuality(parsed?.screenShareQuality),
+                backgroundMode: this.normalizeBackgroundMode(parsed?.backgroundMode),
+                backgroundBlurRadius: this.normalizeBackgroundBlurRadius(parsed?.backgroundBlurRadius),
+                backgroundImageDataUrl: this.normalizeBackgroundImageDataUrl(parsed?.backgroundImageDataUrl),
+                backgroundImageName: this.normalizeBackgroundImageName(parsed?.backgroundImageName)
             };
         } catch {
             return fallback;
@@ -115,7 +142,11 @@ export const mediaSettingsMethods = {
             microphoneGain: this.normalizeMicrophoneGain(settings.microphoneGain),
             outputVolume: this.normalizeOutputVolume(settings.outputVolume),
             cameraQuality: this.normalizeCameraQuality(settings.cameraQuality),
-            screenShareQuality: this.normalizeScreenShareQuality(settings.screenShareQuality)
+            screenShareQuality: this.normalizeScreenShareQuality(settings.screenShareQuality),
+            backgroundMode: this.normalizeBackgroundMode(settings.backgroundMode),
+            backgroundBlurRadius: this.normalizeBackgroundBlurRadius(settings.backgroundBlurRadius),
+            backgroundImageDataUrl: this.normalizeBackgroundImageDataUrl(settings.backgroundImageDataUrl),
+            backgroundImageName: this.normalizeBackgroundImageName(settings.backgroundImageName)
         };
     },
 
@@ -140,7 +171,7 @@ export const mediaSettingsMethods = {
 
     syncMediaSettingsDraftFromInputs() {
         if (!this.state.mediaSettingsPanelVisible) return;
-        this.state.mediaSettingsDraft = this.collectMediaSettingsFromInputs();
+        this.state.mediaSettingsDraft = this.collectMediaSettingsFromInputs(this.state.mediaSettingsDraft || this.state.mediaSettings);
     },
 
     normalizeMicrophoneGain(value) {
@@ -153,6 +184,79 @@ export const mediaSettingsMethods = {
         const numberValue = Number(value);
         if (!Number.isFinite(numberValue)) return 1;
         return Math.min(1, Math.max(0, numberValue));
+    },
+
+    normalizeBackgroundMode(value) {
+        const mode = String(value || '').trim();
+        return ['none', 'blur', 'image'].includes(mode) ? mode : 'none';
+    },
+
+    normalizeBackgroundBlurRadius(value) {
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue)) return 12;
+        return Math.min(24, Math.max(4, Math.round(numberValue)));
+    },
+
+    normalizeBackgroundImageDataUrl(value) {
+        const raw = String(value || '').trim();
+        return raw.startsWith('data:image/') ? raw : '';
+    },
+
+    normalizeBackgroundImageName(value) {
+        return String(value || '').trim();
+    },
+
+    async readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('Background image could not be read.'));
+            reader.readAsDataURL(file);
+        });
+    },
+
+    async handleBackgroundImageSelection(fileList) {
+        const file = fileList?.[0] || null;
+        if (!file) return;
+        try {
+            const dataUrl = await this.readFileAsDataUrl(file);
+            const nextSettings = this.collectMediaSettingsFromInputs(this.state.mediaSettingsDraft || this.state.mediaSettings);
+            this.state.mediaSettingsDraft = this.normalizeMediaSettings({
+                ...nextSettings,
+                backgroundMode: 'image',
+                backgroundImageDataUrl: dataUrl,
+                backgroundImageName: file.name || 'Custom background'
+            });
+            this.renderMediaSettingsPanel();
+        } catch (error) {
+            this.setError(error instanceof Error ? error.message : 'Background image could not be loaded.');
+        } finally {
+            if (this.backgroundImageInput) {
+                this.backgroundImageInput.value = '';
+            }
+        }
+    },
+
+    removeDraftBackgroundImage() {
+        const nextSettings = this.collectMediaSettingsFromInputs(this.state.mediaSettingsDraft || this.state.mediaSettings);
+        this.state.mediaSettingsDraft = this.normalizeMediaSettings({
+            ...nextSettings,
+            backgroundMode: nextSettings.backgroundMode === 'image' ? 'none' : nextSettings.backgroundMode,
+            backgroundImageDataUrl: '',
+            backgroundImageName: ''
+        });
+        if (this.backgroundImageInput) {
+            this.backgroundImageInput.value = '';
+        }
+        this.renderMediaSettingsPanel();
+    },
+
+    getMediaSettingsValidationError(settings = this.state.mediaSettings) {
+        const normalized = this.normalizeMediaSettings(settings);
+        if (normalized.backgroundMode === 'image' && !normalized.backgroundImageDataUrl) {
+            return 'Choose a background image before applying a virtual background.';
+        }
+        return '';
     },
 
     normalizeParticipantAudioVolume(value) {
@@ -536,7 +640,7 @@ export const mediaSettingsMethods = {
 
     persistMediaSettings() {
         try {
-            window?.localStorage?.setItem('webmeet.mediaSettings', JSON.stringify(this.state.mediaSettings));
+            window?.localStorage?.setItem(MEDIA_SETTINGS_STORAGE_KEY, JSON.stringify(this.state.mediaSettings));
         } catch (_) {
             // ignore storage failures
         }
@@ -626,6 +730,7 @@ export const mediaSettingsMethods = {
         syncSelectOptions(this.audioOutputSelect, this.mediaDevices.audioOutput, settings.audioOutputDeviceId, 'Speaker');
         if (this.cameraQualitySelect) this.cameraQualitySelect.value = this.normalizeCameraQuality(settings.cameraQuality);
         if (this.screenShareQualitySelect) this.screenShareQualitySelect.value = this.normalizeScreenShareQuality(settings.screenShareQuality);
+        if (this.backgroundEffectSelect) this.backgroundEffectSelect.value = this.normalizeBackgroundMode(settings.backgroundMode);
         if (this.echoCancellationInput && document.activeElement !== this.echoCancellationInput) {
             this.echoCancellationInput.checked = Boolean(settings.echoCancellation);
         }
@@ -648,6 +753,38 @@ export const mediaSettingsMethods = {
             this.outputVolumeInput.value = String(outputVolume);
         }
         if (this.outputVolumeValue) this.outputVolumeValue.textContent = this.formatPercent(outputVolume);
+        const backgroundBlurRadius = this.normalizeBackgroundBlurRadius(settings.backgroundBlurRadius);
+        if (this.backgroundBlurInput && document.activeElement !== this.backgroundBlurInput) {
+            this.backgroundBlurInput.value = String(backgroundBlurRadius);
+        }
+        if (this.backgroundBlurValue) {
+            this.backgroundBlurValue.textContent = `${backgroundBlurRadius}px`;
+        }
+        const backgroundMode = this.normalizeBackgroundMode(settings.backgroundMode);
+        const hasBackgroundImage = Boolean(settings.backgroundImageDataUrl);
+        this.backgroundBlurRow?.classList.toggle('webmeet-hidden', backgroundMode !== 'blur');
+        this.backgroundImageRow?.classList.toggle('webmeet-hidden', backgroundMode !== 'image');
+        this.backgroundImageWarning?.classList.toggle('webmeet-hidden', !(backgroundMode === 'image' && !hasBackgroundImage));
+        if (this.backgroundImagePreview) {
+            this.backgroundImagePreview.classList.toggle('webmeet-hidden', !(backgroundMode === 'image' && hasBackgroundImage));
+        }
+        if (this.backgroundImagePreviewImage) {
+            if (backgroundMode === 'image' && hasBackgroundImage) {
+                this.backgroundImagePreviewImage.src = settings.backgroundImageDataUrl;
+                this.backgroundImagePreviewImage.alt = settings.backgroundImageName || 'Selected virtual background';
+            } else {
+                this.backgroundImagePreviewImage.removeAttribute('src');
+                this.backgroundImagePreviewImage.alt = '';
+            }
+        }
+        if (this.backgroundImageName) {
+            this.backgroundImageName.textContent = hasBackgroundImage
+                ? (settings.backgroundImageName || 'Custom background')
+                : 'No image selected';
+        }
+        if (this.backgroundImageRemoveButton) {
+            this.backgroundImageRemoveButton.classList.toggle('webmeet-hidden', !hasBackgroundImage);
+        }
         if (this.mediaDeviceWarnings) {
             const warnings = Array.isArray(this.state.mediaDeviceWarnings) ? this.state.mediaDeviceWarnings : [];
             this.mediaDeviceWarnings.classList.toggle('webmeet-hidden', warnings.length === 0);
@@ -689,7 +826,21 @@ export const mediaSettingsMethods = {
         }
     },
 
-    collectMediaSettingsFromInputs() {
+    closeMediaSettings() {
+        if (this.state.mediaSettingsApplying || !this.state.mediaSettingsPanelVisible) {
+            return;
+        }
+        this.state.mediaSettingsPanelVisible = false;
+        this.clearMediaSettingsDraft();
+        if (this.state.activeMobilePanel === 'settings') {
+            this.state.activeMobilePanel = 'room';
+            this.applyMobilePanelState?.();
+        }
+        this.renderMediaSettingsPanel();
+    },
+
+    collectMediaSettingsFromInputs(baseInputSettings = this.state.mediaSettingsDraft || this.state.mediaSettings) {
+        const baseSettings = this.normalizeMediaSettings(baseInputSettings);
         return this.normalizeMediaSettings({
             audioInputDeviceId: String(this.audioInputSelect?.value || '').trim(),
             videoInputDeviceId: String(this.videoInputSelect?.value || '').trim(),
@@ -700,7 +851,11 @@ export const mediaSettingsMethods = {
             microphoneGain: this.normalizeMicrophoneGain(this.microphoneGainInput?.value),
             outputVolume: this.normalizeOutputVolume(this.outputVolumeInput?.value),
             cameraQuality: this.normalizeCameraQuality(this.cameraQualitySelect?.value),
-            screenShareQuality: this.normalizeScreenShareQuality(this.screenShareQualitySelect?.value)
+            screenShareQuality: this.normalizeScreenShareQuality(this.screenShareQualitySelect?.value),
+            backgroundMode: this.normalizeBackgroundMode(this.backgroundEffectSelect?.value || baseSettings.backgroundMode),
+            backgroundBlurRadius: this.normalizeBackgroundBlurRadius(this.backgroundBlurInput?.value || baseSettings.backgroundBlurRadius),
+            backgroundImageDataUrl: baseSettings.backgroundImageDataUrl,
+            backgroundImageName: baseSettings.backgroundImageName
         });
     },
 
@@ -734,13 +889,38 @@ export const mediaSettingsMethods = {
         await Promise.allSettled(tasks);
     },
 
-    async reapplyActiveInputDevices() {
+    hasSettingsChange(previousSettings, keys = []) {
+        const before = this.normalizeMediaSettings(previousSettings);
+        const after = this.normalizeMediaSettings(this.state.mediaSettings);
+        return keys.some((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+    },
+
+    async reapplyActiveInputDevices(previousSettings = this.state.mediaSettings) {
         const errors = [];
         if (!this.room?.localParticipant) return errors;
-        if (this.state.media.microphone) {
+        const shouldRestartMicrophone = this.state.media.microphone && this.hasSettingsChange(previousSettings, [
+            'audioInputDeviceId',
+            'echoCancellation',
+            'noiseSuppression',
+            'autoGainControl',
+            'microphoneGain'
+        ]);
+        const shouldRestartCamera = this.state.media.camera && this.hasSettingsChange(previousSettings, [
+            'videoInputDeviceId',
+            'cameraQuality'
+        ]);
+        const shouldRefreshBackground = this.state.media.camera && this.hasSettingsChange(previousSettings, [
+            'backgroundMode',
+            'backgroundBlurRadius',
+            'backgroundImageDataUrl'
+        ]);
+        const shouldRestartScreenShare = this.state.media.screen && this.hasSettingsChange(previousSettings, [
+            'screenShareQuality'
+        ]);
+        if (shouldRestartMicrophone) {
             await this.runMediaToggleWithLoading('microphone', () => this.mediaController.restartMicrophone());
         }
-        if (this.state.media.camera) {
+        if (shouldRestartCamera) {
             try {
                 await this.room.localParticipant.setCameraEnabled(false);
                 const camOptions = this.mediaController.getCameraEnableOptions();
@@ -755,7 +935,14 @@ export const mediaSettingsMethods = {
                 errors.push(error instanceof Error ? error.message : 'Camera settings could not be applied.');
             }
         }
-        if (this.state.media.screen) {
+        if (this.state.media.camera && (shouldRestartCamera || shouldRefreshBackground)) {
+            try {
+                await this.mediaController.syncBackgroundEffect();
+            } catch (error) {
+                errors.push(error instanceof Error ? error.message : 'Background privacy settings could not be applied.');
+            }
+        }
+        if (shouldRestartScreenShare) {
             try {
                 await this.room.localParticipant.setScreenShareEnabled(false);
                 await this.room.localParticipant.setScreenShareEnabled(
@@ -774,10 +961,19 @@ export const mediaSettingsMethods = {
         if (this.state.mediaSettingsApplying) {
             return;
         }
-        this.state.mediaSettingsApplying = true;
-        this.state.mediaSettings = this.state.mediaSettingsDraft
+        const previousSettings = this.cloneCurrentMediaSettings();
+        const nextSettings = this.state.mediaSettingsDraft
             ? this.normalizeMediaSettings(this.state.mediaSettingsDraft)
-            : this.collectMediaSettingsFromInputs();
+            : this.collectMediaSettingsFromInputs(previousSettings);
+        const validationError = this.getMediaSettingsValidationError(nextSettings);
+        if (validationError) {
+            this.state.mediaSettingsDraft = nextSettings;
+            this.renderMediaSettingsPanel();
+            this.setError(validationError);
+            return;
+        }
+        this.state.mediaSettingsApplying = true;
+        this.state.mediaSettings = nextSettings;
         this.renderMediaSettingsPanel();
         try {
             this.mediaController.setSettings(this.state.mediaSettings);
@@ -787,7 +983,7 @@ export const mediaSettingsMethods = {
                 { testMicrophone: true }
             );
             await this.applyAudioOutputDeviceToAllTracks();
-            const inputErrors = await this.reapplyActiveInputDevices();
+            const inputErrors = await this.reapplyActiveInputDevices(previousSettings);
             this.state.mediaSettingsPanelVisible = false;
             if (this.state.activeMobilePanel === 'settings') {
                 this.state.activeMobilePanel = 'room';

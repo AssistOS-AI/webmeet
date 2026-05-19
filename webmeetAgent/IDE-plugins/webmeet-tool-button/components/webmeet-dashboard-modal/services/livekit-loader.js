@@ -1,6 +1,10 @@
 const LIVEKIT_UMD_URL = new URL('../../../vendor/livekit-client.umd.min.js', import.meta.url).href;
+const TRACK_PROCESSORS_MODULE_URL = new URL('../../../vendor/livekit-track-processors.bundle.mjs', import.meta.url).href;
+const BACKGROUND_TASKS_VISION_FILESET_URL = new URL('../../../vendor/background-effects/wasm/', import.meta.url).href;
+const BACKGROUND_SEGMENTER_MODEL_URL = new URL('../../../vendor/background-effects/models/selfie_segmenter.tflite', import.meta.url).href;
 
 let livekitLoadPromise = null;
+let backgroundEffectsModulePromise = null;
 
 export async function ensureLiveKitClient() {
     if (window.LivekitClient) {
@@ -23,4 +27,18 @@ export async function ensureLiveKitClient() {
         });
     }
     return livekitLoadPromise;
+}
+
+export async function ensureBackgroundEffectsModule() {
+    if (!backgroundEffectsModulePromise) {
+        backgroundEffectsModulePromise = import(TRACK_PROCESSORS_MODULE_URL);
+    }
+    return backgroundEffectsModulePromise;
+}
+
+export function getBackgroundEffectsAssetPaths() {
+    return {
+        tasksVisionFileSet: BACKGROUND_TASKS_VISION_FILESET_URL,
+        modelAssetPath: BACKGROUND_SEGMENTER_MODEL_URL
+    };
 }

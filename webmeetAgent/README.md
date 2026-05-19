@@ -31,6 +31,10 @@ The WebMeet manifest:
 
 Explorer only needs to enable `webmeetAgent` and the `webmeet` plugin for normal rooms, chat, camera, screen sharing, and recording flows.
 
+WebMeet browser settings are user-scoped preferences stored in the browser, not per-room state. Device selection, audio processing, camera quality, screen share quality, and background privacy effects are opened from the dashboard modal header and apply across every room that the same Explorer user joins from that browser profile.
+
+Background privacy uses a locally bundled LiveKit processor pipeline plus bundled MediaPipe assets. Blur and virtual-background images therefore stay inside the routed WebMeet frontend instead of depending on third-party CDN fetches at runtime.
+
 ## Optional AI Worker
 
 WebMeet uses self-hosted LiveKit Agents for AI participants. The worker is not simulated in the WebMeet store and is not LiveKit Cloud or LiveKit Inference.

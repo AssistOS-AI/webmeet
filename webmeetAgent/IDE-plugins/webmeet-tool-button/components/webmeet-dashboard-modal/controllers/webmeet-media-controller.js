@@ -8,6 +8,12 @@ export class WebmeetMediaController {
     constructor(options = {}) {
         this.getRoom = typeof options.getRoom === 'function' ? options.getRoom : (() => null);
         this.getTrack = typeof options.getTrack === 'function' ? options.getTrack : (() => window.LivekitClient?.Track || null);
+        this.ensureBackgroundEffectsModule = typeof options.ensureBackgroundEffectsModule === 'function'
+            ? options.ensureBackgroundEffectsModule
+            : null;
+        this.getBackgroundEffectsAssetPaths = typeof options.getBackgroundEffectsAssetPaths === 'function'
+            ? options.getBackgroundEffectsAssetPaths
+            : (() => ({}));
         this.onMediaStateChange = typeof options.onMediaStateChange === 'function' ? options.onMediaStateChange : (() => {});
         this.onMicStateChange = typeof options.onMicStateChange === 'function' ? options.onMicStateChange : (() => {});
         this.onError = typeof options.onError === 'function' ? options.onError : (() => {});
@@ -22,15 +28,23 @@ export class WebmeetMediaController {
             microphoneGain: 1,
             outputVolume: 1,
             cameraQuality: 'h720',
-            screenShareQuality: 'h1080fps30'
+            screenShareQuality: 'h1080fps30',
+            backgroundMode: 'none',
+            backgroundBlurRadius: 12,
+            backgroundImageDataUrl: '',
+            backgroundImageName: ''
         };
         this.inFlight = false;
         this.customMicrophone = null;
+        this.backgroundProcessor = null;
+        this.backgroundProcessorTrack = null;
+        this.backgroundSyncPromise = null;
     }
 
     reset() {
         this.inFlight = false;
         this.stopCustomMicrophoneCapture();
+        void this.clearBackgroundEffect();
     }
 
     setSettings(next = {}) {
@@ -42,6 +56,130 @@ export class WebmeetMediaController {
 
     getSettings() {
         return { ...this.settings };
+    }
+
+    normalizeBackgroundMode(value) {
+        const mode = String(value || '').trim();
+        return ['none', 'blur', 'image'].includes(mode) ? mode : 'none';
+    }
+
+    normalizeBackgroundBlurRadius(value) {
+        const radius = Number(value);
+        if (!Number.isFinite(radius)) return 12;
+        return Math.min(24, Math.max(4, Math.round(radius)));
+    }
+
+    getLocalCameraTrack(TrackRef = null) {
+        const Track = TrackRef || this.getTrack();
+        const room = this.getRoom();
+        const localParticipant = room?.localParticipant;
+        if (!localParticipant?.trackPublications?.values) return null;
+        for (const publication of localParticipant.trackPublications.values()) {
+            if (!publication?.track) continue;
+            const isCameraSource = Track?.Source?.Camera
+                ? publication.source === Track.Source.Camera
+                : String(publication.source || '').toLowerCase() === 'camera';
+            const isFallbackCameraVideo = publication.kind === Track?.Kind?.Video && !publication.source;
+            if (isCameraSource || isFallbackCameraVideo) {
+                return publication.track;
+            }
+        }
+        return null;
+    }
+
+    getBackgroundProcessorOptions() {
+        const mode = this.normalizeBackgroundMode(this.settings.backgroundMode);
+        if (mode === 'blur') {
+            return {
+                mode: 'background-blur',
+                blurRadius: this.normalizeBackgroundBlurRadius(this.settings.backgroundBlurRadius),
+                assetPaths: this.getBackgroundEffectsAssetPaths()
+            };
+        }
+        if (mode === 'image') {
+            const imagePath = String(this.settings.backgroundImageDataUrl || '').trim();
+            if (!imagePath) {
+                throw new Error('Choose a background image before enabling virtual background.');
+            }
+            return {
+                mode: 'virtual-background',
+                imagePath,
+                assetPaths: this.getBackgroundEffectsAssetPaths()
+            };
+        }
+        return {
+            mode: 'disabled',
+            assetPaths: this.getBackgroundEffectsAssetPaths()
+        };
+    }
+
+    async ensureBackgroundEffectsSupport() {
+        if (!this.ensureBackgroundEffectsModule) {
+            throw new Error('Background effects are not available in this build.');
+        }
+        const module = await this.ensureBackgroundEffectsModule();
+        if (typeof module?.BackgroundProcessor !== 'function') {
+            throw new Error('Background effects failed to load.');
+        }
+        if (typeof module?.supportsBackgroundProcessors === 'function' && !module.supportsBackgroundProcessors()) {
+            throw new Error('This browser does not support background blur or virtual background in WebMeet.');
+        }
+        return module;
+    }
+
+    async clearBackgroundEffect(track = this.backgroundProcessorTrack || this.getLocalCameraTrack()) {
+        const targetTrack = track || null;
+        if (targetTrack && typeof targetTrack.stopProcessor === 'function') {
+            try {
+                await targetTrack.stopProcessor();
+            } catch (_) {
+                // keep local state cleanup even if the SDK already released the processor
+            }
+        }
+        this.backgroundProcessor = null;
+        this.backgroundProcessorTrack = null;
+    }
+
+    async applyBackgroundEffectToCamera() {
+        const backgroundMode = this.normalizeBackgroundMode(this.settings.backgroundMode);
+        const cameraTrack = this.getLocalCameraTrack();
+        if (!cameraTrack) {
+            this.backgroundProcessor = null;
+            this.backgroundProcessorTrack = null;
+            return;
+        }
+        if (backgroundMode === 'none') {
+            await this.clearBackgroundEffect(cameraTrack);
+            return;
+        }
+        if (typeof cameraTrack.setProcessor !== 'function') {
+            throw new Error('This browser cannot apply camera background effects.');
+        }
+        const module = await this.ensureBackgroundEffectsSupport();
+        const options = this.getBackgroundProcessorOptions();
+        if (this.backgroundProcessor && this.backgroundProcessorTrack === cameraTrack && typeof this.backgroundProcessor.switchTo === 'function') {
+            await this.backgroundProcessor.switchTo(options);
+            return;
+        }
+        if (this.backgroundProcessorTrack && this.backgroundProcessorTrack !== cameraTrack) {
+            await this.clearBackgroundEffect(this.backgroundProcessorTrack);
+        }
+        const processor = module.BackgroundProcessor(options);
+        await cameraTrack.setProcessor(processor);
+        this.backgroundProcessor = processor;
+        this.backgroundProcessorTrack = cameraTrack;
+    }
+
+    async syncBackgroundEffect() {
+        const next = Promise.resolve(this.backgroundSyncPromise)
+            .catch(() => {})
+            .then(() => this.applyBackgroundEffectToCamera());
+        this.backgroundSyncPromise = next.finally(() => {
+            if (this.backgroundSyncPromise === next) {
+                this.backgroundSyncPromise = null;
+            }
+        });
+        return this.backgroundSyncPromise;
     }
 
     getMicrophoneEnableOptions() {
@@ -318,6 +456,7 @@ export class WebmeetMediaController {
     async stopAllLocalMedia(room = this.getRoom()) {
         this.hardStopMicrophoneTracks();
         await this.stopCustomMicrophoneCapture();
+        await this.clearBackgroundEffect();
         const localParticipant = room?.localParticipant || null;
         if (localParticipant) {
             for (const action of [
@@ -485,10 +624,13 @@ export class WebmeetMediaController {
                     await localParticipant.setCameraEnabled(true);
                     this.onError('Selected camera quality could not be used. WebMeet is using browser default camera settings.');
                 }
+                await this.waitForLocalSourceState('camera', true);
+                await this.syncBackgroundEffect();
             } else {
+                await this.clearBackgroundEffect();
                 await localParticipant.setCameraEnabled(false);
+                await this.waitForLocalSourceState('camera', false);
             }
-            await this.waitForLocalSourceState('camera', shouldEnableCamera);
         });
     }
 
