@@ -53,7 +53,39 @@
       "inputSchema": {
         "meetingId": { "type": "string", "optional": false },
         "displayName": { "type": "string", "optional": true },
-        "participantId": { "type": "string", "optional": true }
+        "participantId": { "type": "string", "optional": true },
+        "avatar": {
+          "type": "object",
+          "optional": true,
+          "properties": {
+            "enabled": { "type": "boolean", "optional": true },
+            "fallbackLetter": { "type": "string", "optional": true },
+            "config": {
+              "type": "object",
+              "optional": true,
+              "properties": {
+                "agentId": { "type": "string", "optional": true },
+                "generated": { "type": "boolean", "optional": true },
+                "src": { "type": "string", "optional": true },
+                "packSrc": { "type": "string", "optional": true },
+                "assetMode": { "type": "string", "optional": true },
+                "emotion": { "type": "string", "optional": true },
+                "size": { "type": "string", "optional": true },
+                "thought": { "type": "string", "optional": true },
+                "thoughtMode": { "type": "string", "optional": true },
+                "mode": { "type": "string", "optional": true },
+                "shape": { "type": "string", "optional": true },
+                "theme": { "type": "string", "optional": true },
+                "animated": { "type": "boolean", "optional": true },
+                "listen": { "type": "boolean", "optional": true },
+                "seed": { "type": "string", "optional": true },
+                "style": { "type": "string", "optional": true },
+                "palette": { "type": "string", "optional": true },
+                "complexity": { "type": "string", "optional": true }
+              }
+            }
+          }
+        }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_join" }
     },
@@ -96,6 +128,30 @@
       "env": { "TOOL_NAME": "webmeet_meeting_presence_ping" }
     },
     {
+      "name": "webmeet_workspace_events_list",
+      "title": "WebMeet List Workspace Events",
+      "description": "List authenticated workspace events after an optional event id.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "workspaceId": { "type": "string", "optional": false },
+        "afterId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_workspace_events_list" }
+    },
+    {
+      "name": "webmeet_meeting_events_list",
+      "title": "WebMeet List Meeting Events",
+      "description": "List authenticated meeting events after an optional event id.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "afterId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_meeting_events_list" }
+    },
+    {
       "name": "webmeet_meeting_get",
       "title": "WebMeet Get Meeting",
       "description": "Get meeting details, including participants.",
@@ -105,6 +161,19 @@
         "meetingId": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_get" }
+    },
+    {
+      "name": "webmeet_participant_avatar_update",
+      "title": "WebMeet Update Participant Avatar",
+      "description": "Publish the current user's safe participant avatar projection for a meeting.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "meetingId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false },
+        "avatar": { "type": "object", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_participant_avatar_update" }
     },
     {
       "name": "webmeet_meeting_rename",

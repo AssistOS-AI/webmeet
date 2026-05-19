@@ -1,3 +1,8 @@
+import {
+    createParticipantProfileAvatarController,
+    getFallbackLetter,
+} from '/explorer/services/profile-avatar-client.js';
+
 export class ParticipantLayoutController {
     constructor(options = {}) {
         this.getParticipantDisplayName = typeof options.getParticipantDisplayName === 'function'
@@ -16,6 +21,9 @@ export class ParticipantLayoutController {
                 hasCustomAudioSettings: false,
                 isAudioMutedLocally: false
             }));
+        this.getParticipantAvatarUserId = typeof options.getParticipantAvatarUserId === 'function'
+            ? options.getParticipantAvatarUserId
+            : ((participant) => (participant?.kind === 'local' ? 'me' : ''));
 
         this.videoGrid = null;
         this.videoGridAll = null;
@@ -24,6 +32,45 @@ export class ParticipantLayoutController {
         this.trackElements = new Map();
         this.participantViews = new Map();
         this.focusedParticipantId = '';
+        this.profileAvatarController = createParticipantProfileAvatarController({
+            getParticipantDisplayName: this.getParticipantDisplayName,
+            getParticipantAvatarUserId: this.getParticipantAvatarUserId
+        });
+        this.profileAvatarCleanup = this.profileAvatarController.bindUpdates(
+            () => this.participantViews.values(),
+            (view) => this.applyParticipantViewState(view)
+        );
+    }
+
+    dispose() {
+        this.profileAvatarCleanup?.();
+        this.profileAvatarCleanup = null;
+    }
+
+    refreshAvatarForUser(userId) {
+        this.profileAvatarController.refreshUser(
+            userId,
+            () => this.participantViews.values(),
+            (view) => this.applyParticipantViewState(view)
+        );
+    }
+
+    getViews() {
+        return Array.from(this.participantViews.values());
+    }
+
+    applyParticipantProfileAvatar(view, participant) {
+        const profileAvatar = participant?.profileAvatar && typeof participant.profileAvatar === 'object'
+            ? participant.profileAvatar
+            : null;
+        if (!view || !profileAvatar) return false;
+        view.avatarEnabled = profileAvatar.enabled !== false;
+        view.avatarConfig = view.avatarEnabled && profileAvatar.config && typeof profileAvatar.config === 'object'
+            ? profileAvatar.config
+            : null;
+        view.avatarFallbackLetter = String(profileAvatar.fallbackLetter || view.avatarFallbackLetter || getFallbackLetter(view.name)).trim();
+        view.avatarResolved = true;
+        return true;
     }
 
     setElements(elements = {}) {
@@ -79,8 +126,18 @@ export class ParticipantLayoutController {
             canDetachAgent: Boolean(view.canDetachAgent),
             canConfigureAudio: Boolean(view.canConfigureAudio),
             hasCustomAudioSettings: Boolean(view.hasCustomAudioSettings),
-            isAudioMutedLocally: Boolean(view.isAudioMutedLocally)
+            isAudioMutedLocally: Boolean(view.isAudioMutedLocally),
+            avatarEnabled: Boolean(view.avatarEnabled),
+            avatarConfig: view.avatarConfig || null,
+            avatarFallbackLetter: String(view.avatarFallbackLetter || '').trim(),
+            avatarResolved: Boolean(view.avatarResolved)
         };
+        const serializedAvatarConfig = payload.avatarConfig && typeof payload.avatarConfig === 'object'
+            ? JSON.stringify(payload.avatarConfig)
+            : '';
+        const avatarSize = payload.avatarConfig && typeof payload.avatarConfig === 'object'
+            ? String(payload.avatarConfig.size || '').trim()
+            : '';
         view.element.dataset.participantId = payload.participantId;
         view.element.dataset.agentId = payload.agentId;
         view.element.setAttribute('data-display-name', payload.displayName);
@@ -95,6 +152,11 @@ export class ParticipantLayoutController {
         view.element.setAttribute('data-can-configure-audio', payload.canConfigureAudio ? 'true' : 'false');
         view.element.setAttribute('data-has-custom-audio-settings', payload.hasCustomAudioSettings ? 'true' : 'false');
         view.element.setAttribute('data-is-audio-muted-locally', payload.isAudioMutedLocally ? 'true' : 'false');
+        view.element.setAttribute('data-avatar-enabled', payload.avatarEnabled ? 'true' : 'false');
+        view.element.setAttribute('data-avatar-resolved', payload.avatarResolved ? 'true' : 'false');
+        view.element.setAttribute('data-avatar-config', serializedAvatarConfig);
+        view.element.setAttribute('data-avatar-fallback-letter', payload.avatarFallbackLetter);
+        view.element.setAttribute('data-avatar-size', avatarSize);
         const presenter = view.element.webSkelPresenter;
         if (presenter && typeof presenter.setState === 'function') {
             presenter.setState(payload);
@@ -135,6 +197,11 @@ export class ParticipantLayoutController {
                 canConfigureAudio: Boolean(audioState?.canConfigureAudio),
                 hasCustomAudioSettings: Boolean(audioState?.hasCustomAudioSettings),
                 isAudioMutedLocally: Boolean(audioState?.isAudioMutedLocally),
+                avatarUserId: this.getParticipantAvatarUserId(participant),
+                avatarEnabled: false,
+                avatarConfig: null,
+                avatarFallbackLetter: getFallbackLetter(this.getParticipantDisplayName(participant)),
+                avatarResolved: false,
                 isMini: true,
                 isFocused: false,
                 element,
@@ -150,11 +217,19 @@ export class ParticipantLayoutController {
             view.canConfigureAudio = Boolean(audioState?.canConfigureAudio);
             view.hasCustomAudioSettings = Boolean(audioState?.hasCustomAudioSettings);
             view.isAudioMutedLocally = Boolean(audioState?.isAudioMutedLocally);
+            view.avatarUserId = this.getParticipantAvatarUserId(participant);
+            if (!view.avatarFallbackLetter) {
+                view.avatarFallbackLetter = getFallbackLetter(view.name);
+            }
             if (!view.videoElements) {
                 view.videoElements = new Map();
             }
         }
+        const hasProjectedAvatar = this.applyParticipantProfileAvatar(view, participant);
         this.applyParticipantViewState(view);
+        if (!hasProjectedAvatar) {
+            this.profileAvatarController.refresh(view, participant, (nextView) => this.applyParticipantViewState(nextView));
+        }
         return view;
     }
 

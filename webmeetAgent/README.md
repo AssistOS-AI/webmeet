@@ -47,6 +47,8 @@ Default port: `8791`
 
 Primary endpoints:
 
+- Authenticated HTTP service base: `/services/webmeet`
+- Guest/public HTTP service base: `/public-services/webmeet`
 - `GET /healthz`
 - `GET/POST /api/workspaces`
 - `GET/POST /api/workspaces/:workspaceId/meetings`
@@ -60,6 +62,8 @@ Primary endpoints:
 - `GET /api/meetings/:meetingId/artifacts`
 - `GET /api/meetings/:meetingId/tasks`
 - `GET /api/meetings/:meetingId/decisions`
+
+Authenticated joins may include a sanitized `avatar` projection in the join body so the newly created participant roster entry already carries `profileAvatar` for reloads and reconnects before any follow-up avatar refresh call runs.
 
 ## Runtime Validation
 

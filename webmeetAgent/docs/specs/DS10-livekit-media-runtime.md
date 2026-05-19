@@ -113,6 +113,8 @@ After join there are two participant views:
 - WebMeet presence is durable application state in the encrypted meeting payload, updated by join, heartbeat, leave, and stale-presence cleanup.
 - Live media presence is LiveKit room state, surfaced to the UI through participant, publication, subscription, mute, unmute, and disconnect events.
 
+Participant cards resolve profile avatars without reading another user's DPU My Space. Local authenticated participants map to the current workspace user and may render the saved AxiFace profile avatar from Explorer's protected avatar settings service. Authenticated joins must persist the workspace user id in durable WebMeet presence and include the same id in LiveKit participant token attributes (`webmeetUserId`, `userId`, `workspaceUserId`, and `ploinkyUserId`) so other room members can identify the participant without guessing from display names. Authenticated WebMeet API calls must use the protected `/services/webmeet/...` router prefix; the `/public-services/webmeet/...` prefix is reserved for forced-guest invite traffic and otherwise rewrites the caller to visitor/guest identity. When the client can resolve the current profile avatar during join, the sanitized `profileAvatar` projection must travel in the join request itself so a freshly created participant roster entry already carries the avatar across reloads and reconnects. After join, and after profile avatar changes, the client still publishes the sanitized `profileAvatar` projection onto its WebMeet participant roster entry as a follow-up refresh. Remote participant cards render only that roster projection; they must not call Explorer's protected avatar settings service for another user id. Unresolved workspace users and guests fall back to a first-letter avatar. When a profile avatar is saved, WebMeet publishes best-effort `profile.avatar.updated` and `participant.avatar.updated` events so authenticated room members refresh roster state and re-render the participant card without a page reload. Card presenters do not fetch DPU data directly and only render the avatar state supplied by the participant layout controller.
+
 Redis supports LiveKit internal state; it is not the user-facing directory.
 
 ### LiveKit Join And SFU Processing
@@ -120,7 +122,7 @@ Redis supports LiveKit internal state; it is not the user-facing directory.
 When a WebMeet user joins a room:
 
 1. The browser calls `webmeet_meeting_join` or the guest join API through Ploinky.
-2. `webmeetAgent` updates durable meeting presence and returns `livekitUrl`, `roomName`, and a LiveKit participant JWT.
+2. `webmeetAgent` updates durable meeting presence, records authenticated workspace user ids on participant entries, and returns `livekitUrl`, `roomName`, and a LiveKit participant JWT.
 3. The browser opens a WebSocket signaling connection to `livekitUrl`.
 4. LiveKit validates the JWT against its configured API key/secret and checks room grants.
 5. The browser and LiveKit negotiate WebRTC transport through ICE.

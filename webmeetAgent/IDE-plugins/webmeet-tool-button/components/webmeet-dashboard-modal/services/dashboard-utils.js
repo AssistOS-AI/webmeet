@@ -38,21 +38,16 @@ export function createParticipantInstanceId() {
 export function normalizeCurrentActor() {
     const user = globalThis.assistOS?.user;
     if (!user || typeof user !== 'object') {
-        return {
-            id: '',
-            username: '',
-            email: '',
-            principalId: '',
-            roles: []
-        };
+        return null;
     }
-    return {
+    const actor = {
         id: String(user.id || '').trim(),
         username: String(user.username || user.name || '').trim(),
         email: String(user.email || '').trim(),
         principalId: String(user.principalId || '').trim(),
         roles: Array.isArray(user.roles) ? user.roles.map((role) => String(role || '').trim()).filter(Boolean) : []
     };
+    return actor.id ? actor : null;
 }
 
 export function getCurrentActorDisplayName() {
@@ -106,5 +101,5 @@ export function buildPublicWebMeetApiBaseUrl() {
 }
 
 export function buildAuthenticatedWebMeetApiBaseUrl() {
-    return `${window.location.origin}/public-services/webmeet`;
+    return `${window.location.origin}/services/webmeet`;
 }

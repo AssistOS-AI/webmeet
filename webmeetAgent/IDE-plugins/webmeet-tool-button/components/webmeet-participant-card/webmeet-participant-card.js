@@ -1,5 +1,23 @@
+import {
+    ensureAxiFaceLoaded,
+    renderAxiFaceMarkup
+} from '/explorer/services/profile-avatar-client.js';
+
 function parseBoolean(value) {
     return String(value || '').toLowerCase() === 'true';
+}
+
+function parseAvatarConfig(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed
+            : null;
+    } catch (_) {
+        return null;
+    }
 }
 
 function buildInitials(name) {
@@ -10,6 +28,14 @@ function buildInitials(name) {
     return chunks.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';
 }
 
+function normalizeAvatarSize(value, fallback = '86px') {
+    const raw = String(value || '').trim();
+    if (!raw) return fallback;
+    if (/^\d+(\.\d+)?$/.test(raw)) return `${raw}px`;
+    if (/^\d+(\.\d+)?(px|rem|em|vh|vw|vmin|vmax|%)$/.test(raw)) return raw;
+    return fallback;
+}
+
 export class WebMeetParticipantCard {
     constructor(element, invalidate) {
         this.element = element;
@@ -18,6 +44,9 @@ export class WebMeetParticipantCard {
         this.mediaElement = null;
         this.mediaElements = [];
         this.mediaAspectCleanup = null;
+        this.avatarRenderKey = '';
+        this.avatarLoadPromise = null;
+        this.avatarLoadFailedKey = '';
         this.state = {
             participantId: String(element.getAttribute('data-participant-id') || '').trim(),
             displayName: String(element.getAttribute('data-display-name') || 'Participant').trim() || 'Participant',
@@ -32,7 +61,11 @@ export class WebMeetParticipantCard {
             canDetachAgent: parseBoolean(element.getAttribute('data-can-detach-agent')),
             canConfigureAudio: parseBoolean(element.getAttribute('data-can-configure-audio')),
             hasCustomAudioSettings: parseBoolean(element.getAttribute('data-has-custom-audio-settings')),
-            isAudioMutedLocally: parseBoolean(element.getAttribute('data-is-audio-muted-locally'))
+            isAudioMutedLocally: parseBoolean(element.getAttribute('data-is-audio-muted-locally')),
+            avatarEnabled: parseBoolean(element.getAttribute('data-avatar-enabled')),
+            avatarConfig: parseAvatarConfig(element.getAttribute('data-avatar-config')),
+            avatarFallbackLetter: String(element.getAttribute('data-avatar-fallback-letter') || '').trim(),
+            avatarResolved: parseBoolean(element.getAttribute('data-avatar-resolved'))
         };
         this.invalidate();
     }
@@ -143,7 +176,7 @@ export class WebMeetParticipantCard {
         this.element.dataset.local = this.state.isLocal ? 'true' : 'false';
         this.element.dataset.hasCustomAudioSettings = this.state.hasCustomAudioSettings ? 'true' : 'false';
         this.refs.name.textContent = displayName;
-        this.refs.avatar.textContent = initials;
+        this.renderAvatar(initials);
         this.refs.fallback.style.display = this.state.hasVideo ? 'none' : 'flex';
         this.element.classList.toggle('is-video-loading', Boolean(this.state.videoLoading));
         if (this.refs.videoLoading) {
@@ -181,6 +214,76 @@ export class WebMeetParticipantCard {
             this.refs.agentDetach.style.display = showDetach ? 'inline-flex' : 'none';
             this.refs.agentDetach.dataset.agentId = agentId;
         }
+    }
+
+    renderAvatar(initials) {
+        if (!this.refs?.avatar) return;
+        const fallback = String(this.state.avatarFallbackLetter || initials || '?').trim() || '?';
+        const resolved = Boolean(this.state.avatarResolved);
+        if (!resolved) {
+            const key = `loading:${this.state.isMini ? 'mini' : 'full'}`;
+            if (this.avatarRenderKey === key) return;
+            this.avatarRenderKey = key;
+            this.refs.avatar.style.removeProperty('--wm-participant-avatar-size');
+            delete this.refs.avatar.dataset.avatarSize;
+            this.refs.avatar.textContent = '';
+            this.refs.avatar.classList.remove('has-axi-face');
+            this.refs.avatar.classList.add('is-avatar-loading');
+            this.refs.avatar.setAttribute('aria-label', 'Loading avatar');
+            return;
+        }
+        if (this.state.avatarEnabled && this.state.avatarConfig) {
+            const size = normalizeAvatarSize(this.state.avatarConfig.size, this.state.isMini ? '42px' : '86px');
+            const loadKey = `axi-load:${JSON.stringify(this.state.avatarConfig)}`;
+            if (typeof customElements !== 'undefined' && !customElements.get('axi-face')) {
+                const key = `waiting-axi:${fallback}:${size}:${JSON.stringify(this.state.avatarConfig)}`;
+                if (this.avatarRenderKey !== key) {
+                    this.avatarRenderKey = key;
+                    this.refs.avatar.style.removeProperty('--wm-participant-avatar-size');
+                    delete this.refs.avatar.dataset.avatarSize;
+                    this.refs.avatar.textContent = fallback;
+                    this.refs.avatar.classList.remove('has-axi-face');
+                    this.refs.avatar.classList.remove('is-avatar-loading');
+                    this.refs.avatar.setAttribute('aria-label', fallback);
+                }
+                if (this.avatarLoadFailedKey === loadKey) {
+                    return;
+                }
+                if (!this.avatarLoadPromise) {
+                    this.avatarLoadPromise = ensureAxiFaceLoaded()
+                        .then(() => {
+                            this.avatarLoadFailedKey = '';
+                            this.avatarLoadPromise = null;
+                            this.avatarRenderKey = '';
+                            this.applyState();
+                        })
+                        .catch(() => {
+                            this.avatarLoadFailedKey = loadKey;
+                            this.avatarLoadPromise = null;
+                        });
+                }
+                return;
+            }
+            const key = `axi:${size}:${JSON.stringify(this.state.avatarConfig)}`;
+            if (this.avatarRenderKey === key) return;
+            this.avatarRenderKey = key;
+            this.refs.avatar.style.setProperty('--wm-participant-avatar-size', size);
+            this.refs.avatar.dataset.avatarSize = size;
+            this.refs.avatar.innerHTML = renderAxiFaceMarkup(this.state.avatarConfig);
+            this.refs.avatar.classList.add('has-axi-face');
+            this.refs.avatar.classList.remove('is-avatar-loading');
+            this.refs.avatar.setAttribute('aria-label', fallback);
+            return;
+        }
+        const key = `fallback:${fallback}`;
+        if (this.avatarRenderKey === key) return;
+        this.avatarRenderKey = key;
+        this.refs.avatar.style.removeProperty('--wm-participant-avatar-size');
+        delete this.refs.avatar.dataset.avatarSize;
+        this.refs.avatar.textContent = fallback;
+        this.refs.avatar.classList.remove('has-axi-face');
+        this.refs.avatar.classList.remove('is-avatar-loading');
+        this.refs.avatar.setAttribute('aria-label', fallback);
     }
 
     installMediaAspectObserver() {

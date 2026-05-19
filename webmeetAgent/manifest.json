@@ -21,6 +21,12 @@
     },
     "httpServices": [
         {
+            "externalPrefix": "/services/webmeet/",
+            "internalPrefix": "/api/",
+            "auth": "protected",
+            "notFoundMessage": "WebMeet route not found."
+        },
+        {
             "externalPrefix": "/public-services/webmeet/",
             "internalPrefix": "/api/",
             "auth": "guest",

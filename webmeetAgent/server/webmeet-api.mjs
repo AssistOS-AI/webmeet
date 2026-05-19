@@ -23,6 +23,7 @@ import {
     leaveMeeting,
     pingGuestMeetingPresence,
     pingMeetingPresence,
+    recordProfileAvatarUpdated,
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
@@ -32,7 +33,8 @@ import {
     listWorkspaceEvents,
     listWorkspaces,
     startMeetingRecording,
-    stopMeetingRecording
+    stopMeetingRecording,
+    updateMeetingParticipantAvatar
 } from '../lib/webmeetStore.mjs';
 
 const PORT = Number.parseInt(process.env.WEBMEET_API_PORT || '8791', 10);
@@ -72,15 +74,15 @@ function getActor(body) {
 }
 
 function getRequestActor(req, body = null) {
-    const bodyActor = getActor(body);
-    if (bodyActor) return bodyActor;
     const raw = String(req.headers?.['x-ploinky-auth-info'] || '').trim();
-    if (!raw) return null;
-    try {
-        return JSON.parse(raw);
-    } catch {
-        return null;
+    if (raw) {
+        try {
+            return JSON.parse(raw);
+        } catch {
+            return null;
+        }
     }
+    return getActor(body);
 }
 
 function assertAdminRequest(req, body = null) {
@@ -211,12 +213,14 @@ function matchRoute(method, pathname) {
         ['workspaces.list', 'GET', /^\/api\/workspaces$/],
         ['workspaces.create', 'POST', /^\/api\/workspaces$/],
         ['workspaces.events', 'GET', /^\/api\/workspaces\/([^/]+)\/events$/],
+        ['workspaces.profile-avatar.updated', 'POST', /^\/api\/workspaces\/([^/]+)\/profile-avatar-updated$/],
         ['meetings.list', 'GET', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.create', 'POST', /^\/api\/workspaces\/([^/]+)\/meetings$/],
         ['meetings.get', 'GET', /^\/api\/meetings\/([^/]+)$/],
         ['meetings.events', 'GET', /^\/api\/meetings\/([^/]+)\/events$/],
         ['meetings.join', 'POST', /^\/api\/meetings\/([^/]+)\/join$/],
         ['meetings.join.guest', 'POST', /^\/api\/meetings\/([^/]+)\/join-guest$/],
+        ['meetings.participant.avatar', 'POST', /^\/api\/meetings\/([^/]+)\/participants\/([^/]+)\/avatar$/],
         ['meetings.guest.state', 'POST', /^\/api\/meetings\/([^/]+)\/guest-state$/],
         ['meetings.guest.leave', 'POST', /^\/api\/meetings\/([^/]+)\/guest-leave$/],
         ['meetings.guest.presence', 'POST', /^\/api\/meetings\/([^/]+)\/guest-presence$/],
@@ -283,6 +287,16 @@ async function handler(req, res) {
             });
             return;
         }
+        if (route.name === 'workspaces.profile-avatar.updated') {
+            const body = await readBody(req);
+            const authInfo = getRequestActor(req, body);
+            json(res, 201, recordProfileAvatarUpdated(context, {
+                workspaceId: route.params[0],
+                userId: String(body.userId || '').trim(),
+                authInfo
+            }));
+            return;
+        }
         if (route.name === 'meetings.list' || route.name === 'meetings.create') {
             const [workspaceId] = route.params;
             if (route.name === 'meetings.list') {
@@ -298,7 +312,7 @@ async function handler(req, res) {
                 workspaceId,
                 title: String(body.title || '').trim(),
                 roomType: String(body.roomType || 'team').trim(),
-                authInfo: getActor(body)
+                authInfo: getRequestActor(req, body)
             }));
             return;
         }
@@ -319,7 +333,8 @@ async function handler(req, res) {
                 meetingId: route.params[0],
                 displayName: String(body.displayName || '').trim(),
                 participantId: String(body.participantId || '').trim(),
-                authInfo: getActor(body)
+                avatar: body.avatar || null,
+                authInfo: getRequestActor(req, body)
             }));
             return;
         }
@@ -330,6 +345,16 @@ async function handler(req, res) {
                 guestToken: String(body.guestToken || '').trim(),
                 displayName: String(body.displayName || '').trim(),
                 participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.participant.avatar') {
+            const body = await readBody(req);
+            json(res, 200, updateMeetingParticipantAvatar(context, {
+                meetingId: route.params[0],
+                participantId: route.params[1],
+                avatar: body.avatar || body,
+                authInfo: getRequestActor(req, body)
             }));
             return;
         }
@@ -413,7 +438,7 @@ async function handler(req, res) {
                 json(res, 200, await detachMeetingAgent(context, {
                     meetingId,
                     agentId: route.params[1],
-                    authInfo: getActor(body)
+                    authInfo: getRequestActor(req, body)
                 }));
                 return;
             }
@@ -422,7 +447,7 @@ async function handler(req, res) {
                 meetingId,
                 agentType: String(body.agentType || '').trim(),
                 mode: String(body.mode || '').trim(),
-                authInfo: getActor(body)
+                authInfo: getRequestActor(req, body)
             }));
             return;
         }

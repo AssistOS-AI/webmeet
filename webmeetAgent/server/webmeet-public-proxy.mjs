@@ -99,6 +99,51 @@ function readPloinkyAuthInfo(req) {
     }
 }
 
+function authInfoFromInvocation(grant, { invocationToken = '' } = {}) {
+    if (!grant || typeof grant !== 'object') return null;
+    const out = {};
+    const callerPrincipal = grant.caller || grant.sub || '';
+    if (callerPrincipal && /^agent:/i.test(callerPrincipal)) {
+        out.agent = {
+            principalId: callerPrincipal,
+            name: String(callerPrincipal).replace(/^agent:/i, '')
+        };
+    }
+    const userClaims = grant.usr || grant.user;
+    if (userClaims && typeof userClaims === 'object') {
+        out.user = {
+            id: String(userClaims.id || userClaims.sub || ''),
+            username: String(userClaims.username || userClaims.preferred_username || ''),
+            email: String(userClaims.email || ''),
+            roles: Array.isArray(userClaims.roles) ? [...userClaims.roles] : []
+        };
+    }
+    out.invocation = {
+        issuer: String(grant.iss || ''),
+        subject: String(grant.sub || ''),
+        scope: Array.isArray(grant.scope) ? [...grant.scope] : [],
+        tool: String(grant.tool || ''),
+        workspaceId: String(grant.workspace_id || '')
+    };
+    out.invocationToken = String(invocationToken || '');
+    return out;
+}
+
+function applyVerifiedAuthInfoToRequest(req, verifiedPayload) {
+    if (!req || !verifiedPayload || typeof verifiedPayload !== 'object') return;
+    const current = readPloinkyAuthInfo(req) || {};
+    const invocationToken = String(current?.invocationToken || '').trim();
+    const normalized = authInfoFromInvocation(verifiedPayload, { invocationToken }) || {};
+    const merged = {
+        ...current,
+        ...normalized,
+        user: normalized.user || current.user || undefined,
+        agent: normalized.agent || current.agent || undefined,
+        invocation: normalized.invocation || current.invocation || undefined
+    };
+    req.headers['x-ploinky-auth-info'] = JSON.stringify(merged);
+}
+
 function buildExternalServicePath(pathname) {
     if (pathname === '/api') return PUBLIC_SERVICE_PREFIX.replace(/\/+$/g, '');
     if (!pathname.startsWith(INTERNAL_API_PREFIX)) return pathname;
@@ -196,7 +241,10 @@ async function verifyRouterInvocation(req, url, { requireGuest = false } = {}) {
 
 async function requirePloinkyAuthenticatedIdentity(req, res, url) {
     const verified = await verifyRouterInvocation(req, url, { requireGuest: false });
-    if (verified.ok) return true;
+    if (verified.ok) {
+        applyVerifiedAuthInfoToRequest(req, verified.payload);
+        return true;
+    }
     writeResponse(res, 401, JSON.stringify({ error: 'Ploinky authentication required.' }), {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-store'
@@ -618,7 +666,7 @@ function sendAsset(pathname, res) {
     res.writeHead(200, {
         'Content-Type': CONTENT_TYPES.get(extension) || 'application/octet-stream',
         'Content-Length': body.length,
-        'Cache-Control': extension === '.html' ? 'no-store' : 'public, max-age=3600',
+        'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff'
     });
     res.end(body);

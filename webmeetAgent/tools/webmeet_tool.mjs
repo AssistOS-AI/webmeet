@@ -18,11 +18,14 @@ import {
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
+    listMeetingEvents,
     listMeetings,
     listMeetingTranscript,
+    listWorkspaceEvents,
     listWorkspaces,
     startMeetingRecording,
     stopMeetingRecording,
+    updateMeetingParticipantAvatar,
     updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
 
@@ -404,6 +407,7 @@ export async function dispatch(toolName, args, context, authInfo) {
             meetingId: getRequiredString(args, 'meetingId'),
             displayName: String(args?.displayName || '').trim(),
             participantId: String(args?.participantId || '').trim(),
+            avatar: args?.avatar || null,
             authInfo
         });
     case 'webmeet_meeting_join_guest':
@@ -422,6 +426,26 @@ export async function dispatch(toolName, args, context, authInfo) {
         return pingMeetingPresence(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             participantId: getRequiredString(args, 'participantId')
+        });
+    case 'webmeet_workspace_events_list':
+        return {
+            events: listWorkspaceEvents(context, getRequiredString(args, 'workspaceId'), {
+                afterId: String(args?.afterId || '').trim()
+            })
+        };
+    case 'webmeet_meeting_events_list':
+        getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+        return {
+            events: listMeetingEvents(context, getRequiredString(args, 'meetingId'), {
+                afterId: String(args?.afterId || '').trim()
+            })
+        };
+    case 'webmeet_participant_avatar_update':
+        return updateMeetingParticipantAvatar(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            participantId: getRequiredString(args, 'participantId'),
+            avatar: args?.avatar || null,
+            authInfo
         });
     case 'webmeet_meeting_get':
         return getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);

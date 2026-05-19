@@ -1,5 +1,9 @@
 import { getCurrentActorDisplayName } from '../services/dashboard-utils.js';
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
+import {
+    getCurrentProfileAvatar,
+    normalizeAvatarConfig
+} from '/explorer/services/profile-avatar-client.js';
 
 const runTool = runWebMeetTool;
 
@@ -144,15 +148,97 @@ export const meetingActionMethods = {
         if (displayName) {
             payload.displayName = displayName;
         }
+        let initialAvatar = null;
+        try {
+            const sourceAvatar = options.avatar && typeof options.avatar === 'object'
+                ? options.avatar
+                : await getCurrentProfileAvatar({ force: true });
+            const fallbackAvatarId = `profile:${sourceAvatar.user?.id || participantId}`;
+            initialAvatar = {
+                enabled: sourceAvatar.enabled !== false,
+                config: normalizeAvatarConfig(sourceAvatar.config, fallbackAvatarId),
+                fallbackLetter: sourceAvatar.fallbackLetter || ''
+            };
+        } catch (_) {
+            // Joining should not fail just because the optional avatar projection is unavailable.
+        }
+        if (initialAvatar) {
+            payload.avatar = initialAvatar;
+        }
         this.state.session = await runTool('webmeet_meeting_join', payload);
         try {
             await this.connectRoom();
+            await this.publishCurrentParticipantAvatar({ force: true, ...(initialAvatar ? { avatar: initialAvatar } : {}) });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
             this.setError(message);
         } finally {
             this.renderMeetingSummary();
+        }
+    },
+
+    async publishCurrentParticipantAvatar(options = {}) {
+        if (this.isGuestSession()) return;
+        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        if (!meetingId || !participantId) return;
+        try {
+            const sourceAvatar = options.avatar && typeof options.avatar === 'object'
+                ? options.avatar
+                : await getCurrentProfileAvatar({ force: Boolean(options.force) });
+            const fallbackAvatarId = `profile:${sourceAvatar.user?.id || participantId}`;
+            const avatar = {
+                enabled: sourceAvatar.enabled !== false,
+                config: normalizeAvatarConfig(sourceAvatar.config, fallbackAvatarId),
+                fallbackLetter: sourceAvatar.fallbackLetter || ''
+            };
+            const updated = await runTool('webmeet_participant_avatar_update', {
+                meetingId,
+                participantId,
+                avatar
+            });
+            const profileAvatar = updated?.profileAvatar || null;
+            if (profileAvatar && this.state.session?.participant) {
+                this.state.session.participant.profileAvatar = profileAvatar;
+            }
+            const existing = Array.isArray(this.state.participants) ? this.state.participants : [];
+            let matchedParticipant = false;
+            this.state.participants = existing.map((entry) => {
+                const matched = String(entry?.id || '').trim() === participantId;
+                if (matched) {
+                    matchedParticipant = true;
+                }
+                return matched
+                    ? { ...entry, profileAvatar }
+                    : entry;
+            });
+            if (!matchedParticipant && this.state.session?.participant) {
+                this.state.participants = [
+                    ...this.state.participants,
+                    {
+                        ...this.state.session.participant,
+                        profileAvatar
+                    }
+                ];
+            }
+            if (this.room && window.LivekitClient?.Track) {
+                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+            }
+            const userId = String(
+                sourceAvatar.user?.id
+                || profileAvatar?.config?.agentId?.replace(/^profile:/, '')
+                || ''
+            ).trim();
+            await this.publishRealtimePayload({
+                type: 'participant.avatar.updated',
+                meetingId,
+                participantId,
+                userId,
+                profileAvatar
+            });
+        } catch (_) {
+            // Avatar projection is best-effort; room join and media state remain authoritative.
         }
     },
 

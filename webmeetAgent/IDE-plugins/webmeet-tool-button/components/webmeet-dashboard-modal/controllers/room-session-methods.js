@@ -356,6 +356,12 @@ export const roomSessionMethods = {
             onParticipantConnected: (participant, { Track }) => {
                 subscribeParticipantPublications(participant, Track, 'participant-connected');
                 this.syncParticipantsFromRoom(this.room, Track);
+                void (async () => {
+                    await this.loadMeetingDetails();
+                    if (this.room) {
+                        this.syncParticipantsFromRoom(this.room, Track);
+                    }
+                })().catch(() => {});
                 scheduleRemoteSubscriptionSweep(Track, 'participant-connected');
             },
             onParticipantDisconnected: (participant, { Track }) => {
@@ -400,21 +406,9 @@ export const roomSessionMethods = {
                 try {
                     const text = new TextDecoder().decode(payload);
                     const data = JSON.parse(text);
-                    if (data.type === 'chat' && data.meetingId === this.selectedMeeting?.id) {
-                        if (!this.state.chat) this.state.chat = [];
-                        this.state.chat.push(data.message);
-                        this.renderFeedLists();
-                    } else if (data.type === 'meeting.renamed') {
-                        this.applyMeetingRename(data.meetingId, data.title, data.updatedAt || '');
-                    } else if ((data.type === 'agent.dispatched' || data.type === 'agent.detached') && data.meetingId === this.selectedMeeting?.id) {
-                        void (async () => {
-                            await this.loadMeetingDetails();
-                            if (this.room && window.LivekitClient?.Track) {
-                                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
-                            }
-                            this.renderAll();
-                        })();
-                    }
+                    this.emitWebMeetInternalEvent('livekit', data, {
+                        participantId: String(participant?.identity || '').trim()
+                    });
                 } catch (err) {
                     // Ignore malformed data-channel messages from other clients.
                 }
@@ -425,6 +419,12 @@ export const roomSessionMethods = {
             onConnected: ({ room, Track }) => {
                 this.state.roomState = 'Connected';
                 this.syncParticipantsFromRoom(this.room, Track);
+                void (async () => {
+                    await this.loadMeetingDetails();
+                    if (this.room) {
+                        this.syncParticipantsFromRoom(this.room, Track);
+                    }
+                })().catch(() => {});
                 for (const participant of room.remoteParticipants.values()) {
                     subscribeParticipantPublications(participant, Track, 'connected');
                 }

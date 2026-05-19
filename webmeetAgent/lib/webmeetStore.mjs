@@ -29,6 +29,8 @@ const WORKSPACE_EVENT_TYPES = new Set([
     'participant.joined',
     'participant.left',
     'participant.timed_out',
+    'participant.avatar.updated',
+    'profile.avatar.updated',
     'agent.dispatched',
     'agent.detached'
 ]);
@@ -534,10 +536,170 @@ function buildRtcConfig(context) {
     };
 }
 
-function createLiveKitToken(context, { roomName, identity, name }) {
+function sanitizeAvatarText(value, maxLength = 256) {
+    return String(value ?? '').trim().slice(0, maxLength);
+}
+
+function sanitizeAvatarBoolean(value) {
+    return value === true;
+}
+
+const AVATAR_ALLOWED_EMOTIONS = new Set([
+    'neutral',
+    'idle',
+    'listening',
+    'thinking',
+    'speaking',
+    'happy',
+    'amused',
+    'confused',
+    'concerned',
+    'alert',
+    'sleepy'
+]);
+const AVATAR_ALLOWED_THOUGHT_MODES = new Set(['none', 'bubble', 'caption', 'ticker', 'inside']);
+const AVATAR_ALLOWED_MODES = new Set(['static', 'controlled', 'event-driven', 'autonomous']);
+const AVATAR_ALLOWED_SHAPES = new Set(['circle', 'square', 'rounded', 'none']);
+const AVATAR_ALLOWED_THEMES = new Set(['light', 'dark', 'auto']);
+const AVATAR_ALLOWED_ASSET_MODES = new Set(['img', 'inline']);
+const AVATAR_ALLOWED_STYLES = new Set(['robot-soft', 'robot-minimal', 'sketch', 'emoji', 'terminal']);
+const AVATAR_ALLOWED_COMPLEXITIES = new Set(['', 'low', 'minimal', 'medium', 'default', 'high', 'detailed']);
+const AVATAR_CONFIG_FIELDS = new Set([
+    'agentId',
+    'src',
+    'packSrc',
+    'pack_src',
+    'assetMode',
+    'asset_mode',
+    'emotion',
+    'size',
+    'thought',
+    'thoughtMode',
+    'thought_mode',
+    'mode',
+    'shape',
+    'theme',
+    'animated',
+    'listen',
+    'generated',
+    'seed',
+    'style',
+    'axiStyle',
+    'palette',
+    'complexity'
+]);
+
+function sanitizeAvatarUrl(value, fieldName) {
+    const raw = sanitizeAvatarText(value, 1024);
+    if (!raw) return '';
+    if (/[\u0000-\u001f]/.test(raw)) {
+        throw new Error(`Invalid participant avatar ${fieldName}: contains control characters.`);
+    }
+    if (/^(javascript|data):/i.test(raw)) {
+        throw new Error(`Invalid participant avatar ${fieldName}: unsafe URL scheme.`);
+    }
+    if (/^http:\/\//i.test(raw)) {
+        throw new Error(`Invalid participant avatar ${fieldName}: absolute URLs must use HTTPS.`);
+    }
+    if (/^\/\//.test(raw)) {
+        throw new Error(`Invalid participant avatar ${fieldName}: protocol-relative URLs are not allowed.`);
+    }
+    return raw;
+}
+
+function sanitizeAvatarEnum(value, allowed, fallback, fieldName) {
+    const raw = sanitizeAvatarText(value, 64);
+    if (!raw) return fallback;
+    if (!allowed.has(raw)) {
+        throw new Error(`Invalid participant avatar ${fieldName}: ${raw}`);
+    }
+    return raw;
+}
+
+function sanitizeAvatarSize(value) {
+    const raw = sanitizeAvatarText(value || '72', 32);
+    if (/^\d+(\.\d+)?$/.test(raw) || /^\d+(\.\d+)?(px|rem|em|vh|vw|vmin|vmax|%)$/.test(raw)) {
+        return raw;
+    }
+    throw new Error(`Invalid participant avatar size: ${raw}`);
+}
+
+function sanitizeParticipantAvatarConfig(config = null, fallbackId = '') {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        return null;
+    }
+    for (const key of Object.keys(config)) {
+        if (!AVATAR_CONFIG_FIELDS.has(key)) {
+            throw new Error(`Unknown participant avatar config field: ${key}`);
+        }
+    }
+    const fallback = sanitizeAvatarText(fallbackId || 'profile:participant', 128);
+    const source = config;
+    const complexity = sanitizeAvatarText(source.complexity, 64);
+    if (!AVATAR_ALLOWED_COMPLEXITIES.has(complexity) && !/^(0(\.\d+)?|1(\.0+)?)$/.test(complexity)) {
+        throw new Error(`Invalid participant avatar complexity: ${complexity}`);
+    }
+    return {
+        agentId: sanitizeAvatarText(source.agentId || fallback, 128),
+        generated: source.generated !== false,
+        src: sanitizeAvatarUrl(source.src, 'src'),
+        packSrc: sanitizeAvatarUrl(source.packSrc || source.pack_src, 'packSrc'),
+        assetMode: sanitizeAvatarEnum(source.assetMode || source.asset_mode, AVATAR_ALLOWED_ASSET_MODES, 'img', 'assetMode'),
+        emotion: sanitizeAvatarEnum(source.emotion, AVATAR_ALLOWED_EMOTIONS, 'neutral', 'emotion'),
+        size: sanitizeAvatarSize(source.size),
+        thought: sanitizeAvatarText(source.thought, 256),
+        thoughtMode: sanitizeAvatarEnum(source.thoughtMode || source.thought_mode, AVATAR_ALLOWED_THOUGHT_MODES, source.thought ? 'bubble' : 'none', 'thoughtMode'),
+        mode: sanitizeAvatarEnum(source.mode, AVATAR_ALLOWED_MODES, 'static', 'mode'),
+        shape: sanitizeAvatarEnum(source.shape, AVATAR_ALLOWED_SHAPES, 'circle', 'shape'),
+        theme: sanitizeAvatarEnum(source.theme, AVATAR_ALLOWED_THEMES, 'auto', 'theme'),
+        animated: source.animated !== false,
+        listen: sanitizeAvatarBoolean(source.listen),
+        seed: sanitizeAvatarText(source.seed || source.agentId || fallback, 128),
+        style: sanitizeAvatarEnum(source.style || source.axiStyle, AVATAR_ALLOWED_STYLES, 'robot-soft', 'style'),
+        palette: sanitizeAvatarText(source.palette || 'default', 64),
+        complexity
+    };
+}
+
+function createDefaultParticipantAvatarConfig(fallbackId = '') {
+    const fallback = sanitizeAvatarText(fallbackId || 'profile:participant', 128);
+    return sanitizeParticipantAvatarConfig({
+        agentId: fallback,
+        seed: fallback,
+        generated: true,
+        assetMode: 'img',
+        emotion: 'neutral',
+        size: '72',
+        thoughtMode: 'none',
+        mode: 'static',
+        shape: 'circle',
+        theme: 'auto',
+        animated: true,
+        style: 'robot-soft',
+        palette: 'default'
+    }, fallback);
+}
+
+function sanitizeParticipantAvatarPayload(avatar = null, fallbackId = '') {
+    if (!avatar || typeof avatar !== 'object' || Array.isArray(avatar)) {
+        return null;
+    }
+    const enabled = avatar.enabled !== false;
+    const config = sanitizeParticipantAvatarConfig(avatar.config, fallbackId)
+        || (enabled ? createDefaultParticipantAvatarConfig(fallbackId) : null);
+    return {
+        enabled,
+        config,
+        fallbackLetter: sanitizeAvatarText(avatar.fallbackLetter, 8),
+        updatedAt: nowIso()
+    };
+}
+
+function createLiveKitToken(context, { roomName, identity, name, attributes = null, metadata = '' }) {
     if (!context.livekitApiKey || !context.livekitApiSecret) {
         return null;
     }
+    const participantAttributes = attributes && typeof attributes === 'object' ? attributes : {};
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
     const payload = Buffer.from(JSON.stringify({
@@ -547,6 +709,8 @@ function createLiveKitToken(context, { roomName, identity, name }) {
         nbf: now,
         exp: now + 60 * 60 * 8,
         name,
+        ...(metadata ? { metadata } : {}),
+        ...(Object.keys(participantAttributes).length ? { attributes: participantAttributes } : {}),
         video: {
             room: roomName,
             roomJoin: true,
@@ -827,6 +991,30 @@ export function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {})
             return false;
         })
         .filter((event) => String(event?.id || '').trim() !== afterEventId);
+}
+
+export function recordProfileAvatarUpdated(context, {
+    workspaceId,
+    userId,
+    authInfo = null
+} = {}) {
+    const targetWorkspaceId = String(workspaceId || '').trim();
+    if (!targetWorkspaceId) {
+        throw new Error('Missing workspace id.');
+    }
+    listMeetings(context, targetWorkspaceId, authInfo);
+    const normalizedAuth = normalizeAuthInfo(authInfo);
+    const targetUserId = String(userId || normalizedAuth.id || '').trim();
+    if (!targetUserId) {
+        throw new Error('Missing profile avatar user id.');
+    }
+    if (!isAdminAuthInfo(authInfo) && normalizedAuth.id && normalizedAuth.id !== targetUserId) {
+        throw new Error('Access denied: cannot publish another user profile avatar update.');
+    }
+    return recordWorkspaceEvent(context, targetWorkspaceId, 'profile.avatar.updated', {
+        workspaceId: targetWorkspaceId,
+        userId: targetUserId
+    });
 }
 
 export function createStoreContext(startDir = '') {
@@ -1152,9 +1340,22 @@ export async function leaveGuestMeeting(context, { meetingId, guestToken, partic
     return leaveMeeting(context, { meetingId, participantId });
 }
 
-export function joinMeeting(context, { meetingId, displayName, participantId, authInfo = null }) {
+export function joinMeeting(context, { meetingId, displayName, participantId, avatar = null, authInfo = null }) {
     const participantIdentity = String(participantId || randomId('participant')).trim();
     const effectiveDisplayName = String(displayName || getAuthDisplayName(authInfo) || 'Participant').trim() || 'Participant';
+    const auth = normalizeAuthInfo(authInfo);
+    const userId = String(auth.id || '').trim();
+    const projectedAvatar = userId
+        ? sanitizeParticipantAvatarPayload(avatar, `profile:${userId}`)
+        : null;
+    const participantAttributes = userId
+        ? {
+            webmeetUserId: userId,
+            userId,
+            workspaceUserId: userId,
+            ploinkyUserId: userId
+        }
+        : {};
     const joinedAt = nowIso();
     let participant = null;
     const { record } = mutateMeeting(context, meetingId, (_record, payload) => {
@@ -1171,6 +1372,21 @@ export function joinMeeting(context, { meetingId, displayName, participantId, au
             }
             participant.lastSeenAt = joinedAt;
         }
+        if (userId) {
+            participant.userId = userId;
+            participant.attributes = {
+                ...(participant.attributes && typeof participant.attributes === 'object' ? participant.attributes : {}),
+                ...participantAttributes
+            };
+        }
+        if (projectedAvatar) {
+            participant.profileAvatar = projectedAvatar;
+            recordMeetingEvent(context, meetingId, payload, 'participant.avatar.updated', {
+                meetingId,
+                participantId: participant.id,
+                userId: userId || participant.userId || ''
+            });
+        }
     });
     const rtcConfig = buildRtcConfig(context);
     return {
@@ -1186,9 +1402,70 @@ export function joinMeeting(context, { meetingId, displayName, participantId, au
         participant,
         livekitUrl: context.livekitPublicUrl,
         roomName: record.roomName,
-        participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: effectiveDisplayName }),
+        participantToken: createLiveKitToken(context, {
+            roomName: record.roomName,
+            identity: participant.id,
+            name: effectiveDisplayName,
+            attributes: participantAttributes,
+            metadata: userId ? JSON.stringify({ webmeetUserId: userId }) : ''
+        }),
         participantIdentity: participant.id,
         ...(rtcConfig ? { rtcConfig } : {})
+    };
+}
+
+export function updateMeetingParticipantAvatar(context, {
+    meetingId,
+    participantId,
+    avatar = null,
+    authInfo = null
+} = {}) {
+    const targetMeetingId = String(meetingId || '').trim();
+    const targetParticipantId = String(participantId || '').trim();
+    if (!targetMeetingId) {
+        throw new Error('Missing meeting id.');
+    }
+    if (!targetParticipantId) {
+        throw new Error('Missing participant id.');
+    }
+    const auth = normalizeAuthInfo(authInfo);
+    const userId = String(auth.id || '').trim();
+    if (!userId) {
+        throw new Error('Authentication is required to publish a participant avatar.');
+    }
+    let participant = null;
+    mutateMeeting(context, targetMeetingId, (_record, payload) => {
+        participant = (Array.isArray(payload.members) ? payload.members : [])
+            .find((entry) => String(entry?.id || '').trim() === targetParticipantId) || null;
+        if (!participant) {
+            throw new Error('Participant is not joined.');
+        }
+        const participantUserId = String(participant.userId || participant.attributes?.webmeetUserId || '').trim();
+        if (participantUserId && participantUserId !== userId && !isAdminAuthInfo(authInfo)) {
+            throw new Error('Access denied: cannot publish another participant avatar.');
+        }
+        if (!participantUserId) {
+            participant.userId = userId;
+            participant.attributes = {
+                ...(participant.attributes && typeof participant.attributes === 'object' ? participant.attributes : {}),
+                webmeetUserId: userId,
+                userId,
+                workspaceUserId: userId,
+                ploinkyUserId: userId
+            };
+        }
+        participant.profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${userId}`);
+        recordMeetingEvent(context, targetMeetingId, payload, 'participant.avatar.updated', {
+            meetingId: targetMeetingId,
+            participantId: targetParticipantId,
+            userId
+        });
+    });
+    return {
+        ok: true,
+        meetingId: targetMeetingId,
+        participantId: targetParticipantId,
+        profileAvatar: participant?.profileAvatar || null
     };
 }
 

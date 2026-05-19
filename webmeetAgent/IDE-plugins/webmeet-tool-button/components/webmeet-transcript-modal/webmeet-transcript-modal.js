@@ -94,7 +94,7 @@ export class WebmeetTranscriptModal {
     }
 
     downloadTranscript() {
-        const url = new URL(`/public-services/webmeet/meetings/${encodeURIComponent(this.meetingId)}/transcript/download`, window.location.origin);
+        const url = new URL(`/services/webmeet/meetings/${encodeURIComponent(this.meetingId)}/transcript/download`, window.location.origin);
         url.searchParams.set('format', 'md');
         window.open(url.toString(), '_blank', 'noopener');
     }

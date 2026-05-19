@@ -142,6 +142,51 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     user-select: none;
 }
 
+.wm-participant-avatar.is-avatar-loading {
+    color: transparent;
+    background:
+        linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--surface) 62%, transparent) 0%,
+            color-mix(in srgb, var(--accent) 18%, var(--surface) 82%) 50%,
+            color-mix(in srgb, var(--surface) 62%, transparent) 100%
+        );
+    background-size: 220% 100%;
+    animation: wmParticipantAvatarLoading 1.05s ease-in-out infinite;
+}
+
+.wm-participant-avatar.has-axi-face {
+    width: var(--wm-participant-avatar-size, 86px);
+    height: var(--wm-participant-avatar-size, 86px);
+    background: transparent;
+    color: inherit;
+    padding: 0;
+}
+
+.wm-participant-avatar.has-axi-face,
+.wm-participant-avatar.has-axi-face.is-avatar-loading {
+    animation: none;
+}
+
+.wm-participant-avatar.has-axi-face axi-face {
+    width: var(--wm-participant-avatar-size, 86px);
+    height: var(--wm-participant-avatar-size, 86px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--wm-participant-avatar-size, 86px);
+}
+
+@keyframes wmParticipantAvatarLoading {
+    from {
+        background-position: 100% 0;
+    }
+
+    to {
+        background-position: -100% 0;
+    }
+}
+
 .wm-participant-footer {
     position: absolute;
     width: auto;
@@ -285,6 +330,17 @@ webmeet-participant-card.is-mini .wm-participant-avatar {
     width: 42px;
     height: 42px;
     font-size: 0.92rem;
+}
+
+webmeet-participant-card.is-mini .wm-participant-avatar.has-axi-face {
+    width: var(--wm-participant-avatar-size, 42px);
+    height: var(--wm-participant-avatar-size, 42px);
+}
+
+webmeet-participant-card.is-mini .wm-participant-avatar.has-axi-face axi-face {
+    width: var(--wm-participant-avatar-size, 42px);
+    height: var(--wm-participant-avatar-size, 42px);
+    flex-basis: var(--wm-participant-avatar-size, 42px);
 }
 
 webmeet-participant-card.is-mini .wm-participant-footer {
