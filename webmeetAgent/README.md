@@ -33,6 +33,8 @@ Explorer only needs to enable `webmeetAgent` and the `webmeet` plugin for normal
 
 WebMeet browser settings are user-scoped preferences stored in the browser, not per-room state. Device selection, audio processing, camera quality, screen share quality, and background privacy effects are opened from the dashboard modal header and apply across every room that the same Explorer user joins from that browser profile.
 
+Microphone voice processing is local to the browser before the track is published to LiveKit. `enhanced` mode uses browser echo cancellation, a high-pass filter, locally bundled `@shiguredo/rnnoise-wasm@2025.1.5`, optional hum filtering, compressor/limiter, and gain; `standard` uses browser processing; `off` disables browser voice cleanup. LiveKit remains the SFU and does not perform paid/cloud denoise for room participants. Vendor provenance is documented in `IDE-plugins/webmeet-tool-button/vendor/rnnoise/THIRD_PARTY_NOTICES.md`.
+
 Background privacy uses a locally bundled LiveKit processor pipeline plus bundled MediaPipe assets. Blur and virtual-background images therefore stay inside the routed WebMeet frontend instead of depending on third-party CDN fetches at runtime.
 
 ## Optional AI Worker

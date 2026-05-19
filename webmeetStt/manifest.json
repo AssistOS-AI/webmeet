@@ -42,6 +42,11 @@
           "name": "WHISPER_COMPUTE_TYPE",
           "required": false,
           "default": "int8"
+        },
+        {
+          "name": "WEBMEET_STT_DENOISE",
+          "required": false,
+          "default": "dtln"
         }
       ],
       "ports": ["127.0.0.1:19000:9000"]
@@ -72,6 +77,11 @@
           "name": "WHISPER_COMPUTE_TYPE",
           "required": false,
           "default": "int8"
+        },
+        {
+          "name": "WEBMEET_STT_DENOISE",
+          "required": false,
+          "default": "dtln"
         }
       ],
       "ports": ["127.0.0.1:19000:9000"]
@@ -102,6 +112,11 @@
           "name": "WHISPER_COMPUTE_TYPE",
           "required": false,
           "default": "int8"
+        },
+        {
+          "name": "WEBMEET_STT_DENOISE",
+          "required": false,
+          "default": "dtln"
         }
       ],
       "ports": ["127.0.0.1:19000:9000"]

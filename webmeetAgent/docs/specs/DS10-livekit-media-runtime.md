@@ -130,6 +130,8 @@ When a WebMeet user joins a room:
 
 LiveKit is an SFU. It terminates each browser's WebRTC connection, receives RTP/RTCP packets for published audio/video/screen tracks, tracks subscriber interest, forwards selected encoded streams, handles congestion feedback and retransmission requests, and re-encrypts media for each receiver. It normally forwards browser-encoded media rather than transcoding room media. The egress worker is the component that subscribes to a room, renders/composites, encodes MP4, and writes recording files.
 
+LiveKit does not run room-wide server-side denoise for human participants in this deployment. Human voice cleanup happens before publish in the browser microphone pipeline. Transcript and AI ingestion can receive additional self-hosted denoise in `webmeetStt` before Faster-Whisper. This keeps the LiveKit server as the SFU, avoids paid/cloud media processing, and makes audio-processing ownership explicit.
+
 `webmeetAgent` signs LiveKit participant tokens with `WEBMEET_LIVEKIT_API_SECRET`. Tokens are scoped to one LiveKit room and grant room join, publish, subscribe, and data-channel permissions. API key/secret values are server-side only and must be generated from the shared derived-master labels so `webmeetAgent`, LiveKit server, and egress agree.
 
 ### WebRTC Transport Model
@@ -178,10 +180,18 @@ The current WebMeet media controller:
 - applies camera capture and publish quality from `cameraQuality`.
 - applies screen-share capture and publish quality from `screenShareQuality`.
 - publishes screen share with `simulcast: false`.
+- captures microphone audio through one of three voice-processing modes:
+  - `enhanced`: browser WebRTC audio constraints, high-pass filter, locally bundled `@shiguredo/rnnoise-wasm@2025.1.5`, optional 50/60 Hz hum notch, compressor/limiter, and microphone gain before publishing the processed track to LiveKit.
+  - `standard`: browser WebRTC echo cancellation/noise suppression/auto gain constraints plus optional local audio graph steps when gain or hum filtering are requested.
+  - `off`: no browser echo cancellation or noise suppression, with only explicitly requested local graph steps such as gain or hum filtering.
 - supports local deafen, which mutes remote playback in the current browser, disables the local microphone when enabled, and restores the microphone on undeafen only when it was enabled before deafen.
-- lets users choose microphone, camera, speaker, microphone gain, speaker volume, audio processing flags, camera quality, and screen-share quality from the media settings panel.
+- lets users choose microphone, camera, speaker, voice-processing mode, hum filter, microphone gain, speaker volume, audio processing flags, camera quality, and screen-share quality from the media settings panel.
 - stops local microphone, camera, and screen-share tracks and mutes/unsubscribes remote playback before the application leave request when a user exits a room.
 - emits media diagnostics only when an explicit debug flag such as `WEBMEET_MEDIA_DEBUG` or `webmeetMediaDebug=1` is enabled.
+
+Enhanced mode must fall back visibly to `standard` when the browser cannot run `AudioWorklet`/RNNoise. The fallback is an application decision made by the WebMeet media controller; it is not an implicit LiveKit server feature.
+
+The RNNoise vendor copy must remain local to `IDE-plugins/webmeet-tool-button/vendor/rnnoise`, with `THIRD_PARTY_NOTICES.md`, package metadata, and license included. Runtime CDN fetches for RNNoise are not allowed.
 
 Diagnostics must summarize room, track, publication, candidate, and video-element state without logging tokens, SDP blobs, ICE credentials, API keys, or authorization values.
 

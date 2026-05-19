@@ -1,3 +1,9 @@
+import {
+    normalizeHumFilter as normalizeSharedHumFilter,
+    normalizeMicrophoneGain as normalizeSharedMicrophoneGain,
+    normalizeVoiceProcessingMode as normalizeSharedVoiceProcessingMode
+} from '../services/audio-processing/settings.js';
+
 function escapeHtml(value) {
     return String(value || '')
         .replaceAll('&', '&amp;')
@@ -78,6 +84,10 @@ export const mediaSettingsMethods = {
         this.noiseSuppressionInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.autoGainControlInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.autoGainControlInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.voiceProcessingModeSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.voiceProcessingModeSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.humFilterSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.humFilterSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.backgroundEffectSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.backgroundEffectSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.backgroundBlurInput?.addEventListener?.('input', updateBackgroundBlurPreview);
@@ -102,6 +112,8 @@ export const mediaSettingsMethods = {
             noiseSuppression: true,
             autoGainControl: false,
             microphoneGain: 1,
+            voiceProcessingMode: 'enhanced',
+            humFilter: 'off',
             outputVolume: 1,
             cameraQuality: 'h720',
             screenShareQuality: 'h1080fps30',
@@ -118,6 +130,8 @@ export const mediaSettingsMethods = {
                 ...fallback,
                 ...parsed,
                 microphoneGain: this.normalizeMicrophoneGain(parsed?.microphoneGain),
+                voiceProcessingMode: this.normalizeVoiceProcessingMode(parsed?.voiceProcessingMode),
+                humFilter: this.normalizeHumFilter(parsed?.humFilter),
                 outputVolume: this.normalizeOutputVolume(parsed?.outputVolume),
                 cameraQuality: this.normalizeCameraQuality(parsed?.cameraQuality),
                 screenShareQuality: this.normalizeScreenShareQuality(parsed?.screenShareQuality),
@@ -140,6 +154,8 @@ export const mediaSettingsMethods = {
             noiseSuppression: settings.noiseSuppression !== false,
             autoGainControl: settings.autoGainControl === true,
             microphoneGain: this.normalizeMicrophoneGain(settings.microphoneGain),
+            voiceProcessingMode: this.normalizeVoiceProcessingMode(settings.voiceProcessingMode),
+            humFilter: this.normalizeHumFilter(settings.humFilter),
             outputVolume: this.normalizeOutputVolume(settings.outputVolume),
             cameraQuality: this.normalizeCameraQuality(settings.cameraQuality),
             screenShareQuality: this.normalizeScreenShareQuality(settings.screenShareQuality),
@@ -175,9 +191,15 @@ export const mediaSettingsMethods = {
     },
 
     normalizeMicrophoneGain(value) {
-        const numberValue = Number(value);
-        if (!Number.isFinite(numberValue)) return 1;
-        return Math.min(2, Math.max(0, numberValue));
+        return normalizeSharedMicrophoneGain(value);
+    },
+
+    normalizeVoiceProcessingMode(value) {
+        return normalizeSharedVoiceProcessingMode(value);
+    },
+
+    normalizeHumFilter(value) {
+        return normalizeSharedHumFilter(value);
     },
 
     normalizeOutputVolume(value) {
@@ -518,6 +540,7 @@ export const mediaSettingsMethods = {
         const selectedOutput = this.findSelectedDevice(audioOutputs, selectedOutputId);
         const microphoneGain = this.normalizeMicrophoneGain(settings.microphoneGain);
         const outputVolume = this.normalizeOutputVolume(settings.outputVolume);
+        const voiceProcessingMode = this.normalizeVoiceProcessingMode(settings.voiceProcessingMode);
         const concreteInputCount = this.countConcreteDevices(audioInputs);
         const concreteOutputCount = this.countConcreteDevices(audioOutputs);
         const canSelectOutput = typeof HTMLMediaElement !== 'undefined'
@@ -537,6 +560,9 @@ export const mediaSettingsMethods = {
             warnings.push('Microphone volume is set to 0% in WebMeet.');
         } else if (microphoneGain > 1.25) {
             warnings.push('Microphone volume is boosted above 125%; audio can distort.');
+        }
+        if (voiceProcessingMode === 'enhanced' && !(globalThis.AudioWorkletNode && globalThis.navigator?.mediaDevices?.getUserMedia)) {
+            warnings.push('Enhanced voice processing is not supported in this browser. WebMeet will use standard microphone processing.');
         }
     
         if (!canSelectOutput && selectedOutputId) {
@@ -740,6 +766,12 @@ export const mediaSettingsMethods = {
         if (this.autoGainControlInput && document.activeElement !== this.autoGainControlInput) {
             this.autoGainControlInput.checked = Boolean(settings.autoGainControl);
         }
+        if (this.voiceProcessingModeSelect && document.activeElement !== this.voiceProcessingModeSelect) {
+            this.voiceProcessingModeSelect.value = this.normalizeVoiceProcessingMode(settings.voiceProcessingMode);
+        }
+        if (this.humFilterSelect && document.activeElement !== this.humFilterSelect) {
+            this.humFilterSelect.value = this.normalizeHumFilter(settings.humFilter);
+        }
         const microphoneGain = this.normalizeMicrophoneGain(settings.microphoneGain);
         const outputVolume = this.normalizeOutputVolume(settings.outputVolume);
         if (this.microphoneGainInput && document.activeElement !== this.microphoneGainInput) {
@@ -849,6 +881,8 @@ export const mediaSettingsMethods = {
             noiseSuppression: Boolean(this.noiseSuppressionInput?.checked),
             autoGainControl: Boolean(this.autoGainControlInput?.checked),
             microphoneGain: this.normalizeMicrophoneGain(this.microphoneGainInput?.value),
+            voiceProcessingMode: this.normalizeVoiceProcessingMode(this.voiceProcessingModeSelect?.value),
+            humFilter: this.normalizeHumFilter(this.humFilterSelect?.value),
             outputVolume: this.normalizeOutputVolume(this.outputVolumeInput?.value),
             cameraQuality: this.normalizeCameraQuality(this.cameraQualitySelect?.value),
             screenShareQuality: this.normalizeScreenShareQuality(this.screenShareQualitySelect?.value),
@@ -903,7 +937,9 @@ export const mediaSettingsMethods = {
             'echoCancellation',
             'noiseSuppression',
             'autoGainControl',
-            'microphoneGain'
+            'microphoneGain',
+            'voiceProcessingMode',
+            'humFilter'
         ]);
         const shouldRestartCamera = this.state.media.camera && this.hasSettingsChange(previousSettings, [
             'videoInputDeviceId',

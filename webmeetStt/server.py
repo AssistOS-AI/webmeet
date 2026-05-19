@@ -6,6 +6,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse
 from faster_whisper import WhisperModel
 
+from dtln_denoise import denoise_file, is_enabled as dtln_is_enabled
+
 
 MODEL_NAME = os.environ.get("WHISPER_MODEL", "base").strip() or "base"
 LANGUAGE = os.environ.get("WHISPER_LANGUAGE", "auto").strip() or "auto"
@@ -28,7 +30,7 @@ def get_model():
 
 @app.get("/healthz")
 async def healthz():
-    return {"ok": True, "model": MODEL_NAME, "device": DEVICE}
+    return {"ok": True, "model": MODEL_NAME, "device": DEVICE, "denoise": "dtln" if dtln_is_enabled() else "off"}
 
 
 @app.post("/v1/audio/transcriptions")
@@ -42,12 +44,14 @@ async def transcribe(
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
         audio_path = handle.name
         handle.write(await file.read())
+    denoised_path = audio_path
     try:
+        denoised_path = denoise_file(audio_path)
         selected_language = (language or LANGUAGE).strip()
         kwargs = {}
         if selected_language and selected_language.lower() != "auto":
             kwargs["language"] = selected_language
-        segments, info = get_model().transcribe(audio_path, **kwargs)
+        segments, info = get_model().transcribe(denoised_path, **kwargs)
         text = " ".join(segment.text.strip() for segment in segments if segment.text and segment.text.strip()).strip()
     except Exception as exc:
         raise HTTPException(status_code=500, detail="STT transcription failed") from exc
@@ -56,6 +60,11 @@ async def transcribe(
             os.unlink(audio_path)
         except OSError:
             pass
+        if denoised_path != audio_path:
+            try:
+                os.unlink(denoised_path)
+            except OSError:
+                pass
 
     if response_format == "text":
         return PlainTextResponse(text)

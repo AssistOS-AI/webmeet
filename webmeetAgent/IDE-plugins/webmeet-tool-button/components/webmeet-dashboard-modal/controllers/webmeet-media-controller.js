@@ -2,6 +2,16 @@ import {
     logMediaDiagnostic,
     summarizePublication
 } from '../services/media-diagnostics.js';
+import {
+    createProcessedMicrophoneTrack,
+    isEnhancedVoiceProcessingSupported
+} from '../services/audio-processing/microphone-track-factory.js';
+import {
+    normalizeHumFilter,
+    normalizeMicrophoneGain,
+    normalizeVoiceProcessingMode,
+    usesAudioGraph
+} from '../services/audio-processing/settings.js';
 import { getMediaQualityProfile } from './media-quality-profiles.js';
 
 export class WebmeetMediaController {
@@ -18,6 +28,7 @@ export class WebmeetMediaController {
         this.onMicStateChange = typeof options.onMicStateChange === 'function' ? options.onMicStateChange : (() => {});
         this.onError = typeof options.onError === 'function' ? options.onError : (() => {});
         this.onAfterToggle = typeof options.onAfterToggle === 'function' ? options.onAfterToggle : (() => {});
+        this.onSettingsChange = typeof options.onSettingsChange === 'function' ? options.onSettingsChange : (() => {});
         this.settings = {
             audioInputDeviceId: '',
             videoInputDeviceId: '',
@@ -26,6 +37,8 @@ export class WebmeetMediaController {
             noiseSuppression: true,
             autoGainControl: false,
             microphoneGain: 1,
+            voiceProcessingMode: 'enhanced',
+            humFilter: 'off',
             outputVolume: 1,
             cameraQuality: 'h720',
             screenShareQuality: 'h1080fps30',
@@ -35,7 +48,7 @@ export class WebmeetMediaController {
             backgroundImageName: ''
         };
         this.inFlight = false;
-        this.customMicrophone = null;
+        this.activeMicrophoneCapture = null;
         this.backgroundProcessor = null;
         this.backgroundProcessorTrack = null;
         this.backgroundSyncPromise = null;
@@ -43,7 +56,7 @@ export class WebmeetMediaController {
 
     reset() {
         this.inFlight = false;
-        this.stopCustomMicrophoneCapture();
+        this.stopProcessedMicrophoneCapture();
         void this.clearBackgroundEffect();
     }
 
@@ -52,6 +65,16 @@ export class WebmeetMediaController {
             ...this.settings,
             ...next
         };
+    }
+
+    replaceUnsupportedVoiceProcessingMode(mode, reason) {
+        const normalizedMode = normalizeVoiceProcessingMode(mode);
+        if (normalizeVoiceProcessingMode(this.settings.voiceProcessingMode) === normalizedMode) return;
+        this.settings = {
+            ...this.settings,
+            voiceProcessingMode: normalizedMode
+        };
+        this.onSettingsChange(this.getSettings(), reason);
     }
 
     getSettings() {
@@ -182,29 +205,34 @@ export class WebmeetMediaController {
         return this.backgroundSyncPromise;
     }
 
-    getMicrophoneEnableOptions() {
+    getMicrophoneEnableOptions(overrides = {}) {
         const audioDeviceId = String(this.settings.audioInputDeviceId || '').trim();
         const deviceId = audioDeviceId
             ? ({ exact: audioDeviceId })
             : undefined;
+        const mode = normalizeVoiceProcessingMode(overrides.voiceProcessingMode || this.settings.voiceProcessingMode);
+        const audioProcessingEnabled = mode !== 'off';
         return {
             deviceId,
             channelCount: 1,
             sampleRate: 48000,
-            echoCancellation: Boolean(this.settings.echoCancellation),
-            noiseSuppression: Boolean(this.settings.noiseSuppression),
+            echoCancellation: audioProcessingEnabled && Boolean(this.settings.echoCancellation),
+            noiseSuppression: audioProcessingEnabled && Boolean(this.settings.noiseSuppression),
             autoGainControl: Boolean(this.settings.autoGainControl)
         };
     }
 
     getMicrophoneGain() {
-        const value = Number(this.settings.microphoneGain);
-        if (!Number.isFinite(value)) return 1;
-        return Math.min(2, Math.max(0, value));
+        return normalizeMicrophoneGain(this.settings.microphoneGain);
     }
 
-    usesCustomMicrophoneGain() {
-        return Math.abs(this.getMicrophoneGain() - 1) > 0.001;
+    usesProcessedMicrophoneTrack(settings = this.settings) {
+        return usesAudioGraph({
+            ...settings,
+            microphoneGain: this.getMicrophoneGain(),
+            voiceProcessingMode: normalizeVoiceProcessingMode(settings.voiceProcessingMode),
+            humFilter: normalizeHumFilter(settings.humFilter)
+        });
     }
 
     getCameraQualityProfile() {
@@ -233,13 +261,9 @@ export class WebmeetMediaController {
         };
     }
 
-    getAudioContextConstructor() {
-        return globalThis.AudioContext || globalThis.webkitAudioContext || null;
-    }
-
-    async stopCustomMicrophoneCapture() {
-        const current = this.customMicrophone;
-        this.customMicrophone = null;
+    async stopProcessedMicrophoneCapture() {
+        const current = this.activeMicrophoneCapture;
+        this.activeMicrophoneCapture = null;
         const room = this.getRoom();
         if (current?.track && room?.localParticipant?.unpublishTrack) {
             try {
@@ -248,21 +272,18 @@ export class WebmeetMediaController {
                 // continue with local cleanup
             }
         }
-        for (const track of [
-            current?.track,
-            ...(current?.processedStream?.getTracks?.() || []),
-            ...(current?.sourceStream?.getTracks?.() || [])
-        ]) {
+        if (typeof current?.cleanup === 'function') {
+            await current.cleanup();
+            return;
+        }
+        for (const track of [current?.track, ...(current?.sourceStream?.getTracks?.() || [])]) {
             try { track?.stop?.(); } catch (_) {}
         }
-        try { current?.sourceNode?.disconnect?.(); } catch (_) {}
-        try { current?.gainNode?.disconnect?.(); } catch (_) {}
-        try { await current?.audioContext?.close?.(); } catch (_) {}
     }
 
-    async enableDefaultMicrophone(room) {
-        await this.stopCustomMicrophoneCapture();
-        const options = this.getMicrophoneEnableOptions();
+    async enableDefaultMicrophone(room, voiceProcessingMode = normalizeVoiceProcessingMode(this.settings.voiceProcessingMode)) {
+        await this.stopProcessedMicrophoneCapture();
+        const options = this.getMicrophoneEnableOptions({ voiceProcessingMode });
         try {
             await room.localParticipant.setMicrophoneEnabled(true, options);
         } catch (_) {
@@ -270,87 +291,57 @@ export class WebmeetMediaController {
         }
     }
 
-    async enableCustomGainMicrophone(room) {
-        if (!navigator?.mediaDevices?.getUserMedia) {
-            throw new Error('Microphone capture is not supported in this browser.');
-        }
-        const AudioContextRef = this.getAudioContextConstructor();
-        if (!AudioContextRef) {
-            throw new Error('Audio processing is not supported in this browser.');
-        }
-
+    async enableProcessedMicrophone(room, settings = this.settings) {
         await room.localParticipant.setMicrophoneEnabled(false);
-        await this.stopCustomMicrophoneCapture();
-
-        let sourceStream = null;
-        let audioContext = null;
-        let sourceNode = null;
-        let gainNode = null;
-        let destination = null;
-        let processedTrack = null;
-        try {
-            sourceStream = await navigator.mediaDevices.getUserMedia({
-                audio: this.getMicrophoneEnableOptions(),
-                video: false
-            });
-            audioContext = new AudioContextRef({ sampleRate: 48000 });
-            sourceNode = audioContext.createMediaStreamSource(sourceStream);
-            gainNode = audioContext.createGain();
-            gainNode.gain.value = this.getMicrophoneGain();
-            destination = audioContext.createMediaStreamDestination();
-            sourceNode.connect(gainNode);
-            gainNode.connect(destination);
-
-            [processedTrack] = destination.stream.getAudioTracks();
-            if (!processedTrack) {
-                throw new Error('Processed microphone track could not be created.');
-            }
-            processedTrack.contentHint = 'speech';
-
-            const Track = this.getTrack();
-            const publishOptions = Track?.Source?.Microphone
-                ? { source: Track.Source.Microphone, name: 'microphone' }
-                : { name: 'microphone' };
-            await room.localParticipant.publishTrack(processedTrack, publishOptions);
-            this.customMicrophone = {
-                sourceStream,
-                processedStream: destination.stream,
-                audioContext,
-                sourceNode,
-                gainNode,
-                track: processedTrack
-            };
-        } catch (error) {
-            for (const track of [
-                processedTrack,
-                ...(destination?.stream?.getTracks?.() || []),
-                ...(sourceStream?.getTracks?.() || [])
-            ]) {
-                try { track?.stop?.(); } catch (_) {}
-            }
-            try { sourceNode?.disconnect?.(); } catch (_) {}
-            try { gainNode?.disconnect?.(); } catch (_) {}
-            try { await audioContext?.close?.(); } catch (_) {}
-            throw error;
-        }
+        await this.stopProcessedMicrophoneCapture();
+        const capture = await createProcessedMicrophoneTrack(settings);
+        const Track = this.getTrack();
+        const publishOptions = Track?.Source?.Microphone
+            ? { source: Track.Source.Microphone, name: 'microphone' }
+            : { name: 'microphone' };
+        await room.localParticipant.publishTrack(capture.track, publishOptions);
+        this.activeMicrophoneCapture = capture;
     }
 
     async enableMicrophone(room) {
-        if (!this.usesCustomMicrophoneGain()) {
-            await this.enableDefaultMicrophone(room);
+        const mode = normalizeVoiceProcessingMode(this.settings.voiceProcessingMode);
+        if (mode === 'enhanced' && !isEnhancedVoiceProcessingSupported()) {
+            this.replaceUnsupportedVoiceProcessingMode('standard', 'enhanced-unsupported');
+            this.onError('Enhanced voice processing is unavailable in this browser. Using standard microphone processing.');
+            await this.enableMicrophoneWithMode(room, 'standard');
+            return;
+        }
+        if (mode === 'enhanced') {
+            try {
+                await this.enableProcessedMicrophone(room, { ...this.settings, voiceProcessingMode: 'enhanced' });
+                return;
+            } catch (error) {
+                this.replaceUnsupportedVoiceProcessingMode('standard', 'enhanced-failed');
+                this.onError('Enhanced voice processing failed. Using standard microphone processing.');
+                await this.enableMicrophoneWithMode(room, 'standard');
+                return;
+            }
+        }
+        await this.enableMicrophoneWithMode(room, mode);
+    }
+
+    async enableMicrophoneWithMode(room, mode) {
+        const settings = { ...this.settings, voiceProcessingMode: mode };
+        if (!this.usesProcessedMicrophoneTrack(settings)) {
+            await this.enableDefaultMicrophone(room, mode);
             return;
         }
         try {
-            await this.enableCustomGainMicrophone(room);
+            await this.enableProcessedMicrophone(room, settings);
         } catch (error) {
-            await this.enableDefaultMicrophone(room);
-            this.onError('Custom microphone volume is unavailable. Using standard microphone audio.');
+            await this.enableDefaultMicrophone(room, mode);
+            this.onError('Microphone processing is unavailable. Using standard microphone audio.');
         }
     }
 
     async disableMicrophone(room) {
         this.hardStopMicrophoneTracks();
-        await this.stopCustomMicrophoneCapture();
+        await this.stopProcessedMicrophoneCapture();
         await room.localParticipant.setMicrophoneEnabled(false);
     }
 
@@ -373,7 +364,7 @@ export class WebmeetMediaController {
         for (const publication of localParticipant.trackPublications.values()) {
             if (!publication) continue;
             const isMic = publication.source === Track.Source.Microphone;
-            const isCustomMic = publication.track && publication.track === this.customMicrophone?.track;
+            const isCustomMic = publication.track && publication.track === this.activeMicrophoneCapture?.track;
             if (!isMic && !isCustomMic) continue;
             if (publication.track) {
                 tracks.push(publication.track);
@@ -395,7 +386,7 @@ export class WebmeetMediaController {
     }
 
     getActiveMicrophoneMediaStreamTrack(TrackRef = null) {
-        const sourceTrack = this.customMicrophone?.sourceStream?.getAudioTracks?.()?.[0] || null;
+        const sourceTrack = this.activeMicrophoneCapture?.sourceStream?.getAudioTracks?.()?.[0] || null;
         if (String(sourceTrack?.readyState || '').toLowerCase() === 'live') {
             return sourceTrack;
         }
@@ -455,7 +446,7 @@ export class WebmeetMediaController {
 
     async stopAllLocalMedia(room = this.getRoom()) {
         this.hardStopMicrophoneTracks();
-        await this.stopCustomMicrophoneCapture();
+        await this.stopProcessedMicrophoneCapture();
         await this.clearBackgroundEffect();
         const localParticipant = room?.localParticipant || null;
         if (localParticipant) {
@@ -522,7 +513,7 @@ export class WebmeetMediaController {
             const sameSource = wantedSource ? publication.source === wantedSource : false;
             const sameCustomMic = type === 'microphone'
                 && sameKind
-                && (publication.track === this.customMicrophone?.track || !publication.source);
+                && (publication.track === this.activeMicrophoneCapture?.track || !publication.source);
             if ((sameSource || sameCustomMic || (type === 'camera' && sameKind && !publication.source))
                 && !publication.isMuted) {
                 return true;

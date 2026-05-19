@@ -77,6 +77,8 @@ export class WebMeetDashboardModal {
                 noiseSuppression: true,
                 autoGainControl: false,
                 microphoneGain: 1,
+                voiceProcessingMode: 'enhanced',
+                humFilter: 'off',
                 outputVolume: 1,
                 cameraQuality: 'h720',
                 screenShareQuality: 'h1080fps30',
@@ -169,6 +171,11 @@ export class WebMeetDashboardModal {
             },
             onError: (message) => {
                 this.setError(message);
+            },
+            onSettingsChange: (settings) => {
+                this.state.mediaSettings = this.normalizeMediaSettings(settings);
+                this.persistMediaSettings();
+                this.renderMediaSettingsPanel();
             },
             onAfterToggle: () => {
                 this.renderMeetingSummary();
@@ -370,6 +377,8 @@ export class WebMeetDashboardModal {
         this.microphoneGainInput = this.element.querySelector('#webmeetMicrophoneGain');
         this.microphoneGainValue = this.element.querySelector('#webmeetMicrophoneGainValue');
         this.microphoneGainWarning = this.element.querySelector('#webmeetMicrophoneGainWarning');
+        this.voiceProcessingModeSelect = this.element.querySelector('#webmeetVoiceProcessingMode');
+        this.humFilterSelect = this.element.querySelector('#webmeetHumFilter');
         this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
         this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
         this.backgroundEffectSelect = this.element.querySelector('#webmeetBackgroundEffectSelect');
