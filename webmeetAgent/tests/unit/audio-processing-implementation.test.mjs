@@ -29,8 +29,12 @@ test('RNNoise initialization timeout disposes the worklet node', async () => {
     assert.match(factorySource, /postMessage\?\.\(\{ type: 'dispose' \}\)/);
     assert.match(factorySource, /RNNoise voice processing did not initialize in time/);
     assert.match(workletSource, /this\.port\.onmessage/);
+    assert.match(workletSource, /rnnoise-sync\.js/);
+    assert.match(workletSource, /createRNNWasmModuleSync/);
     assert.match(workletSource, /dispose\(\)/);
-    assert.match(workletSource, /denoiseState\.destroy/);
+    assert.match(workletSource, /_rnnoise_destroy/);
+    assert.match(workletSource, /_free\(this\.inputPtr\)/);
+    assert.match(workletSource, /_free\(this\.outputPtr\)/);
     assert.match(workletSource, /if \(this\.disposed\) return false/);
 });
 

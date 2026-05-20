@@ -181,7 +181,7 @@ The current WebMeet media controller:
 - applies screen-share capture and publish quality from `screenShareQuality`.
 - publishes screen share with `simulcast: false`.
 - captures microphone audio through one of three voice-processing modes:
-  - `enhanced`: browser WebRTC audio constraints, high-pass filter, locally bundled `@shiguredo/rnnoise-wasm@2025.1.5`, optional 50/60 Hz hum notch, compressor/limiter, and microphone gain before publishing the processed track to LiveKit.
+  - `enhanced`: browser WebRTC audio constraints, high-pass filter, locally bundled `@jitsi/rnnoise-wasm@0.2.1` sync build for `AudioWorklet`, optional 50/60 Hz hum notch, compressor/limiter, and microphone gain before publishing the processed track to LiveKit.
   - `standard`: browser WebRTC echo cancellation/noise suppression/auto gain constraints plus optional local audio graph steps when gain or hum filtering are requested.
   - `off`: no browser echo cancellation or noise suppression, with only explicitly requested local graph steps such as gain or hum filtering.
 - supports local deafen, which mutes remote playback in the current browser, disables the local microphone when enabled, and restores the microphone on undeafen only when it was enabled before deafen.
@@ -191,7 +191,7 @@ The current WebMeet media controller:
 
 Enhanced mode must fall back visibly to `standard` when the browser cannot run `AudioWorklet`/RNNoise. The fallback is an application decision made by the WebMeet media controller; it is not an implicit LiveKit server feature.
 
-The RNNoise vendor copy must remain local to `IDE-plugins/webmeet-tool-button/vendor/rnnoise`, with `THIRD_PARTY_NOTICES.md`, package metadata, and license included. Runtime CDN fetches for RNNoise are not allowed.
+The RNNoise vendor copy must remain local to `IDE-plugins/webmeet-tool-button/vendor/rnnoise`, with `THIRD_PARTY_NOTICES.md`, package metadata, and license included. Runtime CDN fetches for RNNoise are not allowed. The Jitsi sync build is used because WebMeet runs RNNoise inside `AudioWorklet`.
 
 Diagnostics must summarize room, track, publication, candidate, and video-element state without logging tokens, SDP blobs, ICE credentials, API keys, or authorization values.
 
