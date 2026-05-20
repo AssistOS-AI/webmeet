@@ -12,3 +12,13 @@ test('public WebMeet proxy disables asset caching to avoid stale participant UI 
     assert.match(source, /'Cache-Control': 'no-store'/);
     assert.doesNotMatch(source, /'Cache-Control': extension === '\.html' \? 'no-store' : 'public, max-age=3600'/);
 });
+
+test('public WebMeet proxy serves background effect wasm with the correct MIME type', async () => {
+    const source = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../server/webmeet-public-proxy.mjs'),
+        'utf8'
+    );
+
+    assert.match(source, /\['\.wasm', 'application\/wasm'\]/);
+    assert.match(source, /\['\.mjs', 'application\/javascript; charset=utf-8'\]/);
+});

@@ -1,10 +1,14 @@
 const LIVEKIT_UMD_URL = new URL('../../../vendor/livekit-client.umd.min.js', import.meta.url).href;
 const TRACK_PROCESSORS_MODULE_URL = new URL('../../../vendor/livekit-track-processors.bundle.mjs', import.meta.url).href;
-const BACKGROUND_TASKS_VISION_FILESET_URL = new URL('../../../vendor/background-effects/wasm/', import.meta.url).href;
-const BACKGROUND_SEGMENTER_MODEL_URL = new URL('../../../vendor/background-effects/models/selfie_segmenter.tflite', import.meta.url).href;
 
 let livekitLoadPromise = null;
 let backgroundEffectsModulePromise = null;
+
+function getWebMeetAssetUrl(path) {
+    const cleanPath = String(path || '').replace(/^\/+/, '');
+    const origin = globalThis.location?.origin || new URL('../../../', import.meta.url).origin;
+    return new URL(`/public-services/webmeet/assets/${cleanPath}`, origin).href;
+}
 
 export async function ensureLiveKitClient() {
     if (window.LivekitClient) {
@@ -38,7 +42,7 @@ export async function ensureBackgroundEffectsModule() {
 
 export function getBackgroundEffectsAssetPaths() {
     return {
-        tasksVisionFileSet: BACKGROUND_TASKS_VISION_FILESET_URL,
-        modelAssetPath: BACKGROUND_SEGMENTER_MODEL_URL
+        tasksVisionFileSet: getWebMeetAssetUrl('vendor/background-effects/wasm/'),
+        modelAssetPath: getWebMeetAssetUrl('vendor/background-effects/models/selfie_segmenter.tflite')
     };
 }
