@@ -36,6 +36,25 @@ function normalizeAvatarSize(value, fallback = '86px') {
     return fallback;
 }
 
+function getElementVideoTracks(mediaElement) {
+    const stream = mediaElement?.srcObject || null;
+    if (!stream || typeof stream.getVideoTracks !== 'function') return [];
+    return stream.getVideoTracks().filter(Boolean);
+}
+
+function isActiveVideoElement(mediaElement) {
+    if (!mediaElement) return false;
+    const tracks = getElementVideoTracks(mediaElement);
+    if (!tracks.length) return false;
+    return tracks.some((track) => String(track?.readyState || '').trim() !== 'ended');
+}
+
+function cleanupVideoElement(mediaElement) {
+    if (!mediaElement) return;
+    try { mediaElement.srcObject = null; } catch (_) {}
+    mediaElement.remove();
+}
+
 export class WebMeetParticipantCard {
     constructor(element, invalidate) {
         this.element = element;
@@ -106,14 +125,14 @@ export class WebMeetParticipantCard {
     }
 
     setVideoElements(mediaElements = []) {
-        const nextElements = Array.from(mediaElements).filter(Boolean);
+        const candidateElements = Array.from(mediaElements).filter(Boolean);
+        const nextElements = candidateElements.filter(isActiveVideoElement);
         this.mediaAspectCleanup?.();
         this.mediaAspectCleanup = null;
         const previousElements = this.mediaElements.length ? this.mediaElements : (this.mediaElement ? [this.mediaElement] : []);
-        for (const element of previousElements) {
+        for (const element of new Set([...previousElements, ...candidateElements])) {
             if (!nextElements.includes(element)) {
-                try { element.srcObject = null; } catch (_) {}
-                element.remove();
+                cleanupVideoElement(element);
             }
         }
         this.mediaElements = nextElements;
@@ -129,8 +148,7 @@ export class WebMeetParticipantCard {
         const keep = new Set(this.mediaElements);
         for (const existing of host.querySelectorAll('video')) {
             if (!keep.has(existing)) {
-                try { existing.srcObject = null; } catch (_) {}
-                existing.remove();
+                cleanupVideoElement(existing);
             }
         }
         for (const mediaElement of this.mediaElements) {
@@ -148,8 +166,7 @@ export class WebMeetParticipantCard {
             return;
         }
         for (const mediaElement of this.mediaElements.length ? this.mediaElements : [this.mediaElement]) {
-            try { mediaElement.srcObject = null; } catch (_) {}
-            mediaElement.remove();
+            cleanupVideoElement(mediaElement);
         }
         this.mediaAspectCleanup?.();
         this.mediaAspectCleanup = null;

@@ -128,11 +128,22 @@ export const roomSessionMethods = {
 
         const removePublication = (publication, TrackRef = null, participant = null) => {
             const Track = TrackRef || window.LivekitClient?.Track;
-            const publicationKind = Track && publication?.kind === Track.Kind.Video ? 'video'
-                : Track && publication?.kind === Track.Kind.Audio ? 'audio'
-                    : String(publication?.track?.kind || '').trim();
             const participantId = String(participant?.identity || '').trim();
             const source = String(publication?.source || '').trim();
+            const rawKind = String(publication?.kind || publication?.track?.kind || publication?.track?.mediaStreamTrack?.kind || '').trim();
+            const isVideoSource = Track && [
+                Track.Source?.Camera,
+                Track.Source?.ScreenShare
+            ].map((value) => String(value || '').trim()).filter(Boolean).includes(source);
+            const isAudioSource = Track && [
+                Track.Source?.Microphone,
+                Track.Source?.ScreenShareAudio
+            ].map((value) => String(value || '').trim()).filter(Boolean).includes(source);
+            const publicationKind = Track && publication?.kind === Track.Kind.Video ? 'video'
+                : Track && publication?.kind === Track.Kind.Audio ? 'audio'
+                    : rawKind === 'video' || isVideoSource ? 'video'
+                        : rawKind === 'audio' || isAudioSource ? 'audio'
+                            : '';
             const candidateTrackIds = [
                 publication?.trackSid,
                 publication?.track?.sid,

@@ -171,6 +171,21 @@ export class WebMeetDashboardModal {
                 this.state.media = next;
                 if (localParticipantId) {
                     this.setParticipantMicState(localParticipantId, next.microphone);
+                    const Track = window.LivekitClient?.Track || null;
+                    if (!next.camera) {
+                        this.participantLayoutController.clearParticipantVideoSources(localParticipantId, [
+                            Track?.Source?.Camera,
+                            'camera',
+                            ''
+                        ]);
+                    }
+                    if (!next.screen) {
+                        this.participantLayoutController.clearParticipantVideoSources(localParticipantId, [
+                            Track?.Source?.ScreenShare,
+                            'screen_share',
+                            'screen'
+                        ]);
+                    }
                 }
             },
             onError: (message) => {

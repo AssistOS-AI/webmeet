@@ -162,12 +162,10 @@ export class ParticipantLayoutController {
             presenter.setState(payload);
         }
         const videoElements = this.getParticipantVideoElements(view);
-        if (videoElements.length) {
-            if (presenter && typeof presenter.setVideoElements === 'function') {
-                presenter.setVideoElements(videoElements);
-            } else if (presenter && typeof presenter.setVideoElement === 'function') {
-                presenter.setVideoElement(videoElements[0]);
-            }
+        if (presenter && typeof presenter.setVideoElements === 'function') {
+            presenter.setVideoElements(videoElements);
+        } else if (presenter && typeof presenter.setVideoElement === 'function') {
+            presenter.setVideoElement(videoElements[0] || null);
         }
     }
 
@@ -424,6 +422,43 @@ export class ParticipantLayoutController {
         try { track.element.srcObject = null; } catch (_) {}
         track.element.remove();
         this.trackElements.delete(trackSid);
+        this.renderParticipantLayout();
+    }
+
+    clearParticipantVideoSources(participantId, sources = []) {
+        const id = String(participantId || '').trim();
+        if (!id) return;
+        const normalizedSources = new Set(
+            (Array.isArray(sources) ? sources : [sources])
+                .map((source) => String(source || '').trim())
+        );
+        const matchesSource = (source) => !normalizedSources.size || normalizedSources.has(String(source || '').trim());
+        const trackIds = [];
+        for (const [trackSid, track] of this.trackElements.entries()) {
+            if (String(track?.participantId || '').trim() !== id) continue;
+            if (String(track?.kind || '').trim() !== 'video') continue;
+            if (!matchesSource(track?.source)) continue;
+            trackIds.push(trackSid);
+        }
+        for (const trackSid of trackIds) {
+            this.clearVideoTrack(trackSid);
+        }
+
+        const view = this.participantViews.get(id);
+        if (!view?.videoElements?.size) return;
+        let changed = false;
+        for (const [trackSid, mediaElement] of Array.from(view.videoElements.entries())) {
+            if (!matchesSource(mediaElement?.dataset?.trackSource)) continue;
+            try { mediaElement.srcObject = null; } catch (_) {}
+            mediaElement.remove();
+            view.videoElements.delete(trackSid);
+            changed = true;
+        }
+        if (!changed) return;
+        view.videoElement = this.getParticipantVideoElements(view)[0] || null;
+        this.syncParticipantVideoElements(view);
+        this.applyParticipantViewState(view);
+        this.renderParticipantLayout();
     }
 
     attachAudioTrack(participantId, trackSid, mediaElement) {
