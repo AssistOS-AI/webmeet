@@ -14,6 +14,7 @@ import {
     normalizeVoiceProcessingMode,
     usesAudioGraph
 } from '../services/audio-processing/settings.js';
+import { isMicrophonePublication } from '../services/microphone-publication.js';
 import { getMediaQualityProfile } from './media-quality-profiles.js';
 
 export class WebmeetMediaController {
@@ -365,9 +366,10 @@ export class WebmeetMediaController {
         const tracks = [];
         for (const publication of localParticipant.trackPublications.values()) {
             if (!publication) continue;
-            const isMic = publication.source === Track.Source.Microphone;
-            const isCustomMic = publication.track && publication.track === this.activeMicrophoneCapture?.track;
-            if (!isMic && !isCustomMic) continue;
+            if (!isMicrophonePublication(publication, Track, {
+                allowLocalCustomFallback: true,
+                activeMicrophoneTrack: this.activeMicrophoneCapture?.track || null
+            })) continue;
             if (publication.track) {
                 tracks.push(publication.track);
             }
@@ -513,11 +515,11 @@ export class WebmeetMediaController {
             if (!publication) continue;
             const sameKind = publication.kind === wantedKind;
             const sameSource = wantedSource ? publication.source === wantedSource : false;
-            const sameCustomMic = type === 'microphone'
-                && sameKind
-                && (publication.track === this.activeMicrophoneCapture?.track || !publication.source);
-            if ((sameSource || sameCustomMic || (type === 'camera' && sameKind && !publication.source))
-                && !publication.isMuted) {
+            const sameCustomMic = type === 'microphone' && isMicrophonePublication(publication, Track, {
+                allowLocalCustomFallback: true,
+                activeMicrophoneTrack: this.activeMicrophoneCapture?.track || null
+            });
+            if ((sameSource || sameCustomMic || (type === 'camera' && sameKind && !publication.source)) && !publication.isMuted) {
                 return true;
             }
         }

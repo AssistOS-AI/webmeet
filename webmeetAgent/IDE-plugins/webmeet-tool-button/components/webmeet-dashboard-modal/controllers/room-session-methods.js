@@ -5,6 +5,7 @@ import {
     summarizeTrack,
     summarizeVideoElement
 } from '../services/media-diagnostics.js';
+import { isAudioPublication } from '../services/microphone-publication.js';
 
 export const roomSessionMethods = {
     async connectRoom() {
@@ -123,7 +124,9 @@ export const roomSessionMethods = {
                     this.attachAudioTrack(participantId, trackId, mediaElement);
                     this.applyOutputVolumePreviewToElement(mediaElement);
                 }
-                this.setParticipantMicState(participantId, !publication.isMuted);
+                if (this.isMicrophonePublication(publication, Track, participant)) {
+                    this.setParticipantMicState(participantId, !publication.isMuted);
+                }
             }
         };
 
@@ -178,7 +181,7 @@ export const roomSessionMethods = {
                 trackInfo = trackInfo || this.participantLayoutController.getTrackEntry(trackId);
                 this.removeTrack(trackId);
             }
-            if (Track && (trackInfo?.kind === 'audio' || publication.kind === Track.Kind.Audio)) {
+            if (Track && isAudioPublication(publication, Track)) {
                 const participantId = String(trackInfo?.participantId || '').trim();
                 if (participantId) {
                     const participant = participantId === this.room?.localParticipant?.identity
@@ -403,7 +406,7 @@ export const roomSessionMethods = {
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
                 if (isVideoTrack) {
                     removePublication(publication, Track, participant);
-                } else {
+                } else if (this.isMicrophonePublication(publication, Track, participant)) {
                     this.setParticipantMicState(participantId, false);
                 }
                 if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
@@ -418,10 +421,12 @@ export const roomSessionMethods = {
                 if (isVideoTrack) {
                     renderPublication(participant, publication, publication?.track || null, Track);
                 }
-                const sourceParticipant = participantId === this.room?.localParticipant?.identity
-                    ? this.room.localParticipant
-                    : this.room?.remoteParticipants?.get?.(participantId) || participant;
-                this.setParticipantMicState(participantId, this.isParticipantMicOn(sourceParticipant, Track));
+                if (this.isMicrophonePublication(publication, Track, participant)) {
+                    const sourceParticipant = participantId === this.room?.localParticipant?.identity
+                        ? this.room.localParticipant
+                        : this.room?.remoteParticipants?.get?.(participantId) || participant;
+                    this.setParticipantMicState(participantId, this.isParticipantMicOn(sourceParticipant, Track));
+                }
                 if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
                     this.syncLocalMediaStateFromRoom(Track);
                     this.renderMeetingSummary();

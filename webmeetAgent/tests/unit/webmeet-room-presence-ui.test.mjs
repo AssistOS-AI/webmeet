@@ -24,6 +24,38 @@ test('LiveKit active speaker events are forwarded into participant roster state'
     assert.match(participantViewMethods, /isSpeaking:\s*Boolean\(entry\.isSpeaking\)/);
 });
 
+test('LiveKit mute handlers gate microphone state updates to microphone publications', async () => {
+    const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
+    const participantViewMethods = await readModalFile('controllers/participant-view-methods.js');
+    const mediaController = await readModalFile('controllers/webmeet-media-controller.js');
+
+    assert.match(roomSessionMethods, /this\.isMicrophonePublication\(publication,\s*Track,\s*participant\)/);
+    assert.match(roomSessionMethods, /else if \(this\.isMicrophonePublication\(publication,\s*Track,\s*participant\)\)/);
+    assert.match(participantViewMethods, /isMicrophonePublication\(publication,\s*Track,\s*participant = null\)/);
+    assert.match(participantViewMethods, /getActiveCustomMicrophoneTrackForParticipant/);
+    assert.match(mediaController, /isMicrophonePublication\(publication,\s*Track/);
+});
+
+test('active speaker updates do not mutate microphone status', async () => {
+    const participantViewMethods = await readModalFile('controllers/participant-view-methods.js');
+    const setActiveSpeakersBody = participantViewMethods.match(/setActiveSpeakers\([\s\S]*?\n    },\n\n    syncLocalMediaStateFromRoom/)?.[0] || '';
+
+    assert.match(setActiveSpeakersBody, /activeSpeakerIds/);
+    assert.doesNotMatch(setActiveSpeakersBody, /setParticipantMicState/);
+    assert.doesNotMatch(setActiveSpeakersBody, /micOn\s*=/);
+});
+
+test('microphone publication helper is shared by participant and media controllers', async () => {
+    const helper = await readModalFile('services/microphone-publication.js');
+    const participantViewMethods = await readModalFile('controllers/participant-view-methods.js');
+    const mediaController = await readModalFile('controllers/webmeet-media-controller.js');
+
+    assert.match(helper, /export function isMicrophonePublication/);
+    assert.match(helper, /allowLocalCustomFallback/);
+    assert.match(participantViewMethods, /services\/microphone-publication\.js/);
+    assert.match(mediaController, /services\/microphone-publication\.js/);
+});
+
 test('room notification sounds are local, generated, and setting controlled', async () => {
     const modal = await readModalFile('webmeet-dashboard-modal.js');
     const mediaSettings = await readModalFile('controllers/media-settings-methods.js');

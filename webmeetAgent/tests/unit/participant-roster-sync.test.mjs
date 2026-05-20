@@ -487,3 +487,172 @@ test('syncParticipantsFromRoom propagates active speaker state to room roster', 
     assert.equal(context.state.meetingParticipantsById['meeting-1'][0].isSpeaking, false);
     assert.equal(context.state.meetingParticipantsById['meeting-1'][1].isSpeaking, true);
 });
+
+test('isParticipantMicOn reads only microphone publication state', () => {
+    const context = {
+        ...participantViewMethods,
+        state: {
+            session: {
+                participantIdentity: 'participant-local'
+            }
+        },
+        room: {
+            localParticipant: {
+                identity: 'participant-local'
+            }
+        },
+        mediaController: {
+            activeMicrophoneCapture: null
+        }
+    };
+    const Track = {
+        Kind: { Audio: 'audio', Video: 'video' },
+        Source: {
+            Microphone: 'microphone',
+            ScreenShareAudio: 'screen_share_audio'
+        }
+    };
+    const participant = {
+        identity: 'participant-remote',
+        trackPublications: new Map()
+    };
+
+    participant.trackPublications.set('mic-on', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: false
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), true);
+
+    participant.trackPublications.set('mic-on', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: true
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), false);
+
+    participant.trackPublications.clear();
+    participant.trackPublications.set('screen-audio', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.ScreenShareAudio,
+        isMuted: false
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), false);
+
+    participant.trackPublications.set('mic-muted', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: true
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), false);
+
+    participant.trackPublications.set('mic-unmuted', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: false
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), true);
+});
+
+test('syncParticipantsFromRoom initializes remote mic state from LiveKit publications', () => {
+    const appliedViews = new Map();
+    const context = {
+        ...participantViewMethods,
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Local User'
+                }
+            },
+            participants: [],
+            participantProfileAvatarsByUserId: {},
+            meetingParticipantsById: {},
+            activeSpeakerIds: new Set()
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        room: null,
+        mediaController: {
+            activeMicrophoneCapture: null,
+            syncLocalMediaStateFromRoom() {}
+        },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            const view = appliedViews.get(id) || { id, micOn: false };
+            appliedViews.set(id, view);
+            return view;
+        },
+        applyParticipantViewState(view) {
+            appliedViews.set(view.id, { ...view });
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return appliedViews.get(id) || null;
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: {
+            Microphone: 'microphone',
+            ScreenShareAudio: 'screen_share_audio'
+        }
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Local User',
+            attributes: {}
+        },
+        remoteParticipants: new Map([
+            ['participant-mic-on', {
+                identity: 'participant-mic-on',
+                name: 'Mic On',
+                attributes: {},
+                trackPublications: new Map([
+                    ['mic', {
+                        kind: Track.Kind.Audio,
+                        source: Track.Source.Microphone,
+                        isMuted: false
+                    }]
+                ])
+            }],
+            ['participant-mic-off', {
+                identity: 'participant-mic-off',
+                name: 'Mic Off',
+                attributes: {},
+                trackPublications: new Map([
+                    ['mic', {
+                        kind: Track.Kind.Audio,
+                        source: Track.Source.Microphone,
+                        isMuted: true
+                    }],
+                    ['screen-audio', {
+                        kind: Track.Kind.Audio,
+                        source: Track.Source.ScreenShareAudio,
+                        isMuted: false
+                    }]
+                ])
+            }]
+        ])
+    };
+
+    context.room = room;
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.equal(appliedViews.get('participant-mic-on')?.micOn, true);
+    assert.equal(appliedViews.get('participant-mic-off')?.micOn, false);
+    assert.equal(context.state.meetingParticipantsById['meeting-1'].find((entry) => entry.id === 'participant-mic-on')?.micOn, true);
+    assert.equal(context.state.meetingParticipantsById['meeting-1'].find((entry) => entry.id === 'participant-mic-off')?.micOn, false);
+});

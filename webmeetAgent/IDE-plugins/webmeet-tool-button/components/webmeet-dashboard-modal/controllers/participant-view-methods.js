@@ -1,3 +1,5 @@
+import { isMicrophonePublication } from '../services/microphone-publication.js';
+
 function getParticipantUserIdFromParticipant(participant = null) {
     return String(
         participant?.userId
@@ -227,14 +229,32 @@ export const participantViewMethods = {
         this.participantLayoutController.removeParticipantView(participantId);
     },
 
+    getActiveCustomMicrophoneTrackForParticipant(participant = null) {
+        const participantIdentity = String(participant?.identity || '').trim();
+        const localIdentity = String(
+            this.room?.localParticipant?.identity
+            || this.state.session?.participantIdentity
+            || ''
+        ).trim();
+        if (!participantIdentity || !localIdentity || participantIdentity !== localIdentity) {
+            return null;
+        }
+        return this.mediaController?.activeMicrophoneCapture?.track || null;
+    },
+
+    isMicrophonePublication(publication, Track, participant = null) {
+        return isMicrophonePublication(publication, Track, {
+            allowLocalCustomFallback: true,
+            activeMicrophoneTrack: this.getActiveCustomMicrophoneTrackForParticipant(participant)
+        });
+    },
+
     isParticipantMicOn(participant, Track) {
         if (!participant?.trackPublications?.values) return false;
         for (const publication of participant.trackPublications.values()) {
             if (!publication) continue;
-            const isAudioKind = publication.kind === Track.Kind.Audio;
-            const isMicSource = publication.source === Track.Source.Microphone;
-            if (isAudioKind || isMicSource) {
-                return !publication.isMuted;
+            if (this.isMicrophonePublication(publication, Track, participant) && !publication.isMuted) {
+                return true;
             }
         }
         return false;
