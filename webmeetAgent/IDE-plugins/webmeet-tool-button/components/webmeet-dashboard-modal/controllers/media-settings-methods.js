@@ -1,4 +1,6 @@
 import {
+    DEFAULT_OUTPUT_VOLUME,
+    DEFAULT_VOICE_PROCESSING_MODE,
     normalizeHumFilter as normalizeSharedHumFilter,
     normalizeMicrophoneGain as normalizeSharedMicrophoneGain,
     normalizeVoiceProcessingMode as normalizeSharedVoiceProcessingMode
@@ -112,9 +114,9 @@ export const mediaSettingsMethods = {
             noiseSuppression: true,
             autoGainControl: false,
             microphoneGain: 1,
-            voiceProcessingMode: 'enhanced',
+            voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
             humFilter: 'off',
-            outputVolume: 1,
+            outputVolume: DEFAULT_OUTPUT_VOLUME,
             cameraQuality: 'h720',
             screenShareQuality: 'h1080fps30',
             backgroundMode: 'none',
@@ -204,7 +206,7 @@ export const mediaSettingsMethods = {
 
     normalizeOutputVolume(value) {
         const numberValue = Number(value);
-        if (!Number.isFinite(numberValue)) return 1;
+        if (!Number.isFinite(numberValue)) return DEFAULT_OUTPUT_VOLUME;
         return Math.min(1, Math.max(0, numberValue));
     },
 

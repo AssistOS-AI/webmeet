@@ -1,9 +1,11 @@
 export const VOICE_PROCESSING_MODES = Object.freeze(['enhanced', 'standard', 'off']);
 export const HUM_FILTER_MODES = Object.freeze(['off', '50', '60']);
+export const DEFAULT_VOICE_PROCESSING_MODE = 'standard';
+export const DEFAULT_OUTPUT_VOLUME = 0.8;
 
 export function normalizeVoiceProcessingMode(value) {
     const mode = String(value || '').trim().toLowerCase();
-    return VOICE_PROCESSING_MODES.includes(mode) ? mode : 'enhanced';
+    return VOICE_PROCESSING_MODES.includes(mode) ? mode : DEFAULT_VOICE_PROCESSING_MODE;
 }
 
 export function normalizeHumFilter(value) {

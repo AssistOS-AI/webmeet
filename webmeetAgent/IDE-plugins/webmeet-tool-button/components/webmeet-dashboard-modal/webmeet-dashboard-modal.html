@@ -62,12 +62,24 @@
                         <span>Input</span>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetAudioInputSelect">Microphone</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetAudioInputSelect">Microphone</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Microphone" aria-describedby="webmeetSettingHelpMicrophone">i</button>
+                                <span id="webmeetSettingHelpMicrophone" role="tooltip" class="webmeet-setting-help-tooltip">Choose which microphone WebMeet sends to the room.</span>
+                            </span>
+                        </div>
                         <select id="webmeetAudioInputSelect" class="form-input"></select>
                     </div>
                     <div class="webmeet-media-settings-row webmeet-media-slider-row">
                         <div class="webmeet-media-slider-label">
-                            <label for="webmeetMicrophoneGain">Microphone volume</label>
+                            <div class="webmeet-setting-label">
+                                <label for="webmeetMicrophoneGain">Microphone volume</label>
+                                <span class="webmeet-setting-help-control">
+                                    <button type="button" class="webmeet-setting-help-button" aria-label="About Microphone volume" aria-describedby="webmeetSettingHelpMicrophoneVolume">i</button>
+                                    <span id="webmeetSettingHelpMicrophoneVolume" role="tooltip" class="webmeet-setting-help-tooltip">Adjusts your mic level before publishing. Higher values can distort audio and increase feedback risk.</span>
+                                </span>
+                            </div>
                             <span id="webmeetMicrophoneGainValue">100%</span>
                         </div>
                         <input id="webmeetMicrophoneGain" type="range" min="0" max="2" step="0.05" value="1">
@@ -82,15 +94,27 @@
                         <span>Output</span>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetAudioOutputSelect">Speaker</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetAudioOutputSelect">Speaker</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Speaker" aria-describedby="webmeetSettingHelpSpeaker">i</button>
+                                <span id="webmeetSettingHelpSpeaker" role="tooltip" class="webmeet-setting-help-tooltip">Choose where remote meeting audio plays on this device.</span>
+                            </span>
+                        </div>
                         <select id="webmeetAudioOutputSelect" class="form-input"></select>
                     </div>
                     <div class="webmeet-media-settings-row webmeet-media-slider-row">
                         <div class="webmeet-media-slider-label">
-                            <label for="webmeetOutputVolume">Speaker volume</label>
-                            <span id="webmeetOutputVolumeValue">100%</span>
+                            <div class="webmeet-setting-label">
+                                <label for="webmeetOutputVolume">Speaker volume</label>
+                                <span class="webmeet-setting-help-control">
+                                    <button type="button" class="webmeet-setting-help-button" aria-label="About Speaker volume" aria-describedby="webmeetSettingHelpSpeakerVolume">i</button>
+                                    <span id="webmeetSettingHelpSpeakerVolume" role="tooltip" class="webmeet-setting-help-tooltip">Controls remote playback volume in this browser. Lowering it helps reduce speaker bleed into your microphone.</span>
+                                </span>
+                            </div>
+                            <span id="webmeetOutputVolumeValue">80%</span>
                         </div>
-                        <input id="webmeetOutputVolume" type="range" min="0" max="1" step="0.05" value="1">
+                        <input id="webmeetOutputVolume" type="range" min="0" max="1" step="0.05" value="0.8">
                     </div>
                 </section>
 
@@ -99,11 +123,23 @@
                         <span>Video</span>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetVideoInputSelect">Camera</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetVideoInputSelect">Camera</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Camera" aria-describedby="webmeetSettingHelpCamera">i</button>
+                                <span id="webmeetSettingHelpCamera" role="tooltip" class="webmeet-setting-help-tooltip">Choose which camera WebMeet publishes to the room.</span>
+                            </span>
+                        </div>
                         <select id="webmeetVideoInputSelect" class="form-input"></select>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetCameraQualitySelect">Camera quality</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetCameraQualitySelect">Camera quality</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Camera quality" aria-describedby="webmeetSettingHelpCameraQuality">i</button>
+                                <span id="webmeetSettingHelpCameraQuality" role="tooltip" class="webmeet-setting-help-tooltip">Sets the camera resolution and frame rate tradeoff. Lower quality uses less bandwidth and CPU.</span>
+                            </span>
+                        </div>
                         <select id="webmeetCameraQualitySelect" class="form-input">
                             <option value="h360">360p / 24fps</option>
                             <option value="h540">540p / 30fps</option>
@@ -112,7 +148,13 @@
                         </select>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetScreenShareQualitySelect">Screen share quality</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetScreenShareQualitySelect">Screen share quality</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Screen share quality" aria-describedby="webmeetSettingHelpScreenShareQuality">i</button>
+                                <span id="webmeetSettingHelpScreenShareQuality" role="tooltip" class="webmeet-setting-help-tooltip">Sets the shared screen resolution and frame rate. Higher quality needs more bandwidth and device power.</span>
+                            </span>
+                        </div>
                         <select id="webmeetScreenShareQualitySelect" class="form-input">
                             <option value="h720fps15">720p / 15fps</option>
                             <option value="h720fps30">720p / 30fps</option>
@@ -128,15 +170,27 @@
                         <span>Audio processing</span>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetVoiceProcessingMode">Voice processing</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetVoiceProcessingMode">Voice processing</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Voice processing" aria-describedby="webmeetSettingHelpVoiceProcessing">i</button>
+                                <span id="webmeetSettingHelpVoiceProcessing" role="tooltip" class="webmeet-setting-help-tooltip">Chooses how WebMeet cleans up your mic audio, from standard browser processing to enhanced local denoise.</span>
+                            </span>
+                        </div>
                         <select id="webmeetVoiceProcessingMode" class="form-input">
-                            <option value="enhanced">Enhanced local denoise</option>
                             <option value="standard">Standard browser processing</option>
+                            <option value="enhanced">Enhanced local denoise</option>
                             <option value="off">Off</option>
                         </select>
                     </div>
                     <div class="webmeet-media-settings-row">
-                        <label for="webmeetHumFilter">Hum filter</label>
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetHumFilter">Hum filter</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Hum filter" aria-describedby="webmeetSettingHelpHumFilter">i</button>
+                                <span id="webmeetSettingHelpHumFilter" role="tooltip" class="webmeet-setting-help-tooltip">Reduces steady electrical hum at 50 Hz or 60 Hz when your setup picks it up.</span>
+                            </span>
+                        </div>
                         <select id="webmeetHumFilter" class="form-input">
                             <option value="off">Off</option>
                             <option value="50">50 Hz</option>
@@ -144,18 +198,36 @@
                         </select>
                     </div>
                     <div class="webmeet-media-settings-flags">
-                        <label class="webmeet-media-flag">
-                            <input type="checkbox" id="webmeetAudioEchoCancellation">
-                            Echo cancellation
-                        </label>
-                        <label class="webmeet-media-flag">
-                            <input type="checkbox" id="webmeetAudioNoiseSuppression">
-                            Noise suppression
-                        </label>
-                        <label class="webmeet-media-flag">
-                            <input type="checkbox" id="webmeetAudioAutoGainControl">
-                            Auto gain control
-                        </label>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAudioEchoCancellation">
+                                <span>Echo cancellation</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Echo cancellation" aria-describedby="webmeetSettingHelpEchoCancellation">i</button>
+                                <span id="webmeetSettingHelpEchoCancellation" role="tooltip" class="webmeet-setting-help-tooltip">Tries to stop meeting audio from your speakers feeding back into your microphone.</span>
+                            </span>
+                        </div>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAudioNoiseSuppression">
+                                <span>Noise suppression</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Noise suppression" aria-describedby="webmeetSettingHelpNoiseSuppression">i</button>
+                                <span id="webmeetSettingHelpNoiseSuppression" role="tooltip" class="webmeet-setting-help-tooltip">Reduces steady background sounds such as fans, HVAC, and light room noise.</span>
+                            </span>
+                        </div>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAudioAutoGainControl">
+                                <span>Auto gain control</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Auto gain control" aria-describedby="webmeetSettingHelpAutoGainControl">i</button>
+                                <span id="webmeetSettingHelpAutoGainControl" role="tooltip" class="webmeet-setting-help-tooltip">Automatically raises or lowers mic level. It can help quiet voices, but may also lift room noise.</span>
+                            </span>
+                        </div>
                     </div>
                 </section>
 
@@ -166,7 +238,13 @@
                                 <span>Camera background</span>
                             </div>
                             <div class="webmeet-media-settings-row">
-                                <label for="webmeetBackgroundEffectSelect">Effect</label>
+                                <div class="webmeet-setting-label">
+                                    <label for="webmeetBackgroundEffectSelect">Effect</label>
+                                    <span class="webmeet-setting-help-control">
+                                        <button type="button" class="webmeet-setting-help-button" aria-label="About Background effect" aria-describedby="webmeetSettingHelpBackgroundEffect">i</button>
+                                        <span id="webmeetSettingHelpBackgroundEffect" role="tooltip" class="webmeet-setting-help-tooltip">Choose no effect, background blur, or a virtual image behind you.</span>
+                                    </span>
+                                </div>
                                 <select id="webmeetBackgroundEffectSelect" class="form-input">
                                     <option value="none">No effect</option>
                                     <option value="blur">Blur background</option>
@@ -175,13 +253,25 @@
                             </div>
                             <div id="webmeetBackgroundBlurRow" class="webmeet-media-settings-row webmeet-media-slider-row webmeet-hidden">
                                 <div class="webmeet-media-slider-label">
-                                    <label for="webmeetBackgroundBlurRadius">Blur strength</label>
+                                    <div class="webmeet-setting-label">
+                                        <label for="webmeetBackgroundBlurRadius">Blur strength</label>
+                                        <span class="webmeet-setting-help-control">
+                                            <button type="button" class="webmeet-setting-help-button" aria-label="About Blur strength" aria-describedby="webmeetSettingHelpBlurStrength">i</button>
+                                            <span id="webmeetSettingHelpBlurStrength" role="tooltip" class="webmeet-setting-help-tooltip">Controls how strongly WebMeet blurs the area behind you.</span>
+                                        </span>
+                                    </div>
                                     <span id="webmeetBackgroundBlurValue">12px</span>
                                 </div>
                                 <input id="webmeetBackgroundBlurRadius" type="range" min="4" max="24" step="1" value="12">
                             </div>
                             <div id="webmeetBackgroundImageRow" class="webmeet-media-settings-row webmeet-hidden">
-                                <label for="webmeetBackgroundImageInput">Background image</label>
+                                <div class="webmeet-setting-label">
+                                    <label for="webmeetBackgroundImageInput">Background image</label>
+                                    <span class="webmeet-setting-help-control">
+                                        <button type="button" class="webmeet-setting-help-button" aria-label="About Background image" aria-describedby="webmeetSettingHelpBackgroundImage">i</button>
+                                        <span id="webmeetSettingHelpBackgroundImage" role="tooltip" class="webmeet-setting-help-tooltip">Upload a picture to replace your background on this device in future WebMeet rooms.</span>
+                                    </span>
+                                </div>
                                 <input id="webmeetBackgroundImageInput" class="form-input" type="file" accept="image/*">
                                 <div id="webmeetBackgroundImagePreview" class="webmeet-background-preview webmeet-hidden">
                                     <img id="webmeetBackgroundImagePreviewImage" alt="">

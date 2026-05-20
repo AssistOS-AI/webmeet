@@ -186,6 +186,8 @@ The current WebMeet media controller:
   - `off`: no browser echo cancellation or noise suppression, with only explicitly requested local graph steps such as gain or hum filtering.
 - supports local deafen, which mutes remote playback in the current browser, disables the local microphone when enabled, and restores the microphone on undeafen only when it was enabled before deafen.
 - lets users choose microphone, camera, speaker, voice-processing mode, hum filter, microphone gain, speaker volume, audio processing flags, camera quality, and screen-share quality from the media settings panel.
+- shows a short inline explanation for each media and background setting through an info control that becomes visible on hover and on focus/tap, so users can understand the effect of each setting without leaving the panel.
+- defaults new browser-scoped audio settings to `standard` voice processing, browser echo cancellation on, browser noise suppression on, auto gain control off, microphone gain at `1.0`, hum filter off, and speaker volume at `0.8` to reduce feedback and room-bleed risk on first join.
 - stops local microphone, camera, and screen-share tracks and mutes/unsubscribes remote playback before the application leave request when a user exits a room.
 - emits media diagnostics only when an explicit debug flag such as `WEBMEET_MEDIA_DEBUG` or `webmeetMediaDebug=1` is enabled.
 

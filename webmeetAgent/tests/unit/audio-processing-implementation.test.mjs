@@ -48,3 +48,13 @@ test('unsupported enhanced voice processing is persisted as standard', async () 
     assert.match(dashboardSource, /onSettingsChange: \(settings\) =>/);
     assert.match(dashboardSource, /this\.persistMediaSettings\(\)/);
 });
+
+test('dashboard audio defaults favor browser anti-feedback settings', async () => {
+    const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
+    const dashboardSource = await fs.readFile(dashboardPath, 'utf8');
+
+    assert.match(controllerSource, /voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE/);
+    assert.match(controllerSource, /outputVolume: DEFAULT_OUTPUT_VOLUME/);
+    assert.match(dashboardSource, /voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE/);
+    assert.match(dashboardSource, /outputVolume: DEFAULT_OUTPUT_VOLUME/);
+});

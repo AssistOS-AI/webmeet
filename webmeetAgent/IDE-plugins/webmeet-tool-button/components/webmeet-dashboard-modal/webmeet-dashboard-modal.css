@@ -1019,6 +1019,72 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     font-weight: 600;
 }
 
+.webmeet-setting-label {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.webmeet-setting-help-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.webmeet-setting-help-button {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 88%, var(--file-exp-panel) 12%);
+    color: var(--text-soft);
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+}
+
+.webmeet-setting-help-button:hover,
+.webmeet-setting-help-button:focus-visible {
+    color: var(--accent);
+    border-color: var(--accent);
+    outline: none;
+}
+
+.webmeet-setting-help-tooltip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 3;
+    width: min(240px, calc(100vw - 56px));
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--surface) 94%, var(--bg) 6%);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--bg) 28%, transparent);
+    color: var(--text);
+    font-size: 0.74rem;
+    line-height: 1.4;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+.webmeet-setting-help-control:hover .webmeet-setting-help-tooltip,
+.webmeet-setting-help-control:focus-within .webmeet-setting-help-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
 .webmeet-media-settings-row select.form-input {
     min-height: 34px;
     padding: 6px 10px;
@@ -1078,6 +1144,12 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
+}
+
+.webmeet-media-flag-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .webmeet-media-flag {

@@ -2,18 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    DEFAULT_VOICE_PROCESSING_MODE,
     normalizeHumFilter,
     normalizeMicrophoneGain,
     normalizeVoiceProcessingMode,
     usesAudioGraph
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/audio-processing/settings.js';
 
-test('voice processing mode normalization defaults to enhanced', () => {
+test('voice processing mode normalization defaults to standard', () => {
     assert.equal(normalizeVoiceProcessingMode('enhanced'), 'enhanced');
     assert.equal(normalizeVoiceProcessingMode('standard'), 'standard');
     assert.equal(normalizeVoiceProcessingMode('off'), 'off');
-    assert.equal(normalizeVoiceProcessingMode(''), 'enhanced');
-    assert.equal(normalizeVoiceProcessingMode('unknown'), 'enhanced');
+    assert.equal(normalizeVoiceProcessingMode(''), DEFAULT_VOICE_PROCESSING_MODE);
+    assert.equal(normalizeVoiceProcessingMode('unknown'), DEFAULT_VOICE_PROCESSING_MODE);
 });
 
 test('hum filter normalization accepts off, 50 and 60 hertz modes', () => {

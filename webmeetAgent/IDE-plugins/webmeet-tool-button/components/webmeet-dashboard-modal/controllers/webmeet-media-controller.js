@@ -7,6 +7,8 @@ import {
     isEnhancedVoiceProcessingSupported
 } from '../services/audio-processing/microphone-track-factory.js';
 import {
+    DEFAULT_OUTPUT_VOLUME,
+    DEFAULT_VOICE_PROCESSING_MODE,
     normalizeHumFilter,
     normalizeMicrophoneGain,
     normalizeVoiceProcessingMode,
@@ -37,9 +39,9 @@ export class WebmeetMediaController {
             noiseSuppression: true,
             autoGainControl: false,
             microphoneGain: 1,
-            voiceProcessingMode: 'enhanced',
+            voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
             humFilter: 'off',
-            outputVolume: 1,
+            outputVolume: DEFAULT_OUTPUT_VOLUME,
             cameraQuality: 'h720',
             screenShareQuality: 'h1080fps30',
             backgroundMode: 'none',

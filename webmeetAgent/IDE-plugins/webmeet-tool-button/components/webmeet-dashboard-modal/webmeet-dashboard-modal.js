@@ -14,6 +14,10 @@ import {
     GuestSessionManager
 } from './service-components/index.js';
 import {
+    DEFAULT_OUTPUT_VOLUME,
+    DEFAULT_VOICE_PROCESSING_MODE
+} from './services/audio-processing/settings.js';
+import {
     ensureBackgroundEffectsModule,
     ensureLiveKitClient,
     getBackgroundEffectsAssetPaths
@@ -77,9 +81,9 @@ export class WebMeetDashboardModal {
                 noiseSuppression: true,
                 autoGainControl: false,
                 microphoneGain: 1,
-                voiceProcessingMode: 'enhanced',
+                voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
                 humFilter: 'off',
-                outputVolume: 1,
+                outputVolume: DEFAULT_OUTPUT_VOLUME,
                 cameraQuality: 'h720',
                 screenShareQuality: 'h1080fps30',
                 backgroundMode: 'none',
