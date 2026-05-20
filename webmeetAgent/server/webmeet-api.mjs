@@ -113,21 +113,21 @@ function getLastEventId(req, url) {
     return String(url.searchParams.get('lastEventId') || '').trim();
 }
 
-function assertGuestEventAccess(context, meetingId, url) {
+async function assertGuestEventAccess(context, meetingId, url) {
     const guestToken = String(url.searchParams.get('guestToken') || '').trim();
     const participantId = String(url.searchParams.get('participantId') || '').trim();
     if (!guestToken || !participantId) {
         throw new Error('Guest event access requires guest token and participant.');
     }
-    getGuestMeetingDetails(context, { meetingId, guestToken, participantId });
+    await getGuestMeetingDetails(context, { meetingId, guestToken, participantId });
 }
 
-function sendMeetingEvents(req, res, context, meetingId, { afterId = '', url = null } = {}) {
+async function sendMeetingEvents(req, res, context, meetingId, { afterId = '', url = null } = {}) {
     const targetMeetingId = String(meetingId || '').trim();
     if (url?.searchParams?.has('guestToken')) {
-        assertGuestEventAccess(context, targetMeetingId, url);
+        await assertGuestEventAccess(context, targetMeetingId, url);
     } else {
-        getMeeting(context, targetMeetingId);
+        await getMeeting(context, targetMeetingId);
     }
     res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
@@ -317,11 +317,11 @@ async function handler(req, res) {
             return;
         }
         if (route.name === 'meetings.get') {
-            json(res, 200, getMeeting(context, route.params[0]));
+            json(res, 200, await getMeeting(context, route.params[0]));
             return;
         }
         if (route.name === 'meetings.events') {
-            sendMeetingEvents(req, res, context, route.params[0], {
+            await sendMeetingEvents(req, res, context, route.params[0], {
                 afterId: getLastEventId(req, url),
                 url
             });
@@ -360,7 +360,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.guest.state') {
             const body = await readBody(req);
-            json(res, 200, getGuestMeetingDetails(context, {
+            json(res, 200, await getGuestMeetingDetails(context, {
                 meetingId: route.params[0],
                 guestToken: String(body.guestToken || '').trim(),
                 participantId: String(body.participantId || '').trim()
@@ -481,9 +481,9 @@ async function handler(req, res) {
                     guestToken,
                     participantId
                 })
-                : (() => {
+                : await (async () => {
                     assertAdminRequest(req);
-                    getMeeting(context, route.params[0]);
+                    await getMeeting(context, route.params[0]);
                     return formatMeetingTranscriptMarkdown(context, route.params[0]);
                 })();
             textResponse(res, 200, content, {

@@ -24,6 +24,25 @@ test('LiveKit active speaker events are forwarded into participant roster state'
     assert.match(participantViewMethods, /isSpeaking:\s*Boolean\(entry\.isSpeaking\)/);
 });
 
+test('authenticated refresh does not use cached pending leave state', async () => {
+    const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const presenceController = await readModalFile('controllers/meeting-presence-controller.js');
+
+    assert.doesNotMatch(modal, /consumePendingMeetingLeaves/);
+    assert.doesNotMatch(modal, /flushPendingAuthenticatedLeaves/);
+    assert.doesNotMatch(presenceController, /pendingLeaves|PENDING_LEAVES_STORAGE_KEY|rememberPendingLeave/);
+});
+
+test('meeting details use LiveKit participants as the room presence source', async () => {
+    const store = await readFile(path.join(root, 'lib/webmeetStore.mjs'), 'utf8');
+
+    assert.match(store, /async function listLiveKitRoomParticipants/);
+    assert.match(store, /callLiveKitRoomApi\(context,\s*'ListParticipants'/);
+    assert.match(store, /projectLiveKitMeetingParticipants/);
+    assert.match(store, /export async function getMeeting/);
+    assert.match(store, /const participants = await getRealtimeMeetingParticipants/);
+});
+
 test('LiveKit mute handlers gate microphone state updates to microphone publications', async () => {
     const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
     const participantViewMethods = await readModalFile('controllers/participant-view-methods.js');

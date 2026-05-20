@@ -434,7 +434,7 @@ export async function dispatch(toolName, args, context, authInfo) {
             })
         };
     case 'webmeet_meeting_events_list':
-        getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+        await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
         return {
             events: listMeetingEvents(context, getRequiredString(args, 'meetingId'), {
                 afterId: String(args?.afterId || '').trim()
@@ -448,7 +448,7 @@ export async function dispatch(toolName, args, context, authInfo) {
             authInfo
         });
     case 'webmeet_meeting_get':
-        return getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+        return await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
     case 'webmeet_meeting_rename':
         return updateMeetingTitle(context, {
             meetingId: getRequiredString(args, 'meetingId'),

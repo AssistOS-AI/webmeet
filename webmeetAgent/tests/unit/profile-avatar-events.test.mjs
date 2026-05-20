@@ -57,6 +57,19 @@ afterEach(() => {
     }
 });
 
+function setLiveKitParticipants(context, participants) {
+    context.listLiveKitParticipants = async () => participants;
+}
+
+function liveKitParticipant(identity, name, attributes = {}) {
+    return {
+        identity,
+        name,
+        kind: 'STANDARD',
+        attributes
+    };
+}
+
 test('profile avatar updates are published as workspace events', () => {
     const context = createStoreContext(tempRoot);
     const workspace = createWorkspace(context);
@@ -142,7 +155,7 @@ test('join publishes workspace user id in participant state and LiveKit token at
     assert.equal(jwtPayload.attributes.ploinkyUserId, 'local:user-one');
 });
 
-test('participant avatar projection is stored on the meeting roster', () => {
+test('participant avatar projection is stored on the meeting roster', async () => {
     const context = createStoreContext(tempRoot);
     const workspace = createWorkspace(context);
     const authInfo = {
@@ -186,7 +199,8 @@ test('participant avatar projection is stored on the meeting roster', () => {
     assert.equal(updated.profileAvatar.config.size, '48');
     assert.equal(updated.profileAvatar.config.palette, 'terminal');
 
-    const details = getMeeting(context, meeting.id, authInfo);
+    setLiveKitParticipants(context, [liveKitParticipant(session.participantIdentity, 'Admin')]);
+    const details = await getMeeting(context, meeting.id, authInfo);
     const participant = details.participants.find((entry) => entry.id === session.participantIdentity);
     assert.equal(participant.profileAvatar.config.seed, 'profile:local:admin');
 
@@ -263,7 +277,7 @@ test('participant avatar projection rejects unsafe or invalid config fields', ()
     }), /Unknown participant avatar config field/);
 });
 
-test('join can persist avatar projection for a freshly created participant id', () => {
+test('join can persist avatar projection for a freshly created participant id', async () => {
     const context = createStoreContext(tempRoot);
     const workspace = createWorkspace(context);
     const authInfo = {
@@ -301,7 +315,8 @@ test('join can persist avatar projection for a freshly created participant id', 
     assert.equal(session.participant.profileAvatar.enabled, true);
     assert.equal(session.participant.profileAvatar.config.seed, 'profile:local:admin');
 
-    const details = getMeeting(context, meeting.id, authInfo);
+    setLiveKitParticipants(context, [liveKitParticipant(session.participantIdentity, 'Admin')]);
+    const details = await getMeeting(context, meeting.id, authInfo);
     const participant = details.participants.find((entry) => entry.id === session.participantIdentity);
     assert.equal(participant.profileAvatar.config.seed, 'profile:local:admin');
 
@@ -315,7 +330,7 @@ test('join can persist avatar projection for a freshly created participant id', 
     );
 });
 
-test('join fills a generated avatar config when authenticated profile payload has no config', () => {
+test('join fills a generated avatar config when authenticated profile payload has no config', async () => {
     const context = createStoreContext(tempRoot);
     const workspace = createWorkspace(context);
     const adminAuthInfo = {
@@ -355,7 +370,8 @@ test('join fills a generated avatar config when authenticated profile payload ha
     assert.equal(session.participant.profileAvatar.config.generated, true);
     assert.equal(session.participant.profileAvatar.config.seed, 'profile:local:user');
 
-    const details = getMeeting(context, meeting.id, authInfo);
+    setLiveKitParticipants(context, [liveKitParticipant(session.participantIdentity, 'User')]);
+    const details = await getMeeting(context, meeting.id, authInfo);
     const participant = details.participants.find((entry) => entry.id === session.participantIdentity);
     assert.equal(participant.profileAvatar.config.agentId, 'profile:local:user');
 });

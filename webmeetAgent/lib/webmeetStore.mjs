@@ -463,18 +463,6 @@ function cleanupMeetingPresence(context, meetingId) {
     return removedCount;
 }
 
-function cleanupWorkspaceMeetingsPresence(context, workspaceId) {
-    for (const filePath of listJsonFiles(context.meetingsDir)) {
-        try {
-            const record = readJsonFile(filePath);
-            if (String(record?.workspaceId || '') !== String(workspaceId || '')) continue;
-            cleanupMeetingPresence(context, String(record?.meetingId || ''));
-        } catch (_) {
-            // ignore malformed entries
-        }
-    }
-}
-
 function buildRoomName(prefix, workspaceId, meetingId) {
     return `${prefix}-${workspaceId}-${meetingId}`
         .replace(/[^a-zA-Z0-9_-]/g, '-')
@@ -854,6 +842,92 @@ async function getLiveKitAgentParticipant(context, roomName, metadata) {
     return participants.find((participant) => isMatchingLiveKitAgentParticipant(context, metadata, participant)) || null;
 }
 
+function getLiveKitParticipantIdentity(participant) {
+    return String(participant?.identity || '').trim();
+}
+
+function isLiveKitAgentParticipant(participant) {
+    const attributes = getParticipantAttributes(participant);
+    return String(participant?.kind || '').toUpperCase() === 'AGENT'
+        || String(attributes.webmeetAgent || '').toLowerCase() === 'true';
+}
+
+async function listLiveKitRoomParticipants(context, roomName) {
+    if (typeof context.listLiveKitParticipants === 'function') {
+        const participants = await context.listLiveKitParticipants(roomName);
+        return Array.isArray(participants) ? participants : [];
+    }
+    const response = await callLiveKitRoomApi(context, 'ListParticipants', roomName, { room: roomName });
+    return Array.isArray(response.participants) ? response.participants : [];
+}
+
+function projectLiveKitMeetingParticipants(payload, liveParticipants) {
+    const now = nowIso();
+    const cachedMembers = Array.isArray(payload?.members) ? payload.members : [];
+    const cachedById = new Map(cachedMembers.map((member) => [String(member?.id || '').trim(), member]).filter(([id]) => id));
+    const projected = [];
+    for (const liveParticipant of Array.isArray(liveParticipants) ? liveParticipants : []) {
+        if (isLiveKitAgentParticipant(liveParticipant)) continue;
+        const participantId = getLiveKitParticipantIdentity(liveParticipant);
+        if (!participantId) continue;
+        const cached = cachedById.get(participantId) || {};
+        const liveAttributes = getParticipantAttributes(liveParticipant);
+        projected.push({
+            ...cached,
+            id: participantId,
+            displayName: String(liveParticipant?.name || cached.displayName || participantId).trim() || participantId,
+            joinedAt: cached.joinedAt || now,
+            lastSeenAt: now,
+            attributes: {
+                ...(cached.attributes && typeof cached.attributes === 'object' ? cached.attributes : {}),
+                ...liveAttributes
+            }
+        });
+    }
+    return projected;
+}
+
+function syncPayloadMembersToLiveKitParticipants(context, record, payload, participants) {
+    const currentMembers = Array.isArray(payload.members) ? payload.members : [];
+    const currentIds = new Set(currentMembers.map((member) => String(member?.id || '').trim()).filter(Boolean));
+    const nextIds = new Set(participants.map((member) => String(member?.id || '').trim()).filter(Boolean));
+    const membershipChanged = currentIds.size !== nextIds.size
+        || [...currentIds].some((participantId) => !nextIds.has(participantId));
+
+    payload.members = participants;
+    if (membershipChanged) {
+        for (const member of currentMembers) {
+            const participantId = String(member?.id || '').trim();
+            if (!participantId || nextIds.has(participantId)) continue;
+            recordMeetingEvent(context, record.meetingId, payload, 'participant.left', {
+                meetingId: record.meetingId,
+                participantId,
+                reason: 'livekit_reconcile'
+            });
+        }
+        for (const member of participants) {
+            const participantId = String(member?.id || '').trim();
+            if (!participantId || currentIds.has(participantId)) continue;
+            recordMeetingEvent(context, record.meetingId, payload, 'participant.joined', {
+                meetingId: record.meetingId,
+                participantId,
+                source: 'livekit_reconcile'
+            });
+        }
+    }
+    saveMeetingRecord(context, record, payload);
+}
+
+async function getRealtimeMeetingParticipants(context, record, payload) {
+    const liveParticipants = await listLiveKitRoomParticipants(context, record.roomName);
+    const participants = projectLiveKitMeetingParticipants(payload, liveParticipants);
+    syncPayloadMembersToLiveKitParticipants(context, record, payload, participants);
+    if (participants.length === 0) {
+        scheduleEmptyRoomAgentDetach(context, record.meetingId, 'no_human_participants');
+    }
+    return participants;
+}
+
 async function waitForLiveKitAgentDispatch(context, roomName, dispatchId, metadata) {
     if (!dispatchId) {
         throw new Error('LiveKit dispatch response did not include a dispatch id.');
@@ -914,20 +988,20 @@ function buildMeetingView(record) {
     };
 }
 
-export function getMeeting(context, meetingId, authInfo = null) {
-    cleanupMeetingPresence(context, meetingId);
+export async function getMeeting(context, meetingId, authInfo = null) {
     const record = loadMeetingRecord(context, meetingId);
     if (!canViewMeetingRecord(record, authInfo)) {
         throw new Error('Meeting not found.');
     }
     const payload = decryptMeetingPayload(context, record);
+    const participants = await getRealtimeMeetingParticipants(context, record, payload);
     const meeting = buildMeetingView(record);
     if (isAdminAuthInfo(authInfo) && record.roomType === 'guest') {
         meeting.guestToken = record.guestToken || '';
     }
     return {
         meeting,
-        participants: payload.members,
+        participants,
         agents: payload.agents,
         recordings: payload.recordings
     };
@@ -1164,7 +1238,6 @@ export function listMeetings(context, workspaceId, authInfo = null) {
     const workspace = ensureCurrentWorkspaceRecord(context);
     const effectiveWorkspaceId = String(workspaceId || '').trim() || workspace.id;
     const canManageRooms = isAdminAuthInfo(authInfo);
-    cleanupWorkspaceMeetingsPresence(context, effectiveWorkspaceId);
     return listJsonFiles(context.meetingsDir).map((filePath) => {
         try {
             return readJsonFile(filePath);
@@ -1305,15 +1378,18 @@ function assertGuestParticipant(payload, participantId) {
     return participant;
 }
 
-export function getGuestMeetingDetails(context, { meetingId, guestToken, participantId }) {
-    cleanupMeetingPresence(context, meetingId);
+export async function getGuestMeetingDetails(context, { meetingId, guestToken, participantId }) {
     const record = loadMeetingRecord(context, meetingId);
     assertGuestMeetingAccess(record, guestToken);
     const payload = decryptMeetingPayload(context, record);
-    assertGuestParticipant(payload, participantId);
+    const participants = await getRealtimeMeetingParticipants(context, record, payload);
+    const targetParticipantId = String(participantId || '').trim();
+    if (!participants.some((entry) => String(entry?.id || '').trim() === targetParticipantId)) {
+        throw new Error('Guest participant is not joined.');
+    }
     return {
         meeting: buildMeetingView(record),
-        participants: payload.members,
+        participants,
         chat: payload.chatMessages,
         transcript: payload.transcriptSegments,
         artifacts: payload.artifacts,
