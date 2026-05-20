@@ -26,9 +26,9 @@ export class MeetingListController {
             <div class="webmeet-list-item ${entry.id === selectedMeetingId ? 'is-selected' : ''} ${isJoining ? 'is-joining' : ''} ${activeJoiningId ? 'is-join-locked' : ''}" data-id="${escapeHtml(entry.id)}" aria-busy="${isJoining ? 'true' : 'false'}">
                 <div class="webmeet-meeting-row" data-local-action="selectAndJoinMeeting" data-id="${escapeHtml(entry.id)}">
                     <div class="webmeet-room-identity">
-                        <span class="webmeet-room-icon ${isGuestRoom ? 'is-guest' : 'is-team'}" aria-hidden="true" title="${isGuestRoom ? 'Guest Room' : 'Team Room'}">
+                        <span class="webmeet-room-icon ${isGuestRoom ? 'is-guest' : 'is-team'}" aria-hidden="true" title="${isGuestRoom ? 'Public meeting' : 'Team Room'}">
                             ${isGuestRoom ? `
-                                <!-- Guest Room Icon - External Link -->
+                                <!-- Public meeting icon - External Link -->
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                                     <polyline points="15 3 21 3 21 9"></polyline>

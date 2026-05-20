@@ -97,12 +97,12 @@ For authenticated Explorer users:
 2. `webmeetAgent` derives the workspace id from the workspace root and ensures a workspace record.
 3. The plugin calls `webmeet_meeting_list`.
 4. `webmeetAgent` reads its mounted data directory (`/data/meetings/*.json`, backed by `.ploinky/data/webmeetAgent/data/meetings/*.json`), filters active rooms for the workspace, and returns room cards.
-5. Admin users can create, rename, delete, and expose guest invite links. Non-admin users can see and join active rooms returned for the workspace.
+5. Admin users can create, rename, delete, and expose public meeting invite links. Non-admin users can see and join active rooms returned for the workspace.
 6. Authenticated clients keep a workspace-scoped EventSource open on the WebMeet API. A `meeting.created` event refreshes the room list so users who are already logged in see new rooms without reloading Explorer, and `meeting.renamed` updates room titles in place. Workspace-level participant and agent events refresh the room-card roster state for all visible rooms so users can decide whether to join from current presence.
 
 For guests:
 
-1. An admin creates a guest room and `webmeetAgent` stores a random `guestToken`.
+1. An admin creates a public meeting and `webmeetAgent` stores a random `guestToken`.
 2. The invite URL uses `/public-services/webmeet/guest?room=<meetingId>&token=<guestToken>`.
 3. Ploinky routes that path through the manifest-declared guest HTTP service with `forceGuest: true`.
 4. `webmeet-public-proxy.mjs` verifies the router-issued `__http_service__` invocation token before serving the guest page and guest APIs.

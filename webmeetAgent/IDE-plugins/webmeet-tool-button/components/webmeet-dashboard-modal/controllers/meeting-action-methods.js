@@ -30,13 +30,13 @@ export const meetingActionMethods = {
         if (result.roomType === 'guest' && meeting?.guestToken) {
             const guestUrl = this.buildGuestJoinUrl(meeting.id, meeting.guestToken);
             await assistOS.UI.showModal('confirm-action-modal', {
-                message: `Guest Room created! Share this link:\n\n${guestUrl}\n\n(Click Yes to copy to clipboard)`
+                message: `Public meeting created! Share this link:\n\n${guestUrl}\n\n(Click Yes to copy to clipboard)`
             }, true);
             try {
                 await navigator.clipboard.writeText(guestUrl);
-                this.setError('Guest link copied to clipboard!');
+                this.setError('Public meeting link copied to clipboard!');
             } catch {
-                this.setError(`Guest link: ${guestUrl}`);
+                this.setError(`Public meeting link: ${guestUrl}`);
             }
         }
 
@@ -74,19 +74,19 @@ export const meetingActionMethods = {
     async copyGuestInviteLink(target) {
         const meeting = this.getMeetingFromActionTarget(target);
         if (!meeting || meeting.roomType !== 'guest') {
-            this.setError('Invite links are available only for guest rooms.');
+            this.setError('Invite links are available only for public meetings.');
             return;
         }
         const guestUrl = await this.getGuestInviteLink(meeting);
         if (!guestUrl) {
-            this.setError('Guest invite link is unavailable.');
+            this.setError('Public meeting invite link is unavailable.');
             return;
         }
         try {
             await navigator.clipboard.writeText(guestUrl);
-            this.setError('Guest invite link copied to clipboard.');
+            this.setError('Public meeting invite link copied to clipboard.');
         } catch {
-            this.setError(`Guest invite link: ${guestUrl}`);
+            this.setError(`Public meeting invite link: ${guestUrl}`);
         }
     },
 

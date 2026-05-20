@@ -1,11 +1,11 @@
-# DS008: Room Types (Team vs Guest)
+# DS008: Room Types (Team vs Public Meeting)
 
 ## Overview
 
 WebMeet supports two types of rooms to accommodate different collaboration scenarios:
 
 - **Team Room**: Accessible only to authenticated workspace members
-- **Guest Room**: Accessible via a shareable link, allowing external participants to join without workspace authentication
+- **Public meeting**: Accessible via a shareable link, allowing external participants to join without workspace authentication. Internally this remains `roomType: 'guest'`.
 
 ## Room Types
 
@@ -24,7 +24,7 @@ WebMeet supports two types of rooms to accommodate different collaboration scena
 - Project reviews
 - Workspace-only discussions
 
-### Guest Room
+### Public Meeting
 
 **Purpose**: External collaboration with participants outside the workspace.
 
@@ -49,7 +49,7 @@ WebMeet supports two types of rooms to accommodate different collaboration scena
 interface MeetingRecord {
     // ... existing fields ...
     roomType: 'team' | 'guest';
-    guestToken?: string; // Only present for guest rooms
+    guestToken?: string; // Only present for public meetings
 }
 ```
 
@@ -68,7 +68,7 @@ POST /api/workspaces/:workspaceId/meetings
 {
     id: string;
     roomType: 'team' | 'guest';
-    guestToken?: string; // Only for guest rooms
+    guestToken?: string; // Only for public meetings
     // ... other fields ...
 }
 ```
@@ -97,15 +97,15 @@ POST /api/meetings/:meetingId/join-guest
 // Must arrive through /public-services/webmeet/... with a router-issued guest invocation
 ```
 
-## Guest Room Flow
+## Public Meeting Flow
 
 ### 1. Room Creation (Admin)
 
 1. Admin clicks "New" button in WebMeet dashboard
 2. Webskel modal `create-room-modal` opens with:
-   - Room type selection (Team / Guest)
+   - Room type selection (Team Room / Public meeting)
    - Room title input
-3. Admin selects "Guest Room" and provides title
+3. Admin selects "Public meeting" and provides title
 4. System creates room and generates unique `guestToken`
 5. Guest URL is displayed: `https://{host}/public-services/webmeet/guest?room={roomId}&token={guestToken}`
 6. Admin can copy and share the link
@@ -126,7 +126,7 @@ POST /api/meetings/:meetingId/join-guest
 - Guest HTTP routes reject unsigned `x-ploinky-auth-info` headers and require a verified Ploinky invocation token with the guest role
 - Guest access is limited to the WebMeet public-service route; it must not expose Explorer or generic MCP agent routes
 - WebMeet must not set manifest-level `guest: true`; unlike visitor-only agents such as webAssist, WebMeet guests are scoped to the invite HTTP service so they cannot reach the agent's general MCP tools
-- Guest rooms can be converted to team rooms (future feature)
+- Public meetings can be converted to team rooms (future feature)
 - Guest access can be revoked by regenerating token (future feature)
 
 ## UI Components
@@ -137,20 +137,20 @@ POST /api/meetings/:meetingId/join-guest
 
 **Structure**:
 - Modal header with title "Create New Room"
-- Room type selection cards (Team / Guest)
+- Room type selection cards (Team Room / Public meeting)
 - Room title input
 - Cancel and Create buttons
 
 **Behavior**:
 - Team Room is pre-selected by default
-- Guest Room shows "link access" description
+- Public meeting shows "link access" description
 - Title defaults to "Standup"
 
 ### Room List Indicators
 
 **Team Room Icon**: Video camera icon (existing)
-**Guest Room Icon**: Link icon with different color
-**Guest Room Badge**: 🔗 emoji indicator next to title
+**Public meeting icon**: Link icon with different color
+**Public meeting badge**: Link indicator next to title
 
 ## Implementation Details
 
@@ -185,13 +185,13 @@ export function joinGuestMeeting(context, { meetingId, guestToken, displayName, 
 ### Frontend (WebMeet Dashboard)
 
 - `createMeeting()` now calls `assistOS.UI.showModal('create-room-modal')`
-- Guest room creation shows confirmation with guest URL
+- Public meeting creation shows confirmation with invite URL
 - URL is auto-copied to clipboard when possible
 - Room list shows type indicators
 
 ## Security Boundaries
 
-| Aspect | Team Room | Guest Room |
+| Aspect | Team Room | Public meeting |
 |--------|-----------|------------|
 | Authentication | Required | Not required |
 | Access Control | Workspace membership | Guest token possession |
@@ -206,7 +206,7 @@ WebMeet publishes screen-share video without LiveKit simulcast so remote receive
 ## Future Enhancements
 
 - Token expiration/revocation
-- Guest room password protection
+- Public meeting password protection
 - Maximum guest count limits
 - Guest waiting room (approval required)
 - Conversion between room types

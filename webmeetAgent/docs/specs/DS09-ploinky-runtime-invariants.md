@@ -39,8 +39,8 @@ Browser realtime refreshes driven by meeting/workspace server-sent events are be
 Agent-local contract:
 
 - Manifest: `webmeetAgent/manifest.json`
-- Role: Meeting application agent for workspace team rooms and invite-scoped guest rooms.
-- Authentication: Workspace room operations require authenticated route/MCP context; guest room entry is limited to the manifest-declared public service with scoped forced guest sessions. Manifest guest: none.
+- Role: Meeting application agent for workspace team rooms and invite-scoped public meetings.
+- Authentication: Workspace room operations require authenticated route/MCP context; public meeting entry is limited to the manifest-declared guest public service with scoped forced guest sessions. Manifest guest: none.
 - HTTP service surface: Declares two router-facing prefixes for the same internal `/api/` surface. Authenticated Explorer traffic must use `/services/webmeet/` with protected auth. Guest invite traffic must use `/public-services/webmeet/` with `auth: "guest"`, `guestScope: "webmeet-public-service"`, and `forceGuest: true`. The guest prefix intentionally rewrites identity to the router guest session and must not be used for authenticated room management, transcripts, or avatar publication.
 - Persistent state: Meeting data lives under `/data`; recordings live under `/data/recordings`; LiveKit secrets stay server-side. Manifest volumes must use `.ploinky` host paths: {".ploinky/data/webmeetAgent/data":"/data",".ploinky/data/webmeet/recordings":"/data/recordings"}.
 - Dependencies: Base WebMeet startup must use only Ploinky's shared prepared dependency cache and must not declare a `webmeetAgent/package.json` that forces an agent-specific npm install during Explorer startup. The optional LiveKit AI worker is owned by the separate `webmeetLivekitAiAgent` Ploinky agent. Its native LiveKit worker dependencies must be prepared under `webmeetLivekitAiAgent`, never inside the long-lived `webmeetAgent` service container.
