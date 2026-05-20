@@ -1803,7 +1803,7 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
     flex-direction: column;
     gap: 4px;
     margin-top: 2px;
-    padding-left: 38px;
+    padding-left: 15px;
     cursor: default;
 }
 
@@ -1837,6 +1837,41 @@ dialog.modal.webmeet-dashboard-modal-dialog.is-fullscreen .webmeet-dashboard-mod
 
 .webmeet-room-participant-mic.is-off {
     color: var(--red);
+}
+
+.webmeet-room-participant-speaking {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    color: var(--accent);
+}
+
+.webmeet-room-participant-speaking.is-idle {
+    opacity: 0;
+}
+
+.webmeet-room-participant.is-speaking .webmeet-room-participant-name {
+    color: var(--text);
+}
+
+.webmeet-room-participant.is-speaking .webmeet-room-participant-speaking {
+    animation: webmeet-speaking-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes webmeet-speaking-pulse {
+    0%,
+    100% {
+        opacity: 0.55;
+        transform: scale(0.92);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 .is-selected .webmeet-list-item-header {

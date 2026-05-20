@@ -22,6 +22,7 @@ import {
     ensureLiveKitClient,
     getBackgroundEffectsAssetPaths
 } from './services/livekit-loader.js';
+import { createRoomNotificationSoundService } from './services/room-notification-sounds.js';
 import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
 import { runWebMeetTool } from './services/webmeet-api-client.js';
 import {
@@ -84,6 +85,7 @@ export class WebMeetDashboardModal {
                 voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
                 humFilter: 'off',
                 outputVolume: DEFAULT_OUTPUT_VOLUME,
+                roomNotificationSounds: true,
                 cameraQuality: 'h720',
                 screenShareQuality: 'h1080fps30',
                 backgroundMode: 'none',
@@ -98,6 +100,7 @@ export class WebMeetDashboardModal {
             participantAudioSettings: {},
             participantProfileAvatarsByUserId: {},
             participants: [],
+            activeSpeakerIds: new Set(),
             chatSidebarVisible: true,
             activeMobilePanel: 'room',
             videoGridFullscreen: false
@@ -111,6 +114,9 @@ export class WebMeetDashboardModal {
         this.handleParticipantAudioPreviewEvent = (event) => this.handleParticipantAudioPreview(event);
         this.handleAvatarSettingsUpdatedEvent = (event) => this.handleAvatarSettingsUpdated(event);
         this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
+        this.roomNotificationSoundService = createRoomNotificationSoundService({
+            isEnabled: () => this.state.mediaSettings?.roomNotificationSounds !== false
+        });
         this.roomController = new LivekitRoomController({
             ensureLiveKitClient,
             buildRtcConfigForSession,
@@ -248,6 +254,7 @@ export class WebMeetDashboardModal {
 
     async afterRender() {
         this.cacheElements();
+        this.roomNotificationSoundService?.bindUnlockEvents?.(this.element);
         this.registerActions();
         this.registerChatSidebarResizer();
         this.registerWindowPresenceHandlers();
@@ -400,6 +407,7 @@ export class WebMeetDashboardModal {
         this.humFilterSelect = this.element.querySelector('#webmeetHumFilter');
         this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
         this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
+        this.roomNotificationSoundsInput = this.element.querySelector('#webmeetRoomNotificationSounds');
         this.backgroundEffectSelect = this.element.querySelector('#webmeetBackgroundEffectSelect');
         this.backgroundBlurInput = this.element.querySelector('#webmeetBackgroundBlurRadius');
         this.backgroundBlurValue = this.element.querySelector('#webmeetBackgroundBlurValue');
@@ -443,6 +451,7 @@ export class WebMeetDashboardModal {
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();
         this.unregisterMediaDeviceChangeHandler();
+        this.roomNotificationSoundService?.teardown?.();
         window.removeEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         this.presenceController.teardown();
         if (this.state.session?.participantIdentity) {
@@ -1287,9 +1296,30 @@ export class WebMeetDashboardModal {
             dialog.classList.remove('is-fullscreen');
         }
         this.participantLayoutController?.dispose?.();
+        this.roomNotificationSoundService?.teardown?.();
         window.removeEventListener('assistOS:avatar-settings-updated', this.handleAvatarSettingsUpdatedEvent);
         window.removeEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         assistOS.UI.closeModal(target || this.element);
+    }
+
+    isLocalParticipantIdentity(participant) {
+        const participantIdentity = String(participant?.identity || participant || '').trim();
+        const localIdentity = String(
+            this.room?.localParticipant?.identity
+            || this.state.session?.participantIdentity
+            || ''
+        ).trim();
+        return Boolean(participantIdentity && localIdentity && participantIdentity === localIdentity);
+    }
+
+    playParticipantJoinSound(participant) {
+        if (!participant?.identity || this.isLocalParticipantIdentity(participant)) return;
+        this.roomNotificationSoundService?.playJoin?.();
+    }
+
+    playParticipantLeaveSound(participant) {
+        if (!participant?.identity || this.isLocalParticipantIdentity(participant)) return;
+        this.roomNotificationSoundService?.playLeave?.();
     }
 }
 

@@ -413,3 +413,77 @@ test('syncParticipantsFromRoom keeps newer cached avatar size over older partici
     assert.equal(context.state.participants[1].profileAvatar.config.size, '96');
     assert.equal(appliedViews.get('participant-remote').profileAvatar.config.size, '96');
 });
+
+test('syncParticipantsFromRoom propagates active speaker state to room roster', () => {
+    const appliedViews = new Map();
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Local User'
+                }
+            },
+            participants: [],
+            participantProfileAvatarsByUserId: {},
+            meetingParticipantsById: {},
+            activeSpeakerIds: new Set(['participant-remote'])
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, participant);
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        isParticipantSpeaking: participantViewMethods.isParticipantSpeaking,
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Local User',
+            attributes: {}
+        },
+        remoteParticipants: new Map([
+            ['participant-remote', {
+                identity: 'participant-remote',
+                name: 'Remote User',
+                attributes: {},
+                trackPublications: new Map()
+            }]
+        ])
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.equal(context.state.participants[0].isSpeaking, false);
+    assert.equal(context.state.participants[1].isSpeaking, true);
+    assert.equal(context.state.meetingParticipantsById['meeting-1'][0].isSpeaking, false);
+    assert.equal(context.state.meetingParticipantsById['meeting-1'][1].isSpeaking, true);
+});

@@ -286,6 +286,7 @@ export const participantViewMethods = {
             return null;
         };
         const localIdentity = room.localParticipant?.identity || this.state.session?.participantIdentity || '';
+        const isSpeaking = (identity) => this.isParticipantSpeaking?.(identity) === true;
         const localAttributes = mergeStoredAttributes(
             localIdentity,
             room.localParticipant?.attributes || {}
@@ -306,6 +307,7 @@ export const participantViewMethods = {
             attributes: localAttributes,
             userId: localUserId,
             profileAvatar: getStoredProfileAvatar(localIdentity, localUserId),
+            isSpeaking: isSpeaking(localIdentity),
             kind: 'local'
         }];
         for (const participant of room.remoteParticipants.values()) {
@@ -327,6 +329,7 @@ export const participantViewMethods = {
                 attributes,
                 userId,
                 profileAvatar: getStoredProfileAvatar(identity, userId),
+                isSpeaking: isSpeaking(identity),
                 kind: 'remote'
             });
         }
@@ -359,6 +362,7 @@ export const participantViewMethods = {
                 id: entry.identity,
                 name: entry.name,
                 isAgent: Boolean(this.getAgentForParticipant(entry)),
+                isSpeaking: Boolean(entry.isSpeaking),
                 micOn: Boolean(
                     this.participantLayoutController
                         .getParticipantView?.(entry.identity)
@@ -370,6 +374,21 @@ export const participantViewMethods = {
         this.renderParticipantLayout();
         this.syncLocalMediaStateFromRoom(Track);
         this.renderFeedLists();
+    },
+
+    isParticipantSpeaking(participantId) {
+        const id = String(participantId || '').trim();
+        return Boolean(id && this.state.activeSpeakerIds instanceof Set && this.state.activeSpeakerIds.has(id));
+    },
+
+    setActiveSpeakers(participants = [], Track = globalThis.LivekitClient?.Track || null) {
+        const next = new Set();
+        for (const participant of Array.isArray(participants) ? participants : []) {
+            const identity = String(participant?.identity || '').trim();
+            if (identity) next.add(identity);
+        }
+        this.state.activeSpeakerIds = next;
+        this.syncParticipantsFromRoom(this.room, Track);
     },
 
     syncLocalMediaStateFromRoom(TrackRef = null) {

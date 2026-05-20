@@ -95,6 +95,9 @@ export class LivekitRoomController {
             .on(RoomEvent.ParticipantDisconnected, (participant) => {
                 hooks.onParticipantDisconnected?.(participant, { room, livekit, Track, RoomEvent });
             })
+            .on(RoomEvent.ActiveSpeakersChanged, (participants) => {
+                hooks.onActiveSpeakersChanged?.(participants, { room, livekit, Track, RoomEvent });
+            })
             .on(RoomEvent.TrackMuted, (publication, participant) => {
                 hooks.onTrackMuted?.(publication, participant, { room, livekit, Track, RoomEvent });
             })

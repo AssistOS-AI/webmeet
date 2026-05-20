@@ -14,6 +14,7 @@ export const roomSessionMethods = {
             return;
         }
         await this.disconnectRoom();
+        this.state.activeSpeakerIds = new Set();
 
         const remoteVideoRecoveryCounts = new WeakMap();
 
@@ -370,6 +371,7 @@ export const roomSessionMethods = {
                 scheduleRemoteSubscriptionSweep(Track, 'remote-track-published');
             },
             onParticipantConnected: (participant, { Track }) => {
+                this.playParticipantJoinSound(participant);
                 subscribeParticipantPublications(participant, Track, 'participant-connected');
                 this.syncParticipantsFromRoom(this.room, Track);
                 void (async () => {
@@ -381,11 +383,19 @@ export const roomSessionMethods = {
                 scheduleRemoteSubscriptionSweep(Track, 'participant-connected');
             },
             onParticipantDisconnected: (participant, { Track }) => {
+                this.playParticipantLeaveSound(participant);
+                const participantId = String(participant?.identity || '').trim();
+                if (participantId && this.state.activeSpeakerIds instanceof Set) {
+                    this.state.activeSpeakerIds.delete(participantId);
+                }
                 for (const publication of participant.trackPublications.values()) {
                     removePublication(publication, Track, participant);
                 }
                 this.removeParticipantView(participant.identity);
                 this.syncParticipantsFromRoom(this.room, Track);
+            },
+            onActiveSpeakersChanged: (participants, { Track }) => {
+                this.setActiveSpeakers(participants, Track);
             },
             onTrackMuted: (publication, participant, { Track }) => {
                 const participantId = String(participant?.identity || '').trim();
@@ -470,6 +480,7 @@ export const roomSessionMethods = {
         this.state.mediaDeafenRestoreMicrophone = false;
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
+        this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');
         if (applyVideoFullscreenMode) {

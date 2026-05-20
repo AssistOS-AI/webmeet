@@ -75,6 +75,8 @@ export const mediaSettingsMethods = {
         };
         this.microphoneGainInput?.addEventListener?.('input', updateMicrophoneGainPreview);
         this.outputVolumeInput?.addEventListener?.('input', updateOutputVolumePreview);
+        this.roomNotificationSoundsInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.roomNotificationSoundsInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.audioInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.videoInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.audioOutputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
@@ -117,6 +119,7 @@ export const mediaSettingsMethods = {
             voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
             humFilter: 'off',
             outputVolume: DEFAULT_OUTPUT_VOLUME,
+            roomNotificationSounds: true,
             cameraQuality: 'h720',
             screenShareQuality: 'h1080fps30',
             backgroundMode: 'none',
@@ -135,6 +138,7 @@ export const mediaSettingsMethods = {
                 voiceProcessingMode: this.normalizeVoiceProcessingMode(parsed?.voiceProcessingMode),
                 humFilter: this.normalizeHumFilter(parsed?.humFilter),
                 outputVolume: this.normalizeOutputVolume(parsed?.outputVolume),
+                roomNotificationSounds: parsed?.roomNotificationSounds !== false,
                 cameraQuality: this.normalizeCameraQuality(parsed?.cameraQuality),
                 screenShareQuality: this.normalizeScreenShareQuality(parsed?.screenShareQuality),
                 backgroundMode: this.normalizeBackgroundMode(parsed?.backgroundMode),
@@ -159,6 +163,7 @@ export const mediaSettingsMethods = {
             voiceProcessingMode: this.normalizeVoiceProcessingMode(settings.voiceProcessingMode),
             humFilter: this.normalizeHumFilter(settings.humFilter),
             outputVolume: this.normalizeOutputVolume(settings.outputVolume),
+            roomNotificationSounds: settings.roomNotificationSounds !== false,
             cameraQuality: this.normalizeCameraQuality(settings.cameraQuality),
             screenShareQuality: this.normalizeScreenShareQuality(settings.screenShareQuality),
             backgroundMode: this.normalizeBackgroundMode(settings.backgroundMode),
@@ -787,6 +792,9 @@ export const mediaSettingsMethods = {
             this.outputVolumeInput.value = String(outputVolume);
         }
         if (this.outputVolumeValue) this.outputVolumeValue.textContent = this.formatPercent(outputVolume);
+        if (this.roomNotificationSoundsInput && document.activeElement !== this.roomNotificationSoundsInput) {
+            this.roomNotificationSoundsInput.checked = settings.roomNotificationSounds !== false;
+        }
         const backgroundBlurRadius = this.normalizeBackgroundBlurRadius(settings.backgroundBlurRadius);
         if (this.backgroundBlurInput && document.activeElement !== this.backgroundBlurInput) {
             this.backgroundBlurInput.value = String(backgroundBlurRadius);
@@ -886,6 +894,7 @@ export const mediaSettingsMethods = {
             voiceProcessingMode: this.normalizeVoiceProcessingMode(this.voiceProcessingModeSelect?.value),
             humFilter: this.normalizeHumFilter(this.humFilterSelect?.value),
             outputVolume: this.normalizeOutputVolume(this.outputVolumeInput?.value),
+            roomNotificationSounds: this.roomNotificationSoundsInput?.checked !== false,
             cameraQuality: this.normalizeCameraQuality(this.cameraQualitySelect?.value),
             screenShareQuality: this.normalizeScreenShareQuality(this.screenShareQualitySelect?.value),
             backgroundMode: this.normalizeBackgroundMode(this.backgroundEffectSelect?.value || baseSettings.backgroundMode),

@@ -101,6 +101,7 @@ export class MeetingListController {
             <div class="webmeet-room-participants">
                 ${participants.map((participant, index) => {
                     const micState = participant.micOn === true ? 'on' : participant.micOn === false ? 'off' : 'unknown';
+                    const isSpeaking = participant.isSpeaking === true;
                     const micTitle = micState === 'on'
                         ? 'Microphone on'
                         : micState === 'off'
@@ -124,8 +125,25 @@ export class MeetingListController {
                                     <line x1="8" y1="23" x2="16" y2="23"></line>
                                 </svg>
                             `;
+                    const speakingIcon = `
+                        <span class="webmeet-room-participant-speaking ${isSpeaking ? '' : 'is-idle'}" ${isSpeaking ? 'title="Speaking" aria-label="Speaking"' : 'aria-hidden="true"'}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 14v-4"></path>
+                                <path d="M8 18V6"></path>
+                                <path d="M12 21V3"></path>
+                                <path d="M16 18V6"></path>
+                                <path d="M20 14v-4"></path>
+                            </svg>
+                        </span>
+                    `;
+                    const participantClasses = [
+                        'webmeet-room-participant',
+                        index === participants.length - 1 ? 'is-last' : '',
+                        isSpeaking ? 'is-speaking' : ''
+                    ].filter(Boolean).join(' ');
                     return `
-                    <div class="webmeet-room-participant ${index === participants.length - 1 ? 'is-last' : ''}">
+                    <div class="${participantClasses}">
+                        ${speakingIcon}
                         <span class="webmeet-room-participant-mic is-${micState}" title="${micTitle}" aria-label="${micTitle}">
                             ${micIcon}
                         </span>
