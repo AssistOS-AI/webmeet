@@ -553,27 +553,33 @@ test('authenticated dashboard join publishes avatar after LiveKit is connected',
     assert.match(joinMethod, /await this\.connectRoom\(\);[\s\S]*await this\.publishCurrentParticipantAvatar/);
 });
 
-test('authenticated meeting view does not open protected HTTP EventSource directly', () => {
+test('connected meeting view does not open room EventSource directly', () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
         ),
         'utf8'
     );
-    const startIndex = source.indexOf('startMeetingEvents()');
-    const startMeetingEvents = source.slice(startIndex, source.indexOf('\n    stopMeetingEvents()', startIndex));
-    assert.match(startMeetingEvents, /if \(!this\.isGuestSession\(\)\) return;/);
-    assert.doesNotMatch(startMeetingEvents, /runTool\('webmeet_meeting_events_list'/);
-    assert.doesNotMatch(startMeetingEvents, /startAuthenticatedMeetingEvents/);
-    assert.doesNotMatch(startMeetingEvents, /services\/webmeet/);
+    const realtimeSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+        ),
+        'utf8'
+    );
+    assert.doesNotMatch(source, /startMeetingEvents/);
+    assert.doesNotMatch(source, /EventSource/);
+    assert.doesNotMatch(realtimeSource, /startMeetingEvents/);
+    assert.doesNotMatch(realtimeSource, /new EventSource/);
+    assert.doesNotMatch(realtimeSource, /guest-sse/);
 });
 
 test('all WebMeet realtime transports normalize into the same internal event handler', () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -586,7 +592,8 @@ test('all WebMeet realtime transports normalize into the same internal event han
     );
 
     assert.match(roomSource, /emitWebMeetInternalEvent\('livekit'/);
-    assert.match(dashboardSource, /emitWebMeetInternalEvent\('guest-sse'/);
+    assert.doesNotMatch(dashboardSource, /emitWebMeetInternalEvent\('guest-sse'/);
+    assert.doesNotMatch(dashboardSource, /new EventSource/);
     assert.match(dashboardSource, /emitWebMeetInternalEvent\('authenticated-workspace'/);
     assert.match(dashboardSource, /window\.dispatchEvent\(new CustomEvent\('webmeet:event'/);
     assert.match(dashboardSource, /handleWebMeetInternalEvent\(detail = \{\}\)/);
@@ -596,7 +603,7 @@ test('authenticated workspace view does not open protected HTTP EventSource dire
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -627,7 +634,7 @@ test('authenticated beforeunload does not send protected HTTP leave keepalive', 
     assert.doesNotMatch(method, /buildAuthenticatedWebMeetApiBaseUrl/);
 });
 
-test('LiveKit data channel refreshes roster when a participant avatar changes', () => {
+test('LiveKit data channel applies participant avatar changes without snapshot resync overwrite', () => {
     const roomSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -638,27 +645,31 @@ test('LiveKit data channel refreshes roster when a participant avatar changes', 
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
     assert.match(roomSource, /emitWebMeetInternalEvent\('livekit', data/);
     assert.match(dashboardSource, /source === 'livekit' && type === 'participant\.avatar\.updated'/);
     assert.match(dashboardSource, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
-    assert.match(dashboardSource, /this\.syncParticipantsFromRoom\(this\.room, window\.LivekitClient\.Track\)/);
+    const livekitAvatarBranch = dashboardSource.slice(
+        dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"),
+        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"))
+    );
+    assert.doesNotMatch(livekitAvatarBranch, /syncParticipantsFromRoom/);
 });
 
 test('LiveKit data channel publishes reliable payloads with current client API', () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
     const method = dashboardSource.slice(
         dashboardSource.indexOf('async publishRealtimePayload'),
-        dashboardSource.indexOf('\n    startMeetingEvents()', dashboardSource.indexOf('async publishRealtimePayload'))
+        dashboardSource.indexOf('\n    startWorkspaceEvents()', dashboardSource.indexOf('async publishRealtimePayload'))
     );
 
     assert.match(method, /publishData\(encoder\.encode\(JSON\.stringify\(payload\)\), \{ reliable: true \}\)/);
@@ -669,7 +680,7 @@ test('LiveKit avatar updates are applied without reloading stale meeting details
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -780,7 +791,7 @@ test('LiveKit avatar sync requests do not make other participants read their own
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -794,30 +805,34 @@ test('LiveKit avatar sync requests do not make other participants read their own
     assert.doesNotMatch(requestBranch, /publishCurrentParticipantAvatar/);
 });
 
-test('profile avatar workspace events republish current user room avatar projection', () => {
+test('profile avatar workspace events only refresh and republish current user room avatar projection', () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
     const methodStart = dashboardSource.lastIndexOf('handleProfileAvatarWorkspaceEvent(event)');
     const method = dashboardSource.slice(
         methodStart,
-        dashboardSource.indexOf('\n    }\n\n', methodStart) + 7
+        dashboardSource.indexOf('\n};', methodStart)
     );
 
-    assert.match(method, /this\.participantLayoutController\?\.refreshAvatarForUser\?\.\(userId\)/);
     assert.match(method, /userId === currentUserId/);
+    assert.match(method, /this\.participantLayoutController\?\.refreshAvatarForUser\?\.\(userId\)/);
     assert.match(method, /this\.publishCurrentParticipantAvatar\(\{ force: true \}\)/);
+    assert.ok(
+        method.indexOf('this.participantLayoutController?.refreshAvatarForUser?.(userId)') > method.indexOf('userId === currentUserId'),
+        'remote workspace profile events must not refresh remote participant avatars'
+    );
 });
 
 test('avatar settings updates republish the joined participant avatar even without a user id in the event', () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -828,7 +843,7 @@ test('avatar settings updates republish the joined participant avatar even witho
     assert.match(method, /this\.state\.session\?\.participantIdentity/);
     assert.match(method, /normalizeAvatarConfig/);
     assert.match(method, /applyRealtimeParticipantAvatar/);
-    assert.match(method, /syncParticipantsFromRoom/);
+    assert.doesNotMatch(method, /syncParticipantsFromRoom/);
     assert.match(method, /publishCurrentParticipantAvatarState/);
     assert.match(method, /publishCurrentParticipantAvatar/);
     assert.match(method, /skipRealtime: true/);
@@ -838,7 +853,7 @@ test('avatar settings updates from another logged-in user update the matching re
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -852,7 +867,7 @@ test('avatar settings updates from another logged-in user update the matching re
     );
     assert.match(remoteBranch, /applyRealtimeParticipantAvatar/);
     assert.match(remoteBranch, /userId: eventUserId/);
-    assert.match(remoteBranch, /syncParticipantsFromRoom/);
+    assert.doesNotMatch(remoteBranch, /syncParticipantsFromRoom/);
     assert.doesNotMatch(remoteBranch, /publishCurrentParticipantAvatar/);
 });
 
@@ -860,7 +875,7 @@ test('workspace roster events reload meeting list before fetching meeting detail
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -874,7 +889,7 @@ test('missing meeting ids are removed from local roster state', () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );

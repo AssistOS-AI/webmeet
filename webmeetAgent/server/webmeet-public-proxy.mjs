@@ -768,10 +768,6 @@ async function proxyMcp(req, res, targetPath) {
 
 function isAllowedPublicApi(req, pathname) {
     const method = String(req.method || 'GET').toUpperCase();
-    if (method === 'GET' && /^\/api\/meetings\/[^/]+\/events$/.test(pathname)) {
-        const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-        return url.searchParams.has('guestToken') && url.searchParams.has('participantId');
-    }
     if (method === 'GET' && /^\/api\/meetings\/[^/]+\/transcript\/download$/.test(pathname)) {
         const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
         return url.searchParams.has('guestToken') && url.searchParams.has('participantId');
@@ -791,13 +787,6 @@ function isAllowedAuthenticatedApi(req, pathname) {
     // Exclude guest-only routes that require special handling
     const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat)$/;
     if (guestOnlyPattern.test(pathname)) return false;
-    // Already handled by isAllowedPublicApi (with guest token)
-    const eventsPattern = /^\/api\/meetings\/[^/]+\/events$/;
-    if (eventsPattern.test(pathname)) {
-        const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-        // If it has guest params, let isAllowedPublicApi handle it
-        if (url.searchParams.has('guestToken')) return false;
-    }
     return true;
 }
 

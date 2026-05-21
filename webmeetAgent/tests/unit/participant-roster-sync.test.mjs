@@ -31,7 +31,6 @@ test('syncParticipantsFromRoom does not reuse stored remote avatars for connecte
                     }
                 }
             }],
-            participantProfileAvatarsByUserId: {},
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -133,7 +132,6 @@ test('syncParticipantsFromRoom keeps remote avatar empty after leave and rejoin 
                 },
                 profileAvatar: remoteAvatar
             }],
-            participantProfileAvatarsByUserId: {},
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -212,7 +210,7 @@ test('syncParticipantsFromRoom keeps remote avatar empty after leave and rejoin 
     assert.equal(appliedViews.get('participant-remote-new')?.profileAvatar, null);
 });
 
-test('applyRealtimeParticipantAvatar updates cached remote avatar size by user id', () => {
+test('applyRealtimeParticipantAvatar updates remote avatar size by participant or user id', () => {
     const appliedViews = [];
     const context = {
         state: {
@@ -234,17 +232,6 @@ test('applyRealtimeParticipantAvatar updates cached remote avatar size by user i
                     }
                 }
             }],
-            participantProfileAvatarsByUserId: {
-                'local:remote': {
-                    enabled: true,
-                    config: {
-                        agentId: 'profile:local:remote',
-                        seed: 'profile:local:remote',
-                        generated: true,
-                        size: '48'
-                    }
-                }
-            }
         },
         participantLayoutController: {
             getViews() {
@@ -281,7 +268,6 @@ test('applyRealtimeParticipantAvatar updates cached remote avatar size by user i
 
     assert.equal(changed, true);
     assert.equal(context.state.participants[0].profileAvatar.config.size, '96');
-    assert.equal(context.state.participantLiveAvatarsByUserId['local:remote'].config.size, '96');
     assert.equal(appliedViews[0].avatarConfig.size, '96');
 });
 
@@ -308,18 +294,6 @@ test('applyRealtimeParticipantAvatar applies the latest LiveKit payload directly
                     }
                 }
             }],
-            participantProfileAvatarsByUserId: {
-                'local:remote': {
-                    enabled: true,
-                    updatedAt: '2026-05-20T09:00:05.000Z',
-                    config: {
-                        agentId: 'profile:local:remote',
-                        seed: 'profile:local:remote',
-                        generated: true,
-                        size: '96'
-                    }
-                }
-            }
         },
         participantLayoutController: {
             getViews() {
@@ -356,11 +330,10 @@ test('applyRealtimeParticipantAvatar applies the latest LiveKit payload directly
 
     assert.equal(changed, true);
     assert.equal(context.state.participants[0].profileAvatar.config.size, '48');
-    assert.equal(context.state.participantLiveAvatarsByUserId['local:remote'].config.size, '48');
     assert.equal(appliedViews[0].avatarConfig.size, '48');
 });
 
-test('syncParticipantsFromRoom ignores cached and stored remote avatars without LiveKit state', () => {
+test('syncParticipantsFromRoom ignores stored remote avatars without LiveKit state', () => {
     const appliedViews = new Map();
     const context = {
         state: {
@@ -387,17 +360,99 @@ test('syncParticipantsFromRoom ignores cached and stored remote avatars without 
                     }
                 }
             }],
-            participantProfileAvatarsByUserId: {
-                'local:remote': {
-                    enabled: true,
-                    updatedAt: '2026-05-19T10:00:05.000Z',
-                    config: {
-                        agentId: 'profile:local:remote',
-                        seed: 'profile:local:remote',
-                        size: '96'
-                    }
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Local User',
+            attributes: {
+                webmeetUserId: 'local:self'
+            }
+        },
+        remoteParticipants: new Map([
+            ['participant-remote', {
+                identity: 'participant-remote',
+                name: 'Remote User',
+                attributes: {
+                    webmeetUserId: 'local:remote'
+                },
+                trackPublications: new Map()
+            }]
+        ])
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.equal(context.state.participants[1].profileAvatar, null);
+    assert.equal(appliedViews.get('participant-remote').profileAvatar, null);
+});
+
+test('syncParticipantsFromRoom ignores stale stored LiveKit avatar attributes', () => {
+    const appliedViews = new Map();
+    const staleAvatar = {
+        enabled: true,
+        fallbackLetter: 'R',
+        config: {
+            agentId: 'profile:local:remote',
+            seed: 'profile:local:remote',
+            generated: true,
+            size: '96'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Local User'
                 }
             },
+            participants: [{
+                id: 'participant-remote',
+                displayName: 'Remote User',
+                userId: 'local:remote',
+                attributes: {
+                    webmeetUserId: 'local:remote',
+                    webmeetProfileAvatar: JSON.stringify(staleAvatar)
+                }
+            }],
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -505,7 +560,6 @@ test('syncParticipantsFromRoom reads fresh avatar projection from LiveKit partic
                     }
                 }
             }],
-            participantProfileAvatarsByUserId: {},
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -569,7 +623,6 @@ test('syncParticipantsFromRoom reads fresh avatar projection from LiveKit partic
 
     assert.equal(context.state.participants[1].profileAvatar.config.size, '32');
     assert.equal(context.state.participants[1].profileAvatar.config.emotion, 'confused');
-    assert.equal(context.state.participantLiveAvatarsByUserId['local:remote'].config.style, 'sketch');
     assert.equal(appliedViews.get('participant-remote').profileAvatar.config.complexity, 'high');
 });
 
@@ -584,7 +637,6 @@ test('syncParticipantsFromRoom propagates active speaker state to room roster', 
                 }
             },
             participants: [],
-            participantProfileAvatarsByUserId: {},
             meetingParticipantsById: {},
             activeSpeakerIds: new Set(['participant-remote'])
         },
@@ -725,7 +777,6 @@ test('syncParticipantsFromRoom initializes remote mic state from LiveKit publica
                 }
             },
             participants: [],
-            participantProfileAvatarsByUserId: {},
             meetingParticipantsById: {},
             activeSpeakerIds: new Set()
         },

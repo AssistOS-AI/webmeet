@@ -11,14 +11,6 @@ function getParticipantUserIdFromParticipant(participant = null) {
     ).trim();
 }
 
-function rememberProfileAvatar(avatarByUserId, userId, profileAvatar = null, options = {}) {
-    const normalizedUserId = String(userId || '').trim();
-    if (!normalizedUserId || !profileAvatar || typeof profileAvatar !== 'object') return;
-    if (options.replace === true || !avatarByUserId[normalizedUserId]) {
-        avatarByUserId[normalizedUserId] = profileAvatar;
-    }
-}
-
 function parseLiveKitProfileAvatar(attributes = {}) {
     const raw = String(attributes?.webmeetProfileAvatar || '').trim();
     if (!raw) return null;
@@ -42,40 +34,27 @@ export const participantViewMethods = {
             ? data.profileAvatar
             : null;
         if (!profileAvatar || (!participantId && !userId)) return false;
-        const liveAvatarsByUserId = {
-            ...(this.state.participantLiveAvatarsByUserId && typeof this.state.participantLiveAvatarsByUserId === 'object'
-                ? this.state.participantLiveAvatarsByUserId
-                : {})
-        };
-        const updateCache = (nextUserId) => {
-            rememberProfileAvatar(liveAvatarsByUserId, nextUserId, profileAvatar, { replace: true });
-        };
-        updateCache(userId);
         let changed = false;
         this.state.participants = (Array.isArray(this.state.participants) ? this.state.participants : []).map((entry) => {
             const entryUserId = getParticipantUserIdFromParticipant(entry);
             const matches = (participantId && String(entry?.id || entry?.identity || '').trim() === participantId)
                 || (userId && entryUserId === userId);
             if (!matches) return entry;
-            updateCache(entryUserId);
-            const nextAvatar = liveAvatarsByUserId[entryUserId] || profileAvatar;
             changed = true;
             return {
                 ...entry,
-                profileAvatar: nextAvatar
+                profileAvatar
             };
         });
-        this.state.participantLiveAvatarsByUserId = liveAvatarsByUserId;
         for (const view of this.participantLayoutController?.getViews?.() || []) {
             const viewUserId = String(view?.avatarUserId || '').trim();
             const matches = (participantId && String(view?.id || '').trim() === participantId)
                 || (userId && viewUserId === userId);
             if (!matches) continue;
-            const latestAvatar = liveAvatarsByUserId[viewUserId] || profileAvatar;
             changed = true;
-            view.avatarEnabled = latestAvatar.enabled !== false;
-            view.avatarConfig = view.avatarEnabled ? latestAvatar.config || null : null;
-            view.avatarFallbackLetter = latestAvatar.fallbackLetter || view.avatarFallbackLetter || '';
+            view.avatarEnabled = profileAvatar.enabled !== false;
+            view.avatarConfig = view.avatarEnabled ? profileAvatar.config || null : null;
+            view.avatarFallbackLetter = profileAvatar.fallbackLetter || view.avatarFallbackLetter || '';
             view.avatarResolved = true;
             this.applyParticipantViewState(view);
         }
@@ -256,19 +235,18 @@ export const participantViewMethods = {
                 .map((entry) => [String(entry?.id || '').trim(), entry])
                 .filter(([id]) => id)
         );
-        const liveAvatarsByUserId = {
-            ...(this.state.participantLiveAvatarsByUserId && typeof this.state.participantLiveAvatarsByUserId === 'object'
-                ? this.state.participantLiveAvatarsByUserId
-                : {})
-        };
         const mergeStoredAttributes = (identity, livekitAttributes = {}) => {
             const stored = storedById.get(String(identity || '').trim()) || null;
             const storedAttributes = stored?.attributes && typeof stored.attributes === 'object'
                 ? stored.attributes
                 : {};
+            const {
+                webmeetProfileAvatar: _storedProfileAvatar,
+                ...safeStoredAttributes
+            } = storedAttributes;
             const userId = String(stored?.userId || '').trim();
             return {
-                ...storedAttributes,
+                ...safeStoredAttributes,
                 ...(userId ? {
                     webmeetUserId: userId,
                     userId,
@@ -277,20 +255,6 @@ export const participantViewMethods = {
                 } : {}),
                 ...(livekitAttributes && typeof livekitAttributes === 'object' ? livekitAttributes : {})
             };
-        };
-        const getLiveProfileAvatar = (userId = '', livekitAttributes = {}) => {
-            const normalizedUserId = String(userId || '').trim();
-            const liveAvatar = parseLiveKitProfileAvatar(livekitAttributes);
-            if (liveAvatar) {
-                rememberProfileAvatar(liveAvatarsByUserId, normalizedUserId, liveAvatar, { replace: true });
-            }
-            if (normalizedUserId && liveAvatarsByUserId[normalizedUserId] && typeof liveAvatarsByUserId[normalizedUserId] === 'object') {
-                return liveAvatarsByUserId[normalizedUserId];
-            }
-            if (liveAvatar) {
-                return liveAvatar;
-            }
-            return null;
         };
         const localIdentity = room.localParticipant?.identity || this.state.session?.participantIdentity || '';
         const isSpeaking = (identity) => this.isParticipantSpeaking?.(identity) === true;
@@ -313,7 +277,7 @@ export const participantViewMethods = {
             name: room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
             attributes: localAttributes,
             userId: localUserId,
-            profileAvatar: getLiveProfileAvatar(localUserId, localAttributes),
+            profileAvatar: parseLiveKitProfileAvatar(localAttributes),
             isSpeaking: isSpeaking(localIdentity),
             kind: 'local'
         }];
@@ -335,7 +299,7 @@ export const participantViewMethods = {
                 name: participant.name || participant.identity || 'Remote',
                 attributes,
                 userId,
-                profileAvatar: getLiveProfileAvatar(userId, attributes),
+                profileAvatar: parseLiveKitProfileAvatar(attributes),
                 isSpeaking: isSpeaking(identity),
                 kind: 'remote'
             });
@@ -359,7 +323,6 @@ export const participantViewMethods = {
         }
 
         this.state.participants = items;
-        this.state.participantLiveAvatarsByUserId = liveAvatarsByUserId;
         if (this.selectedMeeting?.id) {
             this.state.meetingParticipantsById[this.selectedMeeting.id] = items.map((entry) => ({
                 id: entry.identity,

@@ -465,7 +465,6 @@ export const roomSessionMethods = {
                 }
                 scheduleRemoteSubscriptionSweep(Track, 'connected');
                 this.startPresenceHeartbeat();
-                this.startMeetingEvents();
                 this.renderMeetingSummary();
             },
             onConnectError: (error) => {
@@ -481,7 +480,6 @@ export const roomSessionMethods = {
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
         this.room = this.roomController.getRoom();
         this.stopPresenceHeartbeat();
-        this.stopMeetingEvents();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
@@ -489,7 +487,6 @@ export const roomSessionMethods = {
         this.state.mediaDeafenRestoreMicrophone = false;
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
-        this.state.participantLiveAvatarsByUserId = {};
         this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');

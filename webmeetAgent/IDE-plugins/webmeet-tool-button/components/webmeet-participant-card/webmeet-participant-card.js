@@ -55,6 +55,16 @@ function cleanupVideoElement(mediaElement) {
     mediaElement.remove();
 }
 
+function isAvatarRenderCurrent(avatarElement, key, options = {}) {
+    if (!avatarElement || avatarElement.dataset.avatarRenderKey !== key) {
+        return false;
+    }
+    if (options.requiresAxiFace) {
+        return Boolean(avatarElement.querySelector('axi-face'));
+    }
+    return true;
+}
+
 export class WebMeetParticipantCard {
     constructor(element, invalidate) {
         this.element = element;
@@ -239,8 +249,9 @@ export class WebMeetParticipantCard {
         const resolved = Boolean(this.state.avatarResolved);
         if (!resolved) {
             const key = `loading:${this.state.isMini ? 'mini' : 'full'}`;
-            if (this.avatarRenderKey === key) return;
+            if (this.avatarRenderKey === key && isAvatarRenderCurrent(this.refs.avatar, key)) return;
             this.avatarRenderKey = key;
+            this.refs.avatar.dataset.avatarRenderKey = key;
             this.refs.avatar.style.removeProperty('--wm-participant-avatar-size');
             delete this.refs.avatar.dataset.avatarSize;
             this.refs.avatar.textContent = '';
@@ -254,8 +265,9 @@ export class WebMeetParticipantCard {
             const loadKey = `axi-load:${JSON.stringify(this.state.avatarConfig)}`;
             if (typeof customElements !== 'undefined' && !customElements.get('axi-face')) {
                 const key = `waiting-axi:${fallback}:${size}:${JSON.stringify(this.state.avatarConfig)}`;
-                if (this.avatarRenderKey !== key) {
+                if (this.avatarRenderKey !== key || !isAvatarRenderCurrent(this.refs.avatar, key)) {
                     this.avatarRenderKey = key;
+                    this.refs.avatar.dataset.avatarRenderKey = key;
                     this.refs.avatar.style.removeProperty('--wm-participant-avatar-size');
                     delete this.refs.avatar.dataset.avatarSize;
                     this.refs.avatar.textContent = fallback;
@@ -282,8 +294,9 @@ export class WebMeetParticipantCard {
                 return;
             }
             const key = `axi:${size}:${JSON.stringify(this.state.avatarConfig)}`;
-            if (this.avatarRenderKey === key) return;
+            if (this.avatarRenderKey === key && isAvatarRenderCurrent(this.refs.avatar, key, { requiresAxiFace: true })) return;
             this.avatarRenderKey = key;
+            this.refs.avatar.dataset.avatarRenderKey = key;
             this.refs.avatar.style.setProperty('--wm-participant-avatar-size', size);
             this.refs.avatar.dataset.avatarSize = size;
             this.refs.avatar.innerHTML = renderAxiFaceMarkup(this.state.avatarConfig);
@@ -293,8 +306,9 @@ export class WebMeetParticipantCard {
             return;
         }
         const key = `fallback:${fallback}`;
-        if (this.avatarRenderKey === key) return;
+        if (this.avatarRenderKey === key && isAvatarRenderCurrent(this.refs.avatar, key)) return;
         this.avatarRenderKey = key;
+        this.refs.avatar.dataset.avatarRenderKey = key;
         this.refs.avatar.style.removeProperty('--wm-participant-avatar-size');
         delete this.refs.avatar.dataset.avatarSize;
         this.refs.avatar.textContent = fallback;

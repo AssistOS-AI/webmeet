@@ -101,3 +101,14 @@ test('participant card keeps fallback initials until axi-face is registered', as
     assert.match(source, /this\.avatarRenderKey = ''/);
     assert.match(source, /this\.applyState\(\)/);
 });
+
+test('participant card verifies avatar DOM before skipping rerender', async () => {
+    const source = await fs.readFile(participantCardPath, 'utf8');
+
+    assert.match(source, /function isAvatarRenderCurrent\(avatarElement, key, options = \{\}\)/);
+    assert.match(source, /avatarElement\.dataset\.avatarRenderKey !== key/);
+    assert.match(source, /querySelector\('axi-face'\)/);
+    assert.match(source, /requiresAxiFace: true/);
+    assert.match(source, /this\.refs\.avatar\.dataset\.avatarRenderKey = key/);
+    assert.doesNotMatch(source, /if \(this\.avatarRenderKey === key\) return;/);
+});
