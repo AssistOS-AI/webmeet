@@ -444,6 +444,9 @@ export const roomSessionMethods = {
                     // Ignore malformed data-channel messages from other clients.
                 }
             },
+            onParticipantAttributesChanged: (_changedAttributes, _participant, { Track }) => {
+                this.syncParticipantsFromRoom(this.room, Track);
+            },
             onDisconnected: () => {
                 this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
             },
@@ -455,6 +458,7 @@ export const roomSessionMethods = {
                     if (this.room) {
                         this.syncParticipantsFromRoom(this.room, Track);
                     }
+                    await this.publishCurrentParticipantAvatar?.({ force: true });
                 })().catch(() => {});
                 for (const participant of room.remoteParticipants.values()) {
                     subscribeParticipantPublications(participant, Track, 'connected');
@@ -485,6 +489,7 @@ export const roomSessionMethods = {
         this.state.mediaDeafenRestoreMicrophone = false;
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
+        this.state.participantLiveAvatarsByUserId = {};
         this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');

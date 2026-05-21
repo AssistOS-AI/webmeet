@@ -34,7 +34,10 @@ export class ParticipantLayoutController {
         this.focusedParticipantId = '';
         this.profileAvatarController = createParticipantProfileAvatarController({
             getParticipantDisplayName: this.getParticipantDisplayName,
-            getParticipantAvatarUserId: this.getParticipantAvatarUserId
+            getParticipantAvatarUserId: this.getParticipantAvatarUserId,
+            getCurrentUserId: typeof options.getCurrentUserId === 'function'
+                ? options.getCurrentUserId
+                : (() => '')
         });
         this.profileAvatarCleanup = this.profileAvatarController.bindUpdates(
             () => this.participantViews.values(),
@@ -223,10 +226,19 @@ export class ParticipantLayoutController {
                 view.videoElements = new Map();
             }
         }
-        const hasProjectedAvatar = this.applyParticipantProfileAvatar(view, participant);
+        const shouldUseProjectedAvatar = participant?.kind !== 'local';
+        const hasProjectedAvatar = shouldUseProjectedAvatar
+            ? this.applyParticipantProfileAvatar(view, participant)
+            : false;
         this.applyParticipantViewState(view);
-        if (!hasProjectedAvatar) {
+        if (participant?.kind === 'local') {
             this.profileAvatarController.refresh(view, participant, (nextView) => this.applyParticipantViewState(nextView));
+        } else if (!hasProjectedAvatar) {
+            view.avatarEnabled = false;
+            view.avatarConfig = null;
+            view.avatarFallbackLetter = getFallbackLetter(view.name);
+            view.avatarResolved = true;
+            this.applyParticipantViewState(view);
         }
         return view;
     }

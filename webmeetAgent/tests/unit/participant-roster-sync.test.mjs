@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { participantViewMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js';
 
-test('syncParticipantsFromRoom preserves roster ids and projected avatars across repeated syncs', () => {
+test('syncParticipantsFromRoom does not reuse stored remote avatars for connected-room cards', () => {
     const appliedViews = new Map();
     const context = {
         state: {
@@ -96,16 +96,16 @@ test('syncParticipantsFromRoom preserves roster ids and projected avatars across
 
     assert.equal(context.state.participants[1].id, 'participant-remote');
     assert.equal(context.state.participants[1].userId, 'local:remote');
-    assert.equal(context.state.participants[1].profileAvatar?.config?.seed, 'profile:local:remote');
+    assert.equal(context.state.participants[1].profileAvatar, null);
 
     participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
 
     assert.equal(context.state.participants[1].id, 'participant-remote');
     assert.equal(context.state.participants[1].userId, 'local:remote');
-    assert.equal(context.state.participants[1].profileAvatar?.config?.seed, 'profile:local:remote');
+    assert.equal(context.state.participants[1].profileAvatar, null);
 });
 
-test('syncParticipantsFromRoom restores remote avatar by user id after leave and rejoin', () => {
+test('syncParticipantsFromRoom keeps remote avatar empty after leave and rejoin until LiveKit sends it', () => {
     const appliedViews = new Map();
     const remoteAvatar = {
         enabled: true,
@@ -203,14 +203,13 @@ test('syncParticipantsFromRoom restores remote avatar by user id after leave and
     participantViewMethods.syncParticipantsFromRoom.call(context, emptyRoom, Track);
 
     assert.equal(context.state.participants.length, 1);
-    assert.equal(context.state.participantProfileAvatarsByUserId['local:remote']?.config?.seed, 'profile:local:remote');
 
     participantViewMethods.syncParticipantsFromRoom.call(context, rejoinedRoom, Track);
 
     assert.equal(context.state.participants[1].id, 'participant-remote-new');
     assert.equal(context.state.participants[1].userId, 'local:remote');
-    assert.equal(context.state.participants[1].profileAvatar?.config?.seed, 'profile:local:remote');
-    assert.equal(appliedViews.get('participant-remote-new')?.profileAvatar?.config?.seed, 'profile:local:remote');
+    assert.equal(context.state.participants[1].profileAvatar, null);
+    assert.equal(appliedViews.get('participant-remote-new')?.profileAvatar, null);
 });
 
 test('applyRealtimeParticipantAvatar updates cached remote avatar size by user id', () => {
@@ -282,37 +281,86 @@ test('applyRealtimeParticipantAvatar updates cached remote avatar size by user i
 
     assert.equal(changed, true);
     assert.equal(context.state.participants[0].profileAvatar.config.size, '96');
-    assert.equal(context.state.participantProfileAvatarsByUserId['local:remote'].config.size, '96');
+    assert.equal(context.state.participantLiveAvatarsByUserId['local:remote'].config.size, '96');
     assert.equal(appliedViews[0].avatarConfig.size, '96');
 });
 
-test('cacheParticipantProfileAvatars stores roster avatar sizes by user id', () => {
+test('applyRealtimeParticipantAvatar applies the latest LiveKit payload directly', () => {
+    const appliedViews = [];
     const context = {
         state: {
-            participantProfileAvatarsByUserId: {}
+            participants: [{
+                id: 'participant-remote',
+                identity: 'participant-remote',
+                displayName: 'Remote User',
+                userId: 'local:remote',
+                attributes: {
+                    webmeetUserId: 'local:remote'
+                },
+                profileAvatar: {
+                    enabled: true,
+                    updatedAt: '2026-05-20T09:00:05.000Z',
+                    config: {
+                        agentId: 'profile:local:remote',
+                        seed: 'profile:local:remote',
+                        generated: true,
+                        size: '96'
+                    }
+                }
+            }],
+            participantProfileAvatarsByUserId: {
+                'local:remote': {
+                    enabled: true,
+                    updatedAt: '2026-05-20T09:00:05.000Z',
+                    config: {
+                        agentId: 'profile:local:remote',
+                        seed: 'profile:local:remote',
+                        generated: true,
+                        size: '96'
+                    }
+                }
+            }
+        },
+        participantLayoutController: {
+            getViews() {
+                return [{
+                    id: 'participant-remote',
+                    avatarUserId: 'local:remote',
+                    avatarEnabled: true,
+                    avatarResolved: true,
+                    avatarConfig: {
+                        size: '96'
+                    }
+                }];
+            }
+        },
+        applyParticipantViewState(view) {
+            appliedViews.push({ ...view });
         }
     };
 
-    participantViewMethods.cacheParticipantProfileAvatars.call(context, [{
-        id: 'participant-remote',
+    const changed = participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-remote',
         userId: 'local:remote',
-        attributes: {
-            webmeetUserId: 'local:remote'
-        },
         profileAvatar: {
             enabled: true,
+            updatedAt: '2026-05-20T09:00:00.000Z',
             config: {
                 agentId: 'profile:local:remote',
                 seed: 'profile:local:remote',
-                size: '88'
+                generated: true,
+                size: '48'
             }
         }
-    }]);
+    });
 
-    assert.equal(context.state.participantProfileAvatarsByUserId['local:remote'].config.size, '88');
+    assert.equal(changed, true);
+    assert.equal(context.state.participants[0].profileAvatar.config.size, '48');
+    assert.equal(context.state.participantLiveAvatarsByUserId['local:remote'].config.size, '48');
+    assert.equal(appliedViews[0].avatarConfig.size, '48');
 });
 
-test('syncParticipantsFromRoom keeps newer cached avatar size over older participant state', () => {
+test('syncParticipantsFromRoom ignores cached and stored remote avatars without LiveKit state', () => {
     const appliedViews = new Map();
     const context = {
         state: {
@@ -410,8 +458,119 @@ test('syncParticipantsFromRoom keeps newer cached avatar size over older partici
 
     participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
 
-    assert.equal(context.state.participants[1].profileAvatar.config.size, '96');
-    assert.equal(appliedViews.get('participant-remote').profileAvatar.config.size, '96');
+    assert.equal(context.state.participants[1].profileAvatar, null);
+    assert.equal(appliedViews.get('participant-remote').profileAvatar, null);
+});
+
+test('syncParticipantsFromRoom reads fresh avatar projection from LiveKit participant attributes', () => {
+    const appliedViews = new Map();
+    const liveAvatar = {
+        enabled: true,
+        updatedAt: '2026-05-20T10:00:00.000Z',
+        fallbackLetter: 'R',
+        config: {
+            agentId: 'profile:local:remote',
+            seed: 'profile:local:remote',
+            generated: true,
+            size: '32',
+            emotion: 'confused',
+            style: 'sketch',
+            complexity: 'high'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Local User'
+                }
+            },
+            participants: [{
+                id: 'participant-remote',
+                displayName: 'Remote User',
+                userId: 'local:remote',
+                attributes: {
+                    webmeetUserId: 'local:remote'
+                },
+                profileAvatar: {
+                    enabled: true,
+                    updatedAt: '2026-05-20T09:00:00.000Z',
+                    config: {
+                        agentId: 'profile:local:remote',
+                        seed: 'profile:local:remote',
+                        size: '72',
+                        emotion: 'neutral',
+                        style: 'robot-soft'
+                    }
+                }
+            }],
+            participantProfileAvatarsByUserId: {},
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Local User',
+            attributes: {
+                webmeetUserId: 'local:self'
+            }
+        },
+        remoteParticipants: new Map([
+            ['participant-remote', {
+                identity: 'participant-remote',
+                name: 'Remote User',
+                attributes: {
+                    webmeetUserId: 'local:remote',
+                    webmeetProfileAvatar: JSON.stringify(liveAvatar)
+                },
+                trackPublications: new Map()
+            }]
+        ])
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.equal(context.state.participants[1].profileAvatar.config.size, '32');
+    assert.equal(context.state.participants[1].profileAvatar.config.emotion, 'confused');
+    assert.equal(context.state.participantLiveAvatarsByUserId['local:remote'].config.style, 'sketch');
+    assert.equal(appliedViews.get('participant-remote').profileAvatar.config.complexity, 'high');
 });
 
 test('syncParticipantsFromRoom propagates active speaker state to room roster', () => {

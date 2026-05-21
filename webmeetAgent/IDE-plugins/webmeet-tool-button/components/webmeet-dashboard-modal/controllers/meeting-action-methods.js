@@ -168,7 +168,7 @@ export const meetingActionMethods = {
         this.state.session = await runTool('webmeet_meeting_join', payload);
         try {
             await this.connectRoom();
-            await this.publishCurrentParticipantAvatar({ force: true, ...(initialAvatar ? { avatar: initialAvatar } : {}) });
+            await this.publishCurrentParticipantAvatar({ force: true });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
@@ -178,67 +178,127 @@ export const meetingActionMethods = {
         }
     },
 
+    buildParticipantAvatarProjection(sourceAvatar = null, participantId = '') {
+        const source = sourceAvatar && typeof sourceAvatar === 'object' ? sourceAvatar : {};
+        const profileUserId = String(source.user?.id || '').trim();
+        const fallbackAvatarId = `profile:${profileUserId || participantId}`;
+        return {
+            enabled: source.enabled !== false,
+            config: normalizeAvatarConfig(source.config, fallbackAvatarId),
+            fallbackLetter: source.fallbackLetter || ''
+        };
+    },
+
+    async resolveCurrentParticipantAvatarProjection(options = {}) {
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        if (!participantId) return null;
+        const sourceAvatar = options.avatar && typeof options.avatar === 'object'
+            ? options.avatar
+            : await getCurrentProfileAvatar({ force: Boolean(options.force) });
+        return {
+            sourceAvatar,
+            avatar: this.buildParticipantAvatarProjection(sourceAvatar, participantId)
+        };
+    },
+
+    async publishCurrentParticipantAvatarState(profileAvatar = null, sourceAvatar = null) {
+        if (this.isGuestSession()) return;
+        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        if (!meetingId || !participantId) return;
+
+        let avatarProjection = profileAvatar && typeof profileAvatar === 'object'
+            ? profileAvatar
+            : null;
+        let avatarSource = sourceAvatar && typeof sourceAvatar === 'object' ? sourceAvatar : null;
+        if (!avatarProjection) {
+            const resolved = await this.resolveCurrentParticipantAvatarProjection({ force: true });
+            avatarProjection = resolved?.avatar || null;
+            avatarSource = resolved?.sourceAvatar || null;
+        }
+        if (!avatarProjection) return;
+
+        const userId = String(
+            avatarSource?.user?.id
+            || avatarProjection?.config?.agentId?.replace(/^profile:/, '')
+            || this.currentActor?.id
+            || ''
+        ).trim();
+        const localParticipant = this.room?.localParticipant || null;
+        if (localParticipant && typeof localParticipant.setAttributes === 'function') {
+            try {
+                const attributes = {
+                    ...(localParticipant.attributes && typeof localParticipant.attributes === 'object'
+                        ? localParticipant.attributes
+                        : {}),
+                    ...(userId ? {
+                        webmeetUserId: userId,
+                        userId,
+                        workspaceUserId: userId,
+                        ploinkyUserId: userId
+                    } : {}),
+                    webmeetProfileAvatar: JSON.stringify(avatarProjection)
+                };
+                await localParticipant.setAttributes(attributes);
+            } catch (_) {
+                // The data-channel payload below is the immediate room-state update.
+            }
+        }
+        await this.publishRealtimePayload({
+            type: 'participant.avatar.updated',
+            meetingId,
+            participantId,
+            userId,
+            profileAvatar: avatarProjection
+        });
+    },
+
+    async republishCurrentParticipantAvatarState() {
+        await this.publishCurrentParticipantAvatar({ force: true });
+    },
+
     async publishCurrentParticipantAvatar(options = {}) {
         if (this.isGuestSession()) return;
         const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
         const participantId = String(this.state.session?.participantIdentity || '').trim();
         if (!meetingId || !participantId) return;
-        try {
-            const sourceAvatar = options.avatar && typeof options.avatar === 'object'
-                ? options.avatar
-                : await getCurrentProfileAvatar({ force: Boolean(options.force) });
-            const fallbackAvatarId = `profile:${sourceAvatar.user?.id || participantId}`;
-            const avatar = {
-                enabled: sourceAvatar.enabled !== false,
-                config: normalizeAvatarConfig(sourceAvatar.config, fallbackAvatarId),
-                fallbackLetter: sourceAvatar.fallbackLetter || ''
-            };
-            const updated = await runTool('webmeet_participant_avatar_update', {
-                meetingId,
-                participantId,
-                avatar
-            });
-            const profileAvatar = updated?.profileAvatar || null;
-            if (profileAvatar && this.state.session?.participant) {
-                this.state.session.participant.profileAvatar = profileAvatar;
+        const resolved = await this.resolveCurrentParticipantAvatarProjection(options);
+        if (!resolved?.avatar) return;
+        const { avatar, sourceAvatar } = resolved;
+        const updated = await runTool('webmeet_participant_avatar_update', {
+            meetingId,
+            participantId,
+            avatar
+        });
+        const profileAvatar = updated?.profileAvatar || null;
+        if (profileAvatar && this.state.session?.participant) {
+            this.state.session.participant.profileAvatar = profileAvatar;
+        }
+        const existing = Array.isArray(this.state.participants) ? this.state.participants : [];
+        let matchedParticipant = false;
+        this.state.participants = existing.map((entry) => {
+            const matched = String(entry?.id || '').trim() === participantId;
+            if (matched) {
+                matchedParticipant = true;
             }
-            const existing = Array.isArray(this.state.participants) ? this.state.participants : [];
-            let matchedParticipant = false;
-            this.state.participants = existing.map((entry) => {
-                const matched = String(entry?.id || '').trim() === participantId;
-                if (matched) {
-                    matchedParticipant = true;
+            return matched
+                ? { ...entry, profileAvatar }
+                : entry;
+        });
+        if (!matchedParticipant && this.state.session?.participant) {
+            this.state.participants = [
+                ...this.state.participants,
+                {
+                    ...this.state.session.participant,
+                    profileAvatar
                 }
-                return matched
-                    ? { ...entry, profileAvatar }
-                    : entry;
-            });
-            if (!matchedParticipant && this.state.session?.participant) {
-                this.state.participants = [
-                    ...this.state.participants,
-                    {
-                        ...this.state.session.participant,
-                        profileAvatar
-                    }
-                ];
-            }
-            if (this.room && window.LivekitClient?.Track) {
-                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
-            }
-            const userId = String(
-                sourceAvatar.user?.id
-                || profileAvatar?.config?.agentId?.replace(/^profile:/, '')
-                || ''
-            ).trim();
-            await this.publishRealtimePayload({
-                type: 'participant.avatar.updated',
-                meetingId,
-                participantId,
-                userId,
-                profileAvatar
-            });
-        } catch (_) {
-            // Avatar projection is best-effort; room join and media state remain authoritative.
+            ];
+        }
+        if (this.room && window.LivekitClient?.Track) {
+            this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
+        }
+        if (options.skipRealtime !== true) {
+            await this.publishCurrentParticipantAvatarState(profileAvatar, sourceAvatar);
         }
     },
 

@@ -11,25 +11,24 @@ function getParticipantUserIdFromParticipant(participant = null) {
     ).trim();
 }
 
-function getAvatarUpdatedAtMs(profileAvatar = null) {
-    const value = String(profileAvatar?.updatedAt || '').trim();
-    if (!value) return 0;
-    const timestamp = Date.parse(value);
-    return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function rememberProfileAvatar(avatarByUserId, userId, profileAvatar = null) {
+function rememberProfileAvatar(avatarByUserId, userId, profileAvatar = null, options = {}) {
     const normalizedUserId = String(userId || '').trim();
     if (!normalizedUserId || !profileAvatar || typeof profileAvatar !== 'object') return;
-    const existing = avatarByUserId[normalizedUserId];
-    if (!existing) {
+    if (options.replace === true || !avatarByUserId[normalizedUserId]) {
         avatarByUserId[normalizedUserId] = profileAvatar;
-        return;
     }
-    const existingUpdatedAt = getAvatarUpdatedAtMs(existing);
-    const nextUpdatedAt = getAvatarUpdatedAtMs(profileAvatar);
-    if (!existingUpdatedAt || !nextUpdatedAt || nextUpdatedAt >= existingUpdatedAt) {
-        avatarByUserId[normalizedUserId] = profileAvatar;
+}
+
+function parseLiveKitProfileAvatar(attributes = {}) {
+    const raw = String(attributes?.webmeetProfileAvatar || '').trim();
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed
+            : null;
+    } catch (_) {
+        return null;
     }
 }
 
@@ -43,13 +42,13 @@ export const participantViewMethods = {
             ? data.profileAvatar
             : null;
         if (!profileAvatar || (!participantId && !userId)) return false;
-        const avatarByUserId = {
-            ...(this.state.participantProfileAvatarsByUserId && typeof this.state.participantProfileAvatarsByUserId === 'object'
-                ? this.state.participantProfileAvatarsByUserId
+        const liveAvatarsByUserId = {
+            ...(this.state.participantLiveAvatarsByUserId && typeof this.state.participantLiveAvatarsByUserId === 'object'
+                ? this.state.participantLiveAvatarsByUserId
                 : {})
         };
         const updateCache = (nextUserId) => {
-            rememberProfileAvatar(avatarByUserId, nextUserId, profileAvatar);
+            rememberProfileAvatar(liveAvatarsByUserId, nextUserId, profileAvatar, { replace: true });
         };
         updateCache(userId);
         let changed = false;
@@ -58,40 +57,29 @@ export const participantViewMethods = {
             const matches = (participantId && String(entry?.id || entry?.identity || '').trim() === participantId)
                 || (userId && entryUserId === userId);
             if (!matches) return entry;
-            changed = true;
             updateCache(entryUserId);
+            const nextAvatar = liveAvatarsByUserId[entryUserId] || profileAvatar;
+            changed = true;
             return {
                 ...entry,
-                profileAvatar
+                profileAvatar: nextAvatar
             };
         });
-        this.state.participantProfileAvatarsByUserId = avatarByUserId;
+        this.state.participantLiveAvatarsByUserId = liveAvatarsByUserId;
         for (const view of this.participantLayoutController?.getViews?.() || []) {
             const viewUserId = String(view?.avatarUserId || '').trim();
             const matches = (participantId && String(view?.id || '').trim() === participantId)
                 || (userId && viewUserId === userId);
             if (!matches) continue;
+            const latestAvatar = liveAvatarsByUserId[viewUserId] || profileAvatar;
             changed = true;
-            view.avatarEnabled = profileAvatar.enabled !== false;
-            view.avatarConfig = view.avatarEnabled ? profileAvatar.config || null : null;
-            view.avatarFallbackLetter = profileAvatar.fallbackLetter || view.avatarFallbackLetter || '';
+            view.avatarEnabled = latestAvatar.enabled !== false;
+            view.avatarConfig = view.avatarEnabled ? latestAvatar.config || null : null;
+            view.avatarFallbackLetter = latestAvatar.fallbackLetter || view.avatarFallbackLetter || '';
             view.avatarResolved = true;
             this.applyParticipantViewState(view);
         }
         return changed;
-    },
-
-    cacheParticipantProfileAvatars(participants = []) {
-        const avatarByUserId = {
-            ...(this.state.participantProfileAvatarsByUserId && typeof this.state.participantProfileAvatarsByUserId === 'object'
-                ? this.state.participantProfileAvatarsByUserId
-                : {})
-        };
-        for (const participant of Array.isArray(participants) ? participants : []) {
-            const userId = getParticipantUserIdFromParticipant(participant);
-            rememberProfileAvatar(avatarByUserId, userId, participant?.profileAvatar);
-        }
-        this.state.participantProfileAvatarsByUserId = avatarByUserId;
     },
 
     getParticipantDisplayName(participant) {
@@ -262,21 +250,17 @@ export const participantViewMethods = {
 
     syncParticipantsFromRoom(room, Track) {
         if (!room) return;
+        const currentParticipants = Array.isArray(this.state.participants) ? this.state.participants : [];
         const storedById = new Map(
-            (Array.isArray(this.state.participants) ? this.state.participants : [])
+            currentParticipants
                 .map((entry) => [String(entry?.id || '').trim(), entry])
                 .filter(([id]) => id)
         );
-        const avatarByUserId = {
-            ...(this.state.participantProfileAvatarsByUserId && typeof this.state.participantProfileAvatarsByUserId === 'object'
-                ? this.state.participantProfileAvatarsByUserId
+        const liveAvatarsByUserId = {
+            ...(this.state.participantLiveAvatarsByUserId && typeof this.state.participantLiveAvatarsByUserId === 'object'
+                ? this.state.participantLiveAvatarsByUserId
                 : {})
         };
-        const getStoredUserId = getParticipantUserIdFromParticipant;
-        for (const entry of storedById.values()) {
-            const userId = getStoredUserId(entry);
-            rememberProfileAvatar(avatarByUserId, userId, entry?.profileAvatar);
-        }
         const mergeStoredAttributes = (identity, livekitAttributes = {}) => {
             const stored = storedById.get(String(identity || '').trim()) || null;
             const storedAttributes = stored?.attributes && typeof stored.attributes === 'object'
@@ -294,14 +278,17 @@ export const participantViewMethods = {
                 ...(livekitAttributes && typeof livekitAttributes === 'object' ? livekitAttributes : {})
             };
         };
-        const getStoredProfileAvatar = (identity, userId = '') => {
-            const stored = storedById.get(String(identity || '').trim()) || null;
+        const getLiveProfileAvatar = (userId = '', livekitAttributes = {}) => {
             const normalizedUserId = String(userId || '').trim();
-            if (normalizedUserId && avatarByUserId[normalizedUserId] && typeof avatarByUserId[normalizedUserId] === 'object') {
-                return avatarByUserId[normalizedUserId];
+            const liveAvatar = parseLiveKitProfileAvatar(livekitAttributes);
+            if (liveAvatar) {
+                rememberProfileAvatar(liveAvatarsByUserId, normalizedUserId, liveAvatar, { replace: true });
             }
-            if (stored?.profileAvatar && typeof stored.profileAvatar === 'object') {
-                return stored.profileAvatar;
+            if (normalizedUserId && liveAvatarsByUserId[normalizedUserId] && typeof liveAvatarsByUserId[normalizedUserId] === 'object') {
+                return liveAvatarsByUserId[normalizedUserId];
+            }
+            if (liveAvatar) {
+                return liveAvatar;
             }
             return null;
         };
@@ -326,7 +313,7 @@ export const participantViewMethods = {
             name: room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
             attributes: localAttributes,
             userId: localUserId,
-            profileAvatar: getStoredProfileAvatar(localIdentity, localUserId),
+            profileAvatar: getLiveProfileAvatar(localUserId, localAttributes),
             isSpeaking: isSpeaking(localIdentity),
             kind: 'local'
         }];
@@ -348,7 +335,7 @@ export const participantViewMethods = {
                 name: participant.name || participant.identity || 'Remote',
                 attributes,
                 userId,
-                profileAvatar: getStoredProfileAvatar(identity, userId),
+                profileAvatar: getLiveProfileAvatar(userId, attributes),
                 isSpeaking: isSpeaking(identity),
                 kind: 'remote'
             });
@@ -372,11 +359,7 @@ export const participantViewMethods = {
         }
 
         this.state.participants = items;
-        for (const item of items) {
-            const userId = getStoredUserId(item);
-            rememberProfileAvatar(avatarByUserId, userId, item?.profileAvatar);
-        }
-        this.state.participantProfileAvatarsByUserId = avatarByUserId;
+        this.state.participantLiveAvatarsByUserId = liveAvatarsByUserId;
         if (this.selectedMeeting?.id) {
             this.state.meetingParticipantsById[this.selectedMeeting.id] = items.map((entry) => ({
                 id: entry.identity,

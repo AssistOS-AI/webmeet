@@ -826,6 +826,19 @@ function getParticipantAttributes(participant) {
     return participant?.attributes && typeof participant.attributes === 'object' ? participant.attributes : {};
 }
 
+function parseLiveKitProfileAvatar(attributes = {}) {
+    const raw = String(attributes?.webmeetProfileAvatar || '').trim();
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed
+            : null;
+    } catch {
+        return null;
+    }
+}
+
 function isMatchingLiveKitAgentParticipant(context, metadata, participant) {
     const attributes = getParticipantAttributes(participant);
     return String(participant?.kind || '').toUpperCase() === 'AGENT'
@@ -872,12 +885,14 @@ function projectLiveKitMeetingParticipants(payload, liveParticipants) {
         if (!participantId) continue;
         const cached = cachedById.get(participantId) || {};
         const liveAttributes = getParticipantAttributes(liveParticipant);
+        const liveProfileAvatar = parseLiveKitProfileAvatar(liveAttributes);
         projected.push({
             ...cached,
             id: participantId,
             displayName: String(liveParticipant?.name || cached.displayName || participantId).trim() || participantId,
             joinedAt: cached.joinedAt || now,
             lastSeenAt: now,
+            profileAvatar: liveProfileAvatar || cached.profileAvatar,
             attributes: {
                 ...(cached.attributes && typeof cached.attributes === 'object' ? cached.attributes : {}),
                 ...liveAttributes
@@ -1429,7 +1444,8 @@ export function joinMeeting(context, { meetingId, displayName, participantId, av
             webmeetUserId: userId,
             userId,
             workspaceUserId: userId,
-            ploinkyUserId: userId
+            ploinkyUserId: userId,
+            ...(projectedAvatar ? { webmeetProfileAvatar: JSON.stringify(projectedAvatar) } : {})
         }
         : {};
     const joinedAt = nowIso();

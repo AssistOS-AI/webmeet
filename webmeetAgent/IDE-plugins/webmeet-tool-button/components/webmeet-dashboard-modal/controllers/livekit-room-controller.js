@@ -107,6 +107,9 @@ export class LivekitRoomController {
             .on(RoomEvent.DataReceived, (payload, participant) => {
                 hooks.onDataReceived?.(payload, participant, { room, livekit, Track, RoomEvent });
             })
+            .on(RoomEvent.ParticipantAttributesChanged, (changedAttributes, participant) => {
+                hooks.onParticipantAttributesChanged?.(changedAttributes, participant, { room, livekit, Track, RoomEvent });
+            })
             .on(RoomEvent.Disconnected, () => {
                 this.restoreRtcPeerConnection?.();
                 this.restoreRtcPeerConnection = null;

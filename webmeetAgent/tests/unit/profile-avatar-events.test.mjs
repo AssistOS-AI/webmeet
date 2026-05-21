@@ -314,6 +314,11 @@ test('join can persist avatar projection for a freshly created participant id', 
 
     assert.equal(session.participant.profileAvatar.enabled, true);
     assert.equal(session.participant.profileAvatar.config.seed, 'profile:local:admin');
+    const [, payloadSegment] = session.participantToken.split('.');
+    const jwtPayload = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8'));
+    const tokenAvatar = JSON.parse(jwtPayload.attributes.webmeetProfileAvatar);
+    assert.equal(tokenAvatar.config.seed, 'profile:local:admin');
+    assert.equal(tokenAvatar.config.size, '48');
 
     setLiveKitParticipants(context, [liveKitParticipant(session.participantIdentity, 'Admin')]);
     const details = await getMeeting(context, meeting.id, authInfo);
@@ -374,6 +379,69 @@ test('join fills a generated avatar config when authenticated profile payload ha
     const details = await getMeeting(context, meeting.id, authInfo);
     const participant = details.participants.find((entry) => entry.id === session.participantIdentity);
     assert.equal(participant.profileAvatar.config.agentId, 'profile:local:user');
+});
+
+test('meeting details prefer fresher LiveKit avatar attributes over stale stored projection', async () => {
+    const context = createStoreContext(tempRoot);
+    const workspace = createWorkspace(context);
+    const authInfo = {
+        user: {
+            id: 'local:admin',
+            username: 'admin',
+            roles: ['admin']
+        }
+    };
+    const meeting = createMeeting(context, {
+        workspaceId: workspace.id,
+        title: 'Live avatar attribute room',
+        authInfo
+    });
+    const session = joinMeeting(context, {
+        meetingId: meeting.id,
+        displayName: 'Admin',
+        participantId: 'participant-admin-live-avatar',
+        avatar: {
+            enabled: true,
+            fallbackLetter: 'A',
+            config: {
+                agentId: 'profile:local:admin',
+                generated: true,
+                size: '72',
+                seed: 'profile:local:admin',
+                style: 'robot-soft',
+                emotion: 'neutral'
+            }
+        },
+        authInfo
+    });
+    const freshAvatar = {
+        enabled: true,
+        fallbackLetter: 'A',
+        updatedAt: '2099-05-20T10:00:00.000Z',
+        config: {
+            agentId: 'profile:local:admin',
+            generated: true,
+            size: '32',
+            seed: 'profile:local:admin',
+            style: 'sketch',
+            emotion: 'confused',
+            complexity: 'high'
+        }
+    };
+
+    setLiveKitParticipants(context, [liveKitParticipant(session.participantIdentity, 'Admin', {
+        webmeetUserId: 'local:admin',
+        userId: 'local:admin',
+        workspaceUserId: 'local:admin',
+        ploinkyUserId: 'local:admin',
+        webmeetProfileAvatar: JSON.stringify(freshAvatar)
+    })]);
+
+    const details = await getMeeting(context, meeting.id, authInfo);
+    const participant = details.participants.find((entry) => entry.id === session.participantIdentity);
+    assert.equal(participant.profileAvatar.config.size, '32');
+    assert.equal(participant.profileAvatar.config.style, 'sketch');
+    assert.equal(participant.profileAvatar.config.emotion, 'confused');
 });
 
 test('unauthenticated meeting join ignores avatar projection payloads', () => {
@@ -577,8 +645,41 @@ test('LiveKit data channel refreshes roster when a participant avatar changes', 
     assert.match(roomSource, /emitWebMeetInternalEvent\('livekit', data/);
     assert.match(dashboardSource, /source === 'livekit' && type === 'participant\.avatar\.updated'/);
     assert.match(dashboardSource, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
-    assert.match(dashboardSource, /await this\.loadMeetingDetails\(\)/);
     assert.match(dashboardSource, /this\.syncParticipantsFromRoom\(this\.room, window\.LivekitClient\.Track\)/);
+});
+
+test('LiveKit data channel publishes reliable payloads with current client API', () => {
+    const dashboardSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+        ),
+        'utf8'
+    );
+    const method = dashboardSource.slice(
+        dashboardSource.indexOf('async publishRealtimePayload'),
+        dashboardSource.indexOf('\n    startMeetingEvents()', dashboardSource.indexOf('async publishRealtimePayload'))
+    );
+
+    assert.match(method, /publishData\(encoder\.encode\(JSON\.stringify\(payload\)\), \{ reliable: true \}\)/);
+    assert.doesNotMatch(method, /DataPacket_Kind/);
+});
+
+test('LiveKit avatar updates are applied without reloading stale meeting details', () => {
+    const dashboardSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+        ),
+        'utf8'
+    );
+    const livekitAvatarBranch = dashboardSource.slice(
+        dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"),
+        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"))
+    );
+
+    assert.match(livekitAvatarBranch, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
+    assert.doesNotMatch(livekitAvatarBranch, /loadMeetingDetails/);
 });
 
 test('LiveKit participant connection refreshes roster projection before final card sync', () => {
@@ -594,6 +695,7 @@ test('LiveKit participant connection refreshes roster projection before final ca
         source.indexOf('onParticipantDisconnected:', source.indexOf('onParticipantConnected:'))
     );
     assert.match(participantConnected, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
+    assert.doesNotMatch(participantConnected, /republishCurrentParticipantAvatarState/);
     assert.match(participantConnected, /await this\.loadMeetingDetails\(\)/);
     assert.match(participantConnected, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
 
@@ -603,6 +705,30 @@ test('LiveKit participant connection refreshes roster projection before final ca
     );
     assert.match(connected, /await this\.loadMeetingDetails\(\)/);
     assert.match(connected, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
+    assert.match(connected, /await this\.publishCurrentParticipantAvatar\?\.\(\{ force: true \}\)/);
+    assert.doesNotMatch(connected, /requestRoomAvatarState/);
+});
+
+test('LiveKit participant attribute changes resync room avatar state', () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/livekit-room-controller.js'
+        ),
+        'utf8'
+    );
+    const roomSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+        ),
+        'utf8'
+    );
+
+    assert.match(source, /RoomEvent\.ParticipantAttributesChanged/);
+    assert.match(source, /hooks\.onParticipantAttributesChanged/);
+    assert.match(roomSource, /onParticipantAttributesChanged/);
+    assert.match(roomSource, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
 });
 
 test('participant avatar realtime payload includes sanitized avatar projection', () => {
@@ -615,8 +741,76 @@ test('participant avatar realtime payload includes sanitized avatar projection',
     );
     const method = source.slice(source.indexOf('async publishCurrentParticipantAvatar'), source.indexOf('async leaveMeeting'));
     assert.match(method, /type: 'participant\.avatar\.updated'/);
+    assert.match(source, /async publishCurrentParticipantAvatarState/);
+    assert.match(source, /async republishCurrentParticipantAvatarState/);
+    assert.doesNotMatch(source, /async requestRoomAvatarState/);
+    assert.match(source, /localParticipant\.setAttributes/);
+    assert.match(source, /webmeetProfileAvatar: JSON\.stringify\(avatarProjection\)/);
     assert.match(method, /userId/);
     assert.match(method, /profileAvatar/);
+});
+
+test('LiveKit avatar republish reads the current profile instead of reusing view or session state', () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+        ),
+        'utf8'
+    );
+    const stateMethod = source.slice(
+        source.indexOf('async publishCurrentParticipantAvatarState'),
+        source.indexOf('async republishCurrentParticipantAvatarState', source.indexOf('async publishCurrentParticipantAvatarState'))
+    );
+    const republishMethod = source.slice(
+        source.indexOf('async republishCurrentParticipantAvatarState'),
+        source.indexOf('async publishCurrentParticipantAvatar', source.indexOf('async republishCurrentParticipantAvatarState'))
+    );
+    const joinMethod = source.slice(source.indexOf('async joinMeeting'), source.indexOf('buildParticipantAvatarProjection'));
+
+    assert.doesNotMatch(stateMethod, /localViewAvatar/);
+    assert.doesNotMatch(stateMethod, /session\?\.participant\?\.profileAvatar/);
+    assert.match(stateMethod, /resolveCurrentParticipantAvatarProjection\(\{ force: true \}\)/);
+    assert.match(republishMethod, /publishCurrentParticipantAvatar\(\{ force: true \}\)/);
+    assert.match(joinMethod, /await this\.publishCurrentParticipantAvatar\(\{ force: true \}\)/);
+    assert.doesNotMatch(joinMethod, /publishCurrentParticipantAvatar\(\{ force: true,[\s\S]*avatar: initialAvatar/);
+});
+
+test('LiveKit avatar sync requests do not make other participants read their own profile', () => {
+    const dashboardSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+        ),
+        'utf8'
+    );
+    const requestBranch = dashboardSource.slice(
+        dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.request'"),
+        dashboardSource.indexOf("\n        if (['participant.joined'", dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.request'"))
+    );
+
+    assert.match(requestBranch, /return/);
+    assert.doesNotMatch(requestBranch, /republishCurrentParticipantAvatarState/);
+    assert.doesNotMatch(requestBranch, /publishCurrentParticipantAvatar/);
+});
+
+test('profile avatar workspace events republish current user room avatar projection', () => {
+    const dashboardSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+        ),
+        'utf8'
+    );
+    const methodStart = dashboardSource.lastIndexOf('handleProfileAvatarWorkspaceEvent(event)');
+    const method = dashboardSource.slice(
+        methodStart,
+        dashboardSource.indexOf('\n    }\n\n', methodStart) + 7
+    );
+
+    assert.match(method, /this\.participantLayoutController\?\.refreshAvatarForUser\?\.\(userId\)/);
+    assert.match(method, /userId === currentUserId/);
+    assert.match(method, /this\.publishCurrentParticipantAvatar\(\{ force: true \}\)/);
 });
 
 test('avatar settings updates republish the joined participant avatar even without a user id in the event', () => {
@@ -629,9 +823,37 @@ test('avatar settings updates republish the joined participant avatar even witho
     );
     const startIndex = source.indexOf('async handleAvatarSettingsUpdated');
     const method = source.slice(startIndex, source.indexOf('\n    handleProfileAvatarWorkspaceEvent', startIndex));
+    assert.doesNotMatch(method, /selectedWorkspaceId/);
     assert.doesNotMatch(method, /if \(!userId\) return/);
     assert.match(method, /this\.state\.session\?\.participantIdentity/);
+    assert.match(method, /normalizeAvatarConfig/);
+    assert.match(method, /applyRealtimeParticipantAvatar/);
+    assert.match(method, /syncParticipantsFromRoom/);
+    assert.match(method, /publishCurrentParticipantAvatarState/);
     assert.match(method, /publishCurrentParticipantAvatar/);
+    assert.match(method, /skipRealtime: true/);
+});
+
+test('avatar settings updates from another logged-in user update the matching remote participant without publishing local state', () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+        ),
+        'utf8'
+    );
+    const startIndex = source.indexOf('async handleAvatarSettingsUpdated');
+    const method = source.slice(startIndex, source.indexOf('\n    handleProfileAvatarWorkspaceEvent', startIndex));
+    assert.match(method, /eventUserId/);
+    assert.match(method, /currentUserId/);
+    const remoteBranch = method.slice(
+        method.indexOf('eventUserId !== currentUserId'),
+        method.indexOf('if (!this.state.session?.participantIdentity)', method.indexOf('eventUserId !== currentUserId'))
+    );
+    assert.match(remoteBranch, /applyRealtimeParticipantAvatar/);
+    assert.match(remoteBranch, /userId: eventUserId/);
+    assert.match(remoteBranch, /syncParticipantsFromRoom/);
+    assert.doesNotMatch(remoteBranch, /publishCurrentParticipantAvatar/);
 });
 
 test('workspace roster events reload meeting list before fetching meeting details', () => {
