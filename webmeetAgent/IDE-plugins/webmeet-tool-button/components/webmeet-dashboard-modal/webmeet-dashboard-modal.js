@@ -52,6 +52,10 @@ export class WebMeetDashboardModal {
             selectedMeetingId: '',
             joiningMeetingId: '',
             leavingMeeting: false,
+            roomTransition: {
+                active: false,
+                message: ''
+            },
             canManageRooms: false,
             session: null,
             roomState: 'Disconnected',
@@ -371,6 +375,7 @@ export class WebMeetDashboardModal {
         this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
         this.leaveButton = this.element.querySelector('#webmeetLeaveButton');
         this.exitOverlay = this.element.querySelector('#webmeetExitOverlay');
+        this.roomTransitionMessage = this.element.querySelector('#webmeetRoomTransitionMessage');
         this.micButton = this.element.querySelector('#webmeetMicButton');
         this.deafenButton = this.element.querySelector('#webmeetDeafenButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');

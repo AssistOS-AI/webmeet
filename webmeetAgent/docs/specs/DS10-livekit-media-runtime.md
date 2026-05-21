@@ -188,6 +188,7 @@ The current WebMeet media controller:
 - lets users choose microphone, camera, speaker, voice-processing mode, hum filter, microphone gain, speaker volume, audio processing flags, camera quality, and screen-share quality from the media settings panel.
 - shows a short inline explanation for each media and background setting through an info control that becomes visible on hover and on focus/tap, so users can understand the effect of each setting without leaving the panel.
 - defaults new browser-scoped audio settings to `standard` voice processing, browser echo cancellation on, browser noise suppression on, auto gain control off, microphone gain at `1.0`, hum filter off, and speaker volume at `0.8` to reduce feedback and room-bleed risk on first join.
+- blocks the full WebMeet modal with a room-transition overlay while connecting, disconnecting, or switching rooms so users cannot trigger conflicting actions mid-transition; the overlay must show a dynamic status such as `Connecting to <room name>...` or `Disconnecting from <room name>...`.
 - stops local microphone, camera, and screen-share tracks and mutes/unsubscribes remote playback before the application leave request when a user exits a room.
 - emits media diagnostics only when an explicit debug flag such as `WEBMEET_MEDIA_DEBUG` or `webmeetMediaDebug=1` is enabled.
 

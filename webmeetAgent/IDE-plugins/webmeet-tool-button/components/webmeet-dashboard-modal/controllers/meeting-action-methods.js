@@ -142,6 +142,7 @@ export const meetingActionMethods = {
             this.setError('Select a meeting first.');
             return;
         }
+        this.setConnectingRoomTransition(meeting.title || 'room');
         const displayName = String(options.displayNameOverride || getCurrentActorDisplayName()).trim();
         const participantId = this.getStableParticipantId(displayName);
         const payload = { meetingId: meeting.id, participantId };
@@ -174,6 +175,7 @@ export const meetingActionMethods = {
             this.state.roomState = message;
             this.setError(message);
         } finally {
+            this.clearRoomTransitionMessage({ render: false });
             this.renderMeetingSummary();
         }
     },
@@ -305,26 +307,40 @@ export const meetingActionMethods = {
     async leaveMeeting() {
         if (this.state.leavingMeeting) return;
         const wasGuestSession = this.isGuestSession();
+        const currentMeetingTitle = this.getMeetingTitleById(
+            this.state.session?.meeting?.id || this.state.selectedMeetingId,
+            this.selectedMeeting?.title || 'room'
+        );
         this.state.leavingMeeting = true;
         this.state.roomState = 'Disconnecting';
+        this.setDisconnectingRoomTransition(currentMeetingTitle, { render: false });
         this.renderAll();
         try {
-            await this.unjoinCurrentSession({ preserveDisplayName: false });
+            await this.unjoinCurrentSession({ preserveDisplayName: false, manageTransition: false });
             if (wasGuestSession && typeof this.hostContext?.onGuestExit === 'function') {
                 this.hostContext.onGuestExit();
             }
         } finally {
             this.state.leavingMeeting = false;
+            this.clearRoomTransitionMessage({ render: false });
             this.renderAll();
         }
     },
 
     async unjoinCurrentSession(options = {}) {
         const preserveDisplayName = Boolean(options.preserveDisplayName);
+        const manageTransition = options.manageTransition !== false;
         const previousMeetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
         const previousParticipantId = String(this.state.session?.participantIdentity || '').trim();
         const preservedName = String(this.state.session?.participant?.displayName || '').trim();
         const wasGuestSession = this.isGuestSession();
+        if (manageTransition) {
+            this.setDisconnectingRoomTransition(
+                this.getMeetingTitleById(previousMeetingId, this.selectedMeeting?.title || 'room'),
+                { render: false }
+            );
+            this.renderMeetingSummary();
+        }
         this.stopPresenceHeartbeat();
         this.stopSpeechRecognition();
         await this.disconnectRoom();
@@ -350,6 +366,9 @@ export const meetingActionMethods = {
         this.state.session = preserveDisplayName && preservedName ? { participant: { displayName: preservedName } } : null;
         if (!wasGuestSession) {
             await this.loadParticipantsForMeetings();
+        }
+        if (manageTransition) {
+            this.clearRoomTransitionMessage({ render: false });
         }
         this.renderAll();
     },

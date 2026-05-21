@@ -2,6 +2,52 @@ import { escapeHtml, formatDate } from '../services/dashboard-utils.js';
 import { renderMessageWithMentionHighlights } from '../services/chat-autocomplete/index.js';
 
 export const dashboardRenderMethods = {
+    setRoomTransitionMessage(message, { render = true } = {}) {
+        const text = String(message || '').trim();
+        this.state.roomTransition = {
+            active: Boolean(text),
+            message: text
+        };
+        if (render) {
+            this.renderMeetingSummary();
+        }
+    },
+
+    clearRoomTransitionMessage({ render = true } = {}) {
+        this.state.roomTransition = {
+            active: false,
+            message: ''
+        };
+        if (render) {
+            this.renderMeetingSummary();
+        }
+    },
+
+    buildRoomTransitionMessage(mode, roomName = '') {
+        const title = String(roomName || '').trim() || 'room';
+        if (mode === 'disconnecting') {
+            return `Disconnecting from ${title}...`;
+        }
+        return `Connecting to ${title}...`;
+    },
+
+    setConnectingRoomTransition(roomName = '', options = {}) {
+        this.setRoomTransitionMessage(this.buildRoomTransitionMessage('connecting', roomName), options);
+    },
+
+    setDisconnectingRoomTransition(roomName = '', options = {}) {
+        this.setRoomTransitionMessage(this.buildRoomTransitionMessage('disconnecting', roomName), options);
+    },
+
+    getMeetingTitleById(meetingId, fallback = '') {
+        const targetMeetingId = String(meetingId || '').trim();
+        if (!targetMeetingId) {
+            return String(fallback || '').trim();
+        }
+        const meeting = (this.state.meetings || []).find((entry) => String(entry?.id || '').trim() === targetMeetingId);
+        return String(meeting?.title || fallback || '').trim();
+    },
+
     renderAll() {
         const canManageRooms = this.canManageRooms();
         if (this.createRoomButton) {
@@ -71,13 +117,21 @@ export const dashboardRenderMethods = {
         const meeting = this.selectedMeeting;
         const isJoined = !!this.state.session?.participantIdentity;
         const isLeaving = Boolean(this.state.leavingMeeting);
+        const roomTransition = this.state.roomTransition || {};
+        const isTransitioningRoom = Boolean(roomTransition.active);
+        const roomTransitionMessage = String(roomTransition.message || '').trim();
 
         if (this.dashboardModalRoot) {
             this.dashboardModalRoot.classList.toggle('is-joined', isJoined);
             this.dashboardModalRoot.classList.toggle('is-leaving-room', isLeaving);
+            this.dashboardModalRoot.classList.toggle('is-room-transitioning', isTransitioningRoom);
+            this.dashboardModalRoot.setAttribute('aria-busy', isTransitioningRoom ? 'true' : 'false');
         }
         if (this.exitOverlay) {
-            this.exitOverlay.classList.toggle('webmeet-hidden', !isLeaving);
+            this.exitOverlay.classList.toggle('webmeet-hidden', !isTransitioningRoom);
+        }
+        if (this.roomTransitionMessage) {
+            this.roomTransitionMessage.textContent = roomTransitionMessage || 'Connecting to room...';
         }
         
         // Toggle welcome screen vs meeting UI
@@ -144,7 +198,7 @@ export const dashboardRenderMethods = {
         if (this.screenShareButton) {
             this.screenShareButton.classList.toggle('active', this.state.media.screen);
         }
-        const mediaBusy = Object.values(this.state.mediaLoading || {}).some(Boolean) || isLeaving;
+        const mediaBusy = Object.values(this.state.mediaLoading || {}).some(Boolean) || isLeaving || isTransitioningRoom;
         const setMediaButtonLoading = (button, type) => {
             if (!button) return;
             const isLoading = Boolean(this.state.mediaLoading?.[type]);
@@ -161,14 +215,14 @@ export const dashboardRenderMethods = {
         setMediaButtonLoading(this.screenShareButton, 'screen');
         if (this.leaveButton) {
             this.leaveButton.classList.toggle('is-loading', isLeaving);
-            this.leaveButton.disabled = isLeaving;
-            this.leaveButton.setAttribute('aria-busy', isLeaving ? 'true' : 'false');
+            this.leaveButton.disabled = isLeaving || isTransitioningRoom;
+            this.leaveButton.setAttribute('aria-busy', (isLeaving || isTransitioningRoom) ? 'true' : 'false');
         }
         if (this.mediaSettingsButton) {
-            this.mediaSettingsButton.disabled = isLeaving;
+            this.mediaSettingsButton.disabled = isLeaving || isTransitioningRoom;
         }
         if (this.recordingButton) {
-            this.recordingButton.disabled = isLeaving;
+            this.recordingButton.disabled = isLeaving || isTransitioningRoom;
         }
     },
 

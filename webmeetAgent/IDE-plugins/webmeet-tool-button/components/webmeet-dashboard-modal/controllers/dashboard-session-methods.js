@@ -151,16 +151,19 @@ export const dashboardSessionMethods = {
             if (!confirmed) {
                 return;
             }
-            await this.unjoinCurrentSession({ preserveDisplayName: true });
+            this.setDisconnectingRoomTransition(currentMeeting?.title || 'room');
+            await this.unjoinCurrentSession({ preserveDisplayName: true, manageTransition: false });
         }
 
         this.state.selectedMeetingId = nextMeetingId;
         this.state.joiningMeetingId = nextMeetingId;
+        this.setConnectingRoomTransition(this.getMeetingTitleById(nextMeetingId, 'room'), { render: false });
         this.renderMeetingList();
         try {
             await this.loadMeetingDetails({ expectedMeetingId: nextMeetingId });
             this.renderAll();
             if (!this.selectedMeeting) {
+                this.clearRoomTransitionMessage();
                 return;
             }
             const defaultName = String(this.state.session?.participant?.displayName || '').trim();
@@ -177,6 +180,10 @@ export const dashboardSessionMethods = {
             if (this.state.joiningMeetingId === nextMeetingId) {
                 this.state.joiningMeetingId = '';
                 this.renderMeetingList();
+            }
+            if (!this.state.session?.participantIdentity) {
+                this.clearRoomTransitionMessage({ render: false });
+                this.renderMeetingSummary();
             }
         }
     },

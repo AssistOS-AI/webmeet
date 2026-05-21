@@ -101,6 +101,22 @@ test('participant room list renders stable active speaker indicator markup', asy
     assert.match(stylesheet, /@keyframes webmeet-speaking-pulse/);
 });
 
+test('room transitions expose a blocking overlay with dynamic status text', async () => {
+    const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const dashboardHtml = await readModalFile('webmeet-dashboard-modal.html');
+    const renderMethods = await readModalFile('controllers/dashboard-render-methods.js');
+    const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
+    const actionMethods = await readModalFile('controllers/meeting-action-methods.js');
+
+    assert.match(modal, /roomTransition:\s*\{\s*active:\s*false,\s*message:\s*''\s*\}/);
+    assert.match(dashboardHtml, /id="webmeetRoomTransitionMessage"/);
+    assert.match(renderMethods, /setConnectingRoomTransition/);
+    assert.match(renderMethods, /setDisconnectingRoomTransition/);
+    assert.match(renderMethods, /is-room-transitioning/);
+    assert.match(sessionMethods, /setConnectingRoomTransition/);
+    assert.match(actionMethods, /setDisconnectingRoomTransition/);
+});
+
 test('meeting list marks speaking participants without removing idle placeholders', () => {
     const controller = new MeetingListController();
     const element = { innerHTML: '' };
