@@ -1,7 +1,6 @@
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
 import {
     createChatAutocomplete,
-    createAgentTagProvider,
     createExplorerSearchAdapter,
     createWorkspacePathsProvider,
     renderComposerMentionOverlayHtml
@@ -54,8 +53,6 @@ export class ChatTranscriptComponent {
         this.resolveWorkspaceRoot = typeof options.resolveWorkspaceRoot === 'function'
             ? options.resolveWorkspaceRoot
             : defaultResolveWorkspaceRoot;
-        this.agentTagProvider = options.agentTagProvider || createAgentTagProvider();
-
         this.speechRecognition = null;
         this.elements = {};
         this.autocomplete = null;
@@ -68,9 +65,6 @@ export class ChatTranscriptComponent {
     }
 
     getKnownAgentTokens() {
-        if (this.agentTagProvider && typeof this.agentTagProvider.getKnownTokens === 'function') {
-            return this.agentTagProvider.getKnownTokens();
-        }
         return [];
     }
 
@@ -92,7 +86,7 @@ export class ChatTranscriptComponent {
         if (!input || typeof window === 'undefined' || typeof document === 'undefined') return;
         const composer = input.closest('.webmeet-compose') || input.parentElement || null;
         const inputShell = this.ensureChatInputShell(input, composer);
-        const providers = [this.agentTagProvider];
+        const providers = [];
         const searchAdapter = createExplorerSearchAdapter({
             callExplorerTool: (name, args, options) => this.callExplorerTool(name, args, options),
             resolveWorkspaceRoot: () => this.resolveWorkspaceRoot()

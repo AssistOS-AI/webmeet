@@ -45,36 +45,6 @@
                 "PLOINKY_ROUTER_HOST",
                 "PLOINKY_ROUTER_PORT",
                 {
-                    "name": "WEBMEET_RESEARCH_TAGS",
-                    "required": false,
-                    "default": "1"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_AGENT",
-                    "required": false,
-                    "default": "researchRelay"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_SUBMIT_TOOL",
-                    "required": false,
-                    "default": "research_task_submit"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_LIST_TOOL",
-                    "required": false,
-                    "default": "research_relay_list_backends"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_TAGS",
-                    "required": false,
-                    "default": "open-interpreter"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_TIMEOUT_MS",
-                    "required": false,
-                    "default": "450000"
-                },
-                {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,
                     "derive": "derived-master"
@@ -204,36 +174,6 @@
                 "PLOINKY_ROUTER_URL",
                 "PLOINKY_ROUTER_HOST",
                 "PLOINKY_ROUTER_PORT",
-                {
-                    "name": "WEBMEET_RESEARCH_TAGS",
-                    "required": false,
-                    "default": "1"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_AGENT",
-                    "required": false,
-                    "default": "researchRelay"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_SUBMIT_TOOL",
-                    "required": false,
-                    "default": "research_task_submit"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_LIST_TOOL",
-                    "required": false,
-                    "default": "research_relay_list_backends"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_TAGS",
-                    "required": false,
-                    "default": "open-interpreter"
-                },
-                {
-                    "name": "WEBMEET_TAG_RELAY_TIMEOUT_MS",
-                    "required": false,
-                    "default": "450000"
-                },
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,

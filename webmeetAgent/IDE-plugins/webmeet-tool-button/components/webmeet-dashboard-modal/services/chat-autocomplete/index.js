@@ -8,11 +8,6 @@ export {
     renderMessageWithMentionHighlights
 } from './mention-highlights.js';
 export {
-    WEBMEET_CANONICAL_AGENT_TAGS,
-    applyAgentTagSelection,
-    createAgentTagProvider
-} from './agent-tag-provider.js';
-export {
     applyWorkspacePathSelection,
     createWorkspacePathsProvider
 } from './workspace-paths-provider.js';

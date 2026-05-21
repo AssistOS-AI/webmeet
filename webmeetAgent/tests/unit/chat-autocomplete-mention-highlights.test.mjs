@@ -9,37 +9,34 @@ import {
     renderMessageWithMentionHighlights
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/chat-autocomplete/mention-highlights.js';
 
-test('normalizeMentionToken keeps valid @tag tokens and drops whitespace', () => {
-    assert.equal(normalizeMentionToken('@open-interpreter'), '@open-interpreter');
+test('normalizeMentionToken keeps file tokens and drops provider-looking tokens', () => {
+    assert.equal(normalizeMentionToken('@open-interpreter'), '');
+    assert.equal(normalizeMentionToken('@file:docs/notes.md'), '@file:docs/notes.md');
     assert.equal(normalizeMentionToken('@'), '');
     assert.equal(normalizeMentionToken('open-interpreter'), '');
-    assert.equal(normalizeMentionToken(' @op '), '@op');
+    assert.equal(normalizeMentionToken(' @op '), '');
     assert.equal(normalizeMentionToken('@one two'), '');
 });
 
-test('extractMentionTokenAt returns the canonical mention before trailing space', () => {
-    assert.equal(extractMentionTokenAt('@open-interpreter ', 18), '@open-interpreter');
+test('extractMentionTokenAt returns file mentions and ignores provider-looking tokens', () => {
+    assert.equal(extractMentionTokenAt('@open-interpreter ', 18), '');
     assert.equal(extractMentionTokenAt('see @file:docs/notes.md ', 24), '@file:docs/notes.md');
 });
 
-test('findMentionRanges detects sent-message agent and path mentions', () => {
-    assert.deepEqual(findMentionRanges('ask @open-interpreter hello'), [
-        { start: 4, end: 21, token: '@open-interpreter' }
-    ]);
+test('findMentionRanges detects file mentions and ignores provider-looking tokens', () => {
+    assert.deepEqual(findMentionRanges('ask @open-interpreter hello'), []);
     assert.deepEqual(findMentionRanges('read @file:webmeetAgent/server'), [
         { start: 5, end: 30, token: '@file:webmeetAgent/server' }
     ]);
 });
 
 test('findMentionRanges ignores @ embedded inside an email', () => {
-    assert.deepEqual(findMentionRanges('email user@example.com about @open-interpreter'), [
-        { start: 29, end: 46, token: '@open-interpreter' }
-    ]);
+    assert.deepEqual(findMentionRanges('email user@example.com about @open-interpreter'), []);
 });
 
-test('renderMessageWithMentionHighlights bolds known canonical agent tokens', () => {
+test('renderMessageWithMentionHighlights leaves provider-looking tokens plain', () => {
     const html = renderMessageWithMentionHighlights('ask @open-interpreter please', ['@open-interpreter']);
-    assert.match(html, /<strong class="webmeet-chat-mention">@open-interpreter<\/strong>/);
+    assert.equal(html, 'ask @open-interpreter please');
 });
 
 test('renderMessageWithMentionHighlights leaves unknown mentions plain', () => {
@@ -50,11 +47,12 @@ test('renderMessageWithMentionHighlights leaves unknown mentions plain', () => {
 test('renderMessageWithMentionHighlights escapes HTML in plain content', () => {
     const html = renderMessageWithMentionHighlights('<script>alert(1)</script> @open-interpreter', ['@open-interpreter']);
     assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-    assert.match(html, /<strong class="webmeet-chat-mention">@open-interpreter<\/strong>/);
+    assert.doesNotMatch(html, /<strong class="webmeet-chat-mention">@open-interpreter<\/strong>/);
 });
 
-test('renderComposerMentionOverlayHtml only bolds tokens that were selected', () => {
-    const html = renderComposerMentionOverlayHtml('@open-interpreter and @teammate', ['@open-interpreter']);
-    assert.match(html, /<strong class="webmeet-composer-mention">@open-interpreter<\/strong>/);
+test('renderComposerMentionOverlayHtml only bolds selected file tokens', () => {
+    const html = renderComposerMentionOverlayHtml('@open-interpreter and @file:docs/notes.md', ['@open-interpreter', '@file:docs/notes.md']);
+    assert.doesNotMatch(html, /<strong class="webmeet-composer-mention">@open-interpreter<\/strong>/);
+    assert.match(html, /<strong class="webmeet-composer-mention">@file:docs\/notes\.md<\/strong>/);
     assert.doesNotMatch(html, /<strong[^>]*>@teammate<\/strong>/);
 });

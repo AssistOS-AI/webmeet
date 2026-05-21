@@ -67,12 +67,12 @@ test('appendTranscript routes through webmeet_transcript_append', async () => {
     assert.equal(calls[0].args.meetingId, meeting.id);
 });
 
-test('getKnownAgentTokens returns the canonical @open-interpreter token', () => {
+test('getKnownAgentTokens returns no provider tokens', () => {
     const { component } = makeComponent();
-    assert.deepEqual(component.getKnownAgentTokens(), ['@open-interpreter']);
+    assert.deepEqual(component.getKnownAgentTokens(), []);
 });
 
-test('composer mention overlay bolds known and selected mentions', () => {
+test('composer mention overlay bolds only selected file mentions', () => {
     const { component } = makeComponent();
     component.mentionOverlay = { innerHTML: '', scrollTop: 0, scrollLeft: 0 };
     component.mentionOverlayInput = {
@@ -84,7 +84,7 @@ test('composer mention overlay bolds known and selected mentions', () => {
 
     component.updateComposerMentionOverlay();
 
-    assert.match(component.mentionOverlay.innerHTML,
+    assert.doesNotMatch(component.mentionOverlay.innerHTML,
         /<strong class="webmeet-composer-mention">@open-interpreter<\/strong>/);
     assert.match(component.mentionOverlay.innerHTML,
         /<strong class="webmeet-composer-mention">@file:docs\/readme\.md<\/strong>/);
