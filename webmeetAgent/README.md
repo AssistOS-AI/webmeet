@@ -9,9 +9,9 @@
   - serves the HTTP API on `WEBMEET_API_PORT` (`8791` by default)
   - stores persistent meeting data under `.ploinky/data/webmeetAgent/data`
   - creates explicit LiveKit AI dispatches for the separate worker
-- `webmeetInfra/stack`
-  - provides the WebMeet media infrastructure declared by the manifest
-  - includes LiveKit Server, LiveKit Egress, Redis, Coturn, and profile-specific production TLS services
+- `webmeetInfra/liveKitServerAgent`
+  - single Ploinky agent that supervises the WebMeet media runtime
+  - includes LiveKit Server, LiveKit Egress, Redis, Coturn, and profile-specific production TLS services (Nginx + Certbot in `prod`) inside one container
 - `webmeetLivekitAiAgent`
   - optional separate Ploinky agent for the self-hosted LiveKit Agents worker
   - owns the native `@livekit/agents` dependency tree
@@ -23,7 +23,7 @@ The agent is started through Ploinky, not directly with Docker Compose.
 
 The WebMeet manifest:
 
-- enables `webmeetInfra/stack`
+- enables `webmeetInfra/liveKitServerAgent`
 - starts `server/webmeet-api.mjs`
 - starts the WebMeet public proxy
 - starts the MCP `AgentServer`

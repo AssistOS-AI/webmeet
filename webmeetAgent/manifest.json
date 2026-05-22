@@ -9,7 +9,7 @@
         ]
     },
     "enable": [
-        "webmeetInfra/stack",
+        "webmeetInfra/liveKitServerAgent",
         "webmeetLivekitAiAgent global no-wait"
     ],
     "repos": {
@@ -65,7 +65,7 @@
                 {
                     "name": "WEBMEET_LIVEKIT_URL",
                     "required": false,
-                    "default": "http://webmeetLivekitServer:7880"
+                    "default": "http://liveKitServerAgent:7880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
@@ -87,7 +87,7 @@
                 {
                     "name": "WEBMEET_EGRESS_URL",
                     "required": false,
-                    "default": "http://webmeetLivekitEgress:7980"
+                    "default": "http://liveKitServerAgent:7980"
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",
@@ -195,7 +195,7 @@
                 {
                     "name": "WEBMEET_LIVEKIT_URL",
                     "required": false,
-                    "default": "http://webmeetLivekitServer:17880"
+                    "default": "http://liveKitServerAgent:17880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
@@ -217,7 +217,7 @@
                 {
                     "name": "WEBMEET_EGRESS_URL",
                     "required": false,
-                    "default": "http://webmeetLivekitEgress:7980"
+                    "default": "http://liveKitServerAgent:7980"
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",
@@ -298,7 +298,7 @@
         },
         "prod": {
             "ports": [
-                "127.0.0.1:17000:7000",
+                "127.0.0.1:17001:7000",
                 "127.0.0.1:18791:8791"
             ],
             "env": [
@@ -348,7 +348,7 @@
                 {
                     "name": "WEBMEET_EGRESS_URL",
                     "required": true,
-                    "default": "http://webmeetLivekitEgress:7980"
+                    "default": "http://host.containers.internal:7980"
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",

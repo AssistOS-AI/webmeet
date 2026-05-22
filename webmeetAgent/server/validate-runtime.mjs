@@ -2,8 +2,8 @@ import net from 'node:net';
 
 const DEFAULT_WEBMEET_API_PORT = 8791;
 const DEFAULT_LIVEKIT_PUBLIC_URL = 'ws://127.0.0.1:7880';
-const DEFAULT_LIVEKIT_API_URL = 'http://webmeetLivekitServer:7880';
-const DEFAULT_EGRESS_URL = 'http://webmeetLivekitEgress:7980';
+const DEFAULT_LIVEKIT_API_URL = 'http://liveKitServerAgent:7880';
+const DEFAULT_EGRESS_URL = 'http://liveKitServerAgent:7980';
 
 function normalizePort(protocol, portText) {
     if (portText) {
