@@ -24,6 +24,7 @@ const AVATAR_SETTINGS_CHANNEL = 'assistOS.avatar-settings';
 const AVATAR_SETTINGS_STORAGE_KEY = 'assistOS.avatar-settings.updated';
 
 let axiFaceLoadPromise = null;
+let axiFaceModule = null;
 let explorerProfileAvatarClientPromise = null;
 let updateListenerInstalled = false;
 let avatarBroadcastChannel = null;
@@ -54,6 +55,13 @@ function getAxiFaceModuleUrl() {
     return isGuestWebMeetContext()
         ? '/public-services/webmeet/axi-face/src/axi-face.mjs'
         : '/services/explorer/axi-face/src/axi-face.mjs';
+}
+
+function normalizeAxiFaceStyleList(styles = []) {
+    if (!Array.isArray(styles)) return [];
+    return styles
+        .map((style) => String(style || '').trim())
+        .filter(Boolean);
 }
 
 function dispatchAvatarSettingsEvent(detail = {}) {
@@ -149,15 +157,29 @@ export function renderAxiFaceMarkup(config) {
     return `<axi-face ${toAxiFaceAttributes(config)}></axi-face>`;
 }
 
-export async function ensureAxiFaceLoaded() {
-    if (customElements.get('axi-face')) return;
+export function getLoadedAxiFaceGeneratedFaceStyles() {
+    return normalizeAxiFaceStyleList(axiFaceModule?.GENERATED_FACE_STYLES);
+}
+
+export async function loadAxiFaceModule() {
     if (!axiFaceLoadPromise) {
         axiFaceLoadPromise = import(`${getAxiFaceModuleUrl()}?cacheBust=${Date.now()}`).catch((error) => {
             axiFaceLoadPromise = null;
             throw error;
         });
     }
-    await axiFaceLoadPromise;
+    axiFaceModule = await axiFaceLoadPromise;
+    return axiFaceModule;
+}
+
+export async function loadAxiFaceGeneratedFaceStyles() {
+    const module = await loadAxiFaceModule();
+    return normalizeAxiFaceStyleList(module?.GENERATED_FACE_STYLES);
+}
+
+export async function ensureAxiFaceLoaded() {
+    if (customElements.get('axi-face') && axiFaceModule) return;
+    await loadAxiFaceModule();
 }
 
 export async function getCurrentProfileAvatar(options = {}) {

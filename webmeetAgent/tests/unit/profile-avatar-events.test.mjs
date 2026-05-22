@@ -1213,6 +1213,13 @@ test('WebMeet avatar UI exposes settings and quick preset controls', () => {
     assert.match(renderSource, /avatarPreviewLoadPromise/);
     assert.match(renderSource, /data-local-action="applyWebMeetAvatarPreset"/);
     assert.match(renderSource, /data-avatar-preset/);
+    assert.match(renderSource, /data-local-action="applyWebMeetAvatarStyle"/);
+    assert.match(renderSource, /data-avatar-style/);
+    assert.match(renderSource, /loadAxiFaceGeneratedFaceStyles/);
+    assert.match(renderSource, /getLoadedAxiFaceGeneratedFaceStyles/);
+    assert.match(renderSource, /formatAvatarOptionLabel/);
+    assert.doesNotMatch(renderSource, /AVATAR_STYLE_LABELS/);
+    assert.doesNotMatch(renderSource, /resetWebMeetAvatarOverride">Profile avatar/);
 });
 
 test('dashboard guest session detection is safe before guest manager init', () => {

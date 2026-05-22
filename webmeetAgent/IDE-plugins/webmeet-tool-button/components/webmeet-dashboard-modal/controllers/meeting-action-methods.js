@@ -283,6 +283,38 @@ export const meetingActionMethods = {
             : `WebMeet avatar preset saved. Join a room to publish ${preset.label}.`);
     },
 
+    async applyWebMeetAvatarStyle(target) {
+        const source = target?.target || target;
+        const style = String(source?.dataset?.avatarStyle || source?.closest?.('[data-avatar-style]')?.dataset?.avatarStyle || '').trim();
+        if (!style) return;
+        let profileAvatar = null;
+        try {
+            profileAvatar = await getCurrentProfileAvatar({ force: true });
+        } catch (_) {
+            profileAvatar = null;
+        }
+        const currentOverride = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverride = currentOverride;
+        const config = buildWebMeetAvatarOverrideConfig({
+            profileAvatar,
+            override: currentOverride,
+            userId: this.getCurrentAvatarOverrideUserId(),
+            participantId: this.state.session?.participantIdentity || '',
+            patch: { style }
+        });
+        this.setCurrentWebMeetAvatarOverride({ config });
+        this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
+        this.state.avatarQuickMenuVisible = false;
+        const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.renderAvatarControls?.();
+        this.renderMeetingSummary();
+        this.renderParticipantLayout?.();
+        this.renderMeetingList?.();
+        this.setError(published
+            ? `WebMeet avatar style set to ${style} and published.`
+            : `WebMeet avatar style saved. Join a room to publish ${style}.`);
+    },
+
     async resetWebMeetAvatarOverride() {
         this.clearCurrentWebMeetAvatarOverride();
         this.state.webMeetAvatarOverrideDraft = null;

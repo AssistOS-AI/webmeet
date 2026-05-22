@@ -304,6 +304,7 @@ export class WebMeetDashboardModal {
                 'applyMediaSettings',
                 'applyWebMeetAvatarSettings',
                 'applyWebMeetAvatarPreset',
+                'applyWebMeetAvatarStyle',
                 'resetWebMeetAvatarOverride',
                 'toggleAvatarQuickMenu',
                 'refreshMediaDevices',
