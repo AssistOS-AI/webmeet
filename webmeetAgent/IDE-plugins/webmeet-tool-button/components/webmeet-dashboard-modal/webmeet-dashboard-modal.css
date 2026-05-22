@@ -1777,10 +1777,9 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     padding: 8px;
     background: var(--option-hover);
     color: var(--text);
-    cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     font-size: 0.9rem;
-    min-height: 100px;
+    min-height: 130px;
 }
 
 .webmeet-list-item:hover {
@@ -1790,7 +1789,6 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 .webmeet-list-item.is-selected {
     background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
     color: var(--text);
-
 }
 
 .webmeet-list-item.is-join-locked {
@@ -1818,6 +1816,7 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     padding: 5px;
     border-radius: 5px;
     width: calc(100% - 5px);
+    cursor: pointer;
 }
 
 .webmeet-room-identity {
@@ -2108,12 +2107,6 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     font-size: 0.875rem;
     margin-bottom: 4px;
     color: var(--text);
-}
-
-.webmeet-sidebar .webmeet-list-item:hover {
-    background: var(--option-hover);
-    border-color: var(--accent);
-    min-height: 100px;
 }
 
 .webmeet-sidebar .subtle-button {
