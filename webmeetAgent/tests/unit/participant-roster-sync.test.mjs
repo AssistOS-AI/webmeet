@@ -917,6 +917,91 @@ test('syncParticipantsFromRoom preserves a guest local avatar from the active se
     assert.deepEqual(appliedViews.get('participant-guest').profileAvatar, guestAvatar);
 });
 
+test('syncParticipantsFromRoom restores a guest local avatar when the existing local roster entry has no avatar', () => {
+    const appliedViews = new Map();
+    const guestAvatar = {
+        enabled: true,
+        fallbackLetter: 'G',
+        config: {
+            agentId: 'profile:guest-beta',
+            seed: 'profile:guest-beta',
+            generated: true,
+            size: '64',
+            emotion: 'thinking',
+            style: 'sketch'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-guest',
+                participant: {
+                    id: 'participant-guest',
+                    displayName: 'Guest Beta',
+                    profileAvatar: guestAvatar
+                }
+            },
+            participants: [{
+                id: 'participant-guest',
+                identity: 'participant-guest',
+                kind: 'local',
+                displayName: 'Guest Beta',
+                attributes: {}
+            }],
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-guest',
+            name: 'Guest Beta',
+            attributes: {},
+            trackPublications: new Map()
+        },
+        remoteParticipants: new Map()
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.deepEqual(context.state.participants[0].profileAvatar, guestAvatar);
+    assert.deepEqual(appliedViews.get('participant-guest').profileAvatar, guestAvatar);
+});
+
 test('syncParticipantsFromRoom propagates active speaker state to room roster', () => {
     const appliedViews = new Map();
     const context = {

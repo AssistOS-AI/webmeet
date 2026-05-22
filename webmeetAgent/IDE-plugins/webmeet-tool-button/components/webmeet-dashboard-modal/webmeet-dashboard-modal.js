@@ -27,6 +27,7 @@ import {
 } from './services/livekit-loader.js';
 import { createRoomNotificationSoundService } from './services/room-notification-sounds.js';
 import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
+import { WebMeetRoomRuntime } from './services/room-runtime/webmeet-room-runtime.js';
 import {
     buildPublicWebMeetApiBaseUrl,
     normalizeCurrentActor
@@ -127,6 +128,13 @@ export class WebMeetDashboardModal {
                 cameraQuality: this.normalizeCameraQuality(this.state.mediaSettings.cameraQuality),
                 screenShareQuality: this.normalizeScreenShareQuality(this.state.mediaSettings.screenShareQuality)
             })
+        });
+        this.roomRuntime = new WebMeetRoomRuntime({
+            getSession: () => this.state.session,
+            isGuestSession: () => this.isGuestSession(),
+            callPublicGuestApi: (meetingId, action, payload) => this.callPublicGuestApi(meetingId, action, payload),
+            connectRoom: () => this.connectRoom(),
+            disconnectRoom: (options) => this.disconnectRoom(options)
         });
         this.speechRecognition = null;
         this.meetingListController = new MeetingListController();
@@ -249,7 +257,7 @@ export class WebMeetDashboardModal {
             loadParticipantsForMeetings: () => this.loadParticipantsForMeetings(),
             loadMeetingDetails: () => this.loadMeetingDetails(),
             renderAll: () => this.renderAll(),
-            connectRoom: () => this.connectRoom(),
+            connectRoom: () => this.roomRuntime.connect(),
             hostContext: this.hostContext
         });
     }

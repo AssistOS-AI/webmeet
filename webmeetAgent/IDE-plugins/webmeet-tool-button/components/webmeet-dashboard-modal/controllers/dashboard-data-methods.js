@@ -110,7 +110,7 @@ export const dashboardDataMethods = {
     },
 
     async fetchPublicMeetingDetails(meetingId) {
-        return this.guestManager.fetchPublicMeetingDetails(meetingId);
+        return this.roomRuntime.loadGuestRoomState(meetingId);
     },
 
     async loadParticipantsForMeetings() {

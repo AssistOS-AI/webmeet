@@ -157,9 +157,9 @@ export const meetingActionMethods = {
         if (displayName) {
             payload.displayName = displayName;
         }
-        this.state.session = await runTool('webmeet_meeting_join', payload);
+        this.state.session = await this.roomRuntime.joinAuthenticated(payload);
         try {
-            await this.connectRoom();
+            await this.roomRuntime.connect();
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
@@ -469,13 +469,7 @@ export const meetingActionMethods = {
         const resolved = await this.resolveCurrentParticipantAvatarProjection(options);
         if (!resolved?.avatar) return null;
         const { avatar, sourceAvatar } = resolved;
-        const updated = this.isGuestSession()
-            ? await this.callPublicGuestApi(meetingId, 'guest-avatar', { avatar })
-            : await runTool('webmeet_participant_avatar_update', {
-                meetingId,
-                participantId,
-                avatar
-            });
+        const updated = await this.roomRuntime.publishAvatar(avatar);
         const profileAvatar = avatar && typeof avatar === 'object'
             ? {
                 ...avatar,
@@ -568,20 +562,11 @@ export const meetingActionMethods = {
         }
         this.stopPresenceHeartbeat();
         this.stopSpeechRecognition();
-        await this.disconnectRoom();
+        await this.roomRuntime.disconnect();
 
-        if (previousMeetingId && previousParticipantId && wasGuestSession) {
+        if (previousMeetingId && previousParticipantId) {
             try {
-                await this.callPublicGuestApi(previousMeetingId, 'guest-leave', {});
-            } catch (error) {
-                // Ignore leave failures during unload or room switching.
-            }
-        } else if (previousMeetingId && previousParticipantId) {
-            try {
-                await runTool('webmeet_meeting_leave', {
-                    meetingId: previousMeetingId,
-                    participantId: previousParticipantId
-                });
+                await this.roomRuntime.leaveCurrentSession();
             } catch (error) {
                 // Ignore leave failures during unload or room switching.
             }
@@ -599,7 +584,7 @@ export const meetingActionMethods = {
     },
 
     async sendPublicChat(meetingId, message) {
-        return this.callPublicGuestApi(meetingId, 'guest-chat', { message });
+        return this.roomRuntime.sendChat(meetingId, message);
     },
 
     async attachObserver() {

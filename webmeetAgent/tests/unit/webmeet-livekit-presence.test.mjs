@@ -38,7 +38,7 @@ afterEach(() => {
     }
 });
 
-test('meeting participants are projected from LiveKit participants, not cached membership', async () => {
+test('meeting participants include LiveKit participants and pending joined members', async () => {
     const context = createStoreContext(tempRoot);
     const workspace = createWorkspace(context);
     const authInfo = {
@@ -81,7 +81,7 @@ test('meeting participants are projected from LiveKit participants, not cached m
 
     const details = await getMeeting(context, meeting.id, authInfo);
 
-    assert.deepEqual(details.participants.map((entry) => entry.id), ['participant-user']);
+    assert.deepEqual(details.participants.map((entry) => entry.id), ['participant-user', 'participant-admin']);
     assert.equal(details.participants[0].attributes.webmeetUserId, 'local:user');
 });
 

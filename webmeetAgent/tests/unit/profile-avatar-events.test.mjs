@@ -685,43 +685,66 @@ test('guest meeting details do not wipe stored members when LiveKit roster is te
 });
 
 test('authenticated dashboard join keeps using the protected MCP tool path', () => {
-    const source = fs.readFileSync(
+    const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
             '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
-    const joinMethod = source.slice(source.indexOf('async joinMeeting'), source.indexOf('buildParticipantAvatarProjection'));
-    assert.match(joinMethod, /runTool\('webmeet_meeting_join', payload\)/);
+    const apiSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+        ),
+        'utf8'
+    );
+    const joinMethod = actionSource.slice(actionSource.indexOf('async joinMeeting'), actionSource.indexOf('buildParticipantAvatarProjection'));
+    assert.match(joinMethod, /this\.roomRuntime\.joinAuthenticated\(payload\)/);
+    assert.match(apiSource, /runTool\('webmeet_meeting_join', payload\)/);
     assert.doesNotMatch(joinMethod, /public-services\/webmeet/);
     assert.doesNotMatch(joinMethod, /\/meetings\/.*\/join/);
 });
 
 test('participant avatar refresh keeps using the protected MCP tool path', () => {
-    const source = fs.readFileSync(
+    const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
             '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
-    const method = source.slice(source.indexOf('async publishCurrentParticipantAvatar'), source.indexOf('async leaveMeeting'));
-    assert.match(method, /runTool\('webmeet_participant_avatar_update'/);
+    const apiSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+        ),
+        'utf8'
+    );
+    const method = actionSource.slice(actionSource.indexOf('async publishCurrentParticipantAvatar'), actionSource.indexOf('async leaveMeeting'));
+    assert.match(method, /this\.roomRuntime\.publishAvatar\(avatar\)/);
+    assert.match(apiSource, /runTool\('webmeet_participant_avatar_update'/);
     assert.doesNotMatch(method, /\/participants\/.*\/avatar/);
 });
 
 test('guest participant avatar refresh uses the scoped guest public API path', () => {
-    const source = fs.readFileSync(
+    const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
             '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
-    const method = source.slice(source.indexOf('async publishCurrentParticipantAvatar'), source.indexOf('async leaveMeeting'));
-    assert.match(method, /this\.isGuestSession\(\)/);
-    assert.match(method, /callPublicGuestApi\(meetingId,\s*'guest-avatar',\s*\{\s*avatar\s*\}\)/);
+    const apiSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+        ),
+        'utf8'
+    );
+    const method = actionSource.slice(actionSource.indexOf('async publishCurrentParticipantAvatar'), actionSource.indexOf('async leaveMeeting'));
+    assert.match(method, /this\.roomRuntime\.publishAvatar\(avatar\)/);
+    assert.match(apiSource, /callPublicGuestApi\(meetingId,\s*'guest-avatar',\s*\{\s*avatar\s*\}\)/);
     assert.doesNotMatch(method, /if \(this\.isGuestSession\(\)\) return/);
 });
 
@@ -734,11 +757,11 @@ test('authenticated dashboard join connects before publishing avatar best-effort
         'utf8'
     );
     const joinMethod = source.slice(source.indexOf('async joinMeeting'), source.indexOf('buildParticipantAvatarProjection'));
-    assert.match(joinMethod, /this\.state\.session = await runTool\('webmeet_meeting_join', payload\)/);
-    assert.match(joinMethod, /await this\.connectRoom\(\)/);
+    assert.match(joinMethod, /this\.state\.session = await this\.roomRuntime\.joinAuthenticated\(payload\)/);
+    assert.match(joinMethod, /await this\.roomRuntime\.connect\(\)/);
     assert.match(joinMethod, /void this\.publishCurrentParticipantAvatar\(\{ force: true \}\)\.catch/);
     assert.ok(
-        joinMethod.indexOf('await this.connectRoom()') < joinMethod.indexOf('void this.publishCurrentParticipantAvatar({ force: true }).catch'),
+        joinMethod.indexOf('await this.roomRuntime.connect()') < joinMethod.indexOf('void this.publishCurrentParticipantAvatar({ force: true }).catch'),
         'avatar publish must happen after room connect'
     );
     assert.doesNotMatch(joinMethod, /await this\.publishCurrentParticipantAvatar\(\{ force: true/);
@@ -1377,7 +1400,22 @@ test('guest session manager preserves guest auth context for public guest APIs',
     assert.match(source, /session\?\.meeting\?\.guestToken/);
     assert.match(source, /session\?\.participantIdentity/);
     assert.match(source, /session\?\.participant\?\.id/);
-    assert.match(source, /return this\.callPublicGuestApi\(meetingId, 'guest-state', \{\}\)/);
+    const dataSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+        ),
+        'utf8'
+    );
+    const apiSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+        ),
+        'utf8'
+    );
+    assert.match(dataSource, /return this\.roomRuntime\.loadGuestRoomState\(meetingId\)/);
+    assert.match(apiSource, /return this\.callPublicGuestApi\(meetingId, 'guest-state', \{\}\)/);
 });
 
 test('guest page bootstraps WebMeet dashboard through WebSkel components', () => {

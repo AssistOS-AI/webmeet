@@ -102,8 +102,4 @@ export class GuestSessionManager {
         return response.json();
     }
 
-    async fetchPublicMeetingDetails(meetingId) {
-        return this.callPublicGuestApi(meetingId, 'guest-state', {});
-    }
-
 }

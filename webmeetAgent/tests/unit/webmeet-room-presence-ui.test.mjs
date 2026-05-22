@@ -77,13 +77,14 @@ test('microphone publication helper is shared by participant and media controlle
 
 test('room notification sounds are local, generated, and setting controlled', async () => {
     const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
     const mediaSettings = await readModalFile('controllers/media-settings-methods.js');
     const soundService = await readModalFile('services/room-notification-sounds.js');
 
     assert.match(modal, /createRoomNotificationSoundService/);
-    assert.match(modal, /playParticipantJoinSound/);
-    assert.match(modal, /playParticipantLeaveSound/);
-    assert.match(modal, /isLocalParticipantIdentity/);
+    assert.match(sessionMethods, /playParticipantJoinSound/);
+    assert.match(sessionMethods, /playParticipantLeaveSound/);
+    assert.match(sessionMethods, /isLocalParticipantIdentity/);
     assert.match(modal, /webmeetRoomNotificationSounds/);
     assert.match(mediaSettings, /roomNotificationSounds:\s*true/);
     assert.match(soundService, /createOscillator/);

@@ -63,9 +63,8 @@ export const dashboardSessionMethods = {
         if (!this.isGuestSession()) {
             return runTool(name, args);
         }
-        const meetingId = String(args.meetingId || '').trim();
-        if (!meetingId || name !== 'webmeet_meeting_presence_ping') return {};
-        return this.callPublicGuestApi(meetingId, 'guest-presence', {});
+        if (name !== 'webmeet_meeting_presence_ping') return {};
+        return this.roomRuntime.presencePing();
     },
 
     registerWindowPresenceHandlers() {

@@ -323,11 +323,23 @@ export const participantViewMethods = {
             || sessionParticipant?.id
             || ''
         ).trim();
-        const localStoredParticipant = storedById.get(String(localIdentity || '').trim())
-            || (localIdentity && sessionParticipantId === String(localIdentity || '').trim()
-                ? sessionParticipant
-                : null)
-            || null;
+        const storedLocalParticipant = storedById.get(String(localIdentity || '').trim()) || null;
+        const sessionMatchesLocal = Boolean(localIdentity && sessionParticipantId === String(localIdentity || '').trim());
+        const localStoredParticipant = storedLocalParticipant && sessionMatchesLocal
+            ? {
+                ...sessionParticipant,
+                ...storedLocalParticipant,
+                attributes: {
+                    ...(sessionParticipant?.attributes && typeof sessionParticipant.attributes === 'object'
+                        ? sessionParticipant.attributes
+                        : {}),
+                    ...(storedLocalParticipant.attributes && typeof storedLocalParticipant.attributes === 'object'
+                        ? storedLocalParticipant.attributes
+                        : {})
+                },
+                profileAvatar: storedLocalParticipant.profileAvatar || sessionParticipant?.profileAvatar || null
+            }
+            : (storedLocalParticipant || (sessionMatchesLocal ? sessionParticipant : null) || null);
         const localUserId = String(
             localStoredParticipant?.userId
             || localAttributes.ploinkyUserId
