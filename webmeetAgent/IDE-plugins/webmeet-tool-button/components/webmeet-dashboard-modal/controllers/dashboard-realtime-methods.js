@@ -1,6 +1,11 @@
 import { normalizeAvatarConfig } from '../services/webmeet-profile-avatar-runtime.js';
 import { buildWebMeetAvatarSource } from '../services/webmeet-avatar-override.js';
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
+import {
+    WEBMEET_EVENT_TYPES,
+    buildWebMeetEvent,
+    parseWebMeetEvent
+} from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
 const AUTHENTICATED_WORKSPACE_EVENT_POLL_MS = 5000;
@@ -8,8 +13,12 @@ const AUTHENTICATED_WORKSPACE_EVENT_POLL_MS = 5000;
 export const dashboardRealtimeMethods = {
     async publishRealtimePayload(payload) {
         if (!this.room?.localParticipant || !payload || typeof payload !== 'object') return;
+        const room = String(payload.meetingId || payload.workspaceId || this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const type = String(payload.type || '').trim();
+        if (!room || !type) return;
+        const event = buildWebMeetEvent(room, type, payload);
         const encoder = new TextEncoder();
-        await this.room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), { reliable: true });
+        await this.room.localParticipant.publishData(encoder.encode(event), { reliable: true });
     },
 
     async requestRoomAvatarState() {
@@ -17,7 +26,7 @@ export const dashboardRealtimeMethods = {
         const participantId = String(this.state.session?.participantIdentity || '').trim();
         if (!meetingId || !participantId) return;
         await this.publishRealtimePayload({
-            type: 'participant.avatar.request',
+            type: WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST,
             meetingId,
             participantId
         });
@@ -43,12 +52,12 @@ export const dashboardRealtimeMethods = {
                 if (!initialized) {
                     initialized = true;
                     if (events.length) {
-                        this.lastWorkspaceEventId = String(events[events.length - 1]?.id || this.lastWorkspaceEventId).trim();
+                        this.lastWorkspaceEventId = parseWebMeetEvent(events[events.length - 1]).id || this.lastWorkspaceEventId;
                     }
                     return;
                 }
                 for (const event of events) {
-                    this.lastWorkspaceEventId = String(event?.id || this.lastWorkspaceEventId).trim();
+                    this.lastWorkspaceEventId = parseWebMeetEvent(event).id || this.lastWorkspaceEventId;
                     this.emitWebMeetInternalEvent('authenticated-workspace', event);
                 }
             } catch (_) {
@@ -69,10 +78,12 @@ export const dashboardRealtimeMethods = {
         }
     },
 
-    emitWebMeetInternalEvent(source, eventData = {}, meta = {}) {
+    emitWebMeetInternalEvent(source, eventData = '', meta = {}) {
+        const parsed = parseWebMeetEvent(eventData);
         const detail = {
             source: String(source || 'unknown').trim() || 'unknown',
-            event: eventData && typeof eventData === 'object' ? eventData : {},
+            event: parsed.encoded,
+            parsed,
             meta: meta && typeof meta === 'object' ? meta : {}
         };
         try {
@@ -84,17 +95,18 @@ export const dashboardRealtimeMethods = {
     },
 
     handleWebMeetInternalEvent(detail = {}) {
-        const eventData = detail?.event && typeof detail.event === 'object' ? detail.event : {};
+        const parsed = detail?.parsed || parseWebMeetEvent(detail?.event);
+        const eventData = parsed.payload || {};
         const source = String(detail?.source || '').trim();
-        const event = { data: JSON.stringify(eventData || {}) };
-        const type = String(eventData?.type || '').trim();
-        const payload = eventData?.payload || eventData;
-        const meetingId = String(payload?.meetingId || eventData?.meetingId || '').trim();
+        const event = { data: parsed.encoded };
+        const type = parsed.type;
+        const payload = eventData;
+        const meetingId = String(payload?.meetingId || parsed.room || '').trim();
         const selectedMeetingId = String(this.selectedMeeting?.id || this.state.selectedMeetingId || '').trim();
         if (meetingId && selectedMeetingId && meetingId !== selectedMeetingId && source !== 'authenticated-workspace') {
             return;
         }
-        if (type === 'chat') {
+        if (type === WEBMEET_EVENT_TYPES.CHAT_REALTIME) {
             if (!meetingId || meetingId === selectedMeetingId) {
                 if (!this.state.chat) this.state.chat = [];
                 this.state.chat.push(eventData.message);
@@ -102,7 +114,7 @@ export const dashboardRealtimeMethods = {
             }
             return;
         }
-        if (type === 'meeting.renamed') {
+        if (type === WEBMEET_EVENT_TYPES.MEETING_RENAMED) {
             this.applyMeetingRename(
                 payload?.meetingId,
                 payload?.title,
@@ -113,7 +125,7 @@ export const dashboardRealtimeMethods = {
             }
             return;
         }
-        if (source === 'livekit' && type === 'participant.avatar.request') {
+        if (source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST) {
             const requesterParticipantId = String(
                 detail?.meta?.participantId
                 || payload?.participantId
@@ -127,8 +139,8 @@ export const dashboardRealtimeMethods = {
             void this.republishCurrentParticipantAvatarState?.().catch(() => {});
             return;
         }
-        if (['participant.joined', 'participant.left', 'participant.timed_out', 'participant.avatar.updated'].includes(type)) {
-            if (source === 'livekit' && type === 'participant.avatar.updated') {
+        if ([WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_UPDATED, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED].includes(type)) {
+            if (source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED) {
                 void (async () => {
                     this.applyRealtimeParticipantAvatar?.(eventData);
                     this.renderParticipantLayout();
@@ -143,19 +155,19 @@ export const dashboardRealtimeMethods = {
             void this.handleParticipantRosterEvent(event);
             return;
         }
-        if (['agent.dispatched', 'agent.detached', 'transcript.updated', 'chat.message.created', 'artifact.created', 'recording.started', 'recording.stopped'].includes(type)) {
-            if (source === 'authenticated-workspace' && ['agent.dispatched', 'agent.detached'].includes(type)) {
+        if ([WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, WEBMEET_EVENT_TYPES.AGENT_DETACHED, WEBMEET_EVENT_TYPES.TRANSCRIPT_UPDATED, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, WEBMEET_EVENT_TYPES.RECORDING_STARTED, WEBMEET_EVENT_TYPES.RECORDING_STOPPED].includes(type)) {
+            if (source === 'authenticated-workspace' && [WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, WEBMEET_EVENT_TYPES.AGENT_DETACHED].includes(type)) {
                 this.scheduleWorkspaceRosterRefresh();
                 return;
             }
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
             return;
         }
-        if (type === 'profile.avatar.updated') {
+        if (type === WEBMEET_EVENT_TYPES.PROFILE_AVATAR_UPDATED) {
             this.handleProfileAvatarWorkspaceEvent(event);
             return;
         }
-        if (type === 'meeting.created') {
+        if (type === WEBMEET_EVENT_TYPES.MEETING_CREATED) {
             this.scheduleWorkspaceMeetingsRefresh();
         }
     },
@@ -207,9 +219,6 @@ export const dashboardRealtimeMethods = {
                     participantId
                 });
                 const profileAvatar = this.buildParticipantAvatarProjection(effectiveSourceAvatar, participantId);
-                if (this.state.session?.participant) {
-                    this.state.session.participant.profileAvatar = profileAvatar;
-                }
                 this.applyRealtimeParticipantAvatar?.({
                     meetingId: String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim(),
                     participantId,
@@ -234,13 +243,7 @@ export const dashboardRealtimeMethods = {
     },
 
     handleProfileAvatarWorkspaceEvent(event) {
-        let eventData = {};
-        try {
-            eventData = JSON.parse(String(event?.data || '{}'));
-        } catch (_) {
-            return;
-        }
-        const payload = eventData?.payload || eventData;
+        const payload = parseWebMeetEvent(event?.data).payload;
         const userId = String(payload?.userId || '').trim();
         if (!userId) return;
         const currentUserId = String(this.currentActor?.id || '').trim();

@@ -384,6 +384,7 @@ export const roomSessionMethods = {
             onParticipantDisconnected: (participant, { Track }) => {
                 this.playParticipantLeaveSound(participant);
                 const participantId = String(participant?.identity || '').trim();
+                this.clearRoomAvatar?.(participantId);
                 if (participantId && this.state.activeSpeakerIds instanceof Set) {
                     this.state.activeSpeakerIds.delete(participantId);
                 }
@@ -432,8 +433,7 @@ export const roomSessionMethods = {
             onDataReceived: (payload, participant) => {
                 try {
                     const text = new TextDecoder().decode(payload);
-                    const data = JSON.parse(text);
-                    this.emitWebMeetInternalEvent('livekit', data, {
+                    this.emitWebMeetInternalEvent('livekit', text, {
                         participantId: String(participant?.identity || '').trim()
                     });
                 } catch (err) {
@@ -505,6 +505,7 @@ export const roomSessionMethods = {
         this.state.mediaDeafenRestoreMicrophone = false;
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
+        this.state.roomAvatarsByParticipantId = {};
         this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');

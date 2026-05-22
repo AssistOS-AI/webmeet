@@ -5,6 +5,7 @@ import {
     createWorkspacePathsProvider,
     renderComposerMentionOverlayHtml
 } from '../services/chat-autocomplete/index.js';
+import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
 
@@ -246,7 +247,7 @@ export class ChatTranscriptComponent {
         if (this.getRoom()?.localParticipant) {
             try {
                 const chatPayload = {
-                    type: 'chat',
+                    type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
                     meetingId: meeting.id,
                     message: {
                         authorId: session.participantIdentity,
@@ -280,7 +281,7 @@ export class ChatTranscriptComponent {
             if (this.getRoom()?.localParticipant) {
                 try {
                     const chatPayload = {
-                        type: 'chat',
+                        type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
                         meetingId: meeting.id,
                         message: newMessage
                     };

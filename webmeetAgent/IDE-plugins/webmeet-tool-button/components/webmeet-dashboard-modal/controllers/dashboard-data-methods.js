@@ -1,5 +1,6 @@
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
 import { isMissingMeetingError } from '../services/dashboard-utils.js';
+import { WEBMEET_EVENT_TYPES, parseWebMeetEvent } from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
 
@@ -351,18 +352,13 @@ export const dashboardDataMethods = {
     },
 
     async handleParticipantRosterEvent(event) {
-        let eventData = {};
-        try {
-            eventData = JSON.parse(String(event?.data || '{}'));
-        } catch (_) {
-            return;
-        }
-        const payload = eventData?.payload || eventData;
-        const meetingId = String(payload?.meetingId || eventData?.meetingId || this.state.selectedMeetingId || '').trim();
-        const participantId = String(payload?.participantId || eventData?.participantId || '').trim();
+        const parsed = parseWebMeetEvent(event?.data);
+        const eventData = parsed.payload;
+        const meetingId = String(eventData?.meetingId || parsed.room || this.state.selectedMeetingId || '').trim();
+        const participantId = String(eventData?.participantId || '').trim();
         if (!meetingId) return;
 
-        if (participantId && (eventData.type === 'participant.left' || eventData.type === 'participant.timed_out')) {
+        if (participantId && (parsed.type === WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT || parsed.type === WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT)) {
             this.removeParticipantFromMeetingList(meetingId, participantId);
             this.renderMeetingList();
         }

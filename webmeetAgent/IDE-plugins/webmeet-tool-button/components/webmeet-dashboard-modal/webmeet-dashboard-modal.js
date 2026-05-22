@@ -100,6 +100,7 @@ export class WebMeetDashboardModal {
             webMeetAvatarOverride: null,
             webMeetAvatarOverrideDraft: null,
             avatarQuickMenuVisible: false,
+            roomAvatarsByParticipantId: {},
             participantAudioSettings: {},
             participants: [],
             activeSpeakerIds: new Set(),

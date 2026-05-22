@@ -315,28 +315,21 @@
         <section id="webmeetAvatarSettingsTabPanel" class="webmeet-settings-section"
                  aria-labelledby="webmeetSettingsTabAvatar webmeetAvatarSettingsSectionTitle" role="tabpanel"
                  data-settings-tab-panel="avatar" hidden>
-            <div class="webmeet-settings-section-header">
-                <div>
-                    <h3 id="webmeetAvatarSettingsSectionTitle">Avatar</h3>
-                    <p>WebMeet can use a browser-only avatar override without changing your Explorer profile avatar.</p>
-                </div>
-            </div>
             <div class="webmeet-settings-grid webmeet-settings-grid-avatar">
                 <section class="webmeet-media-settings-group webmeet-media-settings-group-wide" aria-label="WebMeet avatar">
                     <div class="webmeet-avatar-settings-layout">
-                        <div class="webmeet-avatar-preview" id="webmeetAvatarPreview" aria-hidden="true"></div>
                         <div class="webmeet-avatar-settings-fields">
-                            <div class="webmeet-media-settings-row">
-                                <div class="webmeet-setting-label">
-                                    <label for="webmeetAvatarPresetSelect">State preset</label>
-                                    <span class="webmeet-setting-help-control">
+                            <div class="webmeet-avatar-settings-grid">
+                                <div class="webmeet-media-settings-row">
+                                    <div class="webmeet-setting-label">
+                                        <label for="webmeetAvatarPresetSelect">State preset</label>
+                                        <span class="webmeet-setting-help-control">
                                         <button type="button" class="webmeet-setting-help-button" aria-label="About WebMeet avatar state" aria-describedby="webmeetSettingHelpAvatarState">i</button>
                                         <span id="webmeetSettingHelpAvatarState" role="tooltip" class="webmeet-setting-help-tooltip">Quickly fills the state fields below. The full override is stored only in this browser.</span>
                                     </span>
+                                    </div>
+                                    <select id="webmeetAvatarPresetSelect" class="form-input"></select>
                                 </div>
-                                <select id="webmeetAvatarPresetSelect" class="form-input"></select>
-                            </div>
-                            <div class="webmeet-avatar-settings-grid">
                                 <div class="webmeet-media-settings-row">
                                     <label for="webmeetAvatarStyle">Style</label>
                                     <select id="webmeetAvatarStyle" class="form-input"></select>
@@ -349,10 +342,7 @@
                                     <label for="webmeetAvatarComplexity">Complexity</label>
                                     <select id="webmeetAvatarComplexity" class="form-input"></select>
                                 </div>
-                                <div class="webmeet-media-settings-row">
-                                    <label for="webmeetAvatarSize">Size</label>
-                                    <input id="webmeetAvatarSize" class="form-input" type="number" min="24" max="160" step="4">
-                                </div>
+
                                 <div class="webmeet-media-settings-row">
                                     <label for="webmeetAvatarEmotion">Emotion</label>
                                     <select id="webmeetAvatarEmotion" class="form-input"></select>
@@ -378,42 +368,49 @@
                                     <select id="webmeetAvatarAssetMode" class="form-input"></select>
                                 </div>
                             </div>
-                            <div class="webmeet-media-settings-row">
-                                <label for="webmeetAvatarThought">Thought text</label>
-                                <input id="webmeetAvatarThought" class="form-input" type="text" autocomplete="off">
+                            <div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetAvatarSize">Size</label>
+                                    <input id="webmeetAvatarSize" class="form-input" type="number" min="24" max="160" step="4">
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetAvatarThought">Thought text</label>
+                                    <input id="webmeetAvatarThought" class="form-input" type="text" autocomplete="off">
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetAvatarSrc">SVG src</label>
+                                    <input id="webmeetAvatarSrc" class="form-input" type="text" autocomplete="off">
+                                </div>
+                                <div class="webmeet-media-settings-row">
+                                    <label for="webmeetAvatarPackSrc">Pack manifest</label>
+                                    <input id="webmeetAvatarPackSrc" class="form-input" type="text" autocomplete="off">
+                                </div>
+                                <div class="webmeet-media-settings-flags">
+                                    <label class="webmeet-media-flag">
+                                        <input type="checkbox" id="webmeetAvatarGenerated">
+                                        <span>Generated</span>
+                                    </label>
+                                    <label class="webmeet-media-flag">
+                                        <input type="checkbox" id="webmeetAvatarAnimated">
+                                        <span>Animated</span>
+                                    </label>
+                                    <label class="webmeet-media-flag">
+                                        <input type="checkbox" id="webmeetAvatarListen">
+                                        <span>Listen</span>
+                                    </label>
+                                </div>
                             </div>
-                            <div class="webmeet-media-settings-row">
-                                <label for="webmeetAvatarSrc">SVG src</label>
-                                <input id="webmeetAvatarSrc" class="form-input" type="text" autocomplete="off">
-                            </div>
-                            <div class="webmeet-media-settings-row">
-                                <label for="webmeetAvatarPackSrc">Pack manifest</label>
-                                <input id="webmeetAvatarPackSrc" class="form-input" type="text" autocomplete="off">
-                            </div>
-                            <div class="webmeet-media-settings-flags">
-                                <label class="webmeet-media-flag">
-                                    <input type="checkbox" id="webmeetAvatarGenerated">
-                                    <span>Generated</span>
-                                </label>
-                                <label class="webmeet-media-flag">
-                                    <input type="checkbox" id="webmeetAvatarAnimated">
-                                    <span>Animated</span>
-                                </label>
-                                <label class="webmeet-media-flag">
-                                    <input type="checkbox" id="webmeetAvatarListen">
-                                    <span>Listen</span>
-                                </label>
-                            </div>
-                            <div class="webmeet-avatar-status" id="webmeetAvatarSourceLabel" role="status" aria-live="polite">Profile avatar</div>
-                            <div class="webmeet-avatar-settings-actions">
-                                <button type="button" class="general-button subtle-button" data-local-action="resetWebMeetAvatarOverride">
-                                    Reset to profile
-                                </button>
-                                <button type="button" class="general-button" data-local-action="applyWebMeetAvatarSettings">
-                                    Apply avatar
-                                </button>
-                            </div>
+                            <div class="webmeet-avatar-preview" id="webmeetAvatarPreview" aria-hidden="true"></div>
                         </div>
+
+                    </div>
+                    <div class="webmeet-avatar-settings-actions">
+                        <button type="button" class="general-button subtle-button" data-local-action="resetWebMeetAvatarOverride">
+                            Reset to profile
+                        </button>
+                        <button type="button" class="general-button" data-local-action="applyWebMeetAvatarSettings">
+                            Apply avatar
+                        </button>
                     </div>
                 </section>
             </div>

@@ -12,6 +12,7 @@ import {
     loadWebMeetAvatarOverride,
     saveWebMeetAvatarOverride
 } from '../services/webmeet-avatar-override.js';
+import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
 
@@ -130,7 +131,7 @@ export const meetingActionMethods = {
             if (String(this.state.session?.meeting?.id || '').trim() === String(meeting.id || '').trim()) {
                 try {
                     await this.publishRealtimePayload({
-                        type: 'meeting.renamed',
+                        type: WEBMEET_EVENT_TYPES.MEETING_RENAMED,
                         meetingId: meeting.id,
                         title: updated.title,
                         updatedAt: updated.updatedAt || new Date().toISOString()
@@ -385,6 +386,13 @@ export const meetingActionMethods = {
             || this.currentActor?.id
             || ''
         ).trim();
+        this.setRoomAvatar?.(participantId, avatarProjection);
+        this.applyRealtimeParticipantAvatar?.({
+            meetingId,
+            participantId,
+            userId,
+            profileAvatar: avatarProjection
+        });
         const localParticipant = this.room?.localParticipant || null;
         if (localParticipant && typeof localParticipant.setAttributes === 'function') {
             try {
@@ -406,7 +414,7 @@ export const meetingActionMethods = {
             }
         }
         await this.publishRealtimePayload({
-            type: 'participant.avatar.updated',
+            type: WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED,
             meetingId,
             participantId,
             userId,
@@ -415,12 +423,18 @@ export const meetingActionMethods = {
     },
 
     getCurrentPublishedParticipantAvatarState() {
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        const roomAvatars = this.state.roomAvatarsByParticipantId && typeof this.state.roomAvatarsByParticipantId === 'object'
+            ? this.state.roomAvatarsByParticipantId
+            : {};
         const localAttributes = this.room?.localParticipant?.attributes && typeof this.room.localParticipant.attributes === 'object'
             ? this.room.localParticipant.attributes
             : {};
-        let profileAvatar = null;
+        let profileAvatar = participantId && roomAvatars[participantId] && typeof roomAvatars[participantId] === 'object'
+            ? roomAvatars[participantId]
+            : null;
         const rawProfileAvatar = String(localAttributes.webmeetProfileAvatar || '').trim();
-        if (rawProfileAvatar) {
+        if (!profileAvatar && rawProfileAvatar) {
             try {
                 const parsed = JSON.parse(rawProfileAvatar);
                 if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -429,9 +443,6 @@ export const meetingActionMethods = {
             } catch (_) {
                 profileAvatar = null;
             }
-        }
-        if (!profileAvatar && this.state.session?.participant?.profileAvatar && typeof this.state.session.participant.profileAvatar === 'object') {
-            profileAvatar = this.state.session.participant.profileAvatar;
         }
         if (!profileAvatar) return null;
         const userId = String(
@@ -478,29 +489,6 @@ export const meetingActionMethods = {
                     : {})
             }
             : (updated?.profileAvatar || null);
-        if (profileAvatar && this.state.session?.participant) {
-            this.state.session.participant.profileAvatar = profileAvatar;
-        }
-        const existing = Array.isArray(this.state.participants) ? this.state.participants : [];
-        let matchedParticipant = false;
-        this.state.participants = existing.map((entry) => {
-            const matched = String(entry?.id || '').trim() === participantId;
-            if (matched) {
-                matchedParticipant = true;
-            }
-            return matched
-                ? { ...entry, profileAvatar }
-                : entry;
-        });
-        if (!matchedParticipant && this.state.session?.participant) {
-            this.state.participants = [
-                ...this.state.participants,
-                {
-                    ...this.state.session.participant,
-                    profileAvatar
-                }
-            ];
-        }
         const userId = String(
             sourceAvatar?.user?.id
             || profileAvatar?.config?.agentId?.replace(/^profile:/, '')
@@ -617,7 +605,7 @@ export const meetingActionMethods = {
             }
             try {
                 await this.publishRealtimePayload({
-                    type: 'agent.dispatched',
+                    type: WEBMEET_EVENT_TYPES.AGENT_DISPATCHED,
                     meetingId: meeting.id,
                     agentId: agent?.id || '',
                     agentType,
@@ -667,7 +655,7 @@ export const meetingActionMethods = {
             }
             try {
                 await this.publishRealtimePayload({
-                    type: 'agent.detached',
+                    type: WEBMEET_EVENT_TYPES.AGENT_DETACHED,
                     meetingId: meeting.id,
                     agentId: id,
                     agentType: stoppedAgent?.agentType || '',

@@ -267,7 +267,8 @@ test('applyRealtimeParticipantAvatar updates remote avatar size by participant o
     });
 
     assert.equal(changed, true);
-    assert.equal(context.state.participants[0].profileAvatar.config.size, '96');
+    assert.equal(context.state.participants[0].profileAvatar.config.size, '48');
+    assert.equal(context.state.roomAvatarsByParticipantId['participant-remote'].config.size, '96');
     assert.equal(appliedViews[0].avatarConfig.size, '96');
 });
 
@@ -329,7 +330,8 @@ test('applyRealtimeParticipantAvatar applies the latest LiveKit payload directly
     });
 
     assert.equal(changed, true);
-    assert.equal(context.state.participants[0].profileAvatar.config.size, '48');
+    assert.equal(context.state.participants[0].profileAvatar.config.size, '96');
+    assert.equal(context.state.roomAvatarsByParticipantId['participant-remote'].config.size, '48');
     assert.equal(appliedViews[0].avatarConfig.size, '48');
 });
 
@@ -672,6 +674,9 @@ test('syncParticipantsFromRoom preserves the current remote room avatar during r
                 },
                 profileAvatar: freshRealtimeAvatar
             }],
+            roomAvatarsByParticipantId: {
+                'participant-remote': freshRealtimeAvatar
+            },
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -783,6 +788,9 @@ test('syncParticipantsFromRoom preserves the current local room avatar during ro
                 },
                 profileAvatar: freshLocalAvatar
             }],
+            roomAvatarsByParticipantId: {
+                'participant-local': freshLocalAvatar
+            },
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -864,6 +872,9 @@ test('syncParticipantsFromRoom preserves a guest local avatar from the active se
                 }
             },
             participants: [],
+            roomAvatarsByParticipantId: {
+                'participant-guest': guestAvatar
+            },
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -948,6 +959,9 @@ test('syncParticipantsFromRoom restores a guest local avatar when the existing l
                 displayName: 'Guest Beta',
                 attributes: {}
             }],
+            roomAvatarsByParticipantId: {
+                'participant-guest': guestAvatar
+            },
             meetingParticipantsById: {}
         },
         selectedMeeting: { id: 'meeting-1' },
@@ -1293,7 +1307,7 @@ test('applyRealtimeParticipantAvatar marks room avatar as projected state', () =
     assert.equal(changed, true);
     assert.equal(view.avatarSource, 'projected');
     assert.equal(view.avatarConfig.style, 'sketch');
-    assert.equal(context.state.participants[0].profileAvatar.config.size, '72');
-    assert.equal(context.state.participants[0].attributes.webmeetProfileAvatar, JSON.stringify(profileAvatar));
-    assert.equal(context.state.session.participant.profileAvatar.config.style, 'sketch');
+    assert.equal(context.state.participants[0].profileAvatar, undefined);
+    assert.equal(context.state.participants[0].attributes.webmeetProfileAvatar, undefined);
+    assert.equal(context.state.roomAvatarsByParticipantId['participant-local'].config.size, '72');
 });

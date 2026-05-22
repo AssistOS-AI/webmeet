@@ -1,24 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 
 import { getWorkspacePaths } from './workspacePaths.mjs';
+import { getWebMeetEventCreatedAt, getWebMeetEventId } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
 
 function nowIso() {
     return new Date().toISOString();
-}
-
-function randomId(prefix) {
-    return `${prefix}_${crypto.randomUUID()}`;
 }
 
 function ensureEventDirs(paths) {
     fs.mkdirSync(paths.eventsDir, { recursive: true });
 }
 
-function writeJson(filePath, value) {
+function writeEvent(filePath, value) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+    fs.writeFileSync(filePath, `${String(value || '').trim()}\n`);
 }
 
 export function createQueueContext(startDir = '') {
@@ -29,16 +25,20 @@ export function createQueueContext(startDir = '') {
 
 export function appendEventLog(startDir, meetingId, event) {
     const paths = createQueueContext(startDir);
-    const eventId = String(event?.id || randomId('event')).trim();
-    const filePath = path.join(paths.eventsDir, meetingId, `${event.createdAt || nowIso()}-${eventId}.json`.replaceAll(':', '-'));
-    writeJson(filePath, event);
+    const encodedEvent = String(event || '').trim();
+    const eventId = getWebMeetEventId(encodedEvent);
+    const createdAt = getWebMeetEventCreatedAt(encodedEvent) || nowIso();
+    const filePath = path.join(paths.eventsDir, meetingId, `${createdAt}-${eventId}.event`.replaceAll(':', '-'));
+    writeEvent(filePath, encodedEvent);
 }
 
 export function appendWorkspaceEventLog(startDir, workspaceId, event) {
     const paths = createQueueContext(startDir);
-    const eventId = String(event?.id || randomId('event')).trim();
+    const encodedEvent = String(event || '').trim();
+    const eventId = getWebMeetEventId(encodedEvent);
     const safeWorkspaceId = String(workspaceId || '').trim();
     if (!safeWorkspaceId) return;
-    const filePath = path.join(paths.eventsDir, 'workspaces', safeWorkspaceId, `${event.createdAt || nowIso()}-${eventId}.json`.replaceAll(':', '-'));
-    writeJson(filePath, event);
+    const createdAt = getWebMeetEventCreatedAt(encodedEvent) || nowIso();
+    const filePath = path.join(paths.eventsDir, 'workspaces', safeWorkspaceId, `${createdAt}-${eventId}.event`.replaceAll(':', '-'));
+    writeEvent(filePath, encodedEvent);
 }

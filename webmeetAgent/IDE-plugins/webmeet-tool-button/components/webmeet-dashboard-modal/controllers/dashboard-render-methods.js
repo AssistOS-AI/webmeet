@@ -158,7 +158,7 @@ export const dashboardRenderMethods = {
             if (this.avatarPresetSelect.innerHTML !== options) {
                 this.avatarPresetSelect.innerHTML = options;
             }
-            this.avatarPresetSelect.value = '';
+           // this.avatarPresetSelect.value = '';
         }
         const config = draft?.config || currentOverride?.config || this.state.session?.participant?.profileAvatar?.config || {};
         const syncSelect = (element, values, value, labels = {}) => {

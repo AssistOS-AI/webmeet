@@ -6,6 +6,12 @@ import { getWorkspacePaths } from './workspacePaths.mjs';
 import { resolveVarValue } from './secretVars.mjs';
 import { createWrappedDek, decryptPayload, deriveMasterKey, encryptPayload, unwrapDek } from './webmeetCrypto.mjs';
 import { appendEventLog, appendWorkspaceEventLog } from './webmeetQueue.mjs';
+import {
+    WEBMEET_EVENT_TYPES,
+    buildWebMeetEvent,
+    getWebMeetEventId,
+    isWorkspacePersistentWebMeetEvent
+} from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
 
 const MASTER_KEY_VAR = 'PLOINKY_WEBMEET_MASTER_KEY';
 const RETENTION_DAYS_VAR = 'PLOINKY_WEBMEET_RETENTION_DAYS';
@@ -23,16 +29,6 @@ const ACTIVE_RECORDING_STATUSES = new Set([
     'EGRESS_STARTING',
     'EGRESS_ACTIVE',
     'EGRESS_LIMIT_REACHED'
-]);
-const WORKSPACE_EVENT_TYPES = new Set([
-    'meeting.renamed',
-    'participant.joined',
-    'participant.left',
-    'participant.timed_out',
-    'participant.avatar.updated',
-    'profile.avatar.updated',
-    'agent.dispatched',
-    'agent.detached'
 ]);
 const pendingEmptyRoomAgentDetachments = new Set();
 
@@ -218,8 +214,7 @@ function createMeetingPayload() {
         recordings: [],
         artifacts: [],
         tasks: [],
-        decisions: [],
-        events: []
+        decisions: []
     };
 }
 
@@ -297,21 +292,17 @@ function mutateMeeting(context, meetingId, mutator) {
     return { record, payload, result };
 }
 
-function addMeetingEvent(payload, type, data = {}) {
-    const event = {
-        id: randomId('event'),
-        type,
-        payload: data,
-        createdAt: nowIso()
-    };
-    payload.events.push(event);
-    return event;
+function createMeetingEvent(meetingId, type, data = {}) {
+    return buildWebMeetEvent(meetingId, type, {
+        ...data,
+        meetingId: String(data?.meetingId || meetingId || '').trim()
+    });
 }
 
-function recordMeetingEvent(context, meetingId, payload, type, data = {}) {
-    const event = addMeetingEvent(payload, type, data);
+function recordMeetingEvent(context, meetingId, _payload, type, data = {}) {
+    const event = createMeetingEvent(meetingId, type, data);
     appendEventLog(context.workspaceRoot, meetingId, event);
-    if (WORKSPACE_EVENT_TYPES.has(type)) {
+    if (isWorkspacePersistentWebMeetEvent(type)) {
         try {
             const record = loadMeetingRecord(context, meetingId);
             if (record?.workspaceId) {
@@ -324,17 +315,11 @@ function recordMeetingEvent(context, meetingId, payload, type, data = {}) {
     return event;
 }
 
-function createStandaloneEvent(type, data = {}) {
-    return {
-        id: randomId('event'),
-        type,
-        payload: data,
-        createdAt: nowIso()
-    };
-}
-
 function recordWorkspaceEvent(context, workspaceId, type, data = {}) {
-    const event = createStandaloneEvent(type, data);
+    const event = buildWebMeetEvent(workspaceId, type, {
+        ...data,
+        workspaceId: String(data?.workspaceId || workspaceId || '').trim()
+    });
     appendWorkspaceEventLog(context.workspaceRoot, workspaceId, event);
     return event;
 }
@@ -367,7 +352,7 @@ function markActiveAgentsDetached(context, meetingId, reason) {
                 detachReason: reason
             });
             detachedAgents.push({ ...agent });
-            recordMeetingEvent(context, meetingId, payload, 'agent.detached', {
+            recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
                 meetingId,
                 agentId: agent.id || '',
                 agentType: agent.agentType || '',
@@ -440,7 +425,7 @@ function cleanupStaleMembers(context, meetingId, payload) {
         for (const member of removed) {
             const participantId = String(member?.id || '').trim();
             if (!participantId) continue;
-            recordMeetingEvent(context, meetingId, payload, 'participant.timed_out', {
+            recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT, {
                 meetingId,
                 participantId
             });
@@ -949,7 +934,7 @@ function syncPayloadMembersToLiveKitParticipants(context, record, payload, parti
         for (const member of currentMembers) {
             const participantId = String(member?.id || '').trim();
             if (!participantId || nextIds.has(participantId)) continue;
-            recordMeetingEvent(context, record.meetingId, payload, 'participant.left', {
+            recordMeetingEvent(context, record.meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, {
                 meetingId: record.meetingId,
                 participantId,
                 reason: 'livekit_reconcile'
@@ -958,7 +943,7 @@ function syncPayloadMembersToLiveKitParticipants(context, record, payload, parti
         for (const member of participants) {
             const participantId = String(member?.id || '').trim();
             if (!participantId || currentIds.has(participantId)) continue;
-            recordMeetingEvent(context, record.meetingId, payload, 'participant.joined', {
+            recordMeetingEvent(context, record.meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, {
                 meetingId: record.meetingId,
                 participantId,
                 source: 'livekit_reconcile'
@@ -1080,18 +1065,18 @@ export function listMeetingEvents(context, meetingId, { afterId = '' } = {}) {
     const afterEventId = String(afterId || '').trim();
     let foundAfter = !afterEventId;
     return fs.readdirSync(eventsDir)
-        .filter((name) => name.endsWith('.json'))
+        .filter((name) => name.endsWith('.event'))
         .sort()
         .map((name) => {
             try {
-                return readJsonFile(path.join(eventsDir, name));
+                return fs.readFileSync(path.join(eventsDir, name), 'utf8').trim();
             } catch (_) {
                 return null;
             }
         })
         .filter(Boolean)
         .filter((event) => {
-            const eventId = String(event?.id || '').trim();
+            const eventId = getWebMeetEventId(event);
             if (!afterEventId) return true;
             if (foundAfter) return true;
             if (eventId === afterEventId) {
@@ -1099,7 +1084,7 @@ export function listMeetingEvents(context, meetingId, { afterId = '' } = {}) {
             }
             return false;
         })
-        .filter((event) => String(event?.id || '').trim() !== afterEventId);
+        .filter((event) => getWebMeetEventId(event) !== afterEventId);
 }
 
 export function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {}) {
@@ -1110,18 +1095,18 @@ export function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {})
     const afterEventId = String(afterId || '').trim();
     let foundAfter = !afterEventId;
     return fs.readdirSync(eventsDir)
-        .filter((name) => name.endsWith('.json'))
+        .filter((name) => name.endsWith('.event'))
         .sort()
         .map((name) => {
             try {
-                return readJsonFile(path.join(eventsDir, name));
+                return fs.readFileSync(path.join(eventsDir, name), 'utf8').trim();
             } catch (_) {
                 return null;
             }
         })
         .filter(Boolean)
         .filter((event) => {
-            const eventId = String(event?.id || '').trim();
+            const eventId = getWebMeetEventId(event);
             if (!afterEventId) return true;
             if (foundAfter) return true;
             if (eventId === afterEventId) {
@@ -1129,7 +1114,7 @@ export function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {})
             }
             return false;
         })
-        .filter((event) => String(event?.id || '').trim() !== afterEventId);
+        .filter((event) => getWebMeetEventId(event) !== afterEventId);
 }
 
 export function recordProfileAvatarUpdated(context, {
@@ -1150,7 +1135,7 @@ export function recordProfileAvatarUpdated(context, {
     if (!isAdminAuthInfo(authInfo) && normalizedAuth.id && normalizedAuth.id !== targetUserId) {
         throw new Error('Access denied: cannot publish another user profile avatar update.');
     }
-    return recordWorkspaceEvent(context, targetWorkspaceId, 'profile.avatar.updated', {
+    return recordWorkspaceEvent(context, targetWorkspaceId, WEBMEET_EVENT_TYPES.PROFILE_AVATAR_UPDATED, {
         workspaceId: targetWorkspaceId,
         userId: targetUserId
     });
@@ -1260,7 +1245,7 @@ function createMeetingRecord(context, effectiveWorkspaceId, title, roomType = 't
     const masterKey = ensureMasterKey(context.workspaceRoot);
     const { wrapped, dek } = createWrappedDek(masterKey);
     const payload = createMeetingPayload();
-    recordMeetingEvent(context, meetingId, payload, 'meeting.created', { meetingId, roomType });
+    recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.MEETING_CREATED, { meetingId, roomType });
 
     const isGuestRoom = roomType === 'guest';
     const guestToken = isGuestRoom ? crypto.randomUUID() : null;
@@ -1337,7 +1322,7 @@ export function updateMeetingTitle(context, { meetingId, title, authInfo = null 
     let meeting = null;
     mutateMeeting(context, meetingId, (record, payload) => {
         record.title = nextTitle;
-        recordMeetingEvent(context, meetingId, payload, 'meeting.renamed', {
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.MEETING_RENAMED, {
             meetingId,
             title: nextTitle
         });
@@ -1366,8 +1351,9 @@ export function createMeeting(context, { workspaceId, title, roomType = 'team', 
         createdAt: record.createdAt,
         closedAt: record.closedAt
     };
-    recordWorkspaceEvent(context, effectiveWorkspaceId, 'meeting.created', {
+    recordWorkspaceEvent(context, effectiveWorkspaceId, WEBMEET_EVENT_TYPES.MEETING_CREATED, {
         workspaceId: effectiveWorkspaceId,
+        meetingId: meeting.id,
         meeting
     });
     return meeting;
@@ -1401,7 +1387,7 @@ export function joinGuestMeeting(context, { meetingId, guestToken, displayName, 
             participant.guest = true;
             participant.pendingLiveKit = true;
         }
-        recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participantIdentity, guest: true });
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participantIdentity, guest: true });
     });
     const rtcConfig = buildRtcConfig(context);
 
@@ -1517,7 +1503,7 @@ export function updateGuestMeetingParticipantAvatar(context, {
     mutateMeeting(context, targetMeetingId, (_record, payload) => {
         assertGuestParticipant(payload, targetParticipantId);
         profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${targetParticipantId}`);
-        recordMeetingEvent(context, targetMeetingId, payload, 'participant.avatar.updated', {
+        recordMeetingEvent(context, targetMeetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_UPDATED, {
             meetingId: targetMeetingId,
             participantId: targetParticipantId,
             userId: ''
@@ -1558,7 +1544,7 @@ export function joinMeeting(context, { meetingId, displayName, participantId, av
                 pendingLiveKit: true
             };
             payload.members.push(participant);
-            recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participant.id });
+            recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participant.id });
         } else {
             participant.displayName = effectiveDisplayName;
             if (!participant.joinedAt) {
@@ -1643,7 +1629,7 @@ export function updateMeetingParticipantAvatar(context, {
             };
         }
         profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${userId}`);
-        recordMeetingEvent(context, targetMeetingId, payload, 'participant.avatar.updated', {
+        recordMeetingEvent(context, targetMeetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_UPDATED, {
             meetingId: targetMeetingId,
             participantId: targetParticipantId,
             userId
@@ -1675,7 +1661,7 @@ export async function leaveMeeting(context, { meetingId, participantId }) {
         });
         payload.members = nextMembers;
         if (removedParticipant) {
-            recordMeetingEvent(context, meetingId, payload, 'participant.left', {
+            recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, {
                 meetingId,
                 participantId: targetParticipantId
             });
@@ -1739,7 +1725,7 @@ export async function appendMeetingChat(context, { meetingId, authorId, authorNa
             chatMessage.metadata = metadata;
         }
         payload.chatMessages.push(chatMessage);
-        recordMeetingEvent(context, meetingId, payload, 'chat.message.created', { meetingId, chatMessageId: chatMessage.id });
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId, chatMessageId: chatMessage.id });
     });
     return { message: chatMessage };
 }
@@ -1775,7 +1761,7 @@ export async function appendMeetingTranscript(context, { meetingId, speakerId, s
             createdAt
         };
         payload.transcriptSegments.push(segment);
-        recordMeetingEvent(context, meetingId, payload, 'transcript.updated', { meetingId, segmentId: segment.id });
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.TRANSCRIPT_UPDATED, { meetingId, segmentId: segment.id });
     });
     return segment;
 }
@@ -1905,7 +1891,7 @@ export async function attachMeetingAgent(context, { meetingId, agentType, mode, 
         if (!targetAgent) {
             payload.agents.push(agent);
         }
-        recordMeetingEvent(context, meetingId, payload, 'agent.dispatched', {
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
             meetingId,
             agentId: agent.id,
             agentType,
@@ -1956,7 +1942,7 @@ export async function detachMeetingAgent(context, { meetingId, agentId, authInfo
             updatedAt: nowIso()
         });
         detachedAgent = { ...targetAgent };
-        recordMeetingEvent(context, meetingId, payload, 'agent.detached', {
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
             meetingId,
             agentId: targetAgentId,
             agentType: targetAgent.agentType || '',
@@ -1999,7 +1985,7 @@ export async function startMeetingRecording(context, meetingId) {
             stoppedAt: null
         };
         payload.recordings.push(recording);
-        recordMeetingEvent(context, meetingId, payload, 'recording.started', { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.RECORDING_STARTED, { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
     });
     return recording;
 }
@@ -2039,8 +2025,8 @@ export async function stopMeetingRecording(context, meetingId) {
             createdAt: nowIso()
         };
         payload.artifacts.push(artifact);
-        recordMeetingEvent(context, meetingId, payload, 'recording.stopped', { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
-        recordMeetingEvent(context, meetingId, payload, 'artifact.created', { meetingId, artifactId: artifact.id });
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.RECORDING_STOPPED, { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
+        recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, { meetingId, artifactId: artifact.id });
     });
     return { recording, artifact };
 }

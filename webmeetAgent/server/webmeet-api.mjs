@@ -37,6 +37,7 @@ import {
     updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantAvatar
 } from '../lib/webmeetStore.mjs';
+import { parseWebMeetEvent } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
 
 const PORT = Number.parseInt(process.env.WEBMEET_API_PORT || '8791', 10);
 const SSE_KEEPALIVE_MS = 15_000;
@@ -101,11 +102,12 @@ function assertInternalAgentAccess(req) {
 }
 
 function sseWrite(res, event) {
-    const id = String(event?.id || '').trim();
-    const type = String(event?.type || 'message').trim() || 'message';
+    const parsed = parseWebMeetEvent(event);
+    const id = parsed.id;
+    const type = parsed.type || 'message';
     if (id) res.write(`id: ${id}\n`);
     res.write(`event: ${type}\n`);
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    res.write(`data: ${String(event || '').trim()}\n\n`);
 }
 
 function getLastEventId(req, url) {

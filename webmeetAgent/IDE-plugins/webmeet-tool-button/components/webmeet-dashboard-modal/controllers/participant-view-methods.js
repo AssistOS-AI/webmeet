@@ -24,86 +24,134 @@ function parseLiveKitProfileAvatar(attributes = {}) {
     }
 }
 
-function withProjectedAvatarAttributes(attributes = {}, profileAvatar = null, userId = '') {
-    const nextAttributes = attributes && typeof attributes === 'object'
-        ? { ...attributes }
-        : {};
-    const normalizedUserId = String(userId || '').trim();
-    if (normalizedUserId) {
-        nextAttributes.webmeetUserId = normalizedUserId;
-        nextAttributes.userId = normalizedUserId;
-        nextAttributes.workspaceUserId = normalizedUserId;
-        nextAttributes.ploinkyUserId = normalizedUserId;
-    }
-    if (profileAvatar && typeof profileAvatar === 'object') {
-        nextAttributes.webmeetProfileAvatar = JSON.stringify(profileAvatar);
-    }
-    return nextAttributes;
+function normalizeProfileAvatar(profileAvatar = null) {
+    return profileAvatar && typeof profileAvatar === 'object' && !Array.isArray(profileAvatar)
+        ? profileAvatar
+        : null;
 }
 
-function resolveParticipantProfileAvatar(storedParticipant = null, liveKitAttributes = {}, participantKind = 'remote') {
-    const storedProfileAvatar = storedParticipant?.profileAvatar && typeof storedParticipant.profileAvatar === 'object'
-        ? storedParticipant.profileAvatar
+function ensureRoomAvatarMap(owner) {
+    if (!owner.state || typeof owner.state !== 'object') {
+        owner.state = {};
+    }
+    if (
+        !owner.state.roomAvatarsByParticipantId
+        || typeof owner.state.roomAvatarsByParticipantId !== 'object'
+        || Array.isArray(owner.state.roomAvatarsByParticipantId)
+    ) {
+        owner.state.roomAvatarsByParticipantId = {};
+    }
+    return owner.state.roomAvatarsByParticipantId;
+}
+
+function avatarSignature(profileAvatar = null) {
+    try {
+        return JSON.stringify(profileAvatar || null);
+    } catch (_) {
+        return '';
+    }
+}
+
+function applyProfileAvatarToView(owner, view, profileAvatar) {
+    const avatar = normalizeProfileAvatar(profileAvatar);
+    if (!view || !avatar) return false;
+    view.avatarEnabled = avatar.enabled !== false;
+    view.avatarConfig = view.avatarEnabled && avatar.config && typeof avatar.config === 'object'
+        ? avatar.config
         : null;
-    const liveKitProfileAvatar = parseLiveKitProfileAvatar(liveKitAttributes);
-    const hasConnectedRoomProjection = storedParticipant
-        && (storedParticipant.kind === 'local' || storedParticipant.kind === 'remote');
-    if (hasConnectedRoomProjection) {
-        return storedProfileAvatar || liveKitProfileAvatar;
-    }
-    if (liveKitProfileAvatar) {
-        return liveKitProfileAvatar;
-    }
-    return participantKind === 'local' ? storedProfileAvatar : null;
+    view.avatarFallbackLetter = avatar.fallbackLetter || view.avatarFallbackLetter || '';
+    view.avatarResolved = true;
+    view.avatarSource = 'projected';
+    owner.applyParticipantViewState(view);
+    return true;
+}
+
+function setRoomAvatarFor(owner, participantId, profileAvatar) {
+    const id = String(participantId || '').trim();
+    const avatar = normalizeProfileAvatar(profileAvatar);
+    if (!id || !avatar) return false;
+    const roomAvatars = ensureRoomAvatarMap(owner);
+    const previous = roomAvatars[id] || null;
+    roomAvatars[id] = avatar;
+    return avatarSignature(previous) !== avatarSignature(avatar);
+}
+
+function getRoomAvatarFor(owner, participantId) {
+    const id = String(participantId || '').trim();
+    if (!id) return null;
+    return normalizeProfileAvatar(ensureRoomAvatarMap(owner)[id]);
+}
+
+function clearRoomAvatarFor(owner, participantId) {
+    const id = String(participantId || '').trim();
+    if (!id) return false;
+    const roomAvatars = ensureRoomAvatarMap(owner);
+    if (!Object.prototype.hasOwnProperty.call(roomAvatars, id)) return false;
+    delete roomAvatars[id];
+    return true;
 }
 
 export const participantViewMethods = {
     getParticipantUserId: getParticipantUserIdFromParticipant,
 
+    setRoomAvatar(participantId, profileAvatar) {
+        return setRoomAvatarFor(this, participantId, profileAvatar);
+    },
+
+    getRoomAvatar(participantId) {
+        return getRoomAvatarFor(this, participantId);
+    },
+
+    clearRoomAvatar(participantId) {
+        return clearRoomAvatarFor(this, participantId);
+    },
+
     applyRealtimeParticipantAvatar(data = {}) {
         const participantId = String(data?.participantId || '').trim();
         const userId = String(data?.userId || '').trim();
-        const profileAvatar = data?.profileAvatar && typeof data.profileAvatar === 'object'
-            ? data.profileAvatar
-            : null;
+        const profileAvatar = normalizeProfileAvatar(data?.profileAvatar);
         if (!profileAvatar || (!participantId && !userId)) return false;
-        let changed = false;
-        this.state.participants = (Array.isArray(this.state.participants) ? this.state.participants : []).map((entry) => {
+
+        const matchedParticipantIds = new Set();
+        if (participantId) {
+            matchedParticipantIds.add(participantId);
+        }
+        for (const entry of Array.isArray(this.state.participants) ? this.state.participants : []) {
             const entryUserId = getParticipantUserIdFromParticipant(entry);
             const matches = (participantId && String(entry?.id || entry?.identity || '').trim() === participantId)
                 || (userId && entryUserId === userId);
-            if (!matches) return entry;
-            changed = true;
-            const nextAttributes = withProjectedAvatarAttributes(entry?.attributes, profileAvatar, userId || entryUserId);
-            return {
-                ...entry,
-                attributes: nextAttributes,
-                profileAvatar
-            };
-        });
+            if (matches) {
+                const id = String(entry?.id || entry?.identity || '').trim();
+                if (id) matchedParticipantIds.add(id);
+            }
+        }
         const sessionParticipantId = String(this.state.session?.participantIdentity || '').trim();
         const sessionUserId = String(this.currentActor?.id || this.state.session?.participant?.userId || '').trim();
         if (
-            this.state.session?.participant
+            sessionParticipantId
             && (
                 (participantId && sessionParticipantId === participantId)
                 || (userId && sessionUserId && sessionUserId === userId)
             )
         ) {
-            this.state.session.participant.profileAvatar = profileAvatar;
+            matchedParticipantIds.add(sessionParticipantId);
         }
         for (const view of this.participantLayoutController?.getViews?.() || []) {
             const viewUserId = String(view?.avatarUserId || '').trim();
             const matches = (participantId && String(view?.id || '').trim() === participantId)
                 || (userId && viewUserId === userId);
-            if (!matches) continue;
-            changed = true;
-            view.avatarEnabled = profileAvatar.enabled !== false;
-            view.avatarConfig = view.avatarEnabled ? profileAvatar.config || null : null;
-            view.avatarFallbackLetter = profileAvatar.fallbackLetter || view.avatarFallbackLetter || '';
-            view.avatarResolved = true;
-            view.avatarSource = 'projected';
-            this.applyParticipantViewState(view);
+            if (matches) {
+                const id = String(view?.id || '').trim();
+                if (id) matchedParticipantIds.add(id);
+            }
+        }
+        let changed = false;
+        for (const id of matchedParticipantIds) {
+            changed = setRoomAvatarFor(this, id, profileAvatar) || changed;
+            const view = this.participantLayoutController?.getParticipantView?.(id)
+                || (this.participantLayoutController?.getViews?.() || [])
+                    .find((entry) => String(entry?.id || '').trim() === id);
+            changed = applyProfileAvatarToView(this, view, profileAvatar) || changed;
         }
         return changed;
     },
@@ -287,18 +335,10 @@ export const participantViewMethods = {
             const storedAttributes = stored?.attributes && typeof stored.attributes === 'object'
                 ? stored.attributes
                 : {};
-            const hasConnectedRoomProjection = stored
-                && (stored.kind === 'local' || stored.kind === 'remote');
-            const {
-                webmeetProfileAvatar: storedProfileAvatarAttribute,
-                ...safeStoredAttributes
-            } = storedAttributes;
+            const { webmeetProfileAvatar: _storedProfileAvatarAttribute, ...safeStoredAttributes } = storedAttributes;
             const userId = String(stored?.userId || '').trim();
             return {
                 ...safeStoredAttributes,
-                ...(hasConnectedRoomProjection && storedProfileAvatarAttribute
-                    ? { webmeetProfileAvatar: storedProfileAvatarAttribute }
-                    : {}),
                 ...(userId ? {
                     webmeetUserId: userId,
                     userId,
@@ -336,10 +376,13 @@ export const participantViewMethods = {
                     ...(storedLocalParticipant.attributes && typeof storedLocalParticipant.attributes === 'object'
                         ? storedLocalParticipant.attributes
                         : {})
-                },
-                profileAvatar: storedLocalParticipant.profileAvatar || sessionParticipant?.profileAvatar || null
+                }
             }
             : (storedLocalParticipant || (sessionMatchesLocal ? sessionParticipant : null) || null);
+        const localLiveKitAvatar = parseLiveKitProfileAvatar(localAttributes);
+        if (localLiveKitAvatar && !getRoomAvatarFor(this, localIdentity)) {
+            setRoomAvatarFor(this, localIdentity, localLiveKitAvatar);
+        }
         const localUserId = String(
             localStoredParticipant?.userId
             || localAttributes.ploinkyUserId
@@ -355,7 +398,7 @@ export const participantViewMethods = {
             name: room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
             attributes: localAttributes,
             userId: localUserId,
-            profileAvatar: resolveParticipantProfileAvatar(localStoredParticipant, localAttributes, 'local'),
+            profileAvatar: getRoomAvatarFor(this, localIdentity),
             isSpeaking: isSpeaking(localIdentity),
             kind: 'local'
         }];
@@ -363,6 +406,10 @@ export const participantViewMethods = {
             const identity = participant.identity || '';
             const attributes = mergeStoredAttributes(identity, participant.attributes || {});
             const storedParticipant = storedById.get(String(identity || '').trim()) || null;
+            const liveKitAvatar = parseLiveKitProfileAvatar(attributes);
+            if (liveKitAvatar && !getRoomAvatarFor(this, identity)) {
+                setRoomAvatarFor(this, identity, liveKitAvatar);
+            }
             const userId = String(
                 storedParticipant?.userId
                 || attributes.ploinkyUserId
@@ -378,7 +425,7 @@ export const participantViewMethods = {
                 name: participant.name || participant.identity || 'Remote',
                 attributes,
                 userId,
-                profileAvatar: resolveParticipantProfileAvatar(storedParticipant, attributes, 'remote'),
+                profileAvatar: getRoomAvatarFor(this, identity),
                 isSpeaking: isSpeaking(identity),
                 kind: 'remote'
             });

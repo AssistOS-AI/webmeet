@@ -24,6 +24,7 @@ import {
     updateMeetingParticipantAvatar
 } from '../../lib/webmeetStore.mjs';
 import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-session-methods.js';
+import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
 
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
@@ -107,14 +108,16 @@ test('profile avatar updates are published as workspace events', () => {
         authInfo
     });
 
-    assert.equal(event.type, 'profile.avatar.updated');
-    assert.equal(event.payload.userId, 'local:admin');
+    const parsedEvent = parseWebMeetEvent(event);
+    assert.equal(parsedEvent.type, 'profile.avatar.updated');
+    assert.equal(parsedEvent.payload.userId, 'local:admin');
 
     const events = listWorkspaceEvents(context, workspace.id);
     assert.equal(events.length, 1);
-    assert.equal(events[0].type, 'profile.avatar.updated');
-    assert.equal(events[0].payload.workspaceId, workspace.id);
-    assert.equal(events[0].payload.userId, 'local:admin');
+    const parsedStoredEvent = parseWebMeetEvent(events[0]);
+    assert.equal(parsedStoredEvent.type, 'profile.avatar.updated');
+    assert.equal(parsedStoredEvent.payload.workspaceId, workspace.id);
+    assert.equal(parsedStoredEvent.payload.userId, 'local:admin');
 });
 
 test('authenticated event list tools are exposed through MCP config and dispatch', () => {
@@ -227,8 +230,8 @@ test('participant avatar update returns a sanitized live projection without pers
     const events = listWorkspaceEvents(context, workspace.id);
     assert.equal(
         events.some((event) => (
-            event.type === 'participant.avatar.updated'
-            && event.payload?.participantId === session.participantIdentity
+            parseWebMeetEvent(event).type === 'participant.avatar.updated'
+            && parseWebMeetEvent(event).payload?.participantId === session.participantIdentity
         )),
         true
     );
@@ -865,12 +868,12 @@ test('LiveKit data channel applies participant avatar changes without snapshot r
         ),
         'utf8'
     );
-    assert.match(roomSource, /emitWebMeetInternalEvent\('livekit', data/);
-    assert.match(dashboardSource, /source === 'livekit' && type === 'participant\.avatar\.updated'/);
+    assert.match(roomSource, /emitWebMeetInternalEvent\('livekit', text/);
+    assert.match(dashboardSource, /source === 'livekit' && type === WEBMEET_EVENT_TYPES\.PARTICIPANT_AVATAR_PROJECTED/);
     assert.match(dashboardSource, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
     const livekitAvatarBranch = dashboardSource.slice(
-        dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"),
-        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"))
+        dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"),
+        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"))
     );
     assert.doesNotMatch(livekitAvatarBranch, /syncParticipantsFromRoom/);
 });
@@ -888,7 +891,8 @@ test('LiveKit data channel publishes reliable payloads with current client API',
         dashboardSource.indexOf('\n    startWorkspaceEvents()', dashboardSource.indexOf('async publishRealtimePayload'))
     );
 
-    assert.match(method, /publishData\(encoder\.encode\(JSON\.stringify\(payload\)\), \{ reliable: true \}\)/);
+    assert.match(method, /const event = buildWebMeetEvent\(room, type, payload\)/);
+    assert.match(method, /publishData\(encoder\.encode\(event\), \{ reliable: true \}\)/);
     assert.doesNotMatch(method, /DataPacket_Kind/);
 });
 
@@ -901,8 +905,8 @@ test('LiveKit avatar updates are applied without reloading stale meeting details
         'utf8'
     );
     const livekitAvatarBranch = dashboardSource.slice(
-        dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"),
-        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.updated'"))
+        dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"),
+        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"))
     );
 
     assert.match(livekitAvatarBranch, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
@@ -969,7 +973,7 @@ test('participant avatar realtime payload includes sanitized avatar projection',
         'utf8'
     );
     const method = source.slice(source.indexOf('async publishCurrentParticipantAvatar'), source.indexOf('async leaveMeeting'));
-    assert.match(method, /type: 'participant\.avatar\.updated'/);
+    assert.match(method, /type: WEBMEET_EVENT_TYPES\.PARTICIPANT_AVATAR_PROJECTED/);
     assert.match(source, /async publishCurrentParticipantAvatarState/);
     assert.match(source, /async republishCurrentParticipantAvatarState/);
     assert.match(source, /getCurrentPublishedParticipantAvatarState/);
@@ -1005,7 +1009,8 @@ test('LiveKit avatar republish reuses the current live projection before recompu
     assert.doesNotMatch(stateMethod, /localViewAvatar/);
     assert.match(stateMethod, /resolveCurrentParticipantAvatarProjection\(\{ force: true \}\)/);
     assert.match(currentStateMethod, /localParticipant\.attributes/);
-    assert.match(currentStateMethod, /session\?\.participant\?\.profileAvatar/);
+    assert.match(currentStateMethod, /roomAvatarsByParticipantId/);
+    assert.doesNotMatch(currentStateMethod, /session\?\.participant\?\.profileAvatar/);
     assert.match(republishMethod, /getCurrentPublishedParticipantAvatarState/);
     assert.match(republishMethod, /publishCurrentParticipantAvatarState\(/);
     assert.doesNotMatch(republishMethod, /webmeet_participant_avatar_update/);
@@ -1041,8 +1046,8 @@ test('LiveKit avatar sync requests trigger live republish without backend writes
         'utf8'
     );
     const requestBranch = dashboardSource.slice(
-        dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.request'"),
-        dashboardSource.indexOf("\n        if (['participant.joined'", dashboardSource.indexOf("source === 'livekit' && type === 'participant.avatar.request'"))
+        dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST"),
+        dashboardSource.indexOf("\n        if ([WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED", dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST"))
     );
 
     assert.match(requestBranch, /requesterParticipantId/);

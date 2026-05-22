@@ -18,7 +18,7 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     background: var(--file-exp-panel);
     overflow: hidden;
     resize: both;
-   width: 100%;
+    width: 100%;
     height: calc(100% - 20px);
 }
 
@@ -930,13 +930,13 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 }
 
 .webmeet-media-settings {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 14px;
     position: absolute;
     top: 15px;
     left: 15px;
     right: 15px;
-    bottom: 15px;
     z-index: 9;
     padding: 16px;
     border: 1px solid var(--border);
@@ -1088,21 +1088,21 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 }
 
 .webmeet-avatar-settings-layout {
-    display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: 14px;
-    align-items: center;
 }
 
 .webmeet-avatar-preview {
-    width: 82px;
-    height: 82px;
+    width: 100px;
+    height: 100px;
     display: grid;
     place-items: center;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface);
     overflow: hidden;
+    margin: 84px auto;
 }
 
 .webmeet-avatar-preview axi-face {
@@ -1119,13 +1119,14 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 .webmeet-avatar-settings-fields {
     min-width: 0;
     display: grid;
-    gap: 10px;
+    gap: 25px;
+    grid-template-columns: 1fr 1fr 200px;
 }
 
 .webmeet-avatar-settings-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(120px, 1fr));
-    gap: 10px;
+    gap: 10px 25px;
 }
 
 .webmeet-avatar-status {
@@ -1137,6 +1138,7 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    justify-content: end;
 }
 
 .webmeet-setting-label {
@@ -1154,8 +1156,8 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 }
 
 .webmeet-setting-help-button {
-    width: 18px;
-    height: 18px;
+    width: 15px;
+    height: 15px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
