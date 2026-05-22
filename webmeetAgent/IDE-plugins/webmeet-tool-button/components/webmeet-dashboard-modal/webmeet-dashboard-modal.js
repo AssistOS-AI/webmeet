@@ -95,6 +95,10 @@ export class WebMeetDashboardModal {
             mediaSettingsPanelVisible: false,
             mediaSettingsApplying: false,
             mediaSettingsDraft: null,
+            activeSettingsTab: 'media',
+            webMeetAvatarOverride: null,
+            webMeetAvatarOverrideDraft: null,
+            avatarQuickMenuVisible: false,
             participantAudioSettings: {},
             participants: [],
             activeSpeakerIds: new Set(),
@@ -107,6 +111,7 @@ export class WebMeetDashboardModal {
         this.lastWorkspaceEventId = '';
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
+        this.avatarPreviewLoadPromise = null;
         this.handleParticipantAudioPreviewEvent = (event) => this.handleParticipantAudioPreview(event);
         this.handleAvatarSettingsUpdatedEvent = (event) => this.handleAvatarSettingsUpdated(event);
         this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
@@ -204,6 +209,8 @@ export class WebMeetDashboardModal {
             }
         });
         this.state.mediaSettings = this.loadMediaSettings();
+        this.state.webMeetAvatarOverride = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.mediaController.setSettings(this.state.mediaSettings);
 
         // Initialize new modular components
@@ -281,11 +288,15 @@ export class WebMeetDashboardModal {
                 'toggleCamera',
                 'toggleScreenShare',
                 'toggleVideoGridFullscreen',
-                'toggleFullscreen',
                 'toggleChatSidebar',
                 'toggleMediaSettings',
                 'closeMediaSettings',
+                'setSettingsTab',
                 'applyMediaSettings',
+                'applyWebMeetAvatarSettings',
+                'applyWebMeetAvatarPreset',
+                'resetWebMeetAvatarOverride',
+                'toggleAvatarQuickMenu',
                 'refreshMediaDevices',
                 'openParticipantAudioSettings',
                 'focusParticipantCard',
@@ -325,6 +336,14 @@ export class WebMeetDashboardModal {
     }
 
     handleClick = (event) => {
+        if (
+            this.state.avatarQuickMenuVisible
+            && !event.target?.closest?.('.webmeet-avatar-quick-action')
+        ) {
+            this.state.avatarQuickMenuVisible = false;
+            this.renderAvatarControls?.();
+        }
+
         const mobilePanelButton = event.target?.closest?.('[data-mobile-panel]');
         if (mobilePanelButton) {
             this.setMobilePanel(String(mobilePanelButton.dataset.mobilePanel || 'room').trim());
@@ -386,10 +405,12 @@ export class WebMeetDashboardModal {
         this.chatResizer = this.element.querySelector('#webmeetChatResizer');
         this.toggleChatButton = this.element.querySelector('#webmeetToggleChatButton');
         this.createRoomButton = this.element.querySelector('#webmeetCreateRoomButton');
-        this.fullscreenButton = this.element.querySelector('#webmeetModalFullscreen');
         this.mediaSettingsButton = this.element.querySelector('#webmeetMediaSettingsButton');
         this.applyMediaSettingsButton = this.element.querySelector('#webmeetApplyMediaSettingsButton');
         this.mediaSettingsPanel = this.element.querySelector('#webmeetMediaSettingsPanel');
+        this.settingsTabButtons = Array.from(this.element.querySelectorAll('[data-settings-tab]'));
+        this.settingsTabPanels = Array.from(this.element.querySelectorAll('[data-settings-tab-panel]'));
+        this.mediaSettingsActions = this.element.querySelector('#webmeetMediaSettingsActions');
         this.audioInputSelect = this.element.querySelector('#webmeetAudioInputSelect');
         this.videoInputSelect = this.element.querySelector('#webmeetVideoInputSelect');
         this.cameraQualitySelect = this.element.querySelector('#webmeetCameraQualitySelect');
@@ -406,6 +427,27 @@ export class WebMeetDashboardModal {
         this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
         this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
         this.roomNotificationSoundsInput = this.element.querySelector('#webmeetRoomNotificationSounds');
+        this.avatarPresetSelect = this.element.querySelector('#webmeetAvatarPresetSelect');
+        this.avatarGeneratedInput = this.element.querySelector('#webmeetAvatarGenerated');
+        this.avatarAnimatedInput = this.element.querySelector('#webmeetAvatarAnimated');
+        this.avatarListenInput = this.element.querySelector('#webmeetAvatarListen');
+        this.avatarSrcInput = this.element.querySelector('#webmeetAvatarSrc');
+        this.avatarPackSrcInput = this.element.querySelector('#webmeetAvatarPackSrc');
+        this.avatarAssetModeSelect = this.element.querySelector('#webmeetAvatarAssetMode');
+        this.avatarEmotionSelect = this.element.querySelector('#webmeetAvatarEmotion');
+        this.avatarSizeInput = this.element.querySelector('#webmeetAvatarSize');
+        this.avatarThoughtInput = this.element.querySelector('#webmeetAvatarThought');
+        this.avatarThoughtModeSelect = this.element.querySelector('#webmeetAvatarThoughtMode');
+        this.avatarModeSelect = this.element.querySelector('#webmeetAvatarMode');
+        this.avatarShapeSelect = this.element.querySelector('#webmeetAvatarShape');
+        this.avatarThemeSelect = this.element.querySelector('#webmeetAvatarTheme');
+        this.avatarStyleSelect = this.element.querySelector('#webmeetAvatarStyle');
+        this.avatarPaletteSelect = this.element.querySelector('#webmeetAvatarPalette');
+        this.avatarComplexitySelect = this.element.querySelector('#webmeetAvatarComplexity');
+        this.avatarPreview = this.element.querySelector('#webmeetAvatarPreview');
+        this.avatarSourceLabel = this.element.querySelector('#webmeetAvatarSourceLabel');
+        this.avatarQuickButton = this.element.querySelector('#webmeetAvatarQuickButton');
+        this.avatarQuickMenu = this.element.querySelector('#webmeetAvatarQuickMenu');
         this.backgroundEffectSelect = this.element.querySelector('#webmeetBackgroundEffectSelect');
         this.backgroundBlurInput = this.element.querySelector('#webmeetBackgroundBlurRadius');
         this.backgroundBlurValue = this.element.querySelector('#webmeetBackgroundBlurValue');

@@ -1,4 +1,5 @@
-import { normalizeAvatarConfig } from '/explorer/services/profile-avatar-client.js';
+import { normalizeAvatarConfig } from '../services/webmeet-profile-avatar-runtime.js';
+import { buildWebMeetAvatarSource } from '../services/webmeet-avatar-override.js';
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
 
 const runTool = runWebMeetTool;
@@ -9,6 +10,17 @@ export const dashboardRealtimeMethods = {
         if (!this.room?.localParticipant || !payload || typeof payload !== 'object') return;
         const encoder = new TextEncoder();
         await this.room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), { reliable: true });
+    },
+
+    async requestRoomAvatarState() {
+        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        if (!meetingId || !participantId) return;
+        await this.publishRealtimePayload({
+            type: 'participant.avatar.request',
+            meetingId,
+            participantId
+        });
     },
 
     startWorkspaceEvents() {
@@ -101,7 +113,20 @@ export const dashboardRealtimeMethods = {
             }
             return;
         }
-        if (source === 'livekit' && type === 'participant.avatar.request') return;
+        if (source === 'livekit' && type === 'participant.avatar.request') {
+            const requesterParticipantId = String(
+                detail?.meta?.participantId
+                || payload?.participantId
+                || eventData?.participantId
+                || ''
+            ).trim();
+            const localParticipantId = String(this.state.session?.participantIdentity || this.room?.localParticipant?.identity || '').trim();
+            if (!requesterParticipantId || !localParticipantId || requesterParticipantId === localParticipantId) {
+                return;
+            }
+            void this.republishCurrentParticipantAvatarState?.().catch(() => {});
+            return;
+        }
         if (['participant.joined', 'participant.left', 'participant.timed_out', 'participant.avatar.updated'].includes(type)) {
             if (source === 'livekit' && type === 'participant.avatar.updated') {
                 void (async () => {
@@ -161,16 +186,27 @@ export const dashboardRealtimeMethods = {
             }
         if (!this.state.session?.participantIdentity) return;
         try {
+            const currentOverride = this.loadCurrentWebMeetAvatarOverride?.() || null;
+            this.state.webMeetAvatarOverride = currentOverride;
+            let effectiveSourceAvatar = null;
             if (hasInlineAvatar) {
                 const participantId = String(this.state.session?.participantIdentity || '').trim();
                 const userId = String(currentUserId || event?.detail?.config?.agentId?.replace(/^profile:/, '') || '').trim();
                 const fallbackAvatarId = `profile:${userId || participantId}`;
-                const profileAvatar = {
+                const profileSourceAvatar = {
                     enabled: event.detail.enabled !== false,
                     config: normalizeAvatarConfig(event.detail.config, fallbackAvatarId),
                     fallbackLetter: '',
+                    user: userId ? { id: userId } : null,
                     updatedAt: new Date().toISOString()
                 };
+                effectiveSourceAvatar = buildWebMeetAvatarSource({
+                    profileAvatar: profileSourceAvatar,
+                    override: currentOverride,
+                    userId,
+                    participantId
+                });
+                const profileAvatar = this.buildParticipantAvatarProjection(effectiveSourceAvatar, participantId);
                 if (this.state.session?.participant) {
                     this.state.session.participant.profileAvatar = profileAvatar;
                 }
@@ -182,20 +218,12 @@ export const dashboardRealtimeMethods = {
                 });
                 this.renderParticipantLayout();
                 this.renderMeetingList();
-                await this.publishCurrentParticipantAvatarState?.(profileAvatar, {
-                    user: {
-                        id: userId
-                    }
-                });
+                await this.publishCurrentParticipantAvatarState?.(profileAvatar, effectiveSourceAvatar);
             }
             await this.publishCurrentParticipantAvatar(hasInlineAvatar
                 ? {
                     force: true,
-                    avatar: {
-                        enabled: event.detail.enabled,
-                        config: event.detail.config,
-                        fallbackLetter: ''
-                    },
+                    avatar: effectiveSourceAvatar,
                     skipRealtime: true
                 }
                 : { force: true });
@@ -222,7 +250,11 @@ export const dashboardRealtimeMethods = {
             && this.state.session?.participantIdentity
             && !this.isGuestSession()
         ) {
-            this.participantLayoutController?.refreshAvatarForUser?.(userId);
+            const currentOverride = this.loadCurrentWebMeetAvatarOverride?.() || null;
+            this.state.webMeetAvatarOverride = currentOverride;
+            if (!currentOverride) {
+                this.participantLayoutController?.refreshAvatarForUser?.(userId);
+            }
             void this.publishCurrentParticipantAvatar({ force: true }).catch((error) => {
                 const message = error instanceof Error ? error.message : String(error || 'Avatar update failed.');
                 this.setError(`Profile avatar changed, but WebMeet could not publish the room avatar: ${message}`);

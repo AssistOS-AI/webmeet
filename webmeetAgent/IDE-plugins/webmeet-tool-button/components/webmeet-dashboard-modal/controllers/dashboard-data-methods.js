@@ -53,10 +53,10 @@ export const dashboardDataMethods = {
     async refreshMeetingDetailsFromRealtimeEvent() {
         const selectedMeetingId = String(this.state.selectedMeetingId || '').trim();
         try {
-            await this.loadMeetingDetails({ expectedMeetingId: selectedMeetingId });
-            if (this.room && window.LivekitClient?.Track) {
-                this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
-            }
+            await this.loadMeetingDetails({
+                expectedMeetingId: selectedMeetingId,
+                includeParticipants: !this.room
+            });
             this.renderAll();
         } catch (_) {
             // Realtime events are best-effort; direct user actions still surface failures.
@@ -214,6 +214,7 @@ export const dashboardDataMethods = {
 
     async loadMeetingDetails(options = {}) {
         const expectedMeetingId = String(options.expectedMeetingId || this.state.selectedMeetingId || '').trim();
+        const includeParticipants = options.includeParticipants === true || (!this.room && options.includeParticipants !== false);
         const loadSeq = this.meetingDetailsLoadSeq + 1;
         this.meetingDetailsLoadSeq = loadSeq;
         const meeting = this.selectedMeeting;
@@ -241,7 +242,9 @@ export const dashboardDataMethods = {
             try {
                 const details = await this.fetchPublicMeetingDetails(meeting.id);
                 if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
-                this.state.participants = Array.isArray(details?.participants) ? details.participants : [];
+                if (includeParticipants) {
+                    this.state.participants = Array.isArray(details?.participants) ? details.participants : [];
+                }
                 this.state.chat = Array.isArray(details?.chat) ? details.chat : [];
                 this.state.transcript = Array.isArray(details?.transcript) ? details.transcript : [];
                 this.state.artifacts = Array.isArray(details?.artifacts) ? details.artifacts : [];
@@ -251,7 +254,9 @@ export const dashboardDataMethods = {
                 this.state.agents = Array.isArray(details?.agents) ? details.agents : [];
             } catch (error) {
                 if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
-                this.state.participants = [];
+                if (includeParticipants) {
+                    this.state.participants = [];
+                }
                 this.state.chat = [];
                 this.state.transcript = [];
                 this.state.artifacts = [];
@@ -309,7 +314,9 @@ export const dashboardDataMethods = {
             return;
         }
         if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
-        this.state.participants = Array.isArray(detailsPayload?.participants) ? detailsPayload.participants : [];
+        if (includeParticipants) {
+            this.state.participants = Array.isArray(detailsPayload?.participants) ? detailsPayload.participants : [];
+        }
         this.state.chat = Array.isArray(chatPayload.messages) ? chatPayload.messages : [];
         this.state.transcript = Array.isArray(transcriptPayload.transcript) ? transcriptPayload.transcript : [];
         this.state.artifacts = Array.isArray(artifactPayload.artifacts) ? artifactPayload.artifacts : [];

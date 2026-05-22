@@ -24,6 +24,39 @@ function parseLiveKitProfileAvatar(attributes = {}) {
     }
 }
 
+function withProjectedAvatarAttributes(attributes = {}, profileAvatar = null, userId = '') {
+    const nextAttributes = attributes && typeof attributes === 'object'
+        ? { ...attributes }
+        : {};
+    const normalizedUserId = String(userId || '').trim();
+    if (normalizedUserId) {
+        nextAttributes.webmeetUserId = normalizedUserId;
+        nextAttributes.userId = normalizedUserId;
+        nextAttributes.workspaceUserId = normalizedUserId;
+        nextAttributes.ploinkyUserId = normalizedUserId;
+    }
+    if (profileAvatar && typeof profileAvatar === 'object') {
+        nextAttributes.webmeetProfileAvatar = JSON.stringify(profileAvatar);
+    }
+    return nextAttributes;
+}
+
+function resolveParticipantProfileAvatar(storedParticipant = null, liveKitAttributes = {}, participantKind = 'remote') {
+    const storedProfileAvatar = storedParticipant?.profileAvatar && typeof storedParticipant.profileAvatar === 'object'
+        ? storedParticipant.profileAvatar
+        : null;
+    const liveKitProfileAvatar = parseLiveKitProfileAvatar(liveKitAttributes);
+    const hasConnectedRoomProjection = storedParticipant
+        && (storedParticipant.kind === 'local' || storedParticipant.kind === 'remote');
+    if (hasConnectedRoomProjection) {
+        return storedProfileAvatar || liveKitProfileAvatar;
+    }
+    if (liveKitProfileAvatar) {
+        return liveKitProfileAvatar;
+    }
+    return participantKind === 'local' ? storedProfileAvatar : null;
+}
+
 export const participantViewMethods = {
     getParticipantUserId: getParticipantUserIdFromParticipant,
 
@@ -41,11 +74,24 @@ export const participantViewMethods = {
                 || (userId && entryUserId === userId);
             if (!matches) return entry;
             changed = true;
+            const nextAttributes = withProjectedAvatarAttributes(entry?.attributes, profileAvatar, userId || entryUserId);
             return {
                 ...entry,
+                attributes: nextAttributes,
                 profileAvatar
             };
         });
+        const sessionParticipantId = String(this.state.session?.participantIdentity || '').trim();
+        const sessionUserId = String(this.currentActor?.id || this.state.session?.participant?.userId || '').trim();
+        if (
+            this.state.session?.participant
+            && (
+                (participantId && sessionParticipantId === participantId)
+                || (userId && sessionUserId && sessionUserId === userId)
+            )
+        ) {
+            this.state.session.participant.profileAvatar = profileAvatar;
+        }
         for (const view of this.participantLayoutController?.getViews?.() || []) {
             const viewUserId = String(view?.avatarUserId || '').trim();
             const matches = (participantId && String(view?.id || '').trim() === participantId)
@@ -56,6 +102,7 @@ export const participantViewMethods = {
             view.avatarConfig = view.avatarEnabled ? profileAvatar.config || null : null;
             view.avatarFallbackLetter = profileAvatar.fallbackLetter || view.avatarFallbackLetter || '';
             view.avatarResolved = true;
+            view.avatarSource = 'projected';
             this.applyParticipantViewState(view);
         }
         return changed;
@@ -240,13 +287,18 @@ export const participantViewMethods = {
             const storedAttributes = stored?.attributes && typeof stored.attributes === 'object'
                 ? stored.attributes
                 : {};
+            const hasConnectedRoomProjection = stored
+                && (stored.kind === 'local' || stored.kind === 'remote');
             const {
-                webmeetProfileAvatar: _storedProfileAvatar,
+                webmeetProfileAvatar: storedProfileAvatarAttribute,
                 ...safeStoredAttributes
             } = storedAttributes;
             const userId = String(stored?.userId || '').trim();
             return {
                 ...safeStoredAttributes,
+                ...(hasConnectedRoomProjection && storedProfileAvatarAttribute
+                    ? { webmeetProfileAvatar: storedProfileAvatarAttribute }
+                    : {}),
                 ...(userId ? {
                     webmeetUserId: userId,
                     userId,
@@ -262,8 +314,22 @@ export const participantViewMethods = {
             localIdentity,
             room.localParticipant?.attributes || {}
         );
+        const sessionParticipant = this.state.session?.participant && typeof this.state.session.participant === 'object'
+            ? this.state.session.participant
+            : null;
+        const sessionParticipantId = String(
+            this.state.session?.participantIdentity
+            || sessionParticipant?.identity
+            || sessionParticipant?.id
+            || ''
+        ).trim();
+        const localStoredParticipant = storedById.get(String(localIdentity || '').trim())
+            || (localIdentity && sessionParticipantId === String(localIdentity || '').trim()
+                ? sessionParticipant
+                : null)
+            || null;
         const localUserId = String(
-            storedById.get(String(localIdentity || '').trim())?.userId
+            localStoredParticipant?.userId
             || localAttributes.ploinkyUserId
             || localAttributes.workspaceUserId
             || localAttributes.userId
@@ -277,15 +343,16 @@ export const participantViewMethods = {
             name: room.localParticipant?.name || this.state.session?.participant?.displayName || 'You',
             attributes: localAttributes,
             userId: localUserId,
-            profileAvatar: parseLiveKitProfileAvatar(localAttributes),
+            profileAvatar: resolveParticipantProfileAvatar(localStoredParticipant, localAttributes, 'local'),
             isSpeaking: isSpeaking(localIdentity),
             kind: 'local'
         }];
         for (const participant of room.remoteParticipants.values()) {
             const identity = participant.identity || '';
             const attributes = mergeStoredAttributes(identity, participant.attributes || {});
+            const storedParticipant = storedById.get(String(identity || '').trim()) || null;
             const userId = String(
-                storedById.get(String(identity || '').trim())?.userId
+                storedParticipant?.userId
                 || attributes.ploinkyUserId
                 || attributes.workspaceUserId
                 || attributes.userId
@@ -299,7 +366,7 @@ export const participantViewMethods = {
                 name: participant.name || participant.identity || 'Remote',
                 attributes,
                 userId,
-                profileAvatar: parseLiveKitProfileAvatar(attributes),
+                profileAvatar: resolveParticipantProfileAvatar(storedParticipant, attributes, 'remote'),
                 isSpeaking: isSpeaking(identity),
                 kind: 'remote'
             });

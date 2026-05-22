@@ -26,8 +26,11 @@ test('participant layout controller persists avatar config and fallback attribut
 
     assert.match(source, /applyParticipantProfileAvatar/);
     assert.match(source, /participant\?\.profileAvatar/);
-    assert.match(source, /const shouldUseProjectedAvatar = participant\?\.kind !== 'local'/);
-    assert.match(source, /const hasProjectedAvatar = shouldUseProjectedAvatar\s+\? this\.applyParticipantProfileAvatar\(view, participant\)\s+: false/s);
+    assert.match(source, /const hasProjectedAvatar = this\.applyParticipantProfileAvatar\(view, participant\)/);
+    assert.match(source, /participant\?\.kind === 'local' && !hasProjectedAvatar/);
+    assert.doesNotMatch(source, /const shouldUseProjectedAvatar = participant\?\.kind !== 'local'/);
+    assert.match(source, /view\.avatarSource = 'projected'/);
+    assert.match(source, /filter\(\(view\) => view\.avatarSource !== 'projected'\)/);
     assert.match(source, /if \(!hasProjectedAvatar\)/);
     assert.match(source, /data-avatar-config/);
     assert.match(source, /data-avatar-fallback-letter/);

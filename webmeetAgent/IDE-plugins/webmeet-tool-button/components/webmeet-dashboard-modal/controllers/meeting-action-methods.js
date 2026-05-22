@@ -3,7 +3,15 @@ import { runWebMeetTool } from '../services/webmeet-api-client.js';
 import {
     getCurrentProfileAvatar,
     normalizeAvatarConfig
-} from '/explorer/services/profile-avatar-client.js';
+} from '../services/webmeet-profile-avatar-runtime.js';
+import {
+    buildWebMeetAvatarSource,
+    buildWebMeetAvatarOverrideConfig,
+    clearWebMeetAvatarOverride,
+    getWebMeetAvatarPreset,
+    loadWebMeetAvatarOverride,
+    saveWebMeetAvatarOverride
+} from '../services/webmeet-avatar-override.js';
 
 const runTool = runWebMeetTool;
 
@@ -149,35 +157,22 @@ export const meetingActionMethods = {
         if (displayName) {
             payload.displayName = displayName;
         }
-        let initialAvatar = null;
-        try {
-            const sourceAvatar = options.avatar && typeof options.avatar === 'object'
-                ? options.avatar
-                : await getCurrentProfileAvatar({ force: true });
-            const fallbackAvatarId = `profile:${sourceAvatar.user?.id || participantId}`;
-            initialAvatar = {
-                enabled: sourceAvatar.enabled !== false,
-                config: normalizeAvatarConfig(sourceAvatar.config, fallbackAvatarId),
-                fallbackLetter: sourceAvatar.fallbackLetter || ''
-            };
-        } catch (_) {
-            // Joining should not fail just because the optional avatar projection is unavailable.
-        }
-        if (initialAvatar) {
-            payload.avatar = initialAvatar;
-        }
         this.state.session = await runTool('webmeet_meeting_join', payload);
         try {
             await this.connectRoom();
-            await this.publishCurrentParticipantAvatar({ force: true });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
             this.setError(message);
+            return;
         } finally {
             this.clearRoomTransitionMessage({ render: false });
             this.renderMeetingSummary();
         }
+        void this.publishCurrentParticipantAvatar({ force: true }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
+            this.setError(`Joined room, but WebMeet could not publish the avatar: ${message}`);
+        });
     },
 
     buildParticipantAvatarProjection(sourceAvatar = null, participantId = '') {
@@ -191,20 +186,184 @@ export const meetingActionMethods = {
         };
     },
 
+    getCurrentAvatarOverrideUserId() {
+        if (this.isGuestSession()) {
+            return '';
+        }
+        return String(this.currentActor?.id || this.state.session?.participant?.userId || '').trim();
+    },
+
+    loadCurrentWebMeetAvatarOverride() {
+        const userId = this.getCurrentAvatarOverrideUserId();
+        return loadWebMeetAvatarOverride(userId);
+    },
+
+    setCurrentWebMeetAvatarOverride(override = null) {
+        const userId = this.getCurrentAvatarOverrideUserId();
+        const normalized = saveWebMeetAvatarOverride(userId, override);
+        this.state.webMeetAvatarOverride = normalized;
+        return normalized;
+    },
+
+    clearCurrentWebMeetAvatarOverride() {
+        const userId = this.getCurrentAvatarOverrideUserId();
+        clearWebMeetAvatarOverride(userId);
+        this.state.webMeetAvatarOverride = null;
+    },
+
+    async resolveCurrentWebMeetAvatarSource(options = {}) {
+        const participantId = String(options.participantId || this.state.session?.participantIdentity || '').trim();
+        const userId = this.getCurrentAvatarOverrideUserId();
+        const override = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverride = override;
+        let profileAvatar = options.avatar && typeof options.avatar === 'object'
+            ? options.avatar
+            : null;
+        if (!profileAvatar) {
+            try {
+                profileAvatar = await getCurrentProfileAvatar({ force: Boolean(options.force) });
+            } catch (error) {
+                if (!override) throw error;
+                profileAvatar = null;
+            }
+        }
+        return buildWebMeetAvatarSource({
+            profileAvatar,
+            override,
+            userId,
+            participantId
+        });
+    },
+
     async resolveCurrentParticipantAvatarProjection(options = {}) {
         const participantId = String(this.state.session?.participantIdentity || '').trim();
         if (!participantId) return null;
         const sourceAvatar = options.avatar && typeof options.avatar === 'object'
             ? options.avatar
-            : await getCurrentProfileAvatar({ force: Boolean(options.force) });
+            : await this.resolveCurrentWebMeetAvatarSource({
+                force: Boolean(options.force),
+                participantId
+            });
         return {
             sourceAvatar,
             avatar: this.buildParticipantAvatarProjection(sourceAvatar, participantId)
         };
     },
 
+    async applyWebMeetAvatarPreset(target) {
+        const source = target?.target || target;
+        const presetId = String(source?.dataset?.avatarPreset || source?.closest?.('[data-avatar-preset]')?.dataset?.avatarPreset || '').trim();
+        const preset = getWebMeetAvatarPreset(presetId);
+        let profileAvatar = null;
+        try {
+            profileAvatar = await getCurrentProfileAvatar({ force: true });
+        } catch (_) {
+            profileAvatar = null;
+        }
+        const currentOverride = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverride = currentOverride;
+        const config = buildWebMeetAvatarOverrideConfig({
+            profileAvatar,
+            override: currentOverride,
+            userId: this.getCurrentAvatarOverrideUserId(),
+            participantId: this.state.session?.participantIdentity || '',
+            patch: preset.patch
+        });
+        this.setCurrentWebMeetAvatarOverride({ config });
+        this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
+        this.state.avatarQuickMenuVisible = false;
+        const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.renderAvatarControls?.();
+        this.renderMeetingSummary();
+        this.renderParticipantLayout?.();
+        this.renderMeetingList?.();
+        this.setError(published
+            ? `WebMeet avatar set to ${preset.label} and published.`
+            : `WebMeet avatar preset saved. Join a room to publish ${preset.label}.`);
+    },
+
+    async resetWebMeetAvatarOverride() {
+        this.clearCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverrideDraft = null;
+        this.state.avatarQuickMenuVisible = false;
+        const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.renderAvatarControls?.();
+        this.renderMeetingSummary();
+        this.renderParticipantLayout?.();
+        this.renderMeetingList?.();
+        this.setError(published
+            ? 'WebMeet avatar reset to profile avatar and published.'
+            : 'WebMeet avatar reset to profile avatar. Join a room to publish it.');
+    },
+
+    toggleAvatarQuickMenu() {
+        this.state.avatarQuickMenuVisible = !this.state.avatarQuickMenuVisible;
+        this.renderAvatarControls?.();
+    },
+
+    syncWebMeetAvatarSettingsDraftFromInputs() {
+        const currentOverride = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverride = currentOverride;
+        const currentConfig = this.state.webMeetAvatarOverrideDraft?.config
+            || currentOverride?.config
+            || this.state.session?.participant?.profileAvatar?.config
+            || {};
+        const presetId = String(this.avatarPresetSelect?.value || '').trim();
+        const presetPatch = presetId ? getWebMeetAvatarPreset(presetId).patch : {};
+        const fallbackId = `profile:${this.getCurrentAvatarOverrideUserId() || this.state.session?.participantIdentity || 'current-user'}`;
+        const generated = this.avatarGeneratedInput?.checked !== false;
+        this.state.webMeetAvatarOverrideDraft = {
+            config: normalizeAvatarConfig({
+                ...currentConfig,
+                generated,
+                src: String(this.avatarSrcInput?.value || '').trim(),
+                packSrc: String(this.avatarPackSrcInput?.value || '').trim(),
+                assetMode: String(this.avatarAssetModeSelect?.value || '').trim(),
+                emotion: String(this.avatarEmotionSelect?.value || '').trim(),
+                size: String(this.avatarSizeInput?.value || '').trim(),
+                thought: String(this.avatarThoughtInput?.value || '').trim(),
+                thoughtMode: String(this.avatarThoughtModeSelect?.value || '').trim(),
+                mode: String(this.avatarModeSelect?.value || '').trim(),
+                shape: String(this.avatarShapeSelect?.value || '').trim(),
+                theme: String(this.avatarThemeSelect?.value || '').trim(),
+                animated: this.avatarAnimatedInput?.checked !== false,
+                listen: this.avatarListenInput?.checked === true,
+                style: String(this.avatarStyleSelect?.value || '').trim(),
+                palette: String(this.avatarPaletteSelect?.value || '').trim(),
+                complexity: String(this.avatarComplexitySelect?.value || '').trim(),
+                ...presetPatch
+            }, fallbackId)
+        };
+        this.renderAvatarControls?.();
+    },
+
+    async applyWebMeetAvatarSettings() {
+        this.syncWebMeetAvatarSettingsDraftFromInputs();
+        const draft = this.state.webMeetAvatarOverrideDraft;
+        if (draft) {
+            this.setCurrentWebMeetAvatarOverride(draft);
+            this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
+        } else {
+            this.clearCurrentWebMeetAvatarOverride();
+            this.state.webMeetAvatarOverrideDraft = null;
+        }
+        const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.renderAvatarControls?.();
+        this.renderMeetingSummary();
+        this.renderParticipantLayout?.();
+        this.renderMeetingList?.();
+        if (draft) {
+            this.setError(published
+                ? 'WebMeet avatar override applied and published.'
+                : 'WebMeet avatar override saved. Join a room to publish it.');
+            return;
+        }
+        this.setError(published
+            ? 'WebMeet avatar reset to profile avatar and published.'
+            : 'WebMeet avatar reset to profile avatar. Join a room to publish it.');
+    },
+
     async publishCurrentParticipantAvatarState(profileAvatar = null, sourceAvatar = null) {
-        if (this.isGuestSession()) return;
         const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
         const participantId = String(this.state.session?.participantIdentity || '').trim();
         if (!meetingId || !participantId) return;
@@ -255,24 +414,76 @@ export const meetingActionMethods = {
         });
     },
 
+    getCurrentPublishedParticipantAvatarState() {
+        const localAttributes = this.room?.localParticipant?.attributes && typeof this.room.localParticipant.attributes === 'object'
+            ? this.room.localParticipant.attributes
+            : {};
+        let profileAvatar = null;
+        const rawProfileAvatar = String(localAttributes.webmeetProfileAvatar || '').trim();
+        if (rawProfileAvatar) {
+            try {
+                const parsed = JSON.parse(rawProfileAvatar);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    profileAvatar = parsed;
+                }
+            } catch (_) {
+                profileAvatar = null;
+            }
+        }
+        if (!profileAvatar && this.state.session?.participant?.profileAvatar && typeof this.state.session.participant.profileAvatar === 'object') {
+            profileAvatar = this.state.session.participant.profileAvatar;
+        }
+        if (!profileAvatar) return null;
+        const userId = String(
+            localAttributes.ploinkyUserId
+            || localAttributes.workspaceUserId
+            || localAttributes.userId
+            || localAttributes.webmeetUserId
+            || this.currentActor?.id
+            || this.state.session?.participant?.userId
+            || ''
+        ).trim();
+        return {
+            profileAvatar,
+            sourceAvatar: {
+                enabled: profileAvatar.enabled !== false,
+                config: profileAvatar.config || null,
+                fallbackLetter: profileAvatar.fallbackLetter || '',
+                user: userId ? { id: userId } : null
+            }
+        };
+    },
+
     async republishCurrentParticipantAvatarState() {
-        await this.publishCurrentParticipantAvatar({ force: true });
+        const current = this.getCurrentPublishedParticipantAvatarState?.() || null;
+        await this.publishCurrentParticipantAvatarState(
+            current?.profileAvatar || null,
+            current?.sourceAvatar || null
+        );
     },
 
     async publishCurrentParticipantAvatar(options = {}) {
-        if (this.isGuestSession()) return;
         const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
         const participantId = String(this.state.session?.participantIdentity || '').trim();
-        if (!meetingId || !participantId) return;
+        if (!meetingId || !participantId) return null;
         const resolved = await this.resolveCurrentParticipantAvatarProjection(options);
-        if (!resolved?.avatar) return;
+        if (!resolved?.avatar) return null;
         const { avatar, sourceAvatar } = resolved;
-        const updated = await runTool('webmeet_participant_avatar_update', {
-            meetingId,
-            participantId,
-            avatar
-        });
-        const profileAvatar = updated?.profileAvatar || null;
+        const updated = this.isGuestSession()
+            ? await this.callPublicGuestApi(meetingId, 'guest-avatar', { avatar })
+            : await runTool('webmeet_participant_avatar_update', {
+                meetingId,
+                participantId,
+                avatar
+            });
+        const profileAvatar = avatar && typeof avatar === 'object'
+            ? {
+                ...avatar,
+                ...(updated?.profileAvatar && typeof updated.profileAvatar === 'object'
+                    ? { updatedAt: updated.profileAvatar.updatedAt || avatar.updatedAt }
+                    : {})
+            }
+            : (updated?.profileAvatar || null);
         if (profileAvatar && this.state.session?.participant) {
             this.state.session.participant.profileAvatar = profileAvatar;
         }
@@ -296,12 +507,26 @@ export const meetingActionMethods = {
                 }
             ];
         }
-        if (this.room && window.LivekitClient?.Track) {
-            this.syncParticipantsFromRoom(this.room, window.LivekitClient.Track);
-        }
+        const userId = String(
+            sourceAvatar?.user?.id
+            || profileAvatar?.config?.agentId?.replace(/^profile:/, '')
+            || this.currentActor?.id
+            || ''
+        ).trim();
         if (options.skipRealtime !== true) {
             await this.publishCurrentParticipantAvatarState(profileAvatar, sourceAvatar);
         }
+        this.applyRealtimeParticipantAvatar?.({
+            meetingId,
+            participantId,
+            userId,
+            profileAvatar
+        });
+        return {
+            profileAvatar,
+            sourceAvatar,
+            userId
+        };
     },
 
     async leaveMeeting() {

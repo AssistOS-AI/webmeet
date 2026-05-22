@@ -85,6 +85,15 @@ function getGuestSessionKeyFromUrl() {
     return String(params.get('guestSession') || '').trim();
 }
 
+export function readGuestInviteTokenFromUrl() {
+    try {
+        const params = new URLSearchParams(String(window.location.search || ''));
+        return String(params.get('token') || '').trim();
+    } catch {
+        return '';
+    }
+}
+
 export function readGuestSessionFromUrl() {
     const key = getGuestSessionKeyFromUrl();
     if (!key) return null;

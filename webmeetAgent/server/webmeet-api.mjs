@@ -34,6 +34,7 @@ import {
     listWorkspaces,
     startMeetingRecording,
     stopMeetingRecording,
+    updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantAvatar
 } from '../lib/webmeetStore.mjs';
 
@@ -221,6 +222,7 @@ function matchRoute(method, pathname) {
         ['meetings.join', 'POST', /^\/api\/meetings\/([^/]+)\/join$/],
         ['meetings.join.guest', 'POST', /^\/api\/meetings\/([^/]+)\/join-guest$/],
         ['meetings.participant.avatar', 'POST', /^\/api\/meetings\/([^/]+)\/participants\/([^/]+)\/avatar$/],
+        ['meetings.guest.avatar', 'POST', /^\/api\/meetings\/([^/]+)\/guest-avatar$/],
         ['meetings.guest.state', 'POST', /^\/api\/meetings\/([^/]+)\/guest-state$/],
         ['meetings.guest.leave', 'POST', /^\/api\/meetings\/([^/]+)\/guest-leave$/],
         ['meetings.guest.presence', 'POST', /^\/api\/meetings\/([^/]+)\/guest-presence$/],
@@ -364,6 +366,16 @@ async function handler(req, res) {
                 meetingId: route.params[0],
                 guestToken: String(body.guestToken || '').trim(),
                 participantId: String(body.participantId || '').trim()
+            }));
+            return;
+        }
+        if (route.name === 'meetings.guest.avatar') {
+            const body = await readBody(req);
+            json(res, 200, updateGuestMeetingParticipantAvatar(context, {
+                meetingId: route.params[0],
+                guestToken: String(body.guestToken || '').trim(),
+                participantId: String(body.participantId || '').trim(),
+                avatar: body.avatar || body
             }));
             return;
         }
@@ -544,7 +556,7 @@ async function handler(req, res) {
             || route.name.startsWith('chat.guest.')
             || (route.name === 'transcript.download' && url.searchParams.has('guestToken'));
         if (guestRoute) {
-            json(res, 403, { error: 'Guest access denied.' });
+            json(res, 403, { error: error instanceof Error ? error.message : String(error) });
             return;
         }
         json(res, 500, { error: error instanceof Error ? error.message : String(error) });

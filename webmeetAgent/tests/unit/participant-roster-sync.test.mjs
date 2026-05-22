@@ -626,6 +626,297 @@ test('syncParticipantsFromRoom reads fresh avatar projection from LiveKit partic
     assert.equal(appliedViews.get('participant-remote').profileAvatar.config.complexity, 'high');
 });
 
+test('syncParticipantsFromRoom preserves the current remote room avatar during routine resyncs', () => {
+    const appliedViews = new Map();
+    const staleLiveAvatar = {
+        enabled: true,
+        updatedAt: '2026-05-20T09:00:00.000Z',
+        fallbackLetter: 'R',
+        config: {
+            agentId: 'profile:local:remote',
+            seed: 'profile:local:remote',
+            generated: true,
+            size: '64',
+            emotion: 'speaking',
+            style: 'sketch'
+        }
+    };
+    const freshRealtimeAvatar = {
+        enabled: true,
+        updatedAt: '2026-05-20T10:00:00.000Z',
+        fallbackLetter: 'R',
+        config: {
+            agentId: 'profile:local:remote',
+            seed: 'profile:local:remote',
+            generated: true,
+            size: '72',
+            emotion: 'neutral',
+            style: 'terminal'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Local User'
+                }
+            },
+            participants: [{
+                id: 'participant-remote',
+                kind: 'remote',
+                displayName: 'Remote User',
+                userId: 'local:remote',
+                attributes: {
+                    webmeetUserId: 'local:remote'
+                },
+                profileAvatar: freshRealtimeAvatar
+            }],
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Local User',
+            attributes: {
+                webmeetUserId: 'local:self'
+            }
+        },
+        remoteParticipants: new Map([
+            ['participant-remote', {
+                identity: 'participant-remote',
+                name: 'Remote User',
+                attributes: {
+                    webmeetUserId: 'local:remote',
+                    webmeetProfileAvatar: JSON.stringify(staleLiveAvatar)
+                },
+                trackPublications: new Map()
+            }]
+        ])
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.deepEqual(context.state.participants[1].profileAvatar, freshRealtimeAvatar);
+    assert.deepEqual(appliedViews.get('participant-remote').profileAvatar, freshRealtimeAvatar);
+});
+
+test('syncParticipantsFromRoom preserves the current local room avatar during routine resyncs', () => {
+    const appliedViews = new Map();
+    const staleLiveAvatar = {
+        enabled: true,
+        updatedAt: '2026-05-20T09:00:00.000Z',
+        fallbackLetter: 'A',
+        config: {
+            agentId: 'profile:local:admin',
+            seed: 'profile:local:admin',
+            generated: true,
+            size: '64',
+            emotion: 'speaking',
+            style: 'sketch'
+        }
+    };
+    const freshLocalAvatar = {
+        enabled: true,
+        updatedAt: '2026-05-20T10:00:00.000Z',
+        fallbackLetter: 'A',
+        config: {
+            agentId: 'profile:local:admin',
+            seed: 'profile:local:admin',
+            generated: true,
+            size: '72',
+            emotion: 'neutral',
+            style: 'terminal'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Admin'
+                }
+            },
+            participants: [{
+                id: 'participant-local',
+                kind: 'local',
+                displayName: 'Admin',
+                userId: 'local:admin',
+                attributes: {
+                    webmeetUserId: 'local:admin'
+                },
+                profileAvatar: freshLocalAvatar
+            }],
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Admin',
+            attributes: {
+                webmeetUserId: 'local:admin',
+                webmeetProfileAvatar: JSON.stringify(staleLiveAvatar)
+            }
+        },
+        remoteParticipants: new Map()
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.deepEqual(context.state.participants[0].profileAvatar, freshLocalAvatar);
+    assert.deepEqual(appliedViews.get('participant-local').profileAvatar, freshLocalAvatar);
+});
+
+test('syncParticipantsFromRoom preserves a guest local avatar from the active session during media resyncs', () => {
+    const appliedViews = new Map();
+    const guestAvatar = {
+        enabled: true,
+        fallbackLetter: 'G',
+        config: {
+            agentId: 'profile:guest-alpha',
+            seed: 'profile:guest-alpha',
+            generated: true,
+            size: '72',
+            emotion: 'happy',
+            style: 'robot-soft'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-guest',
+                participant: {
+                    id: 'participant-guest',
+                    displayName: 'Guest Alpha',
+                    profileAvatar: guestAvatar
+                }
+            },
+            participants: [],
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-guest',
+            name: 'Guest Alpha',
+            attributes: {}
+        },
+        remoteParticipants: new Map()
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.deepEqual(context.state.participants[0].profileAvatar, guestAvatar);
+    assert.deepEqual(appliedViews.get('participant-guest').profileAvatar, guestAvatar);
+});
+
 test('syncParticipantsFromRoom propagates active speaker state to room roster', () => {
     const appliedViews = new Map();
     const context = {
@@ -865,4 +1156,59 @@ test('syncParticipantsFromRoom initializes remote mic state from LiveKit publica
     assert.equal(appliedViews.get('participant-mic-off')?.micOn, false);
     assert.equal(context.state.meetingParticipantsById['meeting-1'].find((entry) => entry.id === 'participant-mic-on')?.micOn, true);
     assert.equal(context.state.meetingParticipantsById['meeting-1'].find((entry) => entry.id === 'participant-mic-off')?.micOn, false);
+});
+
+test('applyRealtimeParticipantAvatar marks room avatar as projected state', () => {
+    const view = {
+        id: 'participant-local',
+        avatarUserId: 'local:admin',
+        avatarFallbackLetter: 'A'
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    userId: 'local:admin'
+                }
+            },
+            participants: [{
+                id: 'participant-local',
+                identity: 'participant-local',
+                userId: 'local:admin',
+                attributes: {}
+            }]
+        },
+        currentActor: {
+            id: 'local:admin'
+        },
+        participantLayoutController: {
+            getViews() {
+                return [view];
+            }
+        },
+        applyParticipantViewState() {}
+    };
+    const profileAvatar = {
+        enabled: true,
+        fallbackLetter: 'A',
+        config: {
+            agentId: 'profile:local:admin',
+            style: 'sketch',
+            size: '72'
+        }
+    };
+
+    const changed = participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-local',
+        userId: 'local:admin',
+        profileAvatar
+    });
+
+    assert.equal(changed, true);
+    assert.equal(view.avatarSource, 'projected');
+    assert.equal(view.avatarConfig.style, 'sketch');
+    assert.equal(context.state.participants[0].profileAvatar.config.size, '72');
+    assert.equal(context.state.participants[0].attributes.webmeetProfileAvatar, JSON.stringify(profileAvatar));
+    assert.equal(context.state.session.participant.profileAvatar.config.style, 'sketch');
 });

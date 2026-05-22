@@ -25,6 +25,7 @@ import {
     listWorkspaces,
     startMeetingRecording,
     stopMeetingRecording,
+    updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantAvatar,
     updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
@@ -224,6 +225,13 @@ export async function dispatch(toolName, args, context, authInfo) {
             participantId: getRequiredString(args, 'participantId'),
             avatar: args?.avatar || null,
             authInfo
+        });
+    case 'webmeet_guest_participant_avatar_update':
+        return updateGuestMeetingParticipantAvatar(context, {
+            meetingId: getRequiredString(args, 'meetingId'),
+            guestToken: getRequiredString(args, 'guestToken'),
+            participantId: getRequiredString(args, 'participantId'),
+            avatar: args?.avatar || null
         });
     case 'webmeet_meeting_get':
         return await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);

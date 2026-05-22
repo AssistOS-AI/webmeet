@@ -1,5 +1,31 @@
 import { escapeHtml, formatDate } from '../services/dashboard-utils.js';
 import { renderMessageWithMentionHighlights } from '../services/chat-autocomplete/index.js';
+import {
+    buildWebMeetAvatarSource,
+    renderWebMeetAvatarPreview,
+    WEBMEET_AVATAR_PRESETS
+} from '../services/webmeet-avatar-override.js';
+import { ensureAxiFaceLoaded } from '../services/webmeet-profile-avatar-runtime.js';
+
+const AVATAR_OPTIONS = Object.freeze({
+    assetMode: ['img', 'inline'],
+    emotion: ['neutral', 'idle', 'listening', 'thinking', 'speaking', 'happy', 'amused', 'confused', 'concerned', 'alert', 'sleepy'],
+    thoughtMode: ['none', 'bubble', 'caption', 'ticker', 'inside'],
+    mode: ['static', 'controlled', 'event-driven', 'autonomous'],
+    shape: ['circle', 'square', 'rounded', 'none'],
+    theme: ['auto', 'light', 'dark'],
+    style: ['robot-soft', 'robot-minimal', 'sketch', 'emoji', 'terminal'],
+    palette: ['default', 'warm', 'mono', 'terminal', 'emoji'],
+    complexity: ['', 'low', 'medium', 'high']
+});
+
+function renderOptionList(values = [], labels = {}) {
+    return values.map((value) => {
+        const raw = String(value || '').trim();
+        const label = labels[raw] || raw || 'Default';
+        return `<option value="${escapeHtml(raw)}">${escapeHtml(label)}</option>`;
+    }).join('');
+}
 
 export const dashboardRenderMethods = {
     setRoomTransitionMessage(message, { render = true } = {}) {
@@ -57,6 +83,7 @@ export const dashboardRenderMethods = {
         this.renderMeetingList();
         this.renderMeetingSummary();
         this.renderFeedLists();
+        this.renderAvatarControls?.();
     },
 
     setError(message) {
@@ -112,6 +139,106 @@ export const dashboardRenderMethods = {
         );
     },
 
+    renderAvatarControls() {
+        const currentOverride = this.loadCurrentWebMeetAvatarOverride?.() || null;
+        this.state.webMeetAvatarOverride = currentOverride;
+        if (this.state.webMeetAvatarOverrideDraft === null && currentOverride) {
+            this.state.webMeetAvatarOverrideDraft = currentOverride;
+        }
+        const draft = this.state.webMeetAvatarOverrideDraft === undefined
+            ? currentOverride
+            : this.state.webMeetAvatarOverrideDraft;
+        const options = [
+            '<option value="">Custom state</option>',
+            ...WEBMEET_AVATAR_PRESETS.map((preset) => (
+                `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>`
+            ))
+        ].join('');
+        if (this.avatarPresetSelect) {
+            if (this.avatarPresetSelect.innerHTML !== options) {
+                this.avatarPresetSelect.innerHTML = options;
+            }
+            this.avatarPresetSelect.value = '';
+        }
+        const config = draft?.config || currentOverride?.config || this.state.session?.participant?.profileAvatar?.config || {};
+        const syncSelect = (element, values, value, labels = {}) => {
+            if (!element) return;
+            const options = renderOptionList(values, labels);
+            if (element.innerHTML !== options) element.innerHTML = options;
+            element.value = String(value ?? '');
+        };
+        if (this.avatarGeneratedInput && document.activeElement !== this.avatarGeneratedInput) {
+            this.avatarGeneratedInput.checked = config.generated !== false;
+        }
+        if (this.avatarAnimatedInput && document.activeElement !== this.avatarAnimatedInput) {
+            this.avatarAnimatedInput.checked = config.animated !== false;
+        }
+        if (this.avatarListenInput && document.activeElement !== this.avatarListenInput) {
+            this.avatarListenInput.checked = config.listen === true;
+        }
+        const textInputs = [
+            [this.avatarSrcInput, config.src || ''],
+            [this.avatarPackSrcInput, config.packSrc || ''],
+            [this.avatarSizeInput, config.size || '72'],
+            [this.avatarThoughtInput, config.thought || '']
+        ];
+        for (const [input, value] of textInputs) {
+            if (input && document.activeElement !== input) input.value = String(value || '');
+        }
+        syncSelect(this.avatarAssetModeSelect, AVATAR_OPTIONS.assetMode, config.assetMode || 'img');
+        syncSelect(this.avatarEmotionSelect, AVATAR_OPTIONS.emotion, config.emotion || 'neutral');
+        syncSelect(this.avatarThoughtModeSelect, AVATAR_OPTIONS.thoughtMode, config.thoughtMode || 'none');
+        syncSelect(this.avatarModeSelect, AVATAR_OPTIONS.mode, config.mode || 'static');
+        syncSelect(this.avatarShapeSelect, AVATAR_OPTIONS.shape, config.shape || 'circle');
+        syncSelect(this.avatarThemeSelect, AVATAR_OPTIONS.theme, config.theme || 'auto');
+        syncSelect(this.avatarStyleSelect, AVATAR_OPTIONS.style, config.style || 'robot-soft');
+        syncSelect(this.avatarPaletteSelect, AVATAR_OPTIONS.palette, config.palette || 'default');
+        syncSelect(this.avatarComplexitySelect, AVATAR_OPTIONS.complexity, config.complexity || '', { '': 'Default' });
+        if (this.avatarSourceLabel) {
+            this.avatarSourceLabel.textContent = currentOverride
+                ? 'WebMeet browser override'
+                : 'Profile avatar';
+        }
+        if (this.avatarPreview) {
+            const profileAvatar = this.state.session?.participant?.profileAvatar || null;
+            const effectiveSource = buildWebMeetAvatarSource({
+                profileAvatar,
+                override: draft,
+                userId: this.getCurrentAvatarOverrideUserId?.() || '',
+                participantId: this.state.session?.participantIdentity || ''
+            });
+            this.avatarPreview.innerHTML = effectiveSource?.config
+                ? renderWebMeetAvatarPreview(effectiveSource.config)
+                : '<span class="webmeet-avatar-preview-letter">?</span>';
+            if (effectiveSource?.config && typeof customElements !== 'undefined' && !customElements.get('axi-face')) {
+                this.avatarPreviewLoadPromise ||= ensureAxiFaceLoaded()
+                    .then(() => {
+                        this.avatarPreviewLoadPromise = null;
+                        this.renderAvatarControls?.();
+                    })
+                    .catch(() => {
+                        this.avatarPreviewLoadPromise = null;
+                    });
+            }
+        }
+        if (this.avatarQuickButton) {
+            this.avatarQuickButton.classList.toggle('active', Boolean(currentOverride));
+            this.avatarQuickButton.setAttribute('aria-expanded', this.state.avatarQuickMenuVisible ? 'true' : 'false');
+            this.avatarQuickButton.title = currentOverride
+                ? 'Avatar: WebMeet override'
+                : 'Avatar state';
+        }
+        if (this.avatarQuickMenu) {
+            this.avatarQuickMenu.classList.toggle('webmeet-hidden', !this.state.avatarQuickMenuVisible);
+            this.avatarQuickMenu.innerHTML = [
+                '<button type="button" class="webmeet-avatar-preset-item" data-local-action="resetWebMeetAvatarOverride">Profile avatar</button>',
+                ...WEBMEET_AVATAR_PRESETS.map((preset) => (
+                    `<button type="button" class="webmeet-avatar-preset-item" data-local-action="applyWebMeetAvatarPreset" data-avatar-preset="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</button>`
+                ))
+            ].join('');
+        }
+    },
+
     renderMeetingSummary() {
         const canManageRooms = this.canManageRooms();
         const meeting = this.selectedMeeting;
@@ -127,6 +254,7 @@ export const dashboardRenderMethods = {
             this.dashboardModalRoot.classList.toggle('is-room-transitioning', isTransitioningRoom);
             this.dashboardModalRoot.setAttribute('aria-busy', isTransitioningRoom ? 'true' : 'false');
         }
+        this.renderAvatarControls?.();
         if (this.exitOverlay) {
             this.exitOverlay.classList.toggle('webmeet-hidden', !isTransitioningRoom);
         }

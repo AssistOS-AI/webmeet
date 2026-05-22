@@ -69,7 +69,7 @@ Primary endpoints:
 - `GET /api/meetings/:meetingId/tasks`
 - `GET /api/meetings/:meetingId/decisions`
 
-Authenticated joins may include a sanitized `avatar` projection in the join body so the newly created participant roster entry already carries `profileAvatar` for reloads and reconnects before any follow-up avatar refresh call runs.
+Room avatar projection is LiveKit-only rendering state, not durable meeting state. Joins do not persist avatar projections into the meeting record; after the participant connects, WebMeet publishes the effective avatar through LiveKit participant attributes and the reliable data channel. Authenticated users publish through the protected route, and guests publish through the scoped guest public-service route for their current joined participant identity. Avatar publish failures must not block joining a meeting.
 
 ## Runtime Validation
 

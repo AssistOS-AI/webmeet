@@ -1,24 +1,4 @@
 export const dashboardChromeMethods = {
-    getDialogElement() {
-        return this.element?.closest?.('dialog') || null;
-    },
-
-    syncFullscreenButtonState() {
-        const dialog = this.getDialogElement();
-        const isFullscreen = Boolean(dialog?.classList.contains('is-fullscreen'));
-        if (!this.fullscreenButton) return;
-        this.fullscreenButton.classList.toggle('active', isFullscreen);
-        this.fullscreenButton.title = isFullscreen ? 'Exit fullscreen' : 'Toggle fullscreen';
-        this.fullscreenButton.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Toggle fullscreen');
-    },
-
-    toggleFullscreen() {
-        const dialog = this.getDialogElement();
-        if (!dialog) return;
-        dialog.classList.toggle('is-fullscreen');
-        this.syncFullscreenButtonState();
-    },
-
     applyChatSidebarVisibility() {
         const isVisible = this.state.chatSidebarVisible !== false;
         if (this.chatSidebar) {

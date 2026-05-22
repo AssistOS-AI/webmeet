@@ -66,6 +66,9 @@ export const mediaSettingsMethods = {
             syncDraftFromControls();
             this.renderMediaSettingsPanel();
         };
+        const handleAvatarPresetChange = () => {
+            this.syncWebMeetAvatarSettingsDraftFromInputs?.();
+        };
         const updateBackgroundBlurPreview = () => {
             const blurRadius = this.normalizeBackgroundBlurRadius(this.backgroundBlurInput?.value);
             syncDraftFromControls();
@@ -94,6 +97,29 @@ export const mediaSettingsMethods = {
         this.humFilterSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.backgroundEffectSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.backgroundEffectSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.avatarPresetSelect?.addEventListener?.('change', handleAvatarPresetChange);
+        this.avatarPresetSelect?.addEventListener?.('input', handleAvatarPresetChange);
+        [
+            this.avatarGeneratedInput,
+            this.avatarAnimatedInput,
+            this.avatarListenInput,
+            this.avatarSrcInput,
+            this.avatarPackSrcInput,
+            this.avatarAssetModeSelect,
+            this.avatarEmotionSelect,
+            this.avatarSizeInput,
+            this.avatarThoughtInput,
+            this.avatarThoughtModeSelect,
+            this.avatarModeSelect,
+            this.avatarShapeSelect,
+            this.avatarThemeSelect,
+            this.avatarStyleSelect,
+            this.avatarPaletteSelect,
+            this.avatarComplexitySelect
+        ].forEach((input) => {
+            input?.addEventListener?.('change', handleAvatarPresetChange);
+            input?.addEventListener?.('input', handleAvatarPresetChange);
+        });
         this.backgroundBlurInput?.addEventListener?.('input', updateBackgroundBlurPreview);
         this.backgroundImageInput?.addEventListener?.('change', async (event) => {
             await this.handleBackgroundImageSelection(event?.target?.files);
@@ -743,8 +769,29 @@ export const mediaSettingsMethods = {
         selectElement.value = String(selectedId || '');
     },
 
+    setSettingsTab(target) {
+        const source = target?.target || target;
+        const tabElement = source?.closest?.('[data-settings-tab]') || source;
+        const tab = String(tabElement?.dataset?.settingsTab || '').trim();
+        this.state.activeSettingsTab = tab === 'avatar' ? 'avatar' : 'media';
+        this.renderMediaSettingsPanel();
+    },
+
     renderMediaSettingsPanel() {
         const settings = this.getCurrentMediaSettingsForPanel();
+        const activeSettingsTab = this.state.activeSettingsTab === 'avatar' ? 'avatar' : 'media';
+        for (const button of this.settingsTabButtons || []) {
+            const isActive = String(button.dataset?.settingsTab || '').trim() === activeSettingsTab;
+            button.classList.toggle('is-active', isActive);
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            button.tabIndex = isActive ? 0 : -1;
+        }
+        for (const panel of this.settingsTabPanels || []) {
+            const isActive = String(panel.dataset?.settingsTabPanel || '').trim() === activeSettingsTab;
+            panel.hidden = !isActive;
+        }
+        this.mediaSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
         const syncSelectOptions = (selectElement, devices, selectedId, emptyLabel) => {
             if (!selectElement) return;
             const currentValue = String(selectElement.value || '').trim();
@@ -846,6 +893,7 @@ export const mediaSettingsMethods = {
             this.applyMediaSettingsButton.disabled = isApplying;
             this.applyMediaSettingsButton.setAttribute('aria-busy', isApplying ? 'true' : 'false');
         }
+        this.renderAvatarControls?.();
     },
 
     toggleMediaSettings() {
@@ -855,6 +903,7 @@ export const mediaSettingsMethods = {
         this.state.mediaSettingsPanelVisible = !this.state.mediaSettingsPanelVisible;
         if (this.state.mediaSettingsPanelVisible) {
             this.beginMediaSettingsDraft();
+            this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
             this.state.activeMobilePanel = 'settings';
             this.applyMobilePanelState?.();
         } else if (this.state.activeMobilePanel === 'settings') {
@@ -1060,12 +1109,18 @@ export const mediaSettingsMethods = {
             return;
         }
         const currentSettings = this.getParticipantAudioSettings(participantId);
-        const result = await assistOS.UI.showModal('webmeet-participant-audio-modal', {
-            participantId,
-            participantName: participantView.name || participantId,
-            volume: String(currentSettings.volume),
-            muted: currentSettings.muted ? 'true' : 'false'
-        }, true);
+        let result = null;
+        if (globalThis.assistOS?.UI && typeof globalThis.assistOS.UI.showModal === 'function') {
+            result = await globalThis.assistOS.UI.showModal('webmeet-participant-audio-modal', {
+                participantId,
+                participantName: participantView.name || participantId,
+                volume: String(currentSettings.volume),
+                muted: currentSettings.muted ? 'true' : 'false'
+            }, true);
+        } else {
+            this.setError?.('Participant audio settings modal is unavailable.');
+            return;
+        }
         if (!result) return;
         const resultParticipantId = String(result.participantId || participantId).trim();
         if (result.reset === true) {

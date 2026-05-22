@@ -1,5 +1,6 @@
 import {
-    buildPublicWebMeetApiBaseUrl
+    buildPublicWebMeetApiBaseUrl,
+    readGuestInviteTokenFromUrl
 } from '../services/dashboard-utils.js';
 
 /**
@@ -33,7 +34,12 @@ export class GuestSessionManager {
 
     getGuestToken() {
         const session = this.getSession();
-        return String(session?.guestToken || '').trim();
+        return String(
+            session?.guestToken
+            || session?.meeting?.guestToken
+            || readGuestInviteTokenFromUrl()
+            || ''
+        ).trim();
     }
 
     async bootstrapGuestSession(session) {
@@ -81,7 +87,11 @@ export class GuestSessionManager {
             },
             body: JSON.stringify({
                 guestToken: this.getGuestToken(),
-                participantId: String(session?.participantIdentity || '').trim(),
+                participantId: String(
+                    session?.participantIdentity
+                    || session?.participant?.id
+                    || ''
+                ).trim(),
                 ...payload
             })
         });
@@ -93,18 +103,7 @@ export class GuestSessionManager {
     }
 
     async fetchPublicMeetingDetails(meetingId) {
-        const session = this.getSession();
-        const baseUrl = String(session?.publicApiBaseUrl || buildPublicWebMeetApiBaseUrl()).trim();
-        const url = `${baseUrl}/meetings/${encodeURIComponent(meetingId)}`;
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-        });
-        if (!response.ok) {
-            const text = await response.text().catch(() => 'Unknown error');
-            throw new Error(`Failed to load meeting details: ${response.status} - ${text}`);
-        }
-        return response.json();
+        return this.callPublicGuestApi(meetingId, 'guest-state', {});
     }
 
 }

@@ -377,12 +377,8 @@ export const roomSessionMethods = {
                 this.playParticipantJoinSound(participant);
                 subscribeParticipantPublications(participant, Track, 'participant-connected');
                 this.syncParticipantsFromRoom(this.room, Track);
-                void (async () => {
-                    await this.loadMeetingDetails();
-                    if (this.room) {
-                        this.syncParticipantsFromRoom(this.room, Track);
-                    }
-                })().catch(() => {});
+                void this.republishCurrentParticipantAvatarState?.().catch(() => {});
+                void this.requestRoomAvatarState?.().catch(() => {});
                 scheduleRemoteSubscriptionSweep(Track, 'participant-connected');
             },
             onParticipantDisconnected: (participant, { Track }) => {
@@ -444,7 +440,31 @@ export const roomSessionMethods = {
                     // Ignore malformed data-channel messages from other clients.
                 }
             },
-            onParticipantAttributesChanged: (_changedAttributes, _participant, { Track }) => {
+            onParticipantAttributesChanged: (changedAttributes, participant, { Track }) => {
+                const rawAvatar = String(changedAttributes?.webmeetProfileAvatar || '').trim();
+                if (rawAvatar) {
+                    try {
+                        const profileAvatar = JSON.parse(rawAvatar);
+                        if (profileAvatar && typeof profileAvatar === 'object' && !Array.isArray(profileAvatar)) {
+                            const participantId = String(participant?.identity || '').trim();
+                            const userId = String(
+                                participant?.attributes?.ploinkyUserId
+                                || participant?.attributes?.workspaceUserId
+                                || participant?.attributes?.userId
+                                || participant?.attributes?.webmeetUserId
+                                || ''
+                            ).trim();
+                            this.applyRealtimeParticipantAvatar?.({
+                                meetingId: String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim(),
+                                participantId,
+                                userId,
+                                profileAvatar
+                            });
+                        }
+                    } catch (_) {
+                        // Ignore malformed avatar attributes and let the normal room sync continue.
+                    }
+                }
                 this.syncParticipantsFromRoom(this.room, Track);
             },
             onDisconnected: () => {
@@ -454,11 +474,9 @@ export const roomSessionMethods = {
                 this.state.roomState = 'Connected';
                 this.syncParticipantsFromRoom(this.room, Track);
                 void (async () => {
-                    await this.loadMeetingDetails();
-                    if (this.room) {
-                        this.syncParticipantsFromRoom(this.room, Track);
-                    }
-                    await this.publishCurrentParticipantAvatar?.({ force: true });
+                    await this.loadMeetingDetails({ includeParticipants: false });
+                    await this.republishCurrentParticipantAvatarState?.();
+                    await this.requestRoomAvatarState?.();
                 })().catch(() => {});
                 for (const participant of room.remoteParticipants.values()) {
                     subscribeParticipantPublications(participant, Track, 'connected');

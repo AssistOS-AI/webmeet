@@ -1,7 +1,7 @@
 import {
     createParticipantProfileAvatarController,
     getFallbackLetter,
-} from '/explorer/services/profile-avatar-client.js';
+} from '../services/webmeet-profile-avatar-runtime.js';
 
 export class ParticipantLayoutController {
     constructor(options = {}) {
@@ -40,7 +40,7 @@ export class ParticipantLayoutController {
                 : (() => '')
         });
         this.profileAvatarCleanup = this.profileAvatarController.bindUpdates(
-            () => this.participantViews.values(),
+            () => Array.from(this.participantViews.values()).filter((view) => view.avatarSource !== 'projected'),
             (view) => this.applyParticipantViewState(view)
         );
     }
@@ -73,6 +73,7 @@ export class ParticipantLayoutController {
             : null;
         view.avatarFallbackLetter = String(profileAvatar.fallbackLetter || view.avatarFallbackLetter || getFallbackLetter(view.name)).trim();
         view.avatarResolved = true;
+        view.avatarSource = 'projected';
         return true;
     }
 
@@ -203,6 +204,7 @@ export class ParticipantLayoutController {
                 avatarConfig: null,
                 avatarFallbackLetter: getFallbackLetter(this.getParticipantDisplayName(participant)),
                 avatarResolved: false,
+                avatarSource: '',
                 isMini: true,
                 isFocused: false,
                 element,
@@ -226,18 +228,16 @@ export class ParticipantLayoutController {
                 view.videoElements = new Map();
             }
         }
-        const shouldUseProjectedAvatar = participant?.kind !== 'local';
-        const hasProjectedAvatar = shouldUseProjectedAvatar
-            ? this.applyParticipantProfileAvatar(view, participant)
-            : false;
+        const hasProjectedAvatar = this.applyParticipantProfileAvatar(view, participant);
         this.applyParticipantViewState(view);
-        if (participant?.kind === 'local') {
+        if (participant?.kind === 'local' && !hasProjectedAvatar) {
             this.profileAvatarController.refresh(view, participant, (nextView) => this.applyParticipantViewState(nextView));
         } else if (!hasProjectedAvatar) {
             view.avatarEnabled = false;
             view.avatarConfig = null;
             view.avatarFallbackLetter = getFallbackLetter(view.name);
             view.avatarResolved = true;
+            view.avatarSource = '';
             this.applyParticipantViewState(view);
         }
         return view;

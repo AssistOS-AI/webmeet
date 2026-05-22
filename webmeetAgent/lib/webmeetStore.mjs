@@ -885,14 +885,14 @@ function projectLiveKitMeetingParticipants(payload, liveParticipants) {
         if (!participantId) continue;
         const cached = cachedById.get(participantId) || {};
         const liveAttributes = getParticipantAttributes(liveParticipant);
-        const liveProfileAvatar = parseLiveKitProfileAvatar(liveAttributes);
         projected.push({
             ...cached,
             id: participantId,
             displayName: String(liveParticipant?.name || cached.displayName || participantId).trim() || participantId,
             joinedAt: cached.joinedAt || now,
             lastSeenAt: now,
-            profileAvatar: liveProfileAvatar || cached.profileAvatar,
+            pendingLiveKit: false,
+            profileAvatar: parseLiveKitProfileAvatar(liveAttributes),
             attributes: {
                 ...(cached.attributes && typeof cached.attributes === 'object' ? cached.attributes : {}),
                 ...liveAttributes
@@ -902,14 +902,49 @@ function projectLiveKitMeetingParticipants(payload, liveParticipants) {
     return projected;
 }
 
+function shouldPreserveStoredMemberDuringReconcile(context, member) {
+    if (member?.pendingLiveKit !== true) {
+        return false;
+    }
+    const lastSeenAt = toTimestamp(member?.lastSeenAt) ?? toTimestamp(member?.joinedAt);
+    if (!lastSeenAt) {
+        return false;
+    }
+    return (Date.now() - lastSeenAt) <= getPresenceTtlMs(context.workspaceRoot);
+}
+
 function syncPayloadMembersToLiveKitParticipants(context, record, payload, participants) {
     const currentMembers = Array.isArray(payload.members) ? payload.members : [];
+    const preservedMembers = currentMembers.filter((member) => {
+        const participantId = String(member?.id || '').trim();
+        if (!participantId) {
+            return false;
+        }
+        if (participants.some((entry) => String(entry?.id || '').trim() === participantId)) {
+            return false;
+        }
+        return shouldPreserveStoredMemberDuringReconcile(context, member);
+    });
+    const nextParticipants = [...participants, ...preservedMembers];
     const currentIds = new Set(currentMembers.map((member) => String(member?.id || '').trim()).filter(Boolean));
-    const nextIds = new Set(participants.map((member) => String(member?.id || '').trim()).filter(Boolean));
+    const nextIds = new Set(nextParticipants.map((member) => String(member?.id || '').trim()).filter(Boolean));
     const membershipChanged = currentIds.size !== nextIds.size
         || [...currentIds].some((participantId) => !nextIds.has(participantId));
 
-    payload.members = participants;
+    payload.members = nextParticipants.map((member) => {
+        const attributes = member?.attributes && typeof member.attributes === 'object'
+            ? member.attributes
+            : {};
+        const {
+            webmeetProfileAvatar: _webmeetProfileAvatar,
+            ...durableAttributes
+        } = attributes;
+        const { profileAvatar: _profileAvatar, ...durableMember } = member || {};
+        return {
+            ...durableMember,
+            ...(Object.keys(durableAttributes).length ? { attributes: durableAttributes } : {})
+        };
+    });
     if (membershipChanged) {
         for (const member of currentMembers) {
             const participantId = String(member?.id || '').trim();
@@ -931,16 +966,31 @@ function syncPayloadMembersToLiveKitParticipants(context, record, payload, parti
         }
     }
     saveMeetingRecord(context, record, payload);
+    return nextParticipants;
 }
 
-async function getRealtimeMeetingParticipants(context, record, payload) {
+function projectStoredMeetingParticipants(payload) {
+    const members = Array.isArray(payload?.members) ? payload.members : [];
+    return members
+        .map((member) => ({
+            ...member,
+            id: String(member?.id || '').trim(),
+            displayName: String(member?.displayName || member?.id || 'Participant').trim() || 'Participant'
+        }))
+        .filter((member) => member.id);
+}
+
+async function getRealtimeMeetingParticipants(context, record, payload, options = {}) {
     const liveParticipants = await listLiveKitRoomParticipants(context, record.roomName);
+    if (options.preserveStoredMembersOnEmpty === true && liveParticipants.length === 0) {
+        return projectStoredMeetingParticipants(payload);
+    }
     const participants = projectLiveKitMeetingParticipants(payload, liveParticipants);
-    syncPayloadMembersToLiveKitParticipants(context, record, payload, participants);
-    if (participants.length === 0) {
+    const reconciledParticipants = syncPayloadMembersToLiveKitParticipants(context, record, payload, participants);
+    if (reconciledParticipants.length === 0) {
         scheduleEmptyRoomAgentDetach(context, record.meetingId, 'no_human_participants');
     }
-    return participants;
+    return reconciledParticipants;
 }
 
 async function waitForLiveKitAgentDispatch(context, roomName, dispatchId, metadata) {
@@ -1336,12 +1386,20 @@ export function joinGuestMeeting(context, { meetingId, guestToken, displayName, 
         payload.members = members;
         participant = members.find((p) => p.id === participantIdentity);
         if (!participant) {
-            participant = { id: participantIdentity, displayName: effectiveDisplayName, joinedAt, lastSeenAt: joinedAt, guest: true };
+            participant = {
+                id: participantIdentity,
+                displayName: effectiveDisplayName,
+                joinedAt,
+                lastSeenAt: joinedAt,
+                guest: true,
+                pendingLiveKit: true
+            };
             members.push(participant);
         } else {
             participant.displayName = effectiveDisplayName;
             participant.lastSeenAt = joinedAt;
             participant.guest = true;
+            participant.pendingLiveKit = true;
         }
         recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participantIdentity, guest: true });
     });
@@ -1385,7 +1443,11 @@ function assertGuestParticipant(payload, participantId) {
         throw new Error('Missing participantId.');
     }
     const participant = (Array.isArray(payload.members) ? payload.members : []).find((entry) => (
-        String(entry?.id || '').trim() === targetParticipantId && entry?.guest === true
+        String(entry?.id || '').trim() === targetParticipantId
+        && (
+            entry?.guest === true
+            || !String(entry?.userId || '').trim()
+        )
     )) || null;
     if (!participant) {
         throw new Error('Guest participant is not joined.');
@@ -1397,10 +1459,14 @@ export async function getGuestMeetingDetails(context, { meetingId, guestToken, p
     const record = loadMeetingRecord(context, meetingId);
     assertGuestMeetingAccess(record, guestToken);
     const payload = decryptMeetingPayload(context, record);
-    const participants = await getRealtimeMeetingParticipants(context, record, payload);
-    const targetParticipantId = String(participantId || '').trim();
-    if (!participants.some((entry) => String(entry?.id || '').trim() === targetParticipantId)) {
-        throw new Error('Guest participant is not joined.');
+    assertGuestParticipant(payload, participantId);
+    let participants;
+    try {
+        participants = await getRealtimeMeetingParticipants(context, record, payload, {
+            preserveStoredMembersOnEmpty: true
+        });
+    } catch {
+        participants = projectStoredMeetingParticipants(payload);
     }
     return {
         meeting: buildMeetingView(record),
@@ -1431,21 +1497,51 @@ export async function leaveGuestMeeting(context, { meetingId, guestToken, partic
     return leaveMeeting(context, { meetingId, participantId });
 }
 
+export function updateGuestMeetingParticipantAvatar(context, {
+    meetingId,
+    guestToken,
+    participantId,
+    avatar = null
+} = {}) {
+    const targetMeetingId = String(meetingId || '').trim();
+    const targetParticipantId = String(participantId || '').trim();
+    if (!targetMeetingId) {
+        throw new Error('Missing meeting id.');
+    }
+    if (!targetParticipantId) {
+        throw new Error('Missing participant id.');
+    }
+    const record = loadMeetingRecord(context, targetMeetingId);
+    assertGuestMeetingAccess(record, guestToken);
+    let profileAvatar = null;
+    mutateMeeting(context, targetMeetingId, (_record, payload) => {
+        assertGuestParticipant(payload, targetParticipantId);
+        profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${targetParticipantId}`);
+        recordMeetingEvent(context, targetMeetingId, payload, 'participant.avatar.updated', {
+            meetingId: targetMeetingId,
+            participantId: targetParticipantId,
+            userId: ''
+        });
+    });
+    return {
+        ok: true,
+        meetingId: targetMeetingId,
+        participantId: targetParticipantId,
+        profileAvatar
+    };
+}
+
 export function joinMeeting(context, { meetingId, displayName, participantId, avatar = null, authInfo = null }) {
     const participantIdentity = String(participantId || randomId('participant')).trim();
     const effectiveDisplayName = String(displayName || getAuthDisplayName(authInfo) || 'Participant').trim() || 'Participant';
     const auth = normalizeAuthInfo(authInfo);
     const userId = String(auth.id || '').trim();
-    const projectedAvatar = userId
-        ? sanitizeParticipantAvatarPayload(avatar, `profile:${userId}`)
-        : null;
     const participantAttributes = userId
         ? {
             webmeetUserId: userId,
             userId,
             workspaceUserId: userId,
-            ploinkyUserId: userId,
-            ...(projectedAvatar ? { webmeetProfileAvatar: JSON.stringify(projectedAvatar) } : {})
+            ploinkyUserId: userId
         }
         : {};
     const joinedAt = nowIso();
@@ -1454,7 +1550,13 @@ export function joinMeeting(context, { meetingId, displayName, participantId, av
         cleanupStaleMembers(context, meetingId, payload);
         participant = payload.members.find((entry) => entry.id === participantIdentity) || null;
         if (!participant) {
-            participant = { id: participantIdentity, displayName: effectiveDisplayName, joinedAt, lastSeenAt: joinedAt };
+            participant = {
+                id: participantIdentity,
+                displayName: effectiveDisplayName,
+                joinedAt,
+                lastSeenAt: joinedAt,
+                pendingLiveKit: true
+            };
             payload.members.push(participant);
             recordMeetingEvent(context, meetingId, payload, 'participant.joined', { meetingId, participantId: participant.id });
         } else {
@@ -1463,6 +1565,7 @@ export function joinMeeting(context, { meetingId, displayName, participantId, av
                 participant.joinedAt = joinedAt;
             }
             participant.lastSeenAt = joinedAt;
+            participant.pendingLiveKit = true;
         }
         if (userId) {
             participant.userId = userId;
@@ -1470,14 +1573,6 @@ export function joinMeeting(context, { meetingId, displayName, participantId, av
                 ...(participant.attributes && typeof participant.attributes === 'object' ? participant.attributes : {}),
                 ...participantAttributes
             };
-        }
-        if (projectedAvatar) {
-            participant.profileAvatar = projectedAvatar;
-            recordMeetingEvent(context, meetingId, payload, 'participant.avatar.updated', {
-                meetingId,
-                participantId: participant.id,
-                userId: userId || participant.userId || ''
-            });
         }
     });
     const rtcConfig = buildRtcConfig(context);
@@ -1526,6 +1621,7 @@ export function updateMeetingParticipantAvatar(context, {
         throw new Error('Authentication is required to publish a participant avatar.');
     }
     let participant = null;
+    let profileAvatar = null;
     mutateMeeting(context, targetMeetingId, (_record, payload) => {
         participant = (Array.isArray(payload.members) ? payload.members : [])
             .find((entry) => String(entry?.id || '').trim() === targetParticipantId) || null;
@@ -1546,7 +1642,7 @@ export function updateMeetingParticipantAvatar(context, {
                 ploinkyUserId: userId
             };
         }
-        participant.profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${userId}`);
+        profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${userId}`);
         recordMeetingEvent(context, targetMeetingId, payload, 'participant.avatar.updated', {
             meetingId: targetMeetingId,
             participantId: targetParticipantId,
@@ -1557,7 +1653,7 @@ export function updateMeetingParticipantAvatar(context, {
         ok: true,
         meetingId: targetMeetingId,
         participantId: targetParticipantId,
-        profileAvatar: participant?.profileAvatar || null
+        profileAvatar
     };
 }
 

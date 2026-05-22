@@ -2,16 +2,29 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createAxiFaceAssetsHttpHandler } from './axi-face-assets.mjs';
+import { findWorkspaceRoot } from '../lib/workspacePaths.mjs';
 
 const PUBLIC_PORT = Number.parseInt(process.env.PORT || '7000', 10);
 const MCP_PORT = Number.parseInt(process.env.WEBMEET_MCP_PORT || '7001', 10);
 const API_PORT = Number.parseInt(process.env.WEBMEET_API_PORT || '8791', 10);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const WORKSPACE_ROOT = findWorkspaceRoot();
+const REPO_NAME = String(process.env.PLOINKY_REPO_NAME || 'AchillesIDE').trim() || 'AchillesIDE';
 const PLUGIN_DIR = path.join(ROOT_DIR, 'IDE-plugins/webmeet-tool-button');
+const EXPLORER_DIR = path.join(WORKSPACE_ROOT, '.ploinky', 'repos', REPO_NAME, 'explorer');
+const EXPLORER_WEBSKEL_DIR = path.join(WORKSPACE_ROOT, '.ploinky', 'repos', REPO_NAME, 'explorer', 'WebSkel');
+const EXPLORER_SHARED_STYLE_FILES = [
+    path.join(EXPLORER_DIR, 'styles.css'),
+    path.join(EXPLORER_DIR, 'plugins.css')
+];
 const PUBLIC_ASSET_ROOTS = [
     path.join(PLUGIN_DIR, 'components/webmeet-dashboard-modal'),
     path.join(PLUGIN_DIR, 'components/webmeet-participant-card'),
-    path.join(PLUGIN_DIR, 'vendor')
+    path.join(PLUGIN_DIR, 'components/webmeet-participant-audio-modal'),
+    path.join(PLUGIN_DIR, 'vendor'),
+    EXPLORER_WEBSKEL_DIR,
+    ...EXPLORER_SHARED_STYLE_FILES
 ];
 const PUBLIC_SERVICE_PREFIX = '/public-services/webmeet/';
 const INTERNAL_API_PREFIX = '/api/';
@@ -37,6 +50,12 @@ const CONTENT_TYPES = new Map([
     ['.tflite', 'application/octet-stream'],
     ['.woff2', 'font/woff2']
 ]);
+
+const handlePublicAxiFaceAssetRequest = createAxiFaceAssetsHttpHandler({
+    fs: fs.promises,
+    path,
+    workspaceRoot: WORKSPACE_ROOT
+});
 
 function writeResponse(res, status, body, headers = {}) {
     const buffer = Buffer.from(String(body || ''));
@@ -354,8 +373,6 @@ function sendGuestPage(req, res) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Join WebMeet</title>
-    <link rel="stylesheet" href="./assets/components/webmeet-dashboard-modal/webmeet-dashboard-modal.css">
-    <link rel="stylesheet" href="./assets/components/webmeet-participant-card/webmeet-participant-card.css">
     <style>
         :root {
             color-scheme: light;
@@ -460,22 +477,9 @@ function sendGuestPage(req, res) {
             color: var(--danger);
             font-size: 0.9rem;
         }
-        .webmeet-public-dashboard .webmeet-dashboard-modal {
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            max-width: 100vw;
-            max-height: 100vh;
-            min-width: 0;
-            min-height: 0;
-            border-radius: 0;
-            resize: none;
-        }
-        .webmeet-public-dashboard .webmeet-modal-window-actions,
-        .webmeet-public-dashboard #webmeetCreateRoomButton {
-            display: none !important;
-        }
     </style>
+    <link rel="stylesheet" href="./assets/explorer/styles.css">
+    <link rel="stylesheet" href="./assets/explorer/plugins.css">
 </head>
 <body>
     <main class="webmeet-public-join" id="webmeetGuestJoin">
@@ -492,7 +496,7 @@ function sendGuestPage(req, res) {
             </form>
         </section>
     </main>
-    <main class="webmeet-public-dashboard webmeet-hidden" id="webmeetDashboardRoot"></main>
+    <main class="webmeet-hidden" id="webmeetDashboardRoot"></main>
     <script type="module">
         const meetingId = ${JSON.stringify(meetingId)};
         const guestToken = ${JSON.stringify(guestToken)};
@@ -507,9 +511,26 @@ function sendGuestPage(req, res) {
         const message = document.getElementById('webmeetGuestMessage');
         const joinView = document.getElementById('webmeetGuestJoin');
         const dashboardRoot = document.getElementById('webmeetDashboardRoot');
+        const guestDisplayNameStorageKey = 'webmeet.guestDisplayName';
 
         function setMessage(value) {
             message.textContent = String(value || '');
+        }
+
+        function readStoredGuestDisplayName() {
+            try {
+                return String(window.localStorage.getItem(guestDisplayNameStorageKey) || '').trim();
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function persistGuestDisplayName(displayName) {
+            try {
+                window.localStorage.setItem(guestDisplayNameStorageKey, String(displayName || '').trim());
+            } catch (_) {
+                // Ignore browser storage failures.
+            }
         }
 
         function createParticipantId(displayName) {
@@ -538,52 +559,125 @@ function sendGuestPage(req, res) {
         }
 
         async function openDashboard(session) {
-            const htmlResponse = await fetch('./assets/components/webmeet-dashboard-modal/webmeet-dashboard-modal.html', {
-                headers: { 'Accept': 'text/html' }
-            });
-            if (!htmlResponse.ok) {
-                throw new Error('Dashboard UI could not be loaded.');
-            }
-            dashboardRoot.innerHTML = await htmlResponse.text();
             const sessionKey = 'webmeet.guestSession.' + Date.now() + '-' + Math.random().toString(36).slice(2);
             sessionStorage.setItem(sessionKey, JSON.stringify(session));
             window.location.hash = 'webmeet-dashboard-page?guestSession=' + encodeURIComponent(sessionKey);
-
-            const module = await import('./assets/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js');
-            const actions = new Map();
-            const instance = new module.WebMeetDashboardModal(dashboardRoot, () => {}, {
-                registerAction(name, callback) {
-                    actions.set(name, callback);
-                },
+            const webSkelModule = await import('./assets/explorer/WebSkel/webskel.mjs');
+            const [dashboardTemplate, dashboardCss, participantCardTemplate, participantCardCss, participantAudioTemplate, participantAudioCss, dashboardModule, participantCardModule, participantAudioModule] = await Promise.all([
+                fetch('./assets/components/webmeet-dashboard-modal/webmeet-dashboard-modal.html', { headers: { 'Accept': 'text/html' } }).then(async (response) => {
+                    if (!response.ok) throw new Error('Dashboard UI could not be loaded.');
+                    return response.text();
+                }),
+                fetch('./assets/components/webmeet-dashboard-modal/webmeet-dashboard-modal.css', { headers: { 'Accept': 'text/css' } }).then(async (response) => {
+                    if (!response.ok) throw new Error('Dashboard styles could not be loaded.');
+                    return response.text();
+                }),
+                fetch('./assets/components/webmeet-participant-card/webmeet-participant-card.html', { headers: { 'Accept': 'text/html' } }).then(async (response) => {
+                    if (!response.ok) throw new Error('Participant card UI could not be loaded.');
+                    return response.text();
+                }),
+                fetch('./assets/components/webmeet-participant-card/webmeet-participant-card.css', { headers: { 'Accept': 'text/css' } }).then(async (response) => {
+                    if (!response.ok) throw new Error('Participant card styles could not be loaded.');
+                    return response.text();
+                }),
+                fetch('./assets/components/webmeet-participant-audio-modal/webmeet-participant-audio-modal.html', { headers: { 'Accept': 'text/html' } }).then(async (response) => {
+                    if (!response.ok) throw new Error('Participant audio modal UI could not be loaded.');
+                    return response.text();
+                }),
+                fetch('./assets/components/webmeet-participant-audio-modal/webmeet-participant-audio-modal.css', { headers: { 'Accept': 'text/css' } }).then(async (response) => {
+                    if (!response.ok) throw new Error('Participant audio modal styles could not be loaded.');
+                    return response.text();
+                }),
+                import('./assets/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'),
+                import('./assets/components/webmeet-participant-card/webmeet-participant-card.js'),
+                import('./assets/components/webmeet-participant-audio-modal/webmeet-participant-audio-modal.js')
+            ]);
+            const webSkelClass = webSkelModule.default || webSkelModule.WebSkel;
+            const webSkel = await webSkelClass.initialise('./assets/vendor/webmeet-guest-webskel.json');
+            const registerWebSkelComponentConfig = (componentConfig) => {
+                webSkel.configs = webSkel.configs || {};
+                webSkel.configs.components = Array.isArray(webSkel.configs.components)
+                    ? webSkel.configs.components
+                    : [];
+                const existingIndex = webSkel.configs.components.findIndex((component) => component?.name === componentConfig.name);
+                if (existingIndex >= 0) {
+                    webSkel.configs.components[existingIndex] = {
+                        ...webSkel.configs.components[existingIndex],
+                        ...componentConfig
+                    };
+                    return;
+                }
+                webSkel.configs.components.push(componentConfig);
+            };
+            registerWebSkelComponentConfig({
+                name: 'webmeet-participant-card',
+                type: 'components',
+                presenterClassName: 'WebMeetParticipantCard'
+            });
+            registerWebSkelComponentConfig({
+                name: 'webmeet-dashboard-modal',
+                type: 'components',
+                presenterClassName: 'WebMeetDashboardModal'
+            });
+            registerWebSkelComponentConfig({
+                name: 'webmeet-participant-audio-modal',
+                type: 'modal',
+                presenterClassName: 'WebmeetParticipantAudioModal'
+            });
+            await webSkel.defineComponent({
+                name: 'webmeet-participant-card',
+                type: 'components',
+                presenterClassName: 'WebMeetParticipantCard',
+                loadedTemplate: participantCardTemplate,
+                loadedCSSs: [participantCardCss],
+                presenterModule: participantCardModule
+            });
+            await webSkel.defineComponent({
+                name: 'webmeet-dashboard-modal',
+                type: 'components',
+                presenterClassName: 'WebMeetDashboardModal',
+                loadedTemplate: dashboardTemplate,
+                loadedCSSs: [dashboardCss],
+                presenterModule: dashboardModule
+            });
+            await webSkel.defineComponent({
+                name: 'webmeet-participant-audio-modal',
+                type: 'components',
+                presenterClassName: 'WebmeetParticipantAudioModal',
+                loadedTemplate: participantAudioTemplate,
+                loadedCSSs: [participantAudioCss],
+                presenterModule: participantAudioModule
+            });
+            window.UI = webSkel;
+            window.assistOS = window.assistOS || {};
+            window.assistOS.webSkel = webSkel;
+            window.assistOS.UI = window.assistOS.UI || {};
+            window.assistOS.UI.showModal = webSkelModule.showModal;
+            window.assistOS.UI.closeModal = webSkelModule.closeModal;
+            dashboardRoot.innerHTML = '';
+            webSkel.createElement('webmeet-dashboard-modal', dashboardRoot, {
                 onGuestExit() {
                     sessionStorage.removeItem(sessionKey);
                     dashboardRoot.innerHTML = '';
                     dashboardRoot.classList.add('webmeet-hidden');
-                    joinView.classList.add('webmeet-hidden');
+                    joinView.classList.remove('webmeet-hidden');
+                    input.value = readStoredGuestDisplayName();
                     try {
                         window.history.replaceState(null, '', window.location.pathname);
                     } catch (_) {
                         window.location.hash = '';
                     }
-                    window.close();
-                    window.setTimeout(() => {
-                        if (!window.closed) {
-                            window.location.replace('about:blank');
-                        }
-                    }, 50);
                 }
-            });
-            dashboardRoot.addEventListener('click', (event) => {
-                const actionTarget = event.target?.closest?.('[data-local-action]');
-                if (!actionTarget) return;
-                const action = actions.get(String(actionTarget.dataset.localAction || ''));
-                if (!action) return;
-                event.preventDefault();
-                void action(actionTarget);
-            });
+            }, {
+                'data-presenter': 'webmeet-dashboard-modal',
+                'data-host-surface': 'standalone-page'
+            }, false);
             joinView.classList.add('webmeet-hidden');
             dashboardRoot.classList.remove('webmeet-hidden');
-            await instance.afterRender();
+            const dashboardElement = dashboardRoot.querySelector('webmeet-dashboard-modal');
+            if (dashboardElement?.renderCompletePromise) {
+                await dashboardElement.renderCompletePromise;
+            }
         }
 
         form.addEventListener('submit', async (event) => {
@@ -598,6 +692,7 @@ function sendGuestPage(req, res) {
                 input.focus();
                 return;
             }
+            persistGuestDisplayName(displayName);
             button.disabled = true;
             setMessage('Joining room...');
             try {
@@ -611,6 +706,7 @@ function sendGuestPage(req, res) {
         if (!meetingId || !guestToken) {
             button.disabled = true;
         }
+        input.value = readStoredGuestDisplayName();
         setTimeout(() => input.focus(), 0);
     </script>
 </body>
@@ -637,6 +733,21 @@ function resolveAssetPath(pathname) {
         candidates.push(path.join(
             PLUGIN_DIR,
             relativePath.replace(/^components\/webmeet-participant-card\//, 'components/webmeet-participant-card/')
+        ));
+    } else if (relativePath.startsWith('components/webmeet-participant-audio-modal/')) {
+        candidates.push(path.join(
+            PLUGIN_DIR,
+            relativePath.replace(/^components\/webmeet-participant-audio-modal\//, 'components/webmeet-participant-audio-modal/')
+        ));
+    } else if (relativePath.startsWith('explorer/WebSkel/')) {
+        candidates.push(path.join(
+            EXPLORER_WEBSKEL_DIR,
+            relativePath.replace(/^explorer\/WebSkel\//, '')
+        ));
+    } else if (relativePath === 'explorer/styles.css' || relativePath === 'explorer/plugins.css') {
+        candidates.push(path.join(
+            EXPLORER_DIR,
+            relativePath.replace(/^explorer\//, '')
         ));
     } else if (relativePath.startsWith('vendor/')) {
         candidates.push(path.join(PLUGIN_DIR, relativePath));
@@ -778,6 +889,7 @@ function isAllowedPublicApi(req, pathname) {
         || /^\/api\/meetings\/[^/]+\/guest-leave$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-presence$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-chat$/.test(pathname)
+        || /^\/api\/meetings\/[^/]+\/guest-avatar$/.test(pathname)
     );
 }
 
@@ -785,9 +897,21 @@ function isAllowedAuthenticatedApi(req, pathname) {
     // Allow all /api/* routes for authenticated users (via x-ploinky-auth-info header)
     if (!pathname.startsWith('/api/')) return false;
     // Exclude guest-only routes that require special handling
-    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat)$/;
+    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat|guest-avatar)$/;
     if (guestOnlyPattern.test(pathname)) return false;
     return true;
+}
+
+function normalizePublicServicePathname(pathname) {
+    let normalized = String(pathname || '').trim() || '/';
+    if (normalized.startsWith(PUBLIC_SERVICE_PREFIX)) {
+        normalized = `/${normalized.slice(PUBLIC_SERVICE_PREFIX.length)}`.replace(/^\/+/, '/');
+    }
+    if (normalized === '/guest') return '/api/guest';
+    if (normalized.startsWith('/assets/')) return `/api/${normalized.slice(1)}`;
+    if (normalized.startsWith('/axi-face/')) return `/api/${normalized.slice(1)}`;
+    if (normalized.startsWith('/meetings/')) return `/api/${normalized.slice(1)}`;
+    return normalized;
 }
 
 const server = http.createServer((req, res) => {
@@ -802,38 +926,48 @@ const server = http.createServer((req, res) => {
 async function handleRequest(req, res) {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const pathname = url.pathname || '/';
+    const routedPathname = normalizePublicServicePathname(pathname);
 
-    if (pathname === '/health' || pathname === '/healthz') {
+    if (pathname === '/health' || pathname === '/healthz' || routedPathname === '/health' || routedPathname === '/healthz') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, service: 'webmeet-public-proxy' }));
         return;
     }
 
-    if (req.method === 'GET' && pathname === '/api/guest') {
+    if (req.method === 'GET' && routedPathname === '/api/guest') {
         if (!(await requirePloinkyGuestIdentity(req, res, url))) return;
         sendGuestPage(req, res);
         return;
     }
 
-    if (req.method === 'GET' && pathname.startsWith('/api/assets/')) {
-        sendAsset(pathname, res);
+    if (req.method === 'GET' && routedPathname.startsWith('/api/assets/')) {
+        sendAsset(routedPathname, res);
         return;
     }
 
-    if (pathname === '/mcp' || pathname.startsWith('/mcp/')) {
-        await proxyMcp(req, res, `${pathname}${url.search || ''}`);
-        return;
-    }
-
-    if (isAllowedPublicApi(req, pathname)) {
+    if (req.method === 'GET' && routedPathname.startsWith('/api/axi-face/')) {
         if (!(await requirePloinkyGuestIdentity(req, res, url))) return;
-        proxy(req, res, API_PORT, `${pathname}${url.search || ''}`);
+        const axiFaceUrl = new URL(url.toString());
+        axiFaceUrl.pathname = routedPathname.replace(/^\/api/, '') || '/';
+        if (await handlePublicAxiFaceAssetRequest(req, res, axiFaceUrl)) {
+            return;
+        }
+    }
+
+    if (routedPathname === '/mcp' || routedPathname.startsWith('/mcp/')) {
+        await proxyMcp(req, res, `${routedPathname}${url.search || ''}`);
         return;
     }
 
-    if (isAllowedAuthenticatedApi(req, pathname)) {
+    if (isAllowedPublicApi(req, routedPathname)) {
+        if (!(await requirePloinkyGuestIdentity(req, res, url))) return;
+        proxy(req, res, API_PORT, `${routedPathname}${url.search || ''}`);
+        return;
+    }
+
+    if (isAllowedAuthenticatedApi(req, routedPathname)) {
         if (!(await requirePloinkyAuthenticatedIdentity(req, res, url))) return;
-        proxy(req, res, API_PORT, `${pathname}${url.search || ''}`);
+        proxy(req, res, API_PORT, `${routedPathname}${url.search || ''}`);
         return;
     }
 

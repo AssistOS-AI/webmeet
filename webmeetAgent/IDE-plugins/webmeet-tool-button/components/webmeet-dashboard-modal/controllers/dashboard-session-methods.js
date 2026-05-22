@@ -11,7 +11,6 @@ const runTool = runWebMeetTool;
 export const dashboardSessionMethods = {
     async bootstrap() {
         try {
-            this.syncFullscreenButtonState();
             const guestSession = readGuestSessionFromUrl();
             if (guestSession?.meeting?.id && guestSession?.participantToken) {
                 await this.bootstrapGuestSession(guestSession);
@@ -31,6 +30,10 @@ export const dashboardSessionMethods = {
 
     async bootstrapGuestSession(session) {
         await this.guestManager.bootstrapGuestSession(session);
+        void this.publishCurrentParticipantAvatar({ force: true }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
+            this.setError(`Joined room, but WebMeet could not publish the avatar: ${message}`);
+        });
     },
 
     canManageRooms() {
@@ -41,7 +44,11 @@ export const dashboardSessionMethods = {
     },
 
     isGuestSession() {
-        return this.guestManager.isGuestSession();
+        if (this.guestManager && typeof this.guestManager.isGuestSession === 'function') {
+            return this.guestManager.isGuestSession();
+        }
+        const session = this.state?.session;
+        return session?.guest === true || Boolean(session?.publicApiBaseUrl);
     },
 
     getGuestToken() {
@@ -217,10 +224,6 @@ export const dashboardSessionMethods = {
     async closeModal(target) {
         if (this.state.session?.participantIdentity) {
             await this.unjoinCurrentSession({ preserveDisplayName: false });
-        }
-        const dialog = this.getDialogElement();
-        if (dialog) {
-            dialog.classList.remove('is-fullscreen');
         }
         this.participantLayoutController?.dispose?.();
         this.roomNotificationSoundService?.teardown?.();

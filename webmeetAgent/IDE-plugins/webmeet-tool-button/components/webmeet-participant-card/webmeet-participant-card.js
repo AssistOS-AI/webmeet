@@ -1,7 +1,7 @@
 import {
     ensureAxiFaceLoaded,
     renderAxiFaceMarkup
-} from '/explorer/services/profile-avatar-client.js';
+} from '../webmeet-dashboard-modal/services/webmeet-profile-avatar-runtime.js';
 
 function parseBoolean(value) {
     return String(value || '').toLowerCase() === 'true';
