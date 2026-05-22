@@ -1,11 +1,14 @@
-# webmeetAgent Spec Matrix
+# Specification Matrix
 
-This page indexes the local design specification set. The DS files are the source of truth for rules, contracts, and invariants.
+Generated from DS frontmatter. Edit the DS files and rerun the matrix generator instead of editing this file manually.
 
-## Specification Set
-
-- [DS008: Room Types (Team vs Guest)](specsLoader.html?spec=DS08-room-types.md)
-- [DS09 - Ploinky Runtime Invariants](specsLoader.html?spec=DS09-ploinky-runtime-invariants.md)
-- [DS10 - Self-hosted LiveKit AI Agents](specsLoader.html?spec=DS10-self-hosted-livekit-ai-agents.md)
-- [DS10 - LiveKit Media Runtime](specsLoader.html?spec=DS10-livekit-media-runtime.md)
-- [DS11 - No-Agent-Tag Meeting Chat](specsLoader.html?spec=DS11-tagged-research-chat.md)
+| Specification | Title | Status | Owner | Summary |
+| --- | --- | --- | --- | --- |
+| [DS000](specsLoader.html?spec=DS000-vision.md) | WebMeet Agent Vision | [[status:implemented]] | webmeet-team | Defines webmeetAgent as the WebMeet application control plane and keeps media, AI-worker, STT, and infrastructure responsibilities separate. |
+| [DS001](specsLoader.html?spec=DS001-coding-style.md) | Coding Style | [[status:implemented]] | webmeet-team | Defines local source layout, documentation, test, validation, and runtime style for webmeetAgent. |
+| [DS002](specsLoader.html?spec=DS002-room-state-and-access.md) | Room State And Access | [[status:implemented]] | webmeet-team | Defines WebMeet meeting records, team and guest room behavior, durable storage, encryption, and invite-scoped access checks. |
+| [DS003](specsLoader.html?spec=DS003-application-runtime-and-events.md) | Application Runtime And Events | [[status:implemented]] | webmeet-team | Defines the WebMeet API, MCP tools, browser shells, event encoding, chat/transcript/artifact persistence, and avatar rendering boundaries. |
+| [DS004](specsLoader.html?spec=DS004-livekit-media-runtime.md) | LiveKit Media Runtime | [[status:implemented]] | webmeet-team | Defines the WebMeet media, recording, Redis, TURN, public deployment, and capacity contracts shared with liveKitServerAgent. |
+| [DS005](specsLoader.html?spec=DS005-self-hosted-livekit-ai-agents.md) | Self-hosted LiveKit AI Agents | [[status:implemented]] | webmeet-team | Defines explicit LiveKit AI participant dispatch, optional worker ownership, scribe/STT integration, and no-fake-participant guarantees. |
+| [DS006](specsLoader.html?spec=DS006-ploinky-runtime-invariants.md) | Ploinky Runtime Invariants | [[status:implemented]] | webmeet-team | Captures routing, authentication, guest, secure-wire, sandbox, secret, storage, logging, and documentation invariants for webmeetAgent. |
+| [DS007](specsLoader.html?spec=DS007-no-agent-tag-meeting-chat.md) | No-Agent-Tag Meeting Chat | [[status:implemented]] | webmeet-team | Defines WebMeet chat behavior after inline provider tag dispatch was removed; provider routing belongs outside meeting chat. |
