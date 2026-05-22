@@ -1003,7 +1003,6 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     gap: 8px;
     width: calc(100% - 44px);
     height: fit-content;
-    border-bottom: 1px solid var(--border);
     padding-bottom: 8px;
 }
 

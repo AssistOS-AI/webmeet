@@ -51,15 +51,10 @@
                 Avatar
             </button>
         </div>
+
         <section id="webmeetAudioVideoSettingsTabPanel" class="webmeet-settings-section"
                  aria-labelledby="webmeetSettingsTabMedia webmeetMediaSettingsSectionTitle" role="tabpanel"
                  data-settings-tab-panel="media">
-            <div class="webmeet-settings-section-header">
-                <div>
-                    <h3 id="webmeetMediaSettingsSectionTitle">Audio &amp; video</h3>
-                    <p>These settings follow your WebMeet user session on this browser and apply in every room you join.</p>
-                </div>
-            </div>
             <div class="webmeet-settings-grid">
                 <section class="webmeet-media-settings-group" aria-label="Audio input">
                     <div class="webmeet-media-settings-group-header">
@@ -310,6 +305,8 @@
                     </div>
                 </section>
             </div>
+            <div id="webmeetMediaDeviceWarnings" class="webmeet-media-device-warnings webmeet-hidden"
+                 aria-live="polite"></div>
         </section>
 
         <section id="webmeetAvatarSettingsTabPanel" class="webmeet-settings-section"
@@ -415,9 +412,6 @@
                 </section>
             </div>
         </section>
-
-        <div id="webmeetMediaDeviceWarnings" class="webmeet-media-device-warnings webmeet-hidden"
-             aria-live="polite"></div>
 
         <div id="webmeetMediaSettingsActions" class="webmeet-media-settings-actions">
             <button type="button" class="general-button subtle-button" data-local-action="refreshMediaDevices">
