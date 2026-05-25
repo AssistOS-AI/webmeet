@@ -13,7 +13,7 @@ async function readModalFile(relativePath) {
 }
 
 test('LiveKit active speaker events are forwarded into participant roster state', async () => {
-    const livekitController = await readModalFile('controllers/livekit-room-controller.js');
+    const livekitController = await readModalFile('services/room/webmeet-room-livekit.js');
     const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
     const participantViewMethods = await readModalFile('controllers/participant-view-methods.js');
 
@@ -40,7 +40,8 @@ test('meeting details use LiveKit participants as the room presence source', asy
     assert.match(store, /callLiveKitRoomApi\(context,\s*'ListParticipants'/);
     assert.match(store, /projectLiveKitMeetingParticipants/);
     assert.match(store, /export async function getMeeting/);
-    assert.match(store, /const participants = await getRealtimeMeetingParticipants/);
+    assert.match(store, /options\.includeParticipants === false/);
+    assert.match(store, /await getRealtimeMeetingParticipants/);
 });
 
 test('LiveKit mute handlers gate microphone state updates to microphone publications', async () => {

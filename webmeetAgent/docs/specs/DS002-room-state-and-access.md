@@ -21,7 +21,9 @@ A WebMeet room is two related objects:
 | WebMeet meeting record | Durable application object with a `meeting_<uuid>` id, workspace id, title, `roomType`, derived `roomName`, optional `guestToken`, status, expiration, wrapped data-encryption key, and encrypted payload. | `/data/meetings/*.json`, backed by `.ploinky/data/webmeetAgent/data/meetings/*.json`. |
 | LiveKit room | Media room name derived as `${WEBMEET_ROOM_PREFIX || "webmeet"}-${workspaceId}-${meetingId}`, sanitized and capped for LiveKit. | LiveKit runtime state, coordinated through Redis while active. |
 
-The encrypted WebMeet payload contains members, chat messages, transcript segments, recordings, artifacts, tasks, decisions, AI agent metadata, and event snapshots. Meeting payloads use AES-256-GCM with per-meeting data keys wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. That key must be derived from `PLOINKY_DERIVED_MASTER_KEY` through the manifest and must be distinct from the raw derived master key. Legacy decrypt-only behavior may exist only to migrate older records into the dedicated WebMeet key.
+The encrypted WebMeet payload contains members, chat messages, transcript segments, recordings, artifacts, tasks, decisions, AI agent metadata, and event snapshots. Meeting payloads use AES-256-GCM with per-meeting data keys wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. That key must be derived from `PLOINKY_DERIVED_MASTER_KEY` through the manifest and must be distinct from the raw derived master key. The store does not support legacy meeting-key fallbacks.
+
+WebMeet store operations are asynchronous. Meeting records, workspace records, and event logs are read and written through promise-based filesystem APIs. Record writes keep the temp-file plus rename pattern for atomic replacement, and meeting mutations are serialized per `meetingId` inside the agent process so concurrent updates to the same room do not overwrite each other.
 
 `webmeetAgent` supports two room types:
 

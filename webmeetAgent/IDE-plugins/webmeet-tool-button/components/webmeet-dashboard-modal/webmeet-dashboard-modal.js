@@ -1,5 +1,5 @@
 import { MeetingPresenceController } from './controllers/meeting-presence-controller.js';
-import { LivekitRoomController } from './controllers/livekit-room-controller.js';
+import { WebMeetRoomLiveKit } from './services/room/webmeet-room-livekit.js';
 import { MeetingListController } from './controllers/meeting-list-controller.js';
 import { ParticipantLayoutController } from './controllers/participant-layout-controller.js';
 import { WebmeetMediaController } from './controllers/webmeet-media-controller.js';
@@ -27,7 +27,9 @@ import {
 } from './services/livekit-loader.js';
 import { createRoomNotificationSoundService } from './services/room-notification-sounds.js';
 import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
-import { WebMeetRoomRuntime } from './services/room-runtime/webmeet-room-runtime.js';
+import { WebMeetRoom } from './services/room/webmeet-room.js';
+import { WebMeetRoomEvents } from './services/room/webmeet-room-events.js';
+import { runWebMeetTool } from './services/webmeet-api-client.js';
 import {
     buildPublicWebMeetApiBaseUrl,
     normalizeCurrentActor
@@ -109,8 +111,6 @@ export class WebMeetDashboardModal {
             videoGridFullscreen: false
         };
         this.room = null;
-        this.workspaceEventsPollTimer = null;
-        this.lastWorkspaceEventId = '';
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
         this.avatarPreviewLoadPromise = null;
@@ -120,7 +120,7 @@ export class WebMeetDashboardModal {
         this.roomNotificationSoundService = createRoomNotificationSoundService({
             isEnabled: () => this.state.mediaSettings?.roomNotificationSounds !== false
         });
-        this.roomController = new LivekitRoomController({
+        this.roomLiveKit = new WebMeetRoomLiveKit({
             ensureLiveKitClient,
             buildRtcConfigForSession,
             installRtcPeerConnectionOverride,
@@ -130,13 +130,36 @@ export class WebMeetDashboardModal {
                 screenShareQuality: this.normalizeScreenShareQuality(this.state.mediaSettings.screenShareQuality)
             })
         });
-        this.roomRuntime = new WebMeetRoomRuntime({
+        this.webMeetRoom = new WebMeetRoom({
+            api: null,
+            livekit: null,
+            eventCodec: new WebMeetRoomEvents(),
+            initialState: {},
             getSession: () => this.state.session,
+            setSession: (session) => {
+                this.state.session = session;
+            },
             isGuestSession: () => this.isGuestSession(),
+            getSelectedWorkspaceId: () => this.state.selectedWorkspaceId,
             callPublicGuestApi: (meetingId, action, payload) => this.callPublicGuestApi(meetingId, action, payload),
-            connectRoom: () => this.connectRoom(),
-            disconnectRoom: (options) => this.disconnectRoom(options)
+            connectLiveKit: () => this.connectRoom(),
+            disconnectLiveKit: (options) => this.disconnectRoom(options),
+            runTool: runWebMeetTool,
+            getRoom: () => this.room,
+            getRoomAvatars: () => this.state.roomAvatarsByParticipantId,
+            setRoomAvatar: (participantId, avatar) => this.setRoomAvatar(participantId, avatar),
+            applyRealtimeParticipantAvatar: (payload) => this.applyRealtimeParticipantAvatar(payload),
+            publishRealtimePayload: (payload) => {
+                const room = this.room?.localParticipant;
+                if (!room || typeof payload !== 'string') {
+                    throw new Error('Missing local participant realtime transport.');
+                }
+                const encoder = new TextEncoder();
+                return room.publishData(encoder.encode(payload), { reliable: true });
+            },
+            getCurrentActorId: () => String(this.currentActor?.id || '').trim()
         });
+        this.bindRoomEventHandlers();
         this.speechRecognition = null;
         this.meetingListController = new MeetingListController();
         this.participantLayoutController = new ParticipantLayoutController({
@@ -258,7 +281,7 @@ export class WebMeetDashboardModal {
             loadParticipantsForMeetings: () => this.loadParticipantsForMeetings(),
             loadMeetingDetails: () => this.loadMeetingDetails(),
             renderAll: () => this.renderAll(),
-            connectRoom: () => this.roomRuntime.connect(),
+            connectRoom: () => this.webMeetRoom.connectLiveKit(),
             hostContext: this.hostContext
         });
     }

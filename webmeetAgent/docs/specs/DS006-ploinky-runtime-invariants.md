@@ -24,6 +24,8 @@ Executable MCP operations must be authorized by router-minted invocation JWTs. T
 
 The compact `x-ploinky-auth-info` header is not a secure grant by itself. An HTTP service may trust it only when it arrived through a declared Ploinky HTTP service route. For guest services, `webmeet-public-proxy.mjs` must also validate the router-issued invocation token and expected guest role or scope. Caller-supplied copies of identity headers must not become authoritative input.
 
+The internal WebMeet API port must not be exposed as a product surface. `webmeet-public-proxy.mjs` verifies router invocation identity, injects the derived `WEBMEET_AGENT_INTERNAL_TOKEN` into proxied API requests, and `webmeet-api.mjs` rejects non-health requests that do not carry that internal token.
+
 Guest access must remain scoped to the route shape declared by `manifest.json`. `webmeetAgent` must not set manifest-level `guest: true`; public meeting access is exposed only through the `/public-services/webmeet/` HTTP service with `auth: "guest"`, `guestScope: "webmeet-public-service"`, and `forceGuest: true`.
 
 Ploinky route authentication identifies the caller, but `webmeetAgent` still owns domain authorization. Sensitive actions must check verified user identity, roles, scopes, room/meeting id, participant id, workspace path, and local policy before reading or mutating state. Admin-only actions include room creation, rename, delete, AI attach/detach, recording start/stop, administrative transcript/artifact reads, and other management surfaces.
@@ -39,7 +41,7 @@ Agent-local contract:
 - Manifest: `manifest.json`.
 - Role: Meeting application agent for workspace team rooms and invite-scoped public meetings.
 - Authentication: Workspace room operations require authenticated route/MCP context. Public meeting entry is limited to the manifest-declared guest public service with scoped forced guest sessions.
-- HTTP service surface: Protected `/services/webmeet/` and forced-guest `/public-services/webmeet/` prefixes rewrite to the internal `/api/` surface.
+- HTTP service surface: Protected `/services/webmeet/` and forced-guest `/public-services/webmeet/` prefixes rewrite to the internal `/api/` surface through the WebMeet proxy. The internal API port is not published by the production manifest.
 - Persistent state: Meeting data lives under `/data`; recordings live under `/data/recordings`; LiveKit secrets stay server-side.
 - Volumes: `.ploinky/data/webmeetAgent/data:/data` and `.ploinky/data/webmeet/recordings:/data/recordings`.
 - Dependencies: Base startup uses Ploinky's shared prepared dependency cache. Optional native LiveKit worker dependencies belong to `webmeetLivekitAiAgent`.

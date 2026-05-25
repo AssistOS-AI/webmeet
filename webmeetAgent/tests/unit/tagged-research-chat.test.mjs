@@ -55,12 +55,12 @@ function startStubRouter() {
     });
 }
 
-function makeContext() {
+async function makeContext() {
     const authInfo = { user: { id: 'local:admin', username: 'admin', name: 'Admin', roles: ['admin'] } };
-    const context = createStoreContext(tempRoot);
+    const context = await createStoreContext(tempRoot);
     context.envelope = { metadata: { invocationToken: 'caller-token' } };
-    const workspace = createWorkspace(context);
-    const meeting = createMeeting(context, {
+    const workspace = await createWorkspace(context);
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Research room',
         authInfo
@@ -88,12 +88,12 @@ describe('WebMeet no-agent-tag chat', () => {
         const { server, port, calls } = await startStubRouter();
         try {
             process.env.PLOINKY_ROUTER_URL = `http://127.0.0.1:${port}`;
-            const { context, authInfo, meeting } = makeContext();
+            const { context, authInfo, meeting } = await makeContext();
             const result = await dispatch('webmeet_chat_send', {
                 meetingId: meeting.id,
                 message: '@open-interpreter Give status.'
             }, context, authInfo);
-            const messages = listMeetingChat(context, meeting.id);
+            const messages = await listMeetingChat(context, meeting.id, authInfo);
             assert.equal(result.researchTask, null);
             assert.equal(calls.length, 0);
             assert.equal(messages.length, 1);
@@ -105,19 +105,19 @@ describe('WebMeet no-agent-tag chat', () => {
     });
 
     it('persists unknown @word mentions as ordinary chat', async () => {
-        const { context, authInfo, meeting } = makeContext();
+        const { context, authInfo, meeting } = await makeContext();
         const result = await dispatch('webmeet_chat_send', {
             meetingId: meeting.id,
             message: '@teammate please review this'
         }, context, authInfo);
-        const messages = listMeetingChat(context, meeting.id);
+        const messages = await listMeetingChat(context, meeting.id, authInfo);
         assert.equal(result.researchTask, null);
         assert.equal(messages.length, 1);
         assert.equal(messages[0].message, '@teammate please review this');
     });
 
-    it('keeps the reserved research author prefix blocked for user sends', async () => {
-        const { context, meeting } = makeContext();
+    it('rejects unauthenticated chat sends instead of trusting caller author fields', async () => {
+        const { context, meeting } = await makeContext();
         await assert.rejects(
             dispatch('webmeet_chat_send', {
                 meetingId: meeting.id,
@@ -125,7 +125,7 @@ describe('WebMeet no-agent-tag chat', () => {
                 authorName: 'Research Relay',
                 message: 'not allowed'
             }, context, null),
-            /research: author prefix is reserved/
+            /authentication is required/i
         );
     });
 });

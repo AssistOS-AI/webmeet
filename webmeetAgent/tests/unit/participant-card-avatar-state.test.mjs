@@ -38,6 +38,13 @@ test('participant layout controller persists avatar config and fallback attribut
     assert.match(source, /JSON\.stringify\(payload\.avatarConfig\)/);
 });
 
+test('participant layout controller preserves projected avatars during media-only participant updates', async () => {
+    const source = await fs.readFile(layoutControllerPath, 'utf8');
+
+    assert.match(source, /!hasProjectedAvatar && view\.avatarSource === 'projected' && view\.avatarConfig/);
+    assert.match(source, /participant\?\.kind === 'local' && !hasProjectedAvatar/);
+});
+
 test('participant layout controller clears stale video elements when video state becomes empty', async () => {
     const source = await fs.readFile(layoutControllerPath, 'utf8');
 

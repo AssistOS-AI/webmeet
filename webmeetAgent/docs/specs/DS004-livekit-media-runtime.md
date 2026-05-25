@@ -46,6 +46,9 @@ When a WebMeet user joins a room:
 2. `webmeetAgent` updates durable presence and returns `livekitUrl`, `roomName`, `participantToken`, and optional RTC config.
 3. The browser opens a LiveKit WebSocket signaling connection using the participant JWT.
 4. LiveKit validates the JWT against the shared API key/secret and checks room grants.
+   The participant JWT must include `video.canUpdateOwnMetadata=true` so clients can
+   publish their own participant attributes/metadata updates (for example the local
+   projected avatar payload).
 5. The browser and LiveKit negotiate WebRTC transport through ICE.
 6. Media starts only when the user enables microphone, camera, or screen share.
 

@@ -91,9 +91,9 @@ function rewriteMeetingPayloadMembers(context, meetingId, transform) {
     fs.writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`);
 }
 
-test('profile avatar updates are published as workspace events', () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+test("profile avatar updates are published as workspace events", async () => {
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -102,7 +102,7 @@ test('profile avatar updates are published as workspace events', () => {
         }
     };
 
-    const event = recordProfileAvatarUpdated(context, {
+    const event = await recordProfileAvatarUpdated(context, {
         workspaceId: workspace.id,
         userId: 'local:admin',
         authInfo
@@ -112,7 +112,7 @@ test('profile avatar updates are published as workspace events', () => {
     assert.equal(parsedEvent.type, 'profile.avatar.updated');
     assert.equal(parsedEvent.payload.userId, 'local:admin');
 
-    const events = listWorkspaceEvents(context, workspace.id);
+    const events = await listWorkspaceEvents(context, workspace.id);
     assert.equal(events.length, 1);
     const parsedStoredEvent = parseWebMeetEvent(events[0]);
     assert.equal(parsedStoredEvent.type, 'profile.avatar.updated');
@@ -120,7 +120,7 @@ test('profile avatar updates are published as workspace events', () => {
     assert.equal(parsedStoredEvent.payload.userId, 'local:admin');
 });
 
-test('authenticated event list tools are exposed through MCP config and dispatch', () => {
+test("authenticated event list tools are exposed through MCP config and dispatch", async () => {
     const mcpConfig = fs.readFileSync(
         path.resolve(import.meta.dirname, '../../mcp-config.json'),
         'utf8'
@@ -138,9 +138,9 @@ test('authenticated event list tools are exposed through MCP config and dispatch
     assert.match(toolSource, /listMeetingEvents\(context, getRequiredString\(args, 'meetingId'\)/);
 });
 
-test('join publishes workspace user id in participant state and LiveKit token attributes', () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+test("join publishes workspace user id in participant state and LiveKit token attributes", async () => {
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:user-one',
@@ -155,13 +155,13 @@ test('join publishes workspace user id in participant state and LiveKit token at
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Avatar room',
         authInfo: adminAuthInfo
     });
 
-    const session = joinMeeting(context, {
+    const session = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'User One',
         participantId: 'participant-user-one',
@@ -176,11 +176,12 @@ test('join publishes workspace user id in participant state and LiveKit token at
     assert.equal(jwtPayload.attributes.webmeetUserId, 'local:user-one');
     assert.equal(jwtPayload.attributes.workspaceUserId, 'local:user-one');
     assert.equal(jwtPayload.attributes.ploinkyUserId, 'local:user-one');
+    assert.equal(jwtPayload.video.canUpdateOwnMetadata, true);
 });
 
 test('participant avatar update returns a sanitized live projection without persisting roster avatar', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -188,19 +189,19 @@ test('participant avatar update returns a sanitized live projection without pers
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Avatar projection room',
         authInfo
     });
-    const session = joinMeeting(context, {
+    const session = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Admin',
         participantId: 'participant-admin',
         authInfo
     });
 
-    const updated = updateMeetingParticipantAvatar(context, {
+    const updated = await updateMeetingParticipantAvatar(context, {
         meetingId: meeting.id,
         participantId: session.participantIdentity,
         avatar: {
@@ -227,19 +228,16 @@ test('participant avatar update returns a sanitized live projection without pers
     const participant = details.participants.find((entry) => entry.id === session.participantIdentity);
     assert.equal(participant.profileAvatar, null);
 
-    const events = listWorkspaceEvents(context, workspace.id);
+    const events = await listWorkspaceEvents(context, workspace.id);
     assert.equal(
-        events.some((event) => (
-            parseWebMeetEvent(event).type === 'participant.avatar.updated'
-            && parseWebMeetEvent(event).payload?.participantId === session.participantIdentity
-        )),
-        true
+        events.some((event) => parseWebMeetEvent(event).type === 'participant.avatar.updated'),
+        false
     );
 });
 
-test('participant avatar projection rejects unsafe or invalid config fields', () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+test("participant avatar projection rejects unsafe or invalid config fields", async () => {
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -247,19 +245,19 @@ test('participant avatar projection rejects unsafe or invalid config fields', ()
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Avatar validation room',
         authInfo
     });
-    const session = joinMeeting(context, {
+    const session = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Admin',
         participantId: 'participant-admin-validation',
         authInfo
     });
 
-    assert.throws(() => updateMeetingParticipantAvatar(context, {
+    await assert.rejects(() => updateMeetingParticipantAvatar(context, {
         meetingId: meeting.id,
         participantId: session.participantIdentity,
         avatar: {
@@ -273,7 +271,7 @@ test('participant avatar projection rejects unsafe or invalid config fields', ()
         authInfo
     }), /unsafe URL scheme/);
 
-    assert.throws(() => updateMeetingParticipantAvatar(context, {
+    await assert.rejects(() => updateMeetingParticipantAvatar(context, {
         meetingId: meeting.id,
         participantId: session.participantIdentity,
         avatar: {
@@ -286,7 +284,7 @@ test('participant avatar projection rejects unsafe or invalid config fields', ()
         authInfo
     }), /Invalid participant avatar emotion/);
 
-    assert.throws(() => updateMeetingParticipantAvatar(context, {
+    await assert.rejects(() => updateMeetingParticipantAvatar(context, {
         meetingId: meeting.id,
         participantId: session.participantIdentity,
         avatar: {
@@ -301,8 +299,8 @@ test('participant avatar projection rejects unsafe or invalid config fields', ()
 });
 
 test('join does not persist avatar projection or token avatar attributes', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -310,13 +308,13 @@ test('join does not persist avatar projection or token avatar attributes', async
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Avatar join projection room',
         authInfo
     });
 
-    const session = joinMeeting(context, {
+    const session = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Admin',
         participantId: 'participant-admin-rejoin',
@@ -347,8 +345,8 @@ test('join does not persist avatar projection or token avatar attributes', async
 });
 
 test('join ignores avatar payloads until a live avatar projection is published', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -363,13 +361,13 @@ test('join ignores avatar payloads until a live avatar projection is published',
             roles: ['user']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Default avatar projection room',
         authInfo: adminAuthInfo
     });
 
-    const session = joinMeeting(context, {
+    const session = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'User',
         participantId: 'participant-user-default-avatar',
@@ -390,8 +388,8 @@ test('join ignores avatar payloads until a live avatar projection is published',
 });
 
 test('meeting details read avatar projection from LiveKit participant attributes', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -399,12 +397,12 @@ test('meeting details read avatar projection from LiveKit participant attributes
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Live avatar attribute room',
         authInfo
     });
-    const session = joinMeeting(context, {
+    const session = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Admin',
         participantId: 'participant-admin-live-avatar',
@@ -440,9 +438,9 @@ test('meeting details read avatar projection from LiveKit participant attributes
     assert.equal(participant.profileAvatar.config.emotion, 'confused');
 });
 
-test('unauthenticated meeting join ignores avatar projection payloads', () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+test("unauthenticated meeting join is rejected", async () => {
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -450,13 +448,13 @@ test('unauthenticated meeting join ignores avatar projection payloads', () => {
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Unauthenticated avatar payload room',
         authInfo: adminAuthInfo
     });
 
-    const session = joinMeeting(context, {
+    await assert.rejects(() => joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Visitor',
         participantId: 'participant-visitor',
@@ -469,15 +467,12 @@ test('unauthenticated meeting join ignores avatar projection payloads', () => {
                 seed: 'profile:visitor'
             }
         }
-    });
-
-    assert.equal(session.participant.userId, undefined);
-    assert.equal(session.participant.profileAvatar, undefined);
+    }), /authentication is required/i);
 });
 
-test('guest meeting join does not publish authenticated avatar identity or projection', () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+test("guest meeting join does not publish authenticated avatar identity or projection", async () => {
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -485,14 +480,14 @@ test('guest meeting join does not publish authenticated avatar identity or proje
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Guest avatar room',
         roomType: 'guest',
         authInfo: adminAuthInfo
     });
 
-    const session = joinGuestMeeting(context, {
+    const session = await joinGuestMeeting(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         displayName: 'Guest Person',
@@ -507,11 +502,12 @@ test('guest meeting join does not publish authenticated avatar identity or proje
     const [, payloadSegment] = session.participantToken.split('.');
     const jwtPayload = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8'));
     assert.equal(jwtPayload.attributes, undefined);
+    assert.equal(jwtPayload.video.canUpdateOwnMetadata, true);
 });
 
 test('guest participant avatar override is returned for live propagation without meeting-store persistence', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -519,21 +515,21 @@ test('guest participant avatar override is returned for live propagation without
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Guest avatar override room',
         roomType: 'guest',
         authInfo: adminAuthInfo
     });
 
-    const session = joinGuestMeeting(context, {
+    const session = await joinGuestMeeting(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         displayName: 'Guest Person',
         participantId: 'guest-person-override'
     });
 
-    const updated = updateGuestMeetingParticipantAvatar(context, {
+    const updated = await updateGuestMeetingParticipantAvatar(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         participantId: session.participantIdentity,
@@ -563,8 +559,8 @@ test('guest participant avatar override is returned for live propagation without
 });
 
 test('guest meeting details allow a joined guest before LiveKit presence appears', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -572,14 +568,14 @@ test('guest meeting details allow a joined guest before LiveKit presence appears
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Guest bootstrap room',
         roomType: 'guest',
         authInfo: adminAuthInfo
     });
 
-    const session = joinGuestMeeting(context, {
+    const session = await joinGuestMeeting(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         displayName: 'Guest Bootstrap',
@@ -598,8 +594,8 @@ test('guest meeting details allow a joined guest before LiveKit presence appears
 });
 
 test('guest meeting details tolerate stored guest members that lost the guest flag', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -607,14 +603,14 @@ test('guest meeting details tolerate stored guest members that lost the guest fl
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Guest degraded membership room',
         roomType: 'guest',
         authInfo: adminAuthInfo
     });
 
-    const session = joinGuestMeeting(context, {
+    const session = await joinGuestMeeting(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         displayName: 'Guest Degraded',
@@ -645,8 +641,8 @@ test('guest meeting details tolerate stored guest members that lost the guest fl
 });
 
 test('guest meeting details do not wipe stored members when LiveKit roster is temporarily empty', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -654,14 +650,14 @@ test('guest meeting details do not wipe stored members when LiveKit roster is te
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Guest empty roster room',
         roomType: 'guest',
         authInfo: adminAuthInfo
     });
 
-    const session = joinGuestMeeting(context, {
+    const session = await joinGuestMeeting(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         displayName: 'Guest Empty',
@@ -687,7 +683,7 @@ test('guest meeting details do not wipe stored members when LiveKit roster is te
     assert.equal(repeatDetails.participants[0]?.id, session.participantIdentity);
 });
 
-test('authenticated dashboard join keeps using the protected MCP tool path', () => {
+test("authenticated dashboard join keeps using the protected MCP tool path", async () => {
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -698,18 +694,18 @@ test('authenticated dashboard join keeps using the protected MCP tool path', () 
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
-    const joinMethod = actionSource.slice(actionSource.indexOf('async joinMeeting'), actionSource.indexOf('buildParticipantAvatarProjection'));
-    assert.match(joinMethod, /this\.roomRuntime\.joinAuthenticated\(payload\)/);
+    const joinMethod = actionSource.slice(actionSource.indexOf('async joinMeeting'), actionSource.indexOf('getCurrentAvatarOverrideUserId'));
+    assert.match(joinMethod, /this\.webMeetRoom\.join\(payload\)/);
     assert.match(apiSource, /runTool\('webmeet_meeting_join', payload\)/);
     assert.doesNotMatch(joinMethod, /public-services\/webmeet/);
     assert.doesNotMatch(joinMethod, /\/meetings\/.*\/join/);
 });
 
-test('participant avatar refresh keeps using the protected MCP tool path', () => {
+test("participant avatar refresh keeps using the protected MCP tool path", async () => {
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -720,17 +716,17 @@ test('participant avatar refresh keeps using the protected MCP tool path', () =>
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
     const method = actionSource.slice(actionSource.indexOf('async publishCurrentParticipantAvatar'), actionSource.indexOf('async leaveMeeting'));
-    assert.match(method, /this\.roomRuntime\.publishAvatar\(avatar\)/);
+    assert.match(method, /this\.webMeetRoom\.publishAvatar\(avatar\)/);
     assert.match(apiSource, /runTool\('webmeet_participant_avatar_update'/);
     assert.doesNotMatch(method, /\/participants\/.*\/avatar/);
 });
 
-test('guest participant avatar refresh uses the scoped guest public API path', () => {
+test("guest participant avatar refresh uses the scoped guest public API path", async () => {
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -741,17 +737,19 @@ test('guest participant avatar refresh uses the scoped guest public API path', (
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
     const method = actionSource.slice(actionSource.indexOf('async publishCurrentParticipantAvatar'), actionSource.indexOf('async leaveMeeting'));
-    assert.match(method, /this\.roomRuntime\.publishAvatar\(avatar\)/);
-    assert.match(apiSource, /callPublicGuestApi\(meetingId,\s*'guest-avatar',\s*\{\s*avatar\s*\}\)/);
+    assert.match(method, /this\.webMeetRoom\.publishAvatar\(avatar\)/);
+    assert.match(apiSource, /callPublicGuestApi\(/);
+    assert.match(apiSource, /'guest-avatar'/);
+    assert.match(apiSource, /\{\s*avatar: requireObject\(avatar, 'avatar'\)\s*\}/);
     assert.doesNotMatch(method, /if \(this\.isGuestSession\(\)\) return/);
 });
 
-test('authenticated dashboard join connects before publishing avatar best-effort', () => {
+test("authenticated dashboard join connects before publishing avatar best-effort", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -759,12 +757,12 @@ test('authenticated dashboard join connects before publishing avatar best-effort
         ),
         'utf8'
     );
-    const joinMethod = source.slice(source.indexOf('async joinMeeting'), source.indexOf('buildParticipantAvatarProjection'));
-    assert.match(joinMethod, /this\.state\.session = await this\.roomRuntime\.joinAuthenticated\(payload\)/);
-    assert.match(joinMethod, /await this\.roomRuntime\.connect\(\)/);
+    const joinMethod = source.slice(source.indexOf('async joinMeeting'), source.indexOf('getCurrentAvatarOverrideUserId'));
+    assert.match(joinMethod, /await this\.webMeetRoom\.join\(payload\)/);
+    assert.match(joinMethod, /await this\.webMeetRoom\.connectLiveKit\(\)/);
     assert.match(joinMethod, /void this\.publishCurrentParticipantAvatar\(\{ force: true \}\)\.catch/);
     assert.ok(
-        joinMethod.indexOf('await this.roomRuntime.connect()') < joinMethod.indexOf('void this.publishCurrentParticipantAvatar({ force: true }).catch'),
+        joinMethod.indexOf('await this.webMeetRoom.connectLiveKit()') < joinMethod.indexOf('void this.publishCurrentParticipantAvatar({ force: true }).catch'),
         'avatar publish must happen after room connect'
     );
     assert.doesNotMatch(joinMethod, /await this\.publishCurrentParticipantAvatar\(\{ force: true/);
@@ -772,7 +770,7 @@ test('authenticated dashboard join connects before publishing avatar best-effort
     assert.doesNotMatch(joinMethod, /payload\.avatar/);
 });
 
-test('connected meeting view does not open room EventSource directly', () => {
+test("connected meeting view does not open room EventSource directly", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -794,11 +792,11 @@ test('connected meeting view does not open room EventSource directly', () => {
     assert.doesNotMatch(realtimeSource, /guest-sse/);
 });
 
-test('all WebMeet realtime transports normalize into the same internal event handler', () => {
+test("all WebMeet realtime transports normalize into the same internal event handler", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
         ),
         'utf8'
     );
@@ -811,18 +809,16 @@ test('all WebMeet realtime transports normalize into the same internal event han
     );
 
     assert.match(roomSource, /emitWebMeetInternalEvent\('livekit'/);
-    assert.doesNotMatch(dashboardSource, /emitWebMeetInternalEvent\('guest-sse'/);
-    assert.doesNotMatch(dashboardSource, /new EventSource/);
-    assert.match(dashboardSource, /emitWebMeetInternalEvent\('authenticated-workspace'/);
-    assert.match(dashboardSource, /window\.dispatchEvent\(new CustomEvent\('webmeet:event'/);
-    assert.match(dashboardSource, /handleWebMeetInternalEvent\(detail = \{\}\)/);
+    assert.match(dashboardSource, /emitNormalizedIncomingEvent\(source, encodedEvent, meta = \{\}\)/);
+    assert.match(dashboardSource, /dispatchRoomEvent\(roomEventType/);
+    assert.match(dashboardSource, /handleIncomingEvent\(source, encodedEvent, meta = \{\}\)/);
 });
 
-test('authenticated workspace view does not open protected HTTP EventSource directly', () => {
+test("authenticated workspace view does not open protected HTTP EventSource directly", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
         ),
         'utf8'
     );
@@ -830,14 +826,13 @@ test('authenticated workspace view does not open protected HTTP EventSource dire
     const method = source.slice(startIndex, source.indexOf('\n    stopWorkspaceEvents()', startIndex));
     assert.doesNotMatch(method, /new EventSource/);
     assert.doesNotMatch(method, /services\/webmeet/);
-    assert.match(method, /runTool\('webmeet_workspace_events_list'/);
-    assert.match(method, /let initialized = false/);
+    assert.match(method, /this\.runTool\('webmeet_workspace_events_list'/);
+    assert.match(method, /this\.workspacePollInitialized = false/);
     assert.match(method, /events\[events\.length - 1\]/);
-    assert.match(method, /AUTHENTICATED_WORKSPACE_EVENT_POLL_MS/);
-    assert.match(source, /scheduleWorkspaceRosterRefresh\(\)/);
+    assert.match(method, /window\.setTimeout\(poll, 5000\)/);
 });
 
-test('authenticated beforeunload does not send protected HTTP leave keepalive', () => {
+test("authenticated beforeunload does not send protected HTTP leave keepalive", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -853,7 +848,7 @@ test('authenticated beforeunload does not send protected HTTP leave keepalive', 
     assert.doesNotMatch(method, /buildAuthenticatedWebMeetApiBaseUrl/);
 });
 
-test('LiveKit data channel applies participant avatar changes without snapshot resync overwrite', () => {
+test("LiveKit data channel applies participant avatar changes without snapshot resync overwrite", async () => {
     const roomSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -869,34 +864,50 @@ test('LiveKit data channel applies participant avatar changes without snapshot r
         'utf8'
     );
     assert.match(roomSource, /emitWebMeetInternalEvent\('livekit', text/);
-    assert.match(dashboardSource, /source === 'livekit' && type === WEBMEET_EVENT_TYPES\.PARTICIPANT_AVATAR_PROJECTED/);
-    assert.match(dashboardSource, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
+    assert.match(dashboardSource, /source === 'livekit' && parsed/);
+    assert.match(dashboardSource, /this\.applyRealtimeParticipantAvatar\?\.\(payload \|\| parsed\.payload\)/);
     const livekitAvatarBranch = dashboardSource.slice(
-        dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"),
-        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"))
+        dashboardSource.indexOf("source === 'livekit' && parsed"),
+        dashboardSource.indexOf('\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && parsed"))
     );
     assert.doesNotMatch(livekitAvatarBranch, /syncParticipantsFromRoom/);
 });
 
-test('LiveKit data channel publishes reliable payloads with current client API', () => {
+test("LiveKit data channel publishes reliable payloads with current client API", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
         ),
         'utf8'
     );
     const method = dashboardSource.slice(
         dashboardSource.indexOf('async publishRealtimePayload'),
-        dashboardSource.indexOf('\n    startWorkspaceEvents()', dashboardSource.indexOf('async publishRealtimePayload'))
+        dashboardSource.indexOf('\n    emitNormalizedIncomingEvent', dashboardSource.indexOf('async publishRealtimePayload'))
     );
 
-    assert.match(method, /const event = buildWebMeetEvent\(room, type, payload\)/);
-    assert.match(method, /publishData\(encoder\.encode\(event\), \{ reliable: true \}\)/);
+    assert.match(method, /const encodedEvent = this\.buildRealtimeEvent\(eventType, payload\)/);
+    assert.match(method, /publishRealtimeToTransport\(encodedEvent\)/);
     assert.doesNotMatch(method, /DataPacket_Kind/);
 });
 
-test('LiveKit avatar updates are applied without reloading stale meeting details', () => {
+test("LiveKit transport publishes encoded realtime events without double JSON encoding", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+        ),
+        'utf8'
+    );
+    const transport = source.slice(
+        source.indexOf('publishRealtimePayload: (payload) => {'),
+        source.indexOf('getCurrentActorId:', source.indexOf('publishRealtimePayload: (payload) => {'))
+    );
+    assert.match(transport, /room\.publishData\(encoder\.encode\(payload\), \{ reliable: true \}\)/);
+    assert.doesNotMatch(transport, /JSON\.stringify\(payload\)/);
+});
+
+test("LiveKit avatar updates are applied without reloading stale meeting details", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -905,15 +916,15 @@ test('LiveKit avatar updates are applied without reloading stale meeting details
         'utf8'
     );
     const livekitAvatarBranch = dashboardSource.slice(
-        dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"),
-        dashboardSource.indexOf('\n            }\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED"))
+        dashboardSource.indexOf("source === 'livekit' && parsed"),
+        dashboardSource.indexOf('\n            if (source ===', dashboardSource.indexOf("source === 'livekit' && parsed"))
     );
 
-    assert.match(livekitAvatarBranch, /this\.applyRealtimeParticipantAvatar\?\.\(eventData\)/);
+    assert.match(livekitAvatarBranch, /this\.applyRealtimeParticipantAvatar\?\.\(payload \|\| parsed\.payload\)/);
     assert.doesNotMatch(livekitAvatarBranch, /loadMeetingDetails/);
 });
 
-test('LiveKit participant connection republishes local avatar state for late joiners without meeting refresh', () => {
+test("LiveKit participant connection republishes local avatar state for late joiners without meeting refresh", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -926,8 +937,8 @@ test('LiveKit participant connection republishes local avatar state for late joi
         source.indexOf('onParticipantDisconnected:', source.indexOf('onParticipantConnected:'))
     );
     assert.match(participantConnected, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
-    assert.match(participantConnected, /this\.republishCurrentParticipantAvatarState\?\.\(\)\.catch/);
-    assert.match(participantConnected, /this\.requestRoomAvatarState\?\.\(\)\.catch/);
+    assert.match(participantConnected, /this\.webMeetRoom\.republishAvatarProjection\(\)\.catch/);
+    assert.match(participantConnected, /this\.webMeetRoom\.requestAvatarState\(\)\.catch/);
     assert.doesNotMatch(participantConnected, /loadMeetingDetails/);
 
     const connected = source.slice(
@@ -936,16 +947,16 @@ test('LiveKit participant connection republishes local avatar state for late joi
     );
     assert.match(connected, /await this\.loadMeetingDetails\(\{ includeParticipants: false \}\)/);
     assert.match(connected, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
-    assert.match(connected, /await this\.republishCurrentParticipantAvatarState\?\.\(\)/);
-    assert.match(connected, /await this\.requestRoomAvatarState\?\.\(\)/);
+    assert.match(connected, /await this\.webMeetRoom\.republishAvatarProjection\(\)/);
+    assert.match(connected, /await this\.webMeetRoom\.requestAvatarState\(\)/);
     assert.doesNotMatch(connected, /publishCurrentParticipantAvatar\?\.\(\{ force: true \}\)/);
 });
 
-test('LiveKit participant attribute changes apply avatar projection before room resync', () => {
+test("LiveKit participant attribute changes apply avatar projection before room resync", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/livekit-room-controller.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-livekit.js'
         ),
         'utf8'
     );
@@ -964,62 +975,70 @@ test('LiveKit participant attribute changes apply avatar projection before room 
     assert.match(roomSource, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
 });
 
-test('participant avatar realtime payload includes sanitized avatar projection', () => {
+test("participant avatar realtime payload includes sanitized avatar projection", async () => {
     const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+        ),
+        'utf8'
+    );
+    const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
             '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
-    const method = source.slice(source.indexOf('async publishCurrentParticipantAvatar'), source.indexOf('async leaveMeeting'));
+    const method = source.slice(source.indexOf('async publishAvatarProjection'), source.indexOf('async republishAvatarProjection'));
     assert.match(method, /type: WEBMEET_EVENT_TYPES\.PARTICIPANT_AVATAR_PROJECTED/);
-    assert.match(source, /async publishCurrentParticipantAvatarState/);
-    assert.match(source, /async republishCurrentParticipantAvatarState/);
-    assert.match(source, /getCurrentPublishedParticipantAvatarState/);
+    assert.match(source, /async publishAvatarProjection/);
+    assert.match(source, /async republishAvatarProjection/);
+    assert.match(source, /getCurrentPublishedAvatarProjection/);
     assert.match(source, /localParticipant\.setAttributes/);
     assert.match(source, /webmeetProfileAvatar: JSON\.stringify\(avatarProjection\)/);
     assert.match(method, /userId/);
     assert.match(method, /profileAvatar/);
-    assert.match(method, /const profileAvatar = avatar && typeof avatar === 'object'/);
+    assert.match(actionSource, /const profileAvatar = avatar && typeof avatar === 'object'/);
 });
 
-test('LiveKit avatar republish reuses the current live projection before recomputing profile state', () => {
+test("LiveKit avatar republish reuses the current live projection before recomputing profile state", async () => {
     const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+        ),
+        'utf8'
+    );
+    const currentStateMethod = source.slice(
+        source.indexOf('getCurrentPublishedAvatarProjection()'),
+        source.indexOf('async publishAvatarProjection', source.indexOf('getCurrentPublishedAvatarProjection()'))
+    );
+    const republishMethod = source.slice(
+        source.indexOf('async republishAvatarProjection'),
+        source.indexOf('async requestAvatarState', source.indexOf('async republishAvatarProjection'))
+    );
+    const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
             '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
-    const stateMethod = source.slice(
-        source.indexOf('async publishCurrentParticipantAvatarState'),
-        source.indexOf('getCurrentPublishedParticipantAvatarState()', source.indexOf('async publishCurrentParticipantAvatarState'))
-    );
-    const currentStateMethod = source.slice(
-        source.indexOf('getCurrentPublishedParticipantAvatarState()'),
-        source.indexOf('async republishCurrentParticipantAvatarState', source.indexOf('async publishCurrentParticipantAvatarState'))
-    );
-    const republishMethod = source.slice(
-        source.indexOf('async republishCurrentParticipantAvatarState'),
-        source.indexOf('async publishCurrentParticipantAvatar', source.indexOf('async republishCurrentParticipantAvatarState'))
-    );
-    const joinMethod = source.slice(source.indexOf('async joinMeeting'), source.indexOf('buildParticipantAvatarProjection'));
+    const joinMethod = actionSource.slice(actionSource.indexOf('async joinMeeting'), actionSource.indexOf('getCurrentAvatarOverrideUserId'));
 
-    assert.doesNotMatch(stateMethod, /localViewAvatar/);
-    assert.match(stateMethod, /resolveCurrentParticipantAvatarProjection\(\{ force: true \}\)/);
     assert.match(currentStateMethod, /localParticipant\.attributes/);
-    assert.match(currentStateMethod, /roomAvatarsByParticipantId/);
+    assert.match(currentStateMethod, /getRoomAvatars/);
     assert.doesNotMatch(currentStateMethod, /session\?\.participant\?\.profileAvatar/);
-    assert.match(republishMethod, /getCurrentPublishedParticipantAvatarState/);
-    assert.match(republishMethod, /publishCurrentParticipantAvatarState\(/);
+    assert.match(republishMethod, /getCurrentPublishedAvatarProjection/);
+    assert.match(republishMethod, /publishAvatarProjection\(/);
     assert.doesNotMatch(republishMethod, /webmeet_participant_avatar_update/);
     assert.match(joinMethod, /void this\.publishCurrentParticipantAvatar\(\{ force: true \}\)\.catch/);
     assert.doesNotMatch(joinMethod, /initialAvatarState/);
     assert.doesNotMatch(joinMethod, /publishCurrentParticipantAvatar\(\{ force: true,[\s\S]*avatar: initialAvatar/);
 });
 
-test('participant avatar publish does not resync the room snapshot', () => {
+test("participant avatar publish does not resync the room snapshot", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1032,12 +1051,12 @@ test('participant avatar publish does not resync the room snapshot', () => {
         source.indexOf('\n    async leaveMeeting', source.indexOf('async publishCurrentParticipantAvatar'))
     );
 
-    assert.match(method, /await this\.publishCurrentParticipantAvatarState\(profileAvatar, sourceAvatar\)/);
+    assert.match(method, /await this\.webMeetRoom\.publishAvatarProjection\(profileAvatar, sourceAvatar\)/);
     assert.match(method, /this\.applyRealtimeParticipantAvatar\?\.\(/);
     assert.doesNotMatch(method, /syncParticipantsFromRoom/);
 });
 
-test('LiveKit avatar sync requests trigger live republish without backend writes', () => {
+test("LiveKit avatar sync requests trigger live republish without backend writes", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1047,17 +1066,17 @@ test('LiveKit avatar sync requests trigger live republish without backend writes
     );
     const requestBranch = dashboardSource.slice(
         dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST"),
-        dashboardSource.indexOf("\n        if ([WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED", dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST"))
+        dashboardSource.indexOf("\n        if ([WEBMEET_EVENT_TYPES.AGENT_DETACHED", dashboardSource.indexOf("source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST"))
     );
 
     assert.match(requestBranch, /requesterParticipantId/);
     assert.match(requestBranch, /localParticipantId/);
-    assert.match(requestBranch, /republishCurrentParticipantAvatarState\?\.\(\)\.catch/);
+    assert.match(requestBranch, /webMeetRoom\.republishAvatarProjection\(\)\.catch/);
     assert.doesNotMatch(requestBranch, /publishCurrentParticipantAvatar\(/);
     assert.doesNotMatch(requestBranch, /webmeet_participant_avatar_update/);
 });
 
-test('profile avatar workspace events only refresh and republish current user room avatar projection', () => {
+test("profile avatar workspace events only refresh and republish current user room avatar projection", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1082,7 +1101,7 @@ test('profile avatar workspace events only refresh and republish current user ro
     );
 });
 
-test('avatar settings updates republish the joined participant avatar even without a user id in the event', () => {
+test("avatar settings updates republish the joined participant avatar even without a user id in the event", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1100,14 +1119,14 @@ test('avatar settings updates republish the joined participant avatar even witho
     assert.match(method, /this\.state\.webMeetAvatarOverride = currentOverride/);
     assert.match(method, /applyRealtimeParticipantAvatar/);
     assert.doesNotMatch(method, /syncParticipantsFromRoom/);
-    assert.match(method, /publishCurrentParticipantAvatarState/);
+    assert.match(method, /webMeetRoom\.publishAvatarProjection/);
     assert.match(method, /publishCurrentParticipantAvatar/);
     assert.match(method, /avatar: effectiveSourceAvatar/);
     assert.match(method, /skipRealtime: true/);
     assert.doesNotMatch(method, /config: event\.detail\.config/);
 });
 
-test('avatar settings updates from another logged-in user update the matching remote participant without publishing local state', () => {
+test("avatar settings updates from another logged-in user update the matching remote participant without publishing local state", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1129,7 +1148,7 @@ test('avatar settings updates from another logged-in user update the matching re
     assert.doesNotMatch(remoteBranch, /publishCurrentParticipantAvatar/);
 });
 
-test('WebMeet avatar override is browser scoped and participates in effective avatar projection', () => {
+test("WebMeet avatar override is browser scoped and participates in effective avatar projection", async () => {
     const serviceSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1166,7 +1185,7 @@ test('WebMeet avatar override is browser scoped and participates in effective av
     assert.match(meetingActionSource, /this\.renderMeetingList\?\.\(\)/);
 });
 
-test('WebMeet avatar UI exposes settings and quick preset controls', () => {
+test("WebMeet avatar UI exposes settings and quick preset controls", async () => {
     const html = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1222,7 +1241,7 @@ test('WebMeet avatar UI exposes settings and quick preset controls', () => {
     assert.doesNotMatch(renderSource, /resetWebMeetAvatarOverride">Profile avatar/);
 });
 
-test('dashboard guest session detection is safe before guest manager init', () => {
+test("dashboard guest session detection is safe before guest manager init", async () => {
     assert.equal(
         dashboardSessionMethods.isGuestSession.call({
             state: {}
@@ -1251,7 +1270,7 @@ test('dashboard guest session detection is safe before guest manager init', () =
     );
 });
 
-test('guest bootstrap republishes the current avatar override after connecting', () => {
+test("guest bootstrap republishes the current avatar override after connecting", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1266,7 +1285,7 @@ test('guest bootstrap republishes the current avatar override after connecting',
     );
 });
 
-test('guest WebMeet avatar runtime avoids protected Explorer imports and uses public AxiFace assets', () => {
+test("guest WebMeet avatar runtime avoids protected Explorer imports and uses public AxiFace assets", async () => {
     const participantCardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1299,7 +1318,7 @@ test('guest WebMeet avatar runtime avoids protected Explorer imports and uses pu
     assert.match(proxySource, /assets\/explorer\/WebSkel\/webskel\.mjs/);
 });
 
-test('participant audio settings use the registered modal API and do not use browser prompts', () => {
+test("participant audio settings use the registered modal API and do not use browser prompts", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1320,8 +1339,8 @@ test('participant audio settings use the registered modal API and do not use bro
 });
 
 test('authenticated meeting refresh keeps a just-joined guest until LiveKit exposes the participant', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const adminAuthInfo = {
         user: {
             id: 'local:admin',
@@ -1329,20 +1348,20 @@ test('authenticated meeting refresh keeps a just-joined guest until LiveKit expo
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Guest pending LiveKit room',
         roomType: 'guest',
         authInfo: adminAuthInfo
     });
 
-    const adminSession = joinMeeting(context, {
+    const adminSession = await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Admin',
         participantId: 'participant-admin-1',
         authInfo: adminAuthInfo
     });
-    const guestSession = joinGuestMeeting(context, {
+    const guestSession = await joinGuestMeeting(context, {
         meetingId: meeting.id,
         guestToken: meeting.guestToken,
         displayName: 'Guest Pending',
@@ -1366,7 +1385,7 @@ test('authenticated meeting refresh keeps a just-joined guest until LiveKit expo
     assert.equal(guestDetails.participants.some((entry) => entry.id === guestSession.participantIdentity), true);
 });
 
-test('public WebMeet proxy normalizes guest-facing routes under /public-services/webmeet', () => {
+test("public WebMeet proxy normalizes guest-facing routes under /public-services/webmeet", async () => {
     const proxySource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1386,7 +1405,7 @@ test('public WebMeet proxy normalizes guest-facing routes under /public-services
     assert.match(proxySource, /relativePath\.startsWith\('explorer\/WebSkel\/'\)/);
 });
 
-test('guest HTTP API returns the underlying guest error message', () => {
+test("guest HTTP API returns the underlying guest error message", async () => {
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1398,7 +1417,7 @@ test('guest HTTP API returns the underlying guest error message', () => {
     assert.match(apiSource, /json\(res, 403, \{ error: error instanceof Error \? error\.message : String\(error\) \}\)/);
 });
 
-test('guest session manager preserves guest auth context for public guest APIs', () => {
+test("guest session manager preserves guest auth context for public guest APIs", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1422,15 +1441,16 @@ test('guest session manager preserves guest auth context for public guest APIs',
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room-runtime/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
-    assert.match(dataSource, /return this\.roomRuntime\.loadGuestRoomState\(meetingId\)/);
-    assert.match(apiSource, /return this\.callPublicGuestApi\(meetingId, 'guest-state', \{\}\)/);
+    assert.match(dataSource, /return this\.webMeetRoom\.loadGuestRoomState\(meetingId\)/);
+    assert.match(apiSource, /async loadRoomState/);
+    assert.match(apiSource, /callPublicGuestApi\(requireString\(meetingId, 'meetingId'\), 'guest-state', \{\}\)/);
 });
 
-test('guest page bootstraps WebMeet dashboard through WebSkel components', () => {
+test("guest page bootstraps WebMeet dashboard through WebSkel components", async () => {
     const proxySource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1464,7 +1484,7 @@ test('guest page bootstraps WebMeet dashboard through WebSkel components', () =>
     assert.doesNotMatch(proxySource, /\.webmeet-public-dashboard \.webmeet-dashboard-modal[\s\S]*width: 100vw/);
 });
 
-test('workspace roster events reload meeting list before fetching meeting details', () => {
+test("workspace roster events reload meeting list before fetching meeting details", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1478,7 +1498,7 @@ test('workspace roster events reload meeting list before fetching meeting detail
     assert.doesNotMatch(method, /await this\.loadParticipantsForMeetings\(\)/);
 });
 
-test('meeting detail refresh skips participant snapshots while the room is connected', () => {
+test("meeting detail refresh skips participant snapshots while the room is connected", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1490,11 +1510,31 @@ test('meeting detail refresh skips participant snapshots while the room is conne
         source.indexOf('async refreshMeetingDetailsFromRealtimeEvent()'),
         source.indexOf('\n    runBestEffortRealtimeRefresh', source.indexOf('async refreshMeetingDetailsFromRealtimeEvent()'))
     );
-    assert.match(method, /includeParticipants: !this\.room/);
+    assert.match(method, /includeParticipants: false/);
     assert.doesNotMatch(method, /syncParticipantsFromRoom/);
 });
 
-test('missing meeting ids are removed from local roster state', () => {
+test("meeting list refreshes do not require LiveKit participant snapshots", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+        ),
+        'utf8'
+    );
+    const loadMeetingsMethod = source.slice(
+        source.indexOf('async loadMeetings()'),
+        source.indexOf('\n    async refreshMeetingsFromWorkspaceEvent', source.indexOf('async loadMeetings()'))
+    );
+    const loadParticipantsMethod = source.slice(
+        source.indexOf('async loadParticipantsForMeetings()'),
+        source.indexOf('\n    async loadMeetingDetails', source.indexOf('async loadParticipantsForMeetings()'))
+    );
+    assert.match(loadMeetingsMethod, /includeParticipants: false/);
+    assert.match(loadParticipantsMethod, /includeParticipants: true/);
+});
+
+test("missing meeting ids are removed from local roster state", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,

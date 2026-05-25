@@ -39,8 +39,8 @@ afterEach(() => {
 });
 
 test('meeting participants include LiveKit participants and pending joined members', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -48,18 +48,18 @@ test('meeting participants include LiveKit participants and pending joined membe
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Presence source room',
         authInfo
     });
-    joinMeeting(context, {
+    await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'Admin',
         participantId: 'participant-admin',
         authInfo
     });
-    joinMeeting(context, {
+    await joinMeeting(context, {
         meetingId: meeting.id,
         displayName: 'User',
         participantId: 'participant-user',
@@ -86,8 +86,8 @@ test('meeting participants include LiveKit participants and pending joined membe
 });
 
 test('meeting participant projection fails when no LiveKit source is available', async () => {
-    const context = createStoreContext(tempRoot);
-    const workspace = createWorkspace(context);
+    const context = await createStoreContext(tempRoot);
+    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -95,7 +95,7 @@ test('meeting participant projection fails when no LiveKit source is available',
             roles: ['admin']
         }
     };
-    const meeting = createMeeting(context, {
+    const meeting = await createMeeting(context, {
         workspaceId: workspace.id,
         title: 'Missing LiveKit source room',
         authInfo

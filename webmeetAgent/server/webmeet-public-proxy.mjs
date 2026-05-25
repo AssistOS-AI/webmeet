@@ -29,6 +29,7 @@ const PUBLIC_ASSET_ROOTS = [
 const PUBLIC_SERVICE_PREFIX = '/public-services/webmeet/';
 const INTERNAL_API_PREFIX = '/api/';
 const HTTP_SERVICE_TOOL = '__http_service__';
+const WEBMEET_INTERNAL_TOKEN = String(process.env.WEBMEET_AGENT_INTERNAL_TOKEN || '').trim();
 const PUBLIC_MCP_METHODS = new Set([
     'initialize',
     'notifications/initialized',
@@ -789,7 +790,8 @@ function sendAsset(pathname, res) {
 function proxy(req, res, targetPort, targetPath) {
     const headers = {
         ...req.headers,
-        host: `127.0.0.1:${targetPort}`
+        host: `127.0.0.1:${targetPort}`,
+        ...(WEBMEET_INTERNAL_TOKEN ? { 'x-webmeet-internal-token': WEBMEET_INTERNAL_TOKEN } : {})
     };
     const upstream = http.request({
         hostname: '127.0.0.1',
@@ -815,7 +817,8 @@ function proxyBuffered(req, res, targetPort, targetPath, bodyBuffer) {
     const headers = {
         ...req.headers,
         host: `127.0.0.1:${targetPort}`,
-        'content-length': String(bodyBuffer.length)
+        'content-length': String(bodyBuffer.length),
+        ...(WEBMEET_INTERNAL_TOKEN ? { 'x-webmeet-internal-token': WEBMEET_INTERNAL_TOKEN } : {})
     };
     delete headers['transfer-encoding'];
     delete headers['Transfer-Encoding'];

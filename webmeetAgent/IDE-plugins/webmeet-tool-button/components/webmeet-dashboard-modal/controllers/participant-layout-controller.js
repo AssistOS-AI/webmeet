@@ -230,7 +230,9 @@ export class ParticipantLayoutController {
         }
         const hasProjectedAvatar = this.applyParticipantProfileAvatar(view, participant);
         this.applyParticipantViewState(view);
-        if (participant?.kind === 'local' && !hasProjectedAvatar) {
+        if (!hasProjectedAvatar && view.avatarSource === 'projected' && view.avatarConfig) {
+            this.applyParticipantViewState(view);
+        } else if (participant?.kind === 'local' && !hasProjectedAvatar) {
             this.profileAvatarController.refresh(view, participant, (nextView) => this.applyParticipantViewState(nextView));
         } else if (!hasProjectedAvatar) {
             view.avatarEnabled = false;

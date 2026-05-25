@@ -17,7 +17,6 @@ export const WEBMEET_EVENT_TYPES = Object.freeze({
     PARTICIPANT_JOINED: 'participant.joined',
     PARTICIPANT_LEFT: 'participant.left',
     PARTICIPANT_TIMED_OUT: 'participant.timed_out',
-    PARTICIPANT_AVATAR_UPDATED: 'participant.avatar.updated',
     PARTICIPANT_AVATAR_PROJECTED: 'participant.avatar.projected',
     PARTICIPANT_AVATAR_REQUEST: 'participant.avatar.request',
     PROFILE_AVATAR_UPDATED: 'profile.avatar.updated',
@@ -53,11 +52,6 @@ const EVENT_DEFINITIONS = Object.freeze({
         required: ['meetingId', 'participantId']
     },
     [WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT]: {
-        persistent: true,
-        workspacePersistent: true,
-        required: ['meetingId', 'participantId']
-    },
-    [WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_UPDATED]: {
         persistent: true,
         workspacePersistent: true,
         required: ['meetingId', 'participantId']

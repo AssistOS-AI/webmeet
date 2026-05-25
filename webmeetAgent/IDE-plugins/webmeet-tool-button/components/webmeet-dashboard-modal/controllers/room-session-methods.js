@@ -313,7 +313,7 @@ export const roomSessionMethods = {
             }
         };
 
-        await this.roomController.connect(this.state.session, {
+        await this.roomLiveKit.connect(this.state.session, {
             onRoomCreated: ({ room }) => {
                 this.room = room;
             },
@@ -377,8 +377,8 @@ export const roomSessionMethods = {
                 this.playParticipantJoinSound(participant);
                 subscribeParticipantPublications(participant, Track, 'participant-connected');
                 this.syncParticipantsFromRoom(this.room, Track);
-                void this.republishCurrentParticipantAvatarState?.().catch(() => {});
-                void this.requestRoomAvatarState?.().catch(() => {});
+                void this.webMeetRoom.republishAvatarProjection().catch(() => {});
+                void this.webMeetRoom.requestAvatarState().catch(() => {});
                 scheduleRemoteSubscriptionSweep(Track, 'participant-connected');
             },
             onParticipantDisconnected: (participant, { Track }) => {
@@ -475,8 +475,8 @@ export const roomSessionMethods = {
                 this.syncParticipantsFromRoom(this.room, Track);
                 void (async () => {
                     await this.loadMeetingDetails({ includeParticipants: false });
-                    await this.republishCurrentParticipantAvatarState?.();
-                    await this.requestRoomAvatarState?.();
+                    await this.webMeetRoom.republishAvatarProjection();
+                    await this.webMeetRoom.requestAvatarState();
                 })().catch(() => {});
                 for (const participant of room.remoteParticipants.values()) {
                     subscribeParticipantPublications(participant, Track, 'connected');
@@ -496,7 +496,7 @@ export const roomSessionMethods = {
     resetRoomUiState(options = {}) {
         const forceRenderAll = Boolean(options.forceRenderAll);
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
-        this.room = this.roomController.getRoom();
+        this.room = this.roomLiveKit.getRoom();
         this.stopPresenceHeartbeat();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
@@ -535,7 +535,7 @@ export const roomSessionMethods = {
         }
     },
 
-    unsubscribeRemotePublications(room = this.roomController.getRoom()) {
+    unsubscribeRemotePublications(room = this.roomLiveKit.getRoom()) {
         for (const participant of room?.remoteParticipants?.values?.() || []) {
             for (const publication of participant?.trackPublications?.values?.() || []) {
                 try {
@@ -550,7 +550,7 @@ export const roomSessionMethods = {
         }
     },
 
-    async stopRoomMediaBeforeDisconnect(room = this.roomController.getRoom()) {
+    async stopRoomMediaBeforeDisconnect(room = this.roomLiveKit.getRoom()) {
         this.muteRoomPlaybackElements();
         this.unsubscribeRemotePublications(room);
         await this.mediaController.stopAllLocalMedia(room);
@@ -562,12 +562,12 @@ export const roomSessionMethods = {
     },
 
     async disconnectRoom(options = {}) {
-        const room = this.roomController.getRoom();
+        const room = this.roomLiveKit.getRoom();
         if (!room) return;
         if (options.stopMediaFirst !== false) {
             await this.stopRoomMediaBeforeDisconnect(room);
         }
-        await this.roomController.disconnect();
+        await this.roomLiveKit.disconnect();
         this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: true });
     },
 

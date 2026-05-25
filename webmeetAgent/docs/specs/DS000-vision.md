@@ -43,7 +43,10 @@ The primary implementation map is:
 | Payload encryption | `lib/webmeetCrypto.mjs` |
 | Event append files | `lib/webmeetQueue.mjs` |
 | WebMeet plugin API client | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-api-client.js` |
-| Browser LiveKit connection | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/livekit-room-controller.js` |
+| Browser LiveKit connection | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-livekit.js` |
+| Room orchestration and lifecycle | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js` |
+| Room event normalization and typed UI events | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-events.js` |
+| Serializable room state model | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-state.js` |
 | Room session and LiveKit event handling | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js` |
 | Browser media controls | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/webmeet-media-controller.js` |
 | Chat and transcript UI behavior | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/service-components/chat-transcript-component.js` |

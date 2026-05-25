@@ -153,36 +153,29 @@ function assertUserChatAuthor(args, authInfo = null) {
     if (authAuthor) {
         return authAuthor;
     }
-    const authorId = getRequiredString(args, 'authorId');
-    if (authorId.toLowerCase().startsWith('research:')) {
-        throw new Error('The research: author prefix is reserved for relay-generated messages.');
-    }
-    return {
-        authorId,
-        authorName: getRequiredString(args, 'authorName')
-    };
+    throw new Error('Authentication is required to send meeting chat.');
 }
 
 export async function dispatch(toolName, args, context, authInfo) {
     switch (toolName) {
     case 'webmeet_workspace_list':
-        return { workspaces: listWorkspaces(context) };
+        return { workspaces: await listWorkspaces(context) };
     case 'webmeet_workspace_create':
-        return createWorkspace(context, { name: String(args?.name || '').trim() });
+        return await createWorkspace(context, { name: String(args?.name || '').trim() });
     case 'webmeet_meeting_list':
         return {
-            meetings: listMeetings(context, getRequiredString(args, 'workspaceId'), authInfo),
+            meetings: await listMeetings(context, getRequiredString(args, 'workspaceId'), authInfo),
             canManageRooms: isAdminAuthInfo(authInfo)
         };
     case 'webmeet_meeting_create':
-        return createMeeting(context, {
+        return await createMeeting(context, {
             workspaceId: getRequiredString(args, 'workspaceId'),
             title: getRequiredString(args, 'title'),
             roomType: String(args?.roomType || 'team').trim(),
             authInfo
         });
     case 'webmeet_meeting_join':
-        return joinMeeting(context, {
+        return await joinMeeting(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             displayName: String(args?.displayName || '').trim(),
             participantId: String(args?.participantId || '').trim(),
@@ -190,59 +183,63 @@ export async function dispatch(toolName, args, context, authInfo) {
             authInfo
         });
     case 'webmeet_meeting_join_guest':
-        return joinGuestMeeting(context, {
+        return await joinGuestMeeting(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             guestToken: getRequiredString(args, 'guestToken'),
             displayName: getRequiredString(args, 'displayName'),
             participantId: String(args?.participantId || '').trim()
         });
     case 'webmeet_meeting_leave':
-        return leaveMeeting(context, {
+        return await leaveMeeting(context, {
             meetingId: getRequiredString(args, 'meetingId'),
-            participantId: getRequiredString(args, 'participantId')
+            participantId: getRequiredString(args, 'participantId'),
+            authInfo
         });
     case 'webmeet_meeting_presence_ping':
-        return pingMeetingPresence(context, {
+        return await pingMeetingPresence(context, {
             meetingId: getRequiredString(args, 'meetingId'),
-            participantId: getRequiredString(args, 'participantId')
+            participantId: getRequiredString(args, 'participantId'),
+            authInfo
         });
     case 'webmeet_workspace_events_list':
         return {
-            events: listWorkspaceEvents(context, getRequiredString(args, 'workspaceId'), {
+            events: await listWorkspaceEvents(context, getRequiredString(args, 'workspaceId'), {
                 afterId: String(args?.afterId || '').trim()
             })
         };
     case 'webmeet_meeting_events_list':
-        await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+        await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo, { includeParticipants: false });
         return {
-            events: listMeetingEvents(context, getRequiredString(args, 'meetingId'), {
+            events: await listMeetingEvents(context, getRequiredString(args, 'meetingId'), {
                 afterId: String(args?.afterId || '').trim()
             })
         };
     case 'webmeet_participant_avatar_update':
-        return updateMeetingParticipantAvatar(context, {
+        return await updateMeetingParticipantAvatar(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             participantId: getRequiredString(args, 'participantId'),
             avatar: args?.avatar || null,
             authInfo
         });
     case 'webmeet_guest_participant_avatar_update':
-        return updateGuestMeetingParticipantAvatar(context, {
+        return await updateGuestMeetingParticipantAvatar(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             guestToken: getRequiredString(args, 'guestToken'),
             participantId: getRequiredString(args, 'participantId'),
             avatar: args?.avatar || null
         });
     case 'webmeet_meeting_get':
-        return await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+        return await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo, {
+            includeParticipants: args?.includeParticipants !== false
+        });
     case 'webmeet_meeting_rename':
-        return updateMeetingTitle(context, {
+        return await updateMeetingTitle(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             title: getRequiredString(args, 'title'),
             authInfo
         });
     case 'webmeet_chat_list':
-        return { messages: listMeetingChat(context, getRequiredString(args, 'meetingId')) };
+        return { messages: await listMeetingChat(context, getRequiredString(args, 'meetingId'), authInfo) };
     case 'webmeet_chat_send':
         {
             const author = assertUserChatAuthor(args, authInfo);
@@ -250,13 +247,14 @@ export async function dispatch(toolName, args, context, authInfo) {
                 meetingId: getRequiredString(args, 'meetingId'),
                 authorId: author.authorId,
                 authorName: author.authorName,
-                message: getRequiredString(args, 'message')
+                message: getRequiredString(args, 'message'),
+                authInfo
             });
             return { ...appended, researchTask: null };
         }
     case 'webmeet_transcript_append':
         assertAdminTool(authInfo);
-        return appendMeetingTranscript(context, {
+        return await appendMeetingTranscript(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             speakerId: getRequiredString(args, 'speakerId'),
             speakerName: getRequiredString(args, 'speakerName'),
@@ -264,7 +262,7 @@ export async function dispatch(toolName, args, context, authInfo) {
         });
     case 'webmeet_transcript_list':
         assertAdminTool(authInfo);
-        return { transcript: listMeetingTranscript(context, getRequiredString(args, 'meetingId')) };
+        return { transcript: await listMeetingTranscript(context, getRequiredString(args, 'meetingId')) };
     case 'webmeet_agent_attach': {
         const meetingId = getRequiredString(args, 'meetingId');
         const agentType = getRequiredString(args, 'agentType');
@@ -275,28 +273,28 @@ export async function dispatch(toolName, args, context, authInfo) {
         if (!SUPPORTED_AGENT_MODES.has(mode)) {
             throw new Error(`Unsupported mode "${mode}".`);
         }
-        return attachMeetingAgent(context, { meetingId, agentType, mode, authInfo });
+        return await attachMeetingAgent(context, { meetingId, agentType, mode, authInfo });
     }
     case 'webmeet_agent_list':
         assertAdminTool(authInfo);
-        return { agents: listMeetingAgents(context, getRequiredString(args, 'meetingId')) };
+        return { agents: await listMeetingAgents(context, getRequiredString(args, 'meetingId')) };
     case 'webmeet_agent_detach':
-        return detachMeetingAgent(context, {
+        return await detachMeetingAgent(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             agentId: getRequiredString(args, 'agentId'),
             authInfo
         });
     case 'webmeet_recording_start':
         assertAdminTool(authInfo);
-        return startMeetingRecording(context, getRequiredString(args, 'meetingId'));
+        return await startMeetingRecording(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_recording_stop':
         assertAdminTool(authInfo);
-        return stopMeetingRecording(context, getRequiredString(args, 'meetingId'));
+        return await stopMeetingRecording(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_artifact_list':
         assertAdminTool(authInfo);
-        return listMeetingArtifacts(context, getRequiredString(args, 'meetingId'));
+        return await listMeetingArtifacts(context, getRequiredString(args, 'meetingId'));
     case 'webmeet_delete_meeting':
-        return deleteMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+        return await deleteMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
     default:
         throw new Error(`Unsupported TOOL_NAME "${toolName}".`);
     }
@@ -306,7 +304,7 @@ async function main() {
     const envelope = await readEnvelope();
     const args = unwrapInput(envelope);
     const authInfo = authInfoFromEnvelope(envelope);
-    const context = createStoreContext();
+    const context = await createStoreContext();
     context.envelope = envelope;
     const result = await dispatch(TOOL_NAME, args, context, authInfo);
     process.stdout.write(`${JSON.stringify(result)}\n`);

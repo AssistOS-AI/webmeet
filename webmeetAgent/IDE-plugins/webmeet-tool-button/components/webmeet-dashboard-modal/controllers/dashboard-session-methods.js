@@ -64,7 +64,7 @@ export const dashboardSessionMethods = {
             return runTool(name, args);
         }
         if (name !== 'webmeet_meeting_presence_ping') return {};
-        return this.roomRuntime.presencePing();
+        return this.webMeetRoom.presencePing();
     },
 
     registerWindowPresenceHandlers() {

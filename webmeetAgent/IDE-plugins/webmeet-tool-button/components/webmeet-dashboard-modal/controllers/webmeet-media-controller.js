@@ -318,7 +318,7 @@ export class WebmeetMediaController {
             try {
                 await this.enableProcessedMicrophone(room, { ...this.settings, voiceProcessingMode: 'enhanced' });
                 return;
-            } catch (error) {
+            } catch (_) {
                 this.replaceUnsupportedVoiceProcessingMode('standard', 'enhanced-failed');
                 this.onError('Enhanced voice processing failed. Using standard microphone processing.');
                 await this.enableMicrophoneWithMode(room, 'standard');

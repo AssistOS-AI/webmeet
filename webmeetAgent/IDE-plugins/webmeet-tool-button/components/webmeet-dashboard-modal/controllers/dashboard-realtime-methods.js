@@ -1,124 +1,126 @@
 import { normalizeAvatarConfig } from '../services/webmeet-profile-avatar-runtime.js';
 import { buildWebMeetAvatarSource } from '../services/webmeet-avatar-override.js';
-import { runWebMeetTool } from '../services/webmeet-api-client.js';
 import {
     WEBMEET_EVENT_TYPES,
-    buildWebMeetEvent,
     parseWebMeetEvent
 } from '../services/webmeet-events.js';
-
-const runTool = runWebMeetTool;
-const AUTHENTICATED_WORKSPACE_EVENT_POLL_MS = 5000;
+import { ROOM_EVENT_TYPES } from '../services/room/webmeet-room-events.js';
 
 export const dashboardRealtimeMethods = {
-    async publishRealtimePayload(payload) {
-        if (!this.room?.localParticipant || !payload || typeof payload !== 'object') return;
-        const room = String(payload.meetingId || payload.workspaceId || this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
-        const type = String(payload.type || '').trim();
-        if (!room || !type) return;
-        const event = buildWebMeetEvent(room, type, payload);
-        const encoder = new TextEncoder();
-        await this.room.localParticipant.publishData(encoder.encode(event), { reliable: true });
-    },
-
-    async requestRoomAvatarState() {
-        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
-        const participantId = String(this.state.session?.participantIdentity || '').trim();
-        if (!meetingId || !participantId) return;
-        await this.publishRealtimePayload({
-            type: WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST,
-            meetingId,
-            participantId
+    bindRoomEventHandlers() {
+        if (this.roomEventHandlersBound) {
+            return;
+        }
+        this.roomEventHandlersBound = true;
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.PARTICIPANT_JOINED, (event) => {
+            const detail = event?.detail || {};
+            const source = String(detail.source || '').trim();
+            const parsed = detail.parsed || null;
+            if (!parsed) return;
+            if (source === 'authenticated-workspace') {
+                this.scheduleWorkspaceRosterRefresh();
+                return;
+            }
+            void this.handleParticipantRosterEvent({ data: parsed.encoded });
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.PARTICIPANT_LEFT, (event) => {
+            const detail = event?.detail || {};
+            const source = String(detail.source || '').trim();
+            const parsed = detail.parsed || null;
+            if (!parsed) return;
+            if (source === 'authenticated-workspace') {
+                this.scheduleWorkspaceRosterRefresh();
+                return;
+            }
+            void this.handleParticipantRosterEvent({ data: parsed.encoded });
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.AVATAR_PROJECTED, (event) => {
+            const detail = event?.detail || {};
+            const source = String(detail.source || '').trim();
+            const parsed = detail.parsed || null;
+            const payload = detail.payload && typeof detail.payload === 'object'
+                ? detail.payload
+                : null;
+            if (source === 'livekit' && parsed) {
+                this.applyRealtimeParticipantAvatar?.(payload || parsed.payload);
+                this.renderParticipantLayout();
+                this.renderMeetingList();
+                return;
+            }
+            if (source === 'local-avatar' && payload) {
+                this.applyRealtimeParticipantAvatar?.(payload);
+                this.renderParticipantLayout();
+                this.renderMeetingList();
+            }
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.CHAT, (event) => {
+            const detail = event?.detail || {};
+            const payload = detail.payload && typeof detail.payload === 'object'
+                ? detail.payload
+                : null;
+            if (!payload?.message) return;
+            this.state.chat = Array.isArray(this.state.chat) ? this.state.chat : [];
+            const messageId = String(payload.message?.id || '').trim();
+            if (messageId && this.state.chat.some((entry) => String(entry?.id || '').trim() === messageId)) {
+                return;
+            }
+            this.state.chat.push(payload.message);
+            this.renderFeedLists();
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.TRANSCRIPT, () => {
+            this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.AGENT_ATTACHED, (event) => {
+            const source = String(event?.detail?.source || '').trim();
+            if (source === 'authenticated-workspace') {
+                this.scheduleWorkspaceRosterRefresh();
+                return;
+            }
+            this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.RECORDING_STARTED, () => {
+            this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
         });
     },
 
+    async publishRealtimePayload(payload) {
+        return this.webMeetRoom.publishRealtimePayload(payload);
+    },
+
     startWorkspaceEvents() {
-        this.stopWorkspaceEvents();
-        if (this.isGuestSession()) return;
-        this.lastWorkspaceEventId = '';
-        const targetWorkspaceId = String(this.state.selectedWorkspaceId || '').trim();
-        if (!targetWorkspaceId) return;
-        let initialized = false;
-        const poll = async () => {
-            if (this.isGuestSession()) return;
-            const workspaceId = String(this.state.selectedWorkspaceId || '').trim();
-            if (!workspaceId || workspaceId !== targetWorkspaceId) return;
-            try {
-                const payload = await runTool('webmeet_workspace_events_list', {
-                    workspaceId,
-                    afterId: this.lastWorkspaceEventId
-                });
-                const events = Array.isArray(payload?.events) ? payload.events : [];
-                if (!initialized) {
-                    initialized = true;
-                    if (events.length) {
-                        this.lastWorkspaceEventId = parseWebMeetEvent(events[events.length - 1]).id || this.lastWorkspaceEventId;
-                    }
-                    return;
-                }
-                for (const event of events) {
-                    this.lastWorkspaceEventId = parseWebMeetEvent(event).id || this.lastWorkspaceEventId;
-                    this.emitWebMeetInternalEvent('authenticated-workspace', event);
-                }
-            } catch (_) {
-                // Authenticated workspace events are best-effort; explicit refresh/actions remain authoritative.
-            } finally {
-                if (!this.isGuestSession()) {
-                    this.workspaceEventsPollTimer = window.setTimeout(poll, AUTHENTICATED_WORKSPACE_EVENT_POLL_MS);
-                }
-            }
-        };
-        this.workspaceEventsPollTimer = window.setTimeout(poll, 0);
+        this.webMeetRoom.startWorkspaceEvents();
     },
 
     stopWorkspaceEvents() {
-        if (this.workspaceEventsPollTimer) {
-            window.clearTimeout(this.workspaceEventsPollTimer);
-            this.workspaceEventsPollTimer = null;
-        }
+        this.webMeetRoom.stopWorkspaceEvents();
     },
 
     emitWebMeetInternalEvent(source, eventData = '', meta = {}) {
-        const parsed = parseWebMeetEvent(eventData);
-        const detail = {
-            source: String(source || 'unknown').trim() || 'unknown',
-            event: parsed.encoded,
+        const parsed = this.webMeetRoom.handleIncomingEvent(source, eventData, meta);
+        this.handleWebMeetInternalEvent({
+            source,
             parsed,
-            meta: meta && typeof meta === 'object' ? meta : {}
-        };
-        try {
-            window.dispatchEvent(new CustomEvent('webmeet:event', { detail }));
-        } catch (_) {
-            // Local app event dispatch is best-effort; the dashboard still applies the event below.
-        }
-        return this.handleWebMeetInternalEvent(detail);
+            event: parsed?.encoded || ''
+        });
+        return parsed;
     },
 
     handleWebMeetInternalEvent(detail = {}) {
-        const parsed = detail?.parsed || parseWebMeetEvent(detail?.event);
-        const eventData = parsed.payload || {};
+        const parsed = detail?.parsed || null;
+        if (!parsed) return;
         const source = String(detail?.source || '').trim();
-        const event = { data: parsed.encoded };
         const type = parsed.type;
-        const payload = eventData;
+        const payload = parsed.payload || {};
         const meetingId = String(payload?.meetingId || parsed.room || '').trim();
         const selectedMeetingId = String(this.selectedMeeting?.id || this.state.selectedMeetingId || '').trim();
         if (meetingId && selectedMeetingId && meetingId !== selectedMeetingId && source !== 'authenticated-workspace') {
-            return;
-        }
-        if (type === WEBMEET_EVENT_TYPES.CHAT_REALTIME) {
-            if (!meetingId || meetingId === selectedMeetingId) {
-                if (!this.state.chat) this.state.chat = [];
-                this.state.chat.push(eventData.message);
-                this.renderFeedLists();
-            }
             return;
         }
         if (type === WEBMEET_EVENT_TYPES.MEETING_RENAMED) {
             this.applyMeetingRename(
                 payload?.meetingId,
                 payload?.title,
-                eventData?.createdAt || ''
+                payload?.createdAt || ''
             );
             if (source === 'authenticated-workspace') {
                 this.scheduleWorkspaceMeetingsRefresh();
@@ -129,42 +131,21 @@ export const dashboardRealtimeMethods = {
             const requesterParticipantId = String(
                 detail?.meta?.participantId
                 || payload?.participantId
-                || eventData?.participantId
                 || ''
             ).trim();
             const localParticipantId = String(this.state.session?.participantIdentity || this.room?.localParticipant?.identity || '').trim();
             if (!requesterParticipantId || !localParticipantId || requesterParticipantId === localParticipantId) {
                 return;
             }
-            void this.republishCurrentParticipantAvatarState?.().catch(() => {});
+            void this.webMeetRoom.republishAvatarProjection().catch(() => {});
             return;
         }
-        if ([WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_UPDATED, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED].includes(type)) {
-            if (source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED) {
-                void (async () => {
-                    this.applyRealtimeParticipantAvatar?.(eventData);
-                    this.renderParticipantLayout();
-                    this.renderMeetingList();
-                })().catch(() => {});
-                return;
-            }
-            if (source === 'authenticated-workspace') {
-                this.scheduleWorkspaceRosterRefresh();
-                return;
-            }
-            void this.handleParticipantRosterEvent(event);
-            return;
-        }
-        if ([WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, WEBMEET_EVENT_TYPES.AGENT_DETACHED, WEBMEET_EVENT_TYPES.TRANSCRIPT_UPDATED, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, WEBMEET_EVENT_TYPES.RECORDING_STARTED, WEBMEET_EVENT_TYPES.RECORDING_STOPPED].includes(type)) {
-            if (source === 'authenticated-workspace' && [WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, WEBMEET_EVENT_TYPES.AGENT_DETACHED].includes(type)) {
-                this.scheduleWorkspaceRosterRefresh();
-                return;
-            }
+        if ([WEBMEET_EVENT_TYPES.AGENT_DETACHED, WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, WEBMEET_EVENT_TYPES.RECORDING_STOPPED, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED].includes(type)) {
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
             return;
         }
         if (type === WEBMEET_EVENT_TYPES.PROFILE_AVATAR_UPDATED) {
-            this.handleProfileAvatarWorkspaceEvent(event);
+            this.handleProfileAvatarWorkspaceEvent({ data: parsed.encoded });
             return;
         }
         if (type === WEBMEET_EVENT_TYPES.MEETING_CREATED) {
@@ -179,23 +160,23 @@ export const dashboardRealtimeMethods = {
         const currentUserId = String(this.currentActor?.id || '').trim();
         const hasInlineAvatar = Object.prototype.hasOwnProperty.call(event?.detail || {}, 'enabled')
             || Object.prototype.hasOwnProperty.call(event?.detail || {}, 'config');
-            if (eventUserId && currentUserId && eventUserId !== currentUserId) {
-                if (!hasInlineAvatar) return;
-                const profileAvatar = {
-                    enabled: event.detail.enabled !== false,
-                    config: normalizeAvatarConfig(event.detail.config, `profile:${eventUserId}`),
+        if (eventUserId && currentUserId && eventUserId !== currentUserId) {
+            if (!hasInlineAvatar) return;
+            const profileAvatar = {
+                enabled: event.detail.enabled !== false,
+                config: normalizeAvatarConfig(event.detail.config, `profile:${eventUserId}`),
                 fallbackLetter: '',
                 updatedAt: new Date().toISOString()
             };
             this.applyRealtimeParticipantAvatar?.({
                 meetingId: String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim(),
-                    userId: eventUserId,
-                    profileAvatar
-                });
-                this.renderParticipantLayout();
-                this.renderMeetingList();
-                return;
-            }
+                userId: eventUserId,
+                profileAvatar
+            });
+            this.renderParticipantLayout();
+            this.renderMeetingList();
+            return;
+        }
         if (!this.state.session?.participantIdentity) return;
         try {
             const currentOverride = this.loadCurrentWebMeetAvatarOverride?.() || null;
@@ -218,7 +199,7 @@ export const dashboardRealtimeMethods = {
                     userId,
                     participantId
                 });
-                const profileAvatar = this.buildParticipantAvatarProjection(effectiveSourceAvatar, participantId);
+                const profileAvatar = this.webMeetRoom.buildAvatarProjection(effectiveSourceAvatar, participantId);
                 this.applyRealtimeParticipantAvatar?.({
                     meetingId: String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim(),
                     participantId,
@@ -227,7 +208,7 @@ export const dashboardRealtimeMethods = {
                 });
                 this.renderParticipantLayout();
                 this.renderMeetingList();
-                await this.publishCurrentParticipantAvatarState?.(profileAvatar, effectiveSourceAvatar);
+                await this.webMeetRoom.publishAvatarProjection(profileAvatar, effectiveSourceAvatar);
             }
             await this.publishCurrentParticipantAvatar(hasInlineAvatar
                 ? {

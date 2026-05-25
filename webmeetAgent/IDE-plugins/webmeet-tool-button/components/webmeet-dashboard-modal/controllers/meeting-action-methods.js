@@ -71,7 +71,10 @@ export const meetingActionMethods = {
         let guestToken = String(meeting.guestToken || '').trim();
         if (!guestToken) {
             try {
-                const details = await runTool('webmeet_meeting_get', { meetingId: meeting.id });
+                const details = await runTool('webmeet_meeting_get', {
+                    meetingId: meeting.id,
+                    includeParticipants: false
+                });
                 guestToken = String(details?.meeting?.guestToken || '').trim();
             } catch {
                 guestToken = '';
@@ -158,9 +161,9 @@ export const meetingActionMethods = {
         if (displayName) {
             payload.displayName = displayName;
         }
-        this.state.session = await this.roomRuntime.joinAuthenticated(payload);
+        await this.webMeetRoom.join(payload);
         try {
-            await this.roomRuntime.connect();
+            await this.webMeetRoom.connectLiveKit();
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
@@ -174,17 +177,6 @@ export const meetingActionMethods = {
             const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
             this.setError(`Joined room, but WebMeet could not publish the avatar: ${message}`);
         });
-    },
-
-    buildParticipantAvatarProjection(sourceAvatar = null, participantId = '') {
-        const source = sourceAvatar && typeof sourceAvatar === 'object' ? sourceAvatar : {};
-        const profileUserId = String(source.user?.id || '').trim();
-        const fallbackAvatarId = `profile:${profileUserId || participantId}`;
-        return {
-            enabled: source.enabled !== false,
-            config: normalizeAvatarConfig(source.config, fallbackAvatarId),
-            fallbackLetter: source.fallbackLetter || ''
-        };
     },
 
     getCurrentAvatarOverrideUserId() {
@@ -247,7 +239,7 @@ export const meetingActionMethods = {
             });
         return {
             sourceAvatar,
-            avatar: this.buildParticipantAvatarProjection(sourceAvatar, participantId)
+            avatar: this.webMeetRoom.buildAvatarProjection(sourceAvatar, participantId)
         };
     },
 
@@ -396,115 +388,6 @@ export const meetingActionMethods = {
             : 'WebMeet avatar reset to profile avatar. Join a room to publish it.');
     },
 
-    async publishCurrentParticipantAvatarState(profileAvatar = null, sourceAvatar = null) {
-        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
-        const participantId = String(this.state.session?.participantIdentity || '').trim();
-        if (!meetingId || !participantId) return;
-
-        let avatarProjection = profileAvatar && typeof profileAvatar === 'object'
-            ? profileAvatar
-            : null;
-        let avatarSource = sourceAvatar && typeof sourceAvatar === 'object' ? sourceAvatar : null;
-        if (!avatarProjection) {
-            const resolved = await this.resolveCurrentParticipantAvatarProjection({ force: true });
-            avatarProjection = resolved?.avatar || null;
-            avatarSource = resolved?.sourceAvatar || null;
-        }
-        if (!avatarProjection) return;
-
-        const userId = String(
-            avatarSource?.user?.id
-            || avatarProjection?.config?.agentId?.replace(/^profile:/, '')
-            || this.currentActor?.id
-            || ''
-        ).trim();
-        this.setRoomAvatar?.(participantId, avatarProjection);
-        this.applyRealtimeParticipantAvatar?.({
-            meetingId,
-            participantId,
-            userId,
-            profileAvatar: avatarProjection
-        });
-        const localParticipant = this.room?.localParticipant || null;
-        if (localParticipant && typeof localParticipant.setAttributes === 'function') {
-            try {
-                const attributes = {
-                    ...(localParticipant.attributes && typeof localParticipant.attributes === 'object'
-                        ? localParticipant.attributes
-                        : {}),
-                    ...(userId ? {
-                        webmeetUserId: userId,
-                        userId,
-                        workspaceUserId: userId,
-                        ploinkyUserId: userId
-                    } : {}),
-                    webmeetProfileAvatar: JSON.stringify(avatarProjection)
-                };
-                await localParticipant.setAttributes(attributes);
-            } catch (_) {
-                // The data-channel payload below is the immediate room-state update.
-            }
-        }
-        await this.publishRealtimePayload({
-            type: WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED,
-            meetingId,
-            participantId,
-            userId,
-            profileAvatar: avatarProjection
-        });
-    },
-
-    getCurrentPublishedParticipantAvatarState() {
-        const participantId = String(this.state.session?.participantIdentity || '').trim();
-        const roomAvatars = this.state.roomAvatarsByParticipantId && typeof this.state.roomAvatarsByParticipantId === 'object'
-            ? this.state.roomAvatarsByParticipantId
-            : {};
-        const localAttributes = this.room?.localParticipant?.attributes && typeof this.room.localParticipant.attributes === 'object'
-            ? this.room.localParticipant.attributes
-            : {};
-        let profileAvatar = participantId && roomAvatars[participantId] && typeof roomAvatars[participantId] === 'object'
-            ? roomAvatars[participantId]
-            : null;
-        const rawProfileAvatar = String(localAttributes.webmeetProfileAvatar || '').trim();
-        if (!profileAvatar && rawProfileAvatar) {
-            try {
-                const parsed = JSON.parse(rawProfileAvatar);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                    profileAvatar = parsed;
-                }
-            } catch (_) {
-                profileAvatar = null;
-            }
-        }
-        if (!profileAvatar) return null;
-        const userId = String(
-            localAttributes.ploinkyUserId
-            || localAttributes.workspaceUserId
-            || localAttributes.userId
-            || localAttributes.webmeetUserId
-            || this.currentActor?.id
-            || this.state.session?.participant?.userId
-            || ''
-        ).trim();
-        return {
-            profileAvatar,
-            sourceAvatar: {
-                enabled: profileAvatar.enabled !== false,
-                config: profileAvatar.config || null,
-                fallbackLetter: profileAvatar.fallbackLetter || '',
-                user: userId ? { id: userId } : null
-            }
-        };
-    },
-
-    async republishCurrentParticipantAvatarState() {
-        const current = this.getCurrentPublishedParticipantAvatarState?.() || null;
-        await this.publishCurrentParticipantAvatarState(
-            current?.profileAvatar || null,
-            current?.sourceAvatar || null
-        );
-    },
-
     async publishCurrentParticipantAvatar(options = {}) {
         const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
         const participantId = String(this.state.session?.participantIdentity || '').trim();
@@ -512,7 +395,7 @@ export const meetingActionMethods = {
         const resolved = await this.resolveCurrentParticipantAvatarProjection(options);
         if (!resolved?.avatar) return null;
         const { avatar, sourceAvatar } = resolved;
-        const updated = await this.roomRuntime.publishAvatar(avatar);
+        const updated = await this.webMeetRoom.publishAvatar(avatar);
         const profileAvatar = avatar && typeof avatar === 'object'
             ? {
                 ...avatar,
@@ -528,7 +411,7 @@ export const meetingActionMethods = {
             || ''
         ).trim();
         if (options.skipRealtime !== true) {
-            await this.publishCurrentParticipantAvatarState(profileAvatar, sourceAvatar);
+            await this.webMeetRoom.publishAvatarProjection(profileAvatar, sourceAvatar);
         }
         this.applyRealtimeParticipantAvatar?.({
             meetingId,
@@ -582,11 +465,11 @@ export const meetingActionMethods = {
         }
         this.stopPresenceHeartbeat();
         this.stopSpeechRecognition();
-        await this.roomRuntime.disconnect();
+        await this.webMeetRoom.disconnectLiveKit();
 
         if (previousMeetingId && previousParticipantId) {
             try {
-                await this.roomRuntime.leaveCurrentSession();
+                await this.webMeetRoom.leaveCurrentSession();
             } catch (error) {
                 // Ignore leave failures during unload or room switching.
             }
@@ -604,7 +487,7 @@ export const meetingActionMethods = {
     },
 
     async sendPublicChat(meetingId, message) {
-        return this.roomRuntime.sendChat(meetingId, message);
+        return this.webMeetRoom.sendChat(meetingId, message);
     },
 
     async attachObserver() {

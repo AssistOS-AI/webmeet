@@ -232,34 +232,44 @@ export class ChatTranscriptComponent {
             return;
         }
 
-        await this.runTool('webmeet_chat_send', {
-            meetingId: meeting.id,
-            authorId: session.participantIdentity,
-            authorName: session.participant?.displayName || 'User',
-            message
-        });
-        this.elements.chatInput.value = '';
-        this.updateComposerMentionOverlay();
-
-        await this.loadMeetingDetails();
-        this.renderFeedLists();
-
-        if (this.getRoom()?.localParticipant) {
-            try {
-                const chatPayload = {
-                    type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
-                    meetingId: meeting.id,
-                    message: {
-                        authorId: session.participantIdentity,
-                        authorName: session.participant?.displayName || 'User',
-                        message,
-                        createdAt: new Date().toISOString()
-                    }
-                };
-                await this.publishRealtimePayload(chatPayload);
-            } catch (err) {
-                // Persisted chat already succeeded; realtime delivery is best effort.
+        try {
+            const result = await this.runTool('webmeet_chat_send', {
+                meetingId: meeting.id,
+                authorId: session.participantIdentity,
+                authorName: session.participant?.displayName || 'User',
+                message
+            });
+            const persistedMessage = result?.message && typeof result.message === 'object'
+                ? result.message
+                : null;
+            if (!persistedMessage) {
+                throw new Error('Chat send did not return a message.');
             }
+            const state = this.getState();
+            state.chat = Array.isArray(state.chat) ? state.chat : [];
+            if (!state.chat.some((entry) => entry?.id && entry.id === persistedMessage.id)) {
+                state.chat.push(persistedMessage);
+            }
+            this.elements.chatInput.value = '';
+            this.updateComposerMentionOverlay();
+            this.renderFeedLists();
+            if (this.getRoom()?.localParticipant) {
+                try {
+                    await this.publishRealtimePayload({
+                        type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
+                        meetingId: meeting.id,
+                        message: {
+                            ...persistedMessage,
+                            authorId: session.participantIdentity
+                        }
+                    });
+                } catch (err) {
+                    // Persisted chat already succeeded; realtime delivery is best effort.
+                }
+            }
+            void this.loadMeetingDetails().then(() => this.renderFeedLists()).catch(() => {});
+        } catch (error) {
+            this.setError(`Failed to send message: ${error.message}`);
         }
     }
 

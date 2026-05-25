@@ -22,6 +22,18 @@ function makeComponent(overrides = {}) {
         getRoom: () => null,
         runTool: async (name, args) => {
             calls.push({ name, args });
+            if (name === 'webmeet_chat_send') {
+                return {
+                    message: {
+                        id: 'chat-1',
+                        meetingId: args.meetingId,
+                        authorId: 'p-1',
+                        authorName: 'User One',
+                        message: args.message,
+                        createdAt: '2026-01-01T00:00:00.000Z'
+                    }
+                };
+            }
             return {};
         },
         ...overrides
@@ -45,6 +57,29 @@ test('sendChat clears the chat input after a successful send', async () => {
     component.elements = { chatInput: { value: 'note' } };
     await component.sendChat();
     assert.equal(component.elements.chatInput.value, '');
+});
+
+test('sendChat renders returned store message before detail refresh completes', async () => {
+    let resolveRefresh;
+    const refreshStarted = new Promise((resolve) => {
+        resolveRefresh = resolve;
+    });
+    let renderCount = 0;
+    const { component, state } = makeComponent({
+        renderFeedLists: () => {
+            renderCount += 1;
+        },
+        loadMeetingDetails: async () => {
+            await refreshStarted;
+        }
+    });
+    component.elements = { chatInput: { value: 'instant' } };
+    await component.sendChat();
+
+    assert.equal(state.chat.length, 1);
+    assert.equal(state.chat[0].message, 'instant');
+    assert.equal(renderCount, 1);
+    resolveRefresh();
 });
 
 test('sendChat does not call any tool when the input is empty', async () => {

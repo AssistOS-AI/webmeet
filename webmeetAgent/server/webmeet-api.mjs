@@ -70,11 +70,6 @@ async function readBody(req) {
     return raw ? JSON.parse(raw) : {};
 }
 
-function getActor(body) {
-    const actor = body?.actor;
-    return actor && typeof actor === 'object' ? actor : null;
-}
-
 function getRequestActor(req, body = null) {
     const raw = String(req.headers?.['x-ploinky-auth-info'] || '').trim();
     if (raw) {
@@ -84,13 +79,37 @@ function getRequestActor(req, body = null) {
             return null;
         }
     }
-    return getActor(body);
+    return null;
+}
+
+function assertInternalApiAccess(req) {
+    const header = String(req.headers?.['x-webmeet-internal-token'] || '').trim();
+    const authHeader = String(req.headers?.authorization || '').trim();
+    const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+    if (!AGENT_INTERNAL_TOKEN || (header !== AGENT_INTERNAL_TOKEN && bearer !== AGENT_INTERNAL_TOKEN)) {
+        throw new Error('Access denied: invalid WebMeet internal API token.');
+    }
 }
 
 function assertAdminRequest(req, body = null) {
     if (!isAdminAuthInfo(getRequestActor(req, body))) {
         throw new Error('Access denied: only admin can access meeting administrative data.');
     }
+}
+
+function deriveRequestChatAuthor(req, body = null) {
+    const authInfo = getRequestActor(req, body);
+    const user = authInfo?.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo;
+    const agent = authInfo?.agent && typeof authInfo.agent === 'object' ? authInfo.agent : null;
+    const authorId = String(user?.id || agent?.principalId || authInfo?.principalId || user?.username || user?.email || '').trim();
+    if (!authorId) {
+        throw new Error('Authentication is required to send meeting chat.');
+    }
+    return {
+        authorId,
+        authorName: String(user?.name || user?.username || user?.email || agent?.name || authorId).trim() || authorId,
+        authInfo
+    };
 }
 
 function assertInternalAgentAccess(req) {
@@ -130,7 +149,7 @@ async function sendMeetingEvents(req, res, context, meetingId, { afterId = '', u
     if (url?.searchParams?.has('guestToken')) {
         await assertGuestEventAccess(context, targetMeetingId, url);
     } else {
-        await getMeeting(context, targetMeetingId);
+        await getMeeting(context, targetMeetingId, getRequestActor(req), { includeParticipants: false });
     }
     res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
@@ -141,19 +160,19 @@ async function sendMeetingEvents(req, res, context, meetingId, { afterId = '', u
     });
     res.write(': connected\n\n');
     let lastEventId = String(afterId || '').trim();
-    const sendBacklog = () => {
-        for (const event of listMeetingEvents(context, targetMeetingId, { afterId: lastEventId })) {
+    const sendBacklog = async () => {
+        for (const event of await listMeetingEvents(context, targetMeetingId, { afterId: lastEventId })) {
             sseWrite(res, event);
-            lastEventId = String(event?.id || lastEventId).trim();
+            lastEventId = parseWebMeetEvent(event).id || lastEventId;
         }
     };
-    sendBacklog();
+    await sendBacklog();
 
     const eventsDir = path.join(context.eventsDir, targetMeetingId);
-    fs.mkdirSync(eventsDir, { recursive: true });
+    await fs.promises.mkdir(eventsDir, { recursive: true });
     const watcher = fs.watch(eventsDir, () => {
         try {
-            sendBacklog();
+            void sendBacklog();
         } catch (_) {
             // Keep the stream open; the next event can still be delivered.
         }
@@ -169,10 +188,10 @@ async function sendMeetingEvents(req, res, context, meetingId, { afterId = '', u
     req.on('error', cleanup);
 }
 
-function sendWorkspaceEvents(req, res, context, workspaceId, { afterId = '' } = {}) {
+async function sendWorkspaceEvents(req, res, context, workspaceId, { afterId = '' } = {}) {
     const targetWorkspaceId = String(workspaceId || '').trim();
     const authInfo = getRequestActor(req);
-    listMeetings(context, targetWorkspaceId, authInfo);
+    await listMeetings(context, targetWorkspaceId, authInfo);
     res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-store, no-transform',
@@ -182,19 +201,19 @@ function sendWorkspaceEvents(req, res, context, workspaceId, { afterId = '' } = 
     });
     res.write(': connected\n\n');
     let lastEventId = String(afterId || '').trim();
-    const sendBacklog = () => {
-        for (const event of listWorkspaceEvents(context, targetWorkspaceId, { afterId: lastEventId })) {
+    const sendBacklog = async () => {
+        for (const event of await listWorkspaceEvents(context, targetWorkspaceId, { afterId: lastEventId })) {
             sseWrite(res, event);
-            lastEventId = String(event?.id || lastEventId).trim();
+            lastEventId = parseWebMeetEvent(event).id || lastEventId;
         }
     };
-    sendBacklog();
+    await sendBacklog();
 
     const eventsDir = path.join(context.eventsDir, 'workspaces', targetWorkspaceId);
-    fs.mkdirSync(eventsDir, { recursive: true });
+    await fs.promises.mkdir(eventsDir, { recursive: true });
     const watcher = fs.watch(eventsDir, () => {
         try {
-            sendBacklog();
+            void sendBacklog();
         } catch (_) {
             // Keep the stream open; the next workspace event can still be delivered.
         }
@@ -270,23 +289,24 @@ async function handler(req, res) {
         json(res, 404, { error: 'Not found.' });
         return;
     }
-    const context = createStoreContext();
+    const context = await createStoreContext();
     try {
         if (route.name === 'healthz') {
             json(res, 200, { ok: true });
             return;
         }
+        assertInternalApiAccess(req);
         if (route.name === 'workspaces.list') {
-            json(res, 200, { workspaces: listWorkspaces(context) });
+            json(res, 200, { workspaces: await listWorkspaces(context) });
             return;
         }
         if (route.name === 'workspaces.create') {
             const body = await readBody(req);
-            json(res, 200, createWorkspace(context, { name: String(body.name || '').trim() }));
+            json(res, 200, await createWorkspace(context, { name: String(body.name || '').trim() }));
             return;
         }
         if (route.name === 'workspaces.events') {
-            sendWorkspaceEvents(req, res, context, route.params[0], {
+            await sendWorkspaceEvents(req, res, context, route.params[0], {
                 afterId: getLastEventId(req, url)
             });
             return;
@@ -294,7 +314,7 @@ async function handler(req, res) {
         if (route.name === 'workspaces.profile-avatar.updated') {
             const body = await readBody(req);
             const authInfo = getRequestActor(req, body);
-            json(res, 201, recordProfileAvatarUpdated(context, {
+            json(res, 201, await recordProfileAvatarUpdated(context, {
                 workspaceId: route.params[0],
                 userId: String(body.userId || '').trim(),
                 authInfo
@@ -306,13 +326,13 @@ async function handler(req, res) {
             if (route.name === 'meetings.list') {
                 const authInfo = getRequestActor(req);
                 json(res, 200, {
-                    meetings: listMeetings(context, workspaceId, authInfo),
+                    meetings: await listMeetings(context, workspaceId, authInfo),
                     canManageRooms: isAdminAuthInfo(authInfo)
                 });
                 return;
             }
             const body = await readBody(req);
-            json(res, 201, createMeeting(context, {
+            json(res, 201, await createMeeting(context, {
                 workspaceId,
                 title: String(body.title || '').trim(),
                 roomType: String(body.roomType || 'team').trim(),
@@ -321,7 +341,9 @@ async function handler(req, res) {
             return;
         }
         if (route.name === 'meetings.get') {
-            json(res, 200, await getMeeting(context, route.params[0]));
+            json(res, 200, await getMeeting(context, route.params[0], getRequestActor(req), {
+                includeParticipants: url.searchParams.get('includeParticipants') !== 'false'
+            }));
             return;
         }
         if (route.name === 'meetings.events') {
@@ -333,7 +355,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.join') {
             const body = await readBody(req);
-            json(res, 200, joinMeeting(context, {
+            json(res, 200, await joinMeeting(context, {
                 meetingId: route.params[0],
                 displayName: String(body.displayName || '').trim(),
                 participantId: String(body.participantId || '').trim(),
@@ -344,7 +366,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.join.guest') {
             const body = await readBody(req);
-            json(res, 200, joinGuestMeeting(context, {
+            json(res, 200, await joinGuestMeeting(context, {
                 meetingId: route.params[0],
                 guestToken: String(body.guestToken || '').trim(),
                 displayName: String(body.displayName || '').trim(),
@@ -354,7 +376,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.participant.avatar') {
             const body = await readBody(req);
-            json(res, 200, updateMeetingParticipantAvatar(context, {
+            json(res, 200, await updateMeetingParticipantAvatar(context, {
                 meetingId: route.params[0],
                 participantId: route.params[1],
                 avatar: body.avatar || body,
@@ -373,7 +395,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.guest.avatar') {
             const body = await readBody(req);
-            json(res, 200, updateGuestMeetingParticipantAvatar(context, {
+            json(res, 200, await updateGuestMeetingParticipantAvatar(context, {
                 meetingId: route.params[0],
                 guestToken: String(body.guestToken || '').trim(),
                 participantId: String(body.participantId || '').trim(),
@@ -392,7 +414,7 @@ async function handler(req, res) {
         }
         if (route.name === 'meetings.guest.presence') {
             const body = await readBody(req);
-            json(res, 200, pingGuestMeetingPresence(context, {
+            json(res, 200, await pingGuestMeetingPresence(context, {
                 meetingId: route.params[0],
                 guestToken: String(body.guestToken || '').trim(),
                 participantId: String(body.participantId || '').trim()
@@ -403,30 +425,34 @@ async function handler(req, res) {
             const body = await readBody(req);
             json(res, 200, await leaveMeeting(context, {
                 meetingId: route.params[0],
-                participantId: String(body.participantId || '').trim()
+                participantId: String(body.participantId || '').trim(),
+                authInfo: getRequestActor(req, body)
             }));
             return;
         }
         if (route.name === 'meetings.presence') {
             const body = await readBody(req);
-            json(res, 200, pingMeetingPresence(context, {
+            json(res, 200, await pingMeetingPresence(context, {
                 meetingId: route.params[0],
-                participantId: String(body.participantId || '').trim()
+                participantId: String(body.participantId || '').trim(),
+                authInfo: getRequestActor(req, body)
             }));
             return;
         }
         if (route.name === 'chat.list' || route.name === 'chat.send') {
             const meetingId = route.params[0];
             if (route.name === 'chat.list') {
-                json(res, 200, { messages: listMeetingChat(context, meetingId) });
+                json(res, 200, { messages: await listMeetingChat(context, meetingId, getRequestActor(req)) });
                 return;
             }
             const body = await readBody(req);
+            const author = deriveRequestChatAuthor(req, body);
             json(res, 201, await appendMeetingChat(context, {
                 meetingId,
-                authorId: String(body.authorId || '').trim(),
-                authorName: String(body.authorName || '').trim(),
-                message: String(body.message || '').trim()
+                authorId: author.authorId,
+                authorName: author.authorName,
+                message: String(body.message || '').trim(),
+                authInfo: author.authInfo
             }));
             return;
         }
@@ -444,7 +470,7 @@ async function handler(req, res) {
             const meetingId = route.params[0];
             if (route.name === 'agents.list') {
                 assertAdminRequest(req);
-                json(res, 200, { agents: listMeetingAgents(context, meetingId) });
+                json(res, 200, { agents: await listMeetingAgents(context, meetingId) });
                 return;
             }
             if (route.name === 'agents.detach') {
@@ -479,7 +505,7 @@ async function handler(req, res) {
         }
         if (route.name === 'transcript.list') {
             assertAdminRequest(req);
-            json(res, 200, { transcript: listMeetingTranscript(context, route.params[0]) });
+            json(res, 200, { transcript: await listMeetingTranscript(context, route.params[0]) });
             return;
         }
         if (route.name === 'transcript.download') {
@@ -490,14 +516,14 @@ async function handler(req, res) {
             const guestToken = String(url.searchParams.get('guestToken') || '').trim();
             const participantId = String(url.searchParams.get('participantId') || '').trim();
             const content = guestToken && participantId
-                ? formatGuestMeetingTranscriptMarkdown(context, {
+                ? await formatGuestMeetingTranscriptMarkdown(context, {
                     meetingId: route.params[0],
                     guestToken,
                     participantId
                 })
                 : await (async () => {
                     assertAdminRequest(req);
-                    await getMeeting(context, route.params[0]);
+                    await getMeeting(context, route.params[0], getRequestActor(req), { includeParticipants: false });
                     return formatMeetingTranscriptMarkdown(context, route.params[0]);
                 })();
             textResponse(res, 200, content, {
@@ -536,18 +562,18 @@ async function handler(req, res) {
         }
         if (route.name === 'artifacts.list') {
             assertAdminRequest(req);
-            json(res, 200, listMeetingArtifacts(context, route.params[0]));
+            json(res, 200, await listMeetingArtifacts(context, route.params[0]));
             return;
         }
         if (route.name === 'tasks.list') {
             assertAdminRequest(req);
-            const payload = listMeetingArtifacts(context, route.params[0]);
+            const payload = await listMeetingArtifacts(context, route.params[0]);
             json(res, 200, { tasks: payload.tasks });
             return;
         }
         if (route.name === 'decisions.list') {
             assertAdminRequest(req);
-            const payload = listMeetingArtifacts(context, route.params[0]);
+            const payload = await listMeetingArtifacts(context, route.params[0]);
             json(res, 200, { decisions: payload.decisions });
             return;
         }

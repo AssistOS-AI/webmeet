@@ -158,7 +158,8 @@
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "meetingId": { "type": "string", "optional": false },
+        "includeParticipants": { "type": "boolean", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_meeting_get" }
     },

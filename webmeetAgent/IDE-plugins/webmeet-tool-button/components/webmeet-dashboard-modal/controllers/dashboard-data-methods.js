@@ -30,7 +30,10 @@ export const dashboardDataMethods = {
             ? this.state.selectedMeetingId
             : '';
         if (this.state.selectedMeetingId) {
-            await this.loadMeetingDetails({ expectedMeetingId: this.state.selectedMeetingId });
+            await this.loadMeetingDetails({
+                expectedMeetingId: this.state.selectedMeetingId,
+                includeParticipants: false
+            });
         }
     },
 
@@ -56,7 +59,7 @@ export const dashboardDataMethods = {
         try {
             await this.loadMeetingDetails({
                 expectedMeetingId: selectedMeetingId,
-                includeParticipants: !this.room
+                includeParticipants: false
             });
             this.renderAll();
         } catch (_) {
@@ -111,7 +114,7 @@ export const dashboardDataMethods = {
     },
 
     async fetchPublicMeetingDetails(meetingId) {
-        return this.roomRuntime.loadGuestRoomState(meetingId);
+        return this.webMeetRoom.loadGuestRoomState(meetingId);
     },
 
     async loadParticipantsForMeetings() {
@@ -176,7 +179,10 @@ export const dashboardDataMethods = {
             return;
         }
         const results = await Promise.allSettled(
-            meetings.map((meeting) => runTool('webmeet_meeting_get', { meetingId: meeting.id }))
+            meetings.map((meeting) => runTool('webmeet_meeting_get', {
+                meetingId: meeting.id,
+                includeParticipants: true
+            }))
         );
         const nextMap = {};
         const missingMeetingIds = new Set();
@@ -215,7 +221,9 @@ export const dashboardDataMethods = {
 
     async loadMeetingDetails(options = {}) {
         const expectedMeetingId = String(options.expectedMeetingId || this.state.selectedMeetingId || '').trim();
-        const includeParticipants = options.includeParticipants === true || (!this.room && options.includeParticipants !== false);
+        const includeParticipants = this.isGuestSession()
+            ? (options.includeParticipants === true || options.includeParticipants !== false)
+            : false;
         const loadSeq = this.meetingDetailsLoadSeq + 1;
         this.meetingDetailsLoadSeq = loadSeq;
         const meeting = this.selectedMeeting;
@@ -277,7 +285,7 @@ export const dashboardDataMethods = {
             const canManageMeetingData = this.canManageRooms();
             if (canManageMeetingData) {
                 [detailsPayload, chatPayload, transcriptPayload, artifactPayload, agentPayload] = await Promise.all([
-                    runTool('webmeet_meeting_get', { meetingId: meeting.id }),
+                    runTool('webmeet_meeting_get', { meetingId: meeting.id, includeParticipants }),
                     runTool('webmeet_chat_list', { meetingId: meeting.id }),
                     runTool('webmeet_transcript_list', { meetingId: meeting.id }),
                     runTool('webmeet_artifact_list', { meetingId: meeting.id }),
@@ -285,7 +293,7 @@ export const dashboardDataMethods = {
                 ]);
             } else {
                 [detailsPayload, chatPayload] = await Promise.all([
-                    runTool('webmeet_meeting_get', { meetingId: meeting.id }),
+                    runTool('webmeet_meeting_get', { meetingId: meeting.id, includeParticipants }),
                     runTool('webmeet_chat_list', { meetingId: meeting.id })
                 ]);
             }
