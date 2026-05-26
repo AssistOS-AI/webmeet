@@ -15,7 +15,7 @@
 - `webmeetLivekitAiAgent`
   - optional separate Ploinky agent for the self-hosted LiveKit Agents worker
   - owns the native `@livekit/agents` dependency tree
-  - starts through a no-wait dependency edge so it never blocks Explorer readiness
+  - is launched explicitly by stacks that want self-hosted AI participants and is not part of the default Explorer stack
 
 ## Running
 
@@ -41,7 +41,7 @@ Background privacy uses a locally bundled LiveKit processor pipeline plus bundle
 
 WebMeet uses self-hosted LiveKit Agents for AI participants. The worker is not simulated in the WebMeet store and is not LiveKit Cloud or LiveKit Inference.
 
-The worker registers with `WEBMEET_LIVEKIT_AGENT_NAME` and is attached to rooms by explicit admin dispatch. The no-wait background launch must have completed successfully before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
+The worker registers with `WEBMEET_LIVEKIT_AGENT_NAME` and is attached to rooms by explicit admin dispatch. A separate worker stack must be running before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
 
 The WebMeet store persists only dispatch metadata, chat, transcript, recordings, and artifacts. It does not create fake AI participants.
 

@@ -9,8 +9,7 @@
         ]
     },
     "enable": [
-        "webmeetInfra/liveKitServerAgent",
-        "webmeetLivekitAiAgent global no-wait"
+        "webmeetInfra/liveKitServerAgent"
     ],
     "repos": {
         "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"

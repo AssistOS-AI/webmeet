@@ -56,7 +56,7 @@ The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet
 
 `webmeetAgent` must keep its persistent store under the configured WebMeet data directory, normally the `/data` container mount backed by `.ploinky/data/webmeetAgent/data`. Recording files live under `/data/recordings`, backed by `.ploinky/data/webmeet/recordings`, and are shared with the Egress service supervised by `liveKitServerAgent`.
 
-`webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent` and may trigger the optional `webmeetLivekitAiAgent` with a no-wait edge, but `scripts/startAgent.sh` must only start the WebMeet API, the WebMeet MCP AgentServer, and the public/protected proxy. It must not import `@livekit/agents`, start Redis, start LiveKit Server, start Egress, or launch sibling Ploinky agents.
+`webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent`, but it must not implicitly launch the optional `webmeetLivekitAiAgent`; stacks that need self-hosted AI participants must enable that worker explicitly. `scripts/startAgent.sh` must only start the WebMeet API, the WebMeet MCP AgentServer, and the public/protected proxy. It must not import `@livekit/agents`, start Redis, start LiveKit Server, start Egress, or launch sibling Ploinky agents.
 
 ## Decisions & Questions
 
