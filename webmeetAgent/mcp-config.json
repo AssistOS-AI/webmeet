@@ -207,9 +207,9 @@
       "cwd": "workspace",
       "inputSchema": {
         "meetingId": { "type": "string", "optional": false },
-        "authorId": { "type": "string", "optional": false },
-        "authorName": { "type": "string", "optional": false },
-        "message": { "type": "string", "optional": false }
+        "message": { "type": "string", "optional": false },
+        "authorId": { "type": "string", "optional": true },
+        "authorName": { "type": "string", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_chat_send" }
     },

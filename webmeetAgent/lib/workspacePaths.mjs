@@ -35,6 +35,7 @@ export function getWorkspacePaths(startDir = '') {
     const dataDir = String(process.env.WEBMEET_DATA_DIR || '').trim() || path.join(ploinkyDir, 'webmeet');
     const webmeetDir = dataDir;
     const jobsDir = path.join(webmeetDir, 'jobs');
+    const locksDir = path.join(webmeetDir, 'locks');
     return {
         workspaceRoot,
         ploinkyDir,
@@ -42,6 +43,8 @@ export function getWorkspacePaths(startDir = '') {
         workspacesDir: path.join(webmeetDir, 'workspaces'),
         meetingsDir: path.join(webmeetDir, 'meetings'),
         eventsDir: path.join(webmeetDir, 'events'),
+        locksDir,
+        meetingLocksDir: path.join(locksDir, 'meetings'),
         jobsDir,
         jobsPendingDir: path.join(jobsDir, 'pending'),
         jobsProcessingDir: path.join(jobsDir, 'processing'),

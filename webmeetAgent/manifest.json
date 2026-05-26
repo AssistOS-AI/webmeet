@@ -47,7 +47,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,
-                    "derive": "derived-master"
+                    "generatedSecret": true
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -177,7 +177,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,
-                    "derive": "derived-master"
+                    "generatedSecret": true
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -307,7 +307,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": true,
-                    "derive": "derived-master"
+                    "generatedSecret": true
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",

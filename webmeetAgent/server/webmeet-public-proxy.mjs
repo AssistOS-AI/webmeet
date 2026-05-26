@@ -1,5 +1,5 @@
 import http from 'node:http';
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAxiFaceAssetsHttpHandler } from './axi-face-assets.mjs';
@@ -718,7 +718,7 @@ function sendGuestPage(req, res) {
     });
 }
 
-function resolveAssetPath(pathname) {
+async function resolveAssetPath(pathname) {
     const prefix = '/api/assets/';
     if (!pathname.startsWith(prefix)) return null;
     const relativePath = decodeURIComponent(pathname.slice(prefix.length));
@@ -761,22 +761,25 @@ function resolveAssetPath(pathname) {
         if (!PUBLIC_ASSET_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))) {
             continue;
         }
-        if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-            return resolved;
+        try {
+            const stat = await fs.stat(resolved);
+            if (stat.isFile()) return resolved;
+        } catch {
+            // candidate does not exist
         }
     }
     return null;
 }
 
-function sendAsset(pathname, res) {
-    const assetPath = resolveAssetPath(pathname);
+async function sendAsset(pathname, res) {
+    const assetPath = await resolveAssetPath(pathname);
     if (!assetPath) {
         writeResponse(res, 404, JSON.stringify({ error: 'Asset not found.' }), {
             'Content-Type': 'application/json'
         });
         return;
     }
-    const body = fs.readFileSync(assetPath);
+    const body = await fs.readFile(assetPath);
     const extension = path.extname(assetPath).toLowerCase();
     res.writeHead(200, {
         'Content-Type': CONTENT_TYPES.get(extension) || 'application/octet-stream',
@@ -944,7 +947,7 @@ async function handleRequest(req, res) {
     }
 
     if (req.method === 'GET' && routedPathname.startsWith('/api/assets/')) {
-        sendAsset(routedPathname, res);
+        await sendAsset(routedPathname, res);
         return;
     }
 

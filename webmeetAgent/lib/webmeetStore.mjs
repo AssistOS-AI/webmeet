@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
@@ -33,6 +34,97 @@ const ACTIVE_RECORDING_STATUSES = new Set([
 ]);
 const pendingEmptyRoomAgentDetachments = new Set();
 const meetingMutationQueues = new Map();
+
+const LOCK_DEFAULT_TIMEOUT_MS = 5_000;
+const LOCK_DEFAULT_STALE_TTL_MS = 60_000;
+const LOCK_RETRY_BASE_MS = 20;
+const LOCK_RETRY_MAX_MS = 200;
+
+function getLockTimeoutMs() {
+    const env = parseInt(process.env.WEBMEET_LOCK_TIMEOUT_MS || '', 10);
+    return Number.isFinite(env) && env >= 100 ? env : LOCK_DEFAULT_TIMEOUT_MS;
+}
+
+function getLockStaleTtlMs() {
+    const env = parseInt(process.env.WEBMEET_LOCK_STALE_TTL_MS || '', 10);
+    return Number.isFinite(env) && env >= 1_000 ? env : LOCK_DEFAULT_STALE_TTL_MS;
+}
+
+async function acquireMeetingLock(context, meetingId, options = {}) {
+    const lockDir = path.join(context.meetingLocksDir, `${meetingId}.lock`);
+    const token = crypto.randomUUID();
+    const timeoutMs = options.timeoutMs ?? getLockTimeoutMs();
+    const staleTtlMs = options.staleTtlMs ?? getLockStaleTtlMs();
+    const deadline = Date.now() + timeoutMs;
+
+    await fs.mkdir(context.meetingLocksDir, { recursive: true });
+
+    while (true) {
+        try {
+            await fs.mkdir(lockDir);
+            const ownerPath = path.join(lockDir, 'owner.json');
+            await fs.writeFile(ownerPath, JSON.stringify({
+                pid: process.pid,
+                hostname: os.hostname(),
+                startedAt: new Date().toISOString(),
+                meetingId,
+                token,
+            }));
+            return { lockDir, token, meetingId };
+        } catch (error) {
+            if (error?.code !== 'EEXIST') throw error;
+
+            const ownerPath = path.join(lockDir, 'owner.json');
+            let stale = false;
+            try {
+                const raw = await fs.readFile(ownerPath, 'utf8');
+                const owner = JSON.parse(raw);
+                const age = Date.now() - Date.parse(owner.startedAt || '');
+                stale = Number.isFinite(age) && age > staleTtlMs;
+            } catch {
+                stale = true;
+            }
+
+            if (stale) {
+                try {
+                    await fs.rm(lockDir, { recursive: true, force: true });
+                    continue;
+                } catch {
+                    // Another process may have cleaned it up already.
+                }
+            }
+
+            if (Date.now() >= deadline) {
+                throw new Error(`Timed out acquiring meeting lock for ${meetingId}.`);
+            }
+
+            const jitter = LOCK_RETRY_BASE_MS + Math.random() * (LOCK_RETRY_MAX_MS - LOCK_RETRY_BASE_MS);
+            await new Promise((resolve) => setTimeout(resolve, jitter));
+        }
+    }
+}
+
+async function releaseMeetingLock(handle) {
+    if (!handle?.lockDir || !handle?.token) return;
+    try {
+        const ownerPath = path.join(handle.lockDir, 'owner.json');
+        const raw = await fs.readFile(ownerPath, 'utf8');
+        const owner = JSON.parse(raw);
+        if (owner.token !== handle.token) return;
+        await fs.rm(handle.lockDir, { recursive: true, force: true });
+    } catch {
+        // Lock dir already removed or unreadable — safe to proceed.
+    }
+}
+
+async function withMeetingLock(context, meetingId, fn, options = {}) {
+    const handle = await acquireMeetingLock(context, meetingId, options);
+    try {
+        return await fn();
+    } finally {
+        await releaseMeetingLock(handle);
+    }
+}
 
 function nowIso() {
     return new Date().toISOString();
@@ -129,6 +221,7 @@ async function ensureDirs(paths) {
         fs.mkdir(paths.workspacesDir, { recursive: true }),
         fs.mkdir(paths.meetingsDir, { recursive: true }),
         fs.mkdir(paths.eventsDir, { recursive: true }),
+        fs.mkdir(paths.meetingLocksDir, { recursive: true }),
         fs.mkdir(paths.jobsPendingDir, { recursive: true }),
         fs.mkdir(paths.jobsProcessingDir, { recursive: true }),
         fs.mkdir(paths.jobsDoneDir, { recursive: true }),
@@ -285,11 +378,28 @@ async function mutateMeeting(context, meetingId, mutator) {
     const key = String(meetingId || '').trim();
     const previous = meetingMutationQueues.get(key) || Promise.resolve();
     const run = previous.catch(() => {}).then(async () => {
-        const record = await loadMeetingRecord(context, meetingId);
-        const payload = decryptMeetingPayload(context, record);
-        const result = await mutator(record, payload) || {};
-        await saveMeetingRecord(context, record, payload);
-        return { record, payload, result };
+        return withMeetingLock(context, key, async () => {
+            const record = await loadMeetingRecord(context, meetingId);
+            const payload = decryptMeetingPayload(context, record);
+            const stagedEvents = [];
+            const stageEvent = (scope, type, data = {}) => {
+                stagedEvents.push({ scope, meetingId: key, type, data });
+            };
+            const result = await mutator(record, payload, stageEvent) || {};
+            await saveMeetingRecord(context, record, payload);
+            for (const intent of stagedEvents) {
+                try {
+                    if (intent.scope === 'workspace') {
+                        await recordWorkspaceEvent(context, intent.data.workspaceId || record.workspaceId, intent.type, intent.data);
+                    } else {
+                        await recordMeetingEvent(context, intent.meetingId, payload, intent.type, intent.data);
+                    }
+                } catch {
+                    // Event append is best-effort after successful payload save.
+                }
+            }
+            return { record, payload, result };
+        });
     });
     meetingMutationQueues.set(key, run);
     try {
@@ -353,7 +463,7 @@ function hasHumanMeetingMembers(payload) {
 
 async function markActiveAgentsDetached(context, meetingId, reason) {
     const detachedAgents = [];
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         if (hasHumanMeetingMembers(payload)) return;
         const activeAgents = Array.isArray(payload.agents)
             ? payload.agents.filter(isActiveMeetingAgent)
@@ -367,7 +477,7 @@ async function markActiveAgentsDetached(context, meetingId, reason) {
                 detachReason: reason
             });
             detachedAgents.push({ ...agent });
-            await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
                 meetingId,
                 agentId: agent.id || '',
                 agentType: agent.agentType || '',
@@ -421,7 +531,7 @@ function scheduleEmptyRoomAgentDetach(context, meetingId, reason = 'no_human_par
     }, 0);
 }
 
-async function cleanupStaleMembers(context, meetingId, payload) {
+function cleanupStaleMembers(context, meetingId, payload, stageEvent = null) {
     const now = Date.now();
     const ttlMs = getPresenceTtlMs(context.workspaceRoot);
     const members = Array.isArray(payload.members) ? payload.members : [];
@@ -440,10 +550,9 @@ async function cleanupStaleMembers(context, meetingId, payload) {
         for (const member of removed) {
             const participantId = String(member?.id || '').trim();
             if (!participantId) continue;
-            await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT, {
-                meetingId,
-                participantId
-            });
+            if (stageEvent) {
+                stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT, { meetingId, participantId });
+            }
         }
         if (kept.length === 0) {
             scheduleEmptyRoomAgentDetach(context, meetingId, 'no_human_participants');
@@ -454,8 +563,8 @@ async function cleanupStaleMembers(context, meetingId, payload) {
 
 async function cleanupMeetingPresence(context, meetingId) {
     let removedCount = 0;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
-        removedCount = (await cleanupStaleMembers(context, meetingId, payload)).length;
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
+        removedCount = cleanupStaleMembers(context, meetingId, payload, stageEvent).length;
         if (!hasHumanMeetingMembers(payload)) {
             scheduleEmptyRoomAgentDetach(context, meetingId, 'no_human_participants');
         }
@@ -1344,9 +1453,9 @@ export async function updateMeetingTitle(context, { meetingId, title, authInfo =
         throw new Error('Missing room title.');
     }
     let meeting = null;
-    await mutateMeeting(context, meetingId, async (record, payload) => {
+    await mutateMeeting(context, meetingId, (record, _payload, stageEvent) => {
         record.title = nextTitle;
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.MEETING_RENAMED, {
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.MEETING_RENAMED, {
             meetingId,
             title: nextTitle
         });
@@ -1391,7 +1500,7 @@ export async function joinGuestMeeting(context, { meetingId, guestToken, display
     const joinedAt = nowIso();
 
     let participant = null;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         const members = Array.isArray(payload.members) ? payload.members : [];
         payload.members = members;
         participant = members.find((p) => p.id === participantIdentity);
@@ -1411,7 +1520,7 @@ export async function joinGuestMeeting(context, { meetingId, guestToken, display
             participant.guest = true;
             participant.pendingLiveKit = true;
         }
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participantIdentity, guest: true });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participantIdentity, guest: true });
     });
     const rtcConfig = buildRtcConfig(context);
 
@@ -1482,12 +1591,6 @@ export async function getGuestMeetingDetails(context, { meetingId, guestToken, p
         meeting: buildMeetingView(record),
         participants,
         chat: payload.chatMessages,
-        transcript: payload.transcriptSegments,
-        artifacts: payload.artifacts,
-        recordings: payload.recordings,
-        tasks: payload.tasks,
-        decisions: payload.decisions,
-        agents: payload.agents
     };
 }
 
@@ -1552,8 +1655,8 @@ export async function joinMeeting(context, { meetingId, displayName, participant
         : {};
     const joinedAt = nowIso();
     let participant = null;
-    const { record } = await mutateMeeting(context, meetingId, async (_record, payload) => {
-        await cleanupStaleMembers(context, meetingId, payload);
+    const { record } = await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
+        cleanupStaleMembers(context, meetingId, payload, stageEvent);
         participant = payload.members.find((entry) => entry.id === participantIdentity) || null;
         if (!participant) {
             participant = {
@@ -1564,7 +1667,7 @@ export async function joinMeeting(context, { meetingId, displayName, participant
                 pendingLiveKit: true
             };
             payload.members.push(participant);
-            await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participant.id });
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participant.id });
         } else {
             participant.displayName = effectiveDisplayName;
             if (!participant.joinedAt) {
@@ -1682,7 +1785,7 @@ export async function leaveMeeting(context, { meetingId, participantId, authInfo
     }
     let removedParticipant = null;
     let noHumanParticipantsRemain = false;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         if (!skipAccessCheck) {
             assertParticipantAccess(payload, targetParticipantId, authInfo);
         }
@@ -1696,7 +1799,7 @@ export async function leaveMeeting(context, { meetingId, participantId, authInfo
         });
         payload.members = nextMembers;
         if (removedParticipant) {
-            await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, {
                 meetingId,
                 participantId: targetParticipantId
             });
@@ -1721,8 +1824,8 @@ export async function pingMeetingPresence(context, { meetingId, participantId, a
     }
     const pingAt = nowIso();
     let touched = false;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
-        await cleanupStaleMembers(context, meetingId, payload);
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
+        cleanupStaleMembers(context, meetingId, payload, stageEvent);
         if (!skipAccessCheck) {
             assertParticipantAccess(payload, targetParticipantId, authInfo);
         }
@@ -1756,7 +1859,7 @@ export async function appendMeetingChat(context, { meetingId, authorId, authorNa
     }
     await cleanupMeetingPresence(context, meetingId);
     let chatMessage = null;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         chatMessage = {
             id: randomId('chat'),
             meetingId,
@@ -1770,7 +1873,7 @@ export async function appendMeetingChat(context, { meetingId, authorId, authorNa
             chatMessage.metadata = metadata;
         }
         payload.chatMessages.push(chatMessage);
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId, chatMessageId: chatMessage.id });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId, chatMessageId: chatMessage.id });
     });
     return { message: chatMessage };
 }
@@ -1793,7 +1896,7 @@ export async function appendGuestMeetingChat(context, { meetingId, guestToken, p
 export async function appendMeetingTranscript(context, { meetingId, speakerId, speakerName, text, startedAt = '', endedAt = '', source = 'manual' }) {
     await cleanupMeetingPresence(context, meetingId);
     let segment = null;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         const createdAt = nowIso();
         segment = {
             id: randomId('transcript'),
@@ -1807,7 +1910,7 @@ export async function appendMeetingTranscript(context, { meetingId, speakerId, s
             createdAt
         };
         payload.transcriptSegments.push(segment);
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.TRANSCRIPT_UPDATED, { meetingId, segmentId: segment.id });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.TRANSCRIPT_UPDATED, { meetingId, segmentId: segment.id });
     });
     return segment;
 }
@@ -1913,7 +2016,7 @@ export async function attachMeetingAgent(context, { meetingId, agentType, mode, 
     const dispatchId = getAgentDispatchId(dispatch);
     const confirmation = await waitForLiveKitAgentDispatch(context, record.roomName, dispatchId, metadata);
     let agent = null;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         const targetAgent = currentAgent
             ? payload.agents.find((entry) => entry.id === currentAgent.id)
             : null;
@@ -1937,7 +2040,7 @@ export async function attachMeetingAgent(context, { meetingId, agentType, mode, 
         if (!targetAgent) {
             payload.agents.push(agent);
         }
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
             meetingId,
             agentId: agent.id,
             agentType,
@@ -1979,7 +2082,7 @@ export async function detachMeetingAgent(context, { meetingId, agentId, authInfo
         }
     }
     let detachedAgent = null;
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         const targetAgent = payload.agents.find((entry) => String(entry?.id || '') === targetAgentId);
         if (!targetAgent) return;
         Object.assign(targetAgent, {
@@ -1988,7 +2091,7 @@ export async function detachMeetingAgent(context, { meetingId, agentId, authInfo
             updatedAt: nowIso()
         });
         detachedAgent = { ...targetAgent };
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
             meetingId,
             agentId: targetAgentId,
             agentType: targetAgent.agentType || '',
@@ -2016,7 +2119,7 @@ export async function startMeetingRecording(context, meetingId) {
             filepath: outputFilePath
         }]
     });
-    await mutateMeeting(context, meetingId, async (record, payload) => {
+    await mutateMeeting(context, meetingId, (record, payload, stageEvent) => {
         recording = {
             id: recordingId,
             meetingId,
@@ -2031,7 +2134,7 @@ export async function startMeetingRecording(context, meetingId) {
             stoppedAt: null
         };
         payload.recordings.push(recording);
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.RECORDING_STARTED, { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.RECORDING_STARTED, { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
     });
     return recording;
 }
@@ -2049,7 +2152,7 @@ export async function stopMeetingRecording(context, meetingId) {
             egress_id: activeRecording.egressId
         });
     }
-    await mutateMeeting(context, meetingId, async (_record, payload) => {
+    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         recording = [...payload.recordings].reverse().find((entry) => entry.meetingId === meetingId && ACTIVE_RECORDING_STATUSES.has(String(entry.status || ''))) || null;
         if (!recording) throw new Error('Active recording not found.');
         recording.status = String(egressResponse?.status || 'EGRESS_COMPLETE');
@@ -2071,8 +2174,8 @@ export async function stopMeetingRecording(context, meetingId) {
             createdAt: nowIso()
         };
         payload.artifacts.push(artifact);
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.RECORDING_STOPPED, { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
-        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, { meetingId, artifactId: artifact.id });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.RECORDING_STOPPED, { meetingId, recordingId: recording.id, egressId: recording.egressId, filePath: recording.filePath });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, { meetingId, artifactId: artifact.id });
     });
     return { recording, artifact };
 }

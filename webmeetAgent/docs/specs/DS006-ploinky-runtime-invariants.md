@@ -20,7 +20,7 @@ The authoritative upstream contracts are Ploinky `docs/specs/DS005-routing-and-w
 
 Executable MCP operations must be authorized by router-minted invocation JWTs. The agent runtime may receive `PLOINKY_DERIVED_MASTER_KEY`, which is the HKDF-derived agent runtime key, but it must never receive or require `PLOINKY_MASTER_KEY`. Code must not invent alternate bearer-token, client-secret, or caller-header authorization paths around the router's secure-wire model.
 
-`PLOINKY_DERIVED_MASTER_KEY` is the mandatory root for Ploinky-owned and agent-owned generated secrets. Any agent secret that is not an external provider or operator credential must be deterministically derived from `PLOINKY_DERIVED_MASTER_KEY` using a domain-separated label for repo, agent, and secret name, then injected through manifest `derive: "derived-master"` env entries, runtime resources, or an equivalent documented helper. External third-party credentials remain explicitly configured.
+`PLOINKY_DERIVED_MASTER_KEY` is the mandatory root for Ploinky-owned and agent-owned generated secrets. Any agent secret that is not an external provider or operator credential must be deterministically derived from `PLOINKY_DERIVED_MASTER_KEY` using a domain-separated label for repo, agent, and secret name. The preferred manifest spelling is `generatedSecret: true` for per-agent env entries and `{{generatedSecret:NAME}}` for runtime-resource templates; both derive from the current agent identity and ignore operator-supplied values. The older `derive: "derived-master"` env entries and `{{derivedMasterSecret:NAME}}` runtime-resource templates remain as compatibility paths for explicit shared derivations that must pin a logical repo, agent, or secret name different from the current agent. External third-party credentials remain explicitly configured.
 
 The compact `x-ploinky-auth-info` header is not a secure grant by itself. An HTTP service may trust it only when it arrived through a declared Ploinky HTTP service route. For guest services, `webmeet-public-proxy.mjs` must also validate the router-issued invocation token and expected guest role or scope. Caller-supplied copies of identity headers must not become authoritative input.
 
@@ -45,7 +45,7 @@ Agent-local contract:
 - Persistent state: Meeting data lives under `/data`; recordings live under `/data/recordings`; LiveKit secrets stay server-side.
 - Volumes: `.ploinky/data/webmeetAgent/data:/data` and `.ploinky/data/webmeet/recordings:/data/recordings`.
 - Dependencies: Base startup uses Ploinky's shared prepared dependency cache. Optional native LiveKit worker dependencies belong to `webmeetLivekitAiAgent`.
-- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY`, LiveKit credentials, TURN password, and `WEBMEET_AGENT_INTERNAL_TOKEN` must be derived through the manifest where they are workspace-owned secrets.
+- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` uses `generatedSecret: true` as a per-agent generated secret. LiveKit API key/secret, TURN password, and `WEBMEET_AGENT_INTERNAL_TOKEN` remain as explicit `derive: "derived-master"` shared derivations because they are consumed by sibling agents (`liveKitServerAgent`, `webmeetLivekitAiAgent`). These shared derivations are legacy exceptions; the target migration is for `liveKitServerAgent` to own raw LiveKit and TURN credentials and expose owner-mediated operations, and for `WEBMEET_AGENT_INTERNAL_TOKEN` to be replaced by router/secure-wire identity.
 - Documentation: `docs/index.html` and `docs/specs/matrix.md`.
 - Validation: Run proxy/plugin syntax checks and a Ploinky guest invite smoke test for auth or route changes.
 
@@ -66,7 +66,7 @@ Ploinky establishes who the caller is and signs the invocation path. `webmeetAge
 ### Question #3: Why derive WebMeet secrets instead of storing local development defaults?
 
 Response:
-LiveKit, TURN, WebMeet encryption, and internal worker calls need shared secrets across several Ploinky agents. Deterministic derived-master labels let every participant receive the same workspace-owned secret without committing plaintext defaults or requiring manual setup on a fresh workspace.
+LiveKit, TURN, WebMeet encryption, and internal worker calls need shared secrets across several Ploinky agents. Deterministic derived-master labels let every participant receive the same workspace-owned secret without committing plaintext defaults or requiring manual setup on a fresh workspace. Per-agent secrets that are not shared (`PLOINKY_WEBMEET_MASTER_KEY`) now use `generatedSecret: true`. The remaining cross-agent shared derivations (LiveKit, TURN, internal token) are legacy exceptions whose target state is owner-mediated service operations rather than raw shared credentials.
 
 ## Conclusion
 

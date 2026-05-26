@@ -23,7 +23,7 @@ A WebMeet room is two related objects:
 
 The encrypted WebMeet payload contains members, chat messages, transcript segments, recordings, artifacts, tasks, decisions, AI agent metadata, and event snapshots. Meeting payloads use AES-256-GCM with per-meeting data keys wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. That key must be derived from `PLOINKY_DERIVED_MASTER_KEY` through the manifest and must be distinct from the raw derived master key. The store does not support legacy meeting-key fallbacks.
 
-WebMeet store operations are asynchronous. Meeting records, workspace records, and event logs are read and written through promise-based filesystem APIs. Record writes keep the temp-file plus rename pattern for atomic replacement, and meeting mutations are serialized per `meetingId` inside the agent process so concurrent updates to the same room do not overwrite each other.
+WebMeet store operations are asynchronous. Meeting records, workspace records, and event logs are read and written through promise-based filesystem APIs. Record writes keep the temp-file plus rename pattern for atomic replacement. Meeting mutations are serialized in two layers: an in-process per-meeting promise queue prevents interleaving within one Node process, and a cross-process filesystem lock (`<meetingLocksDir>/<meetingId>.lock/`) prevents interleaving across concurrent MCP tool subprocesses. The lock is acquired via atomic `fs.mkdir()`, writes an `owner.json` with pid, hostname, timestamp, and a random token, retries with jittered backoff, and cleans up stale locks when their age exceeds a configurable TTL (`WEBMEET_LOCK_TIMEOUT_MS`, `WEBMEET_LOCK_STALE_TTL_MS`). Release verifies token ownership before removing the lock directory.
 
 `webmeetAgent` supports two room types:
 
@@ -36,7 +36,7 @@ Admin users create, rename, delete, expose guest links, start and stop recording
 
 Guest room creation must store a random `guestToken` in the meeting metadata. The public URL has the form `/public-services/webmeet/guest?room=<meetingId>&token=<guestToken>`. Possession of the token is necessary but not sufficient: the request must also arrive through the Ploinky manifest-declared guest HTTP service, and `webmeet-public-proxy.mjs` must verify the router-issued `__http_service__` invocation token with a guest role before serving guest pages or forwarding guest APIs.
 
-The guest public API is intentionally narrow. It may expose guest join, room state for the joined guest identity, leave, presence, chat, avatar publication for that participant, and transcript download with guest token plus participant id. It must not expose Explorer, generic MCP access, protected WebMeet APIs, room management, recording controls, AI controls, or administrative artifacts.
+The guest public API is intentionally narrow. It may expose guest join, room state for the joined guest identity, leave, presence, chat, avatar publication for that participant, and transcript download with guest token plus participant id. It must not expose Explorer, generic MCP access, protected WebMeet APIs, room management, recording controls, AI controls, or administrative artifacts. The guest room-state response (`getGuestMeetingDetails`) returns exactly `{meeting, participants, chat}`. It must not include transcript segments, artifacts, recordings, tasks, decisions, or agent dispatch metadata.
 
 After join, WebMeet keeps two participant views:
 
