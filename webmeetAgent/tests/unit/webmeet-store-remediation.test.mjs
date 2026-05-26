@@ -490,7 +490,7 @@ describe('async proxy asset resolution', () => {
 });
 
 describe('manifest secret compatibility', () => {
-    test('PLOINKY_WEBMEET_MASTER_KEY remains on derived-master compatibility derivation', async () => {
+    test('PLOINKY_WEBMEET_MASTER_KEY uses generatedSecret', async () => {
         const manifestPath = path.resolve(import.meta.dirname, '../../manifest.json');
         const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
         const entries = [];
@@ -509,8 +509,9 @@ describe('manifest secret compatibility', () => {
 
         assert.ok(entries.length >= 1, 'manifest should declare PLOINKY_WEBMEET_MASTER_KEY');
         for (const entry of entries) {
-            assert.equal(entry.derive, 'derived-master');
-            assert.equal(entry.generatedSecret, undefined);
+            assert.equal(entry.generatedSecret, true);
+            assert.equal(entry.derive, undefined);
+            assert.equal(entry.sharedGeneratedSecret, undefined);
         }
     });
 });

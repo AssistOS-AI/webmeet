@@ -46,7 +46,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,
-                    "derive": "derived-master"
+                    "generatedSecret": true
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -69,19 +69,12 @@
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-livekit",
-                    "deriveName": "api-key",
-                    "deriveBytes": 16
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-livekit",
-                    "deriveName": "api-secret"
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -120,10 +113,7 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-turn",
-                    "deriveName": "password"
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -158,10 +148,7 @@
                 {
                     "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-agent",
-                    "deriveName": "internal-token"
+                    "sharedGeneratedSecret": true
                 }
             ]
         },
@@ -176,7 +163,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": false,
-                    "derive": "derived-master"
+                    "generatedSecret": true
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -199,19 +186,12 @@
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-livekit",
-                    "deriveName": "api-key",
-                    "deriveBytes": 16
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-livekit",
-                    "deriveName": "api-secret"
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -250,10 +230,7 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-turn",
-                    "deriveName": "password"
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -288,10 +265,7 @@
                 {
                     "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-agent",
-                    "deriveName": "internal-token"
+                    "sharedGeneratedSecret": true
                 }
             ]
         },
@@ -306,7 +280,7 @@
                 {
                     "name": "PLOINKY_WEBMEET_MASTER_KEY",
                     "required": true,
-                    "derive": "derived-master"
+                    "generatedSecret": true
                 },
                 "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
@@ -329,19 +303,12 @@
                 {
                     "name": "WEBMEET_LIVEKIT_API_KEY",
                     "required": true,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-livekit",
-                    "deriveName": "api-key",
-                    "deriveBytes": 16
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": true,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-livekit",
-                    "deriveName": "api-secret"
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_EGRESS_URL",
@@ -379,10 +346,7 @@
                 {
                     "name": "WEBMEET_TURN_PASSWORD",
                     "required": true,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-turn",
-                    "deriveName": "password"
+                    "sharedGeneratedSecret": true
                 },
                 {
                     "name": "WEBMEET_ICE_TRANSPORT_POLICY",
@@ -417,10 +381,7 @@
                 {
                     "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
                     "required": false,
-                    "derive": "derived-master",
-                    "deriveRepoName": "webmeet",
-                    "deriveAgentName": "shared-agent",
-                    "deriveName": "internal-token"
+                    "sharedGeneratedSecret": true
                 }
             ]
         }
