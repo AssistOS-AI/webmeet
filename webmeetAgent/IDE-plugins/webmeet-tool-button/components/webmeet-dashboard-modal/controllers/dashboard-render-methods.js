@@ -8,36 +8,18 @@ import {
 import {
     ensureAxiFaceLoaded,
     getLoadedAxiFaceGeneratedFaceStyles,
-    loadAxiFaceGeneratedFaceStyles
+    loadAxiFaceGeneratedFacePalettes,
+    loadAxiFaceGeneratedFaceStyles,
+    loadAxiFacePacks
 } from '../services/webmeet-profile-avatar-runtime.js';
-
-const AVATAR_OPTIONS = Object.freeze({
-    assetMode: ['img', 'inline'],
-    emotion: ['neutral', 'idle', 'listening', 'thinking', 'speaking', 'happy', 'amused', 'confused', 'concerned', 'alert', 'sleepy'],
-    thoughtMode: ['none', 'bubble', 'caption', 'ticker', 'inside'],
-    mode: ['static', 'controlled', 'event-driven', 'autonomous'],
-    shape: ['circle', 'square', 'rounded', 'none'],
-    theme: ['auto', 'light', 'dark'],
-    palette: ['default', 'warm', 'mono', 'terminal', 'emoji'],
-    complexity: ['', 'low', 'medium', 'high']
-});
-
-function renderOptionList(values = [], labels = {}) {
-    return values.map((value) => {
-        const raw = String(value || '').trim();
-        const label = labels[raw] || formatAvatarOptionLabel(raw);
-        return `<option value="${escapeHtml(raw)}">${escapeHtml(label)}</option>`;
-    }).join('');
-}
+import {
+    AVATAR_SOURCE_MODES,
+    deriveAvatarSourceMode,
+    formatAvatarOptionLabel as formatSharedAvatarOptionLabel
+} from '../services/avatar-settings-model.js';
 
 function formatAvatarOptionLabel(value = '') {
-    const text = String(value || '').trim();
-    if (!text) return 'Default';
-    return text
-        .split(/[-_\s]+/)
-        .filter(Boolean)
-        .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-        .join(' ');
+    return formatSharedAvatarOptionLabel(value);
 }
 
 export const dashboardRenderMethods = {
@@ -174,54 +156,37 @@ export const dashboardRenderMethods = {
            // this.avatarPresetSelect.value = '';
         }
         const config = draft?.config || currentOverride?.config || this.state.session?.participant?.profileAvatar?.config || {};
-        const syncSelect = (element, values, value, labels = {}) => {
-            if (!element) return;
-            const options = renderOptionList(values, labels);
-            if (element.innerHTML !== options) element.innerHTML = options;
-            element.value = String(value ?? '');
-        };
         const loadedAxiFaceStyles = getLoadedAxiFaceGeneratedFaceStyles();
         const avatarStyles = loadedAxiFaceStyles.length > 0
             ? loadedAxiFaceStyles
             : (Array.isArray(this.state.axiFaceGeneratedFaceStyles) ? this.state.axiFaceGeneratedFaceStyles : []);
-        if (avatarStyles.length === 0 && !this.avatarStyleLoadPromise) {
-            this.avatarStyleLoadPromise = loadAxiFaceGeneratedFaceStyles()
-                .then((styles) => {
+        if ((avatarStyles.length === 0 || this.state.axiFacePacks.length === 0) && !this.avatarMetadataLoadPromise) {
+            this.avatarMetadataLoadPromise = Promise.all([
+                loadAxiFaceGeneratedFaceStyles().catch(() => []),
+                loadAxiFaceGeneratedFacePalettes().catch(() => []),
+                loadAxiFacePacks().catch(() => [])
+            ])
+                .then(([styles, palettes, packs]) => {
                     this.state.axiFaceGeneratedFaceStyles = styles;
-                    this.avatarStyleLoadPromise = null;
+                    this.state.axiFaceGeneratedFacePalettes = palettes;
+                    this.state.axiFacePacks = packs;
+                    this.avatarMetadataLoadPromise = null;
                     this.renderAvatarControls?.();
                 })
                 .catch(() => {
-                    this.avatarStyleLoadPromise = null;
+                    this.avatarMetadataLoadPromise = null;
                 });
         }
-        if (this.avatarGeneratedInput && document.activeElement !== this.avatarGeneratedInput) {
-            this.avatarGeneratedInput.checked = config.generated !== false;
+        if (this.avatarSettingsForm?.webSkelPresenter) {
+            this.avatarSettingsForm.webSkelPresenter.setData({
+                value: config,
+                packs: this.state.axiFacePacks,
+                generatedStyles: avatarStyles,
+                palettes: this.state.axiFaceGeneratedFacePalettes,
+                hiddenFields: ['seed'],
+                showPreview: false
+            });
         }
-        if (this.avatarAnimatedInput && document.activeElement !== this.avatarAnimatedInput) {
-            this.avatarAnimatedInput.checked = config.animated !== false;
-        }
-        if (this.avatarListenInput && document.activeElement !== this.avatarListenInput) {
-            this.avatarListenInput.checked = config.listen === true;
-        }
-        const textInputs = [
-            [this.avatarSrcInput, config.src || ''],
-            [this.avatarPackSrcInput, config.packSrc || ''],
-            [this.avatarSizeInput, config.size || '72'],
-            [this.avatarThoughtInput, config.thought || '']
-        ];
-        for (const [input, value] of textInputs) {
-            if (input && document.activeElement !== input) input.value = String(value || '');
-        }
-        syncSelect(this.avatarAssetModeSelect, AVATAR_OPTIONS.assetMode, config.assetMode || 'img');
-        syncSelect(this.avatarEmotionSelect, AVATAR_OPTIONS.emotion, config.emotion || 'neutral');
-        syncSelect(this.avatarThoughtModeSelect, AVATAR_OPTIONS.thoughtMode, config.thoughtMode || 'none');
-        syncSelect(this.avatarModeSelect, AVATAR_OPTIONS.mode, config.mode || 'static');
-        syncSelect(this.avatarShapeSelect, AVATAR_OPTIONS.shape, config.shape || 'circle');
-        syncSelect(this.avatarThemeSelect, AVATAR_OPTIONS.theme, config.theme || 'auto');
-        syncSelect(this.avatarStyleSelect, avatarStyles, config.style || 'robot-soft');
-        syncSelect(this.avatarPaletteSelect, AVATAR_OPTIONS.palette, config.palette || 'default');
-        syncSelect(this.avatarComplexitySelect, AVATAR_OPTIONS.complexity, config.complexity || '', { '': 'Default' });
         if (this.avatarSourceLabel) {
             this.avatarSourceLabel.textContent = currentOverride
                 ? 'WebMeet browser override'
@@ -258,19 +223,45 @@ export const dashboardRenderMethods = {
         }
         if (this.avatarQuickMenu) {
             const currentStyle = String(config.style || 'robot-soft').trim() || 'robot-soft';
+            const currentSourceMode = deriveAvatarSourceMode(config);
+            const currentPackSrc = String(config.packSrc || '').trim();
+            let sourceOptionLabel = 'Style';
+            let sourceOptionItems = avatarStyles.map((style) => {
+                const activeClass = style === currentStyle ? ' is-active' : '';
+                const label = formatAvatarOptionLabel(style);
+                return `<button type="button" class="webmeet-avatar-preset-item${activeClass}" data-local-action="applyWebMeetAvatarStyle" data-avatar-style="${escapeHtml(style)}">${escapeHtml(label)}</button>`;
+            });
+            if (currentSourceMode === AVATAR_SOURCE_MODES.PACK) {
+                sourceOptionLabel = 'AxiFace pack';
+                sourceOptionItems = this.state.axiFacePacks.map((pack) => {
+                    const manifestSrc = String(pack?.manifestSrc || '').trim();
+                    const activeClass = manifestSrc && manifestSrc === currentPackSrc ? ' is-active' : '';
+                    const label = String(pack?.label || pack?.id || '').trim() || 'Pack';
+                    return `<button type="button" class="webmeet-avatar-preset-item${activeClass}" data-local-action="applyWebMeetAvatarPack" data-avatar-pack-src="${escapeHtml(manifestSrc)}">${escapeHtml(label)}</button>`;
+                });
+            } else if (currentSourceMode === AVATAR_SOURCE_MODES.SVG) {
+                sourceOptionLabel = 'SVG source';
+                sourceOptionItems = [
+                    '<button type="button" class="webmeet-avatar-preset-item" disabled>Set the SVG source in settings</button>'
+                ];
+            }
             this.avatarQuickMenu.classList.toggle('webmeet-hidden', !this.state.avatarQuickMenuVisible);
             this.avatarQuickMenu.innerHTML = [
                 ...WEBMEET_AVATAR_PRESETS.map((preset) => (
                     `<button type="button" class="webmeet-avatar-preset-item" data-local-action="applyWebMeetAvatarPreset" data-avatar-preset="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</button>`
                 )),
                 `<div class="webmeet-avatar-submenu">
-                    <button type="button" class="webmeet-avatar-preset-item webmeet-avatar-submenu-trigger" aria-haspopup="true" aria-expanded="false">Style</button>
+                    <button type="button" class="webmeet-avatar-preset-item webmeet-avatar-submenu-trigger" aria-haspopup="true" aria-expanded="false">Avatar source</button>
                     <div class="webmeet-avatar-submenu-menu">
-                        ${avatarStyles.map((style) => {
-                            const activeClass = style === currentStyle ? ' is-active' : '';
-                            const label = formatAvatarOptionLabel(style);
-                            return `<button type="button" class="webmeet-avatar-preset-item${activeClass}" data-local-action="applyWebMeetAvatarStyle" data-avatar-style="${escapeHtml(style)}">${escapeHtml(label)}</button>`;
-                        }).join('')}
+                        <button type="button" class="webmeet-avatar-preset-item${currentSourceMode === AVATAR_SOURCE_MODES.GENERATED ? ' is-active' : ''}" data-local-action="applyWebMeetAvatarSourceMode" data-avatar-source-mode="${AVATAR_SOURCE_MODES.GENERATED}">Generated</button>
+                        <button type="button" class="webmeet-avatar-preset-item${currentSourceMode === AVATAR_SOURCE_MODES.PACK ? ' is-active' : ''}" data-local-action="applyWebMeetAvatarSourceMode" data-avatar-source-mode="${AVATAR_SOURCE_MODES.PACK}">AxiFace pack</button>
+                        <button type="button" class="webmeet-avatar-preset-item${currentSourceMode === AVATAR_SOURCE_MODES.SVG ? ' is-active' : ''}" data-local-action="applyWebMeetAvatarSourceMode" data-avatar-source-mode="${AVATAR_SOURCE_MODES.SVG}">SVG source</button>
+                    </div>
+                </div>`,
+                `<div class="webmeet-avatar-submenu">
+                    <button type="button" class="webmeet-avatar-preset-item webmeet-avatar-submenu-trigger" aria-haspopup="true" aria-expanded="false">${escapeHtml(sourceOptionLabel)}</button>
+                    <div class="webmeet-avatar-submenu-menu">
+                        ${sourceOptionItems.join('')}
                     </div>
                 </div>`
             ].join('');
@@ -321,9 +312,9 @@ export const dashboardRenderMethods = {
         this.meetingMeta.textContent = meeting ? formatDate(meeting.createdAt) : '';
         
         // Update active room title in header
-        if (this.activeRoomTitle) {
+        /*if (this.activeRoomTitle) {
             this.activeRoomTitle.textContent = meeting?.title || 'Select a room';
-        }
+        }*/
         this.lifecycle.textContent = meeting?.status || 'Idle';
         this.joinStatus.textContent = isJoined ? 'Joined' : 'Not joined';
         this.joinPayload.value = this.state.session ? JSON.stringify(this.state.session, null, 2) : '';

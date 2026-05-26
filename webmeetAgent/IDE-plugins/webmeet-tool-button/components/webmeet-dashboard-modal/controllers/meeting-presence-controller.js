@@ -1,14 +1,8 @@
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 10_000;
-
 export class MeetingPresenceController {
     constructor(options = {}) {
-        this.runTool = options.runTool;
-        this.heartbeatIntervalMs = Number(options.heartbeatIntervalMs) || DEFAULT_HEARTBEAT_INTERVAL_MS;
         this.getContext = typeof options.getContext === 'function' ? options.getContext : (() => ({}));
-        this.shouldPing = typeof options.shouldPing === 'function' ? options.shouldPing : (() => true);
         this.buildLeaveRequest = typeof options.buildLeaveRequest === 'function' ? options.buildLeaveRequest : null;
 
-        this.heartbeatTimer = null;
         this.lastKeepaliveLeaveKey = '';
         this.windowHandlersRegistered = false;
 
@@ -40,31 +34,6 @@ export class MeetingPresenceController {
             meetingId: String(context.meetingId || '').trim(),
             participantId: String(context.participantId || '').trim()
         };
-    }
-
-    async sendPresencePing() {
-        const { meetingId, participantId } = this.getMeetingAndParticipant();
-        if (!meetingId || !participantId || typeof this.runTool !== 'function') return;
-        try {
-            await this.runTool('webmeet_meeting_presence_ping', { meetingId, participantId });
-        } catch (_) {
-            // ignore transient ping failures
-        }
-    }
-
-    startHeartbeat() {
-        this.stopHeartbeat();
-        void this.sendPresencePing();
-        this.heartbeatTimer = window.setInterval(() => {
-            if (!this.shouldPing()) return;
-            void this.sendPresencePing();
-        }, this.heartbeatIntervalMs);
-    }
-
-    stopHeartbeat() {
-        if (!this.heartbeatTimer) return;
-        window.clearInterval(this.heartbeatTimer);
-        this.heartbeatTimer = null;
     }
 
     sendLeaveKeepaliveForCurrentSession() {
@@ -110,7 +79,6 @@ export class MeetingPresenceController {
     }
 
     teardown() {
-        this.stopHeartbeat();
         this.unregisterWindowHandlers();
     }
 }

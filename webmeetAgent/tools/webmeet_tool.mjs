@@ -14,7 +14,6 @@ import {
     joinGuestMeeting,
     joinMeeting,
     leaveMeeting,
-    pingMeetingPresence,
     listMeetingAgents,
     listMeetingArtifacts,
     listMeetingChat,
@@ -191,12 +190,6 @@ export async function dispatch(toolName, args, context, authInfo) {
         });
     case 'webmeet_meeting_leave':
         return await leaveMeeting(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
-            participantId: getRequiredString(args, 'participantId'),
-            authInfo
-        });
-    case 'webmeet_meeting_presence_ping':
-        return await pingMeetingPresence(context, {
             meetingId: getRequiredString(args, 'meetingId'),
             participantId: getRequiredString(args, 'participantId'),
             authInfo

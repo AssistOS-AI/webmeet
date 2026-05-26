@@ -41,7 +41,7 @@ export class ParticipantLayoutController {
         });
         this.profileAvatarCleanup = this.profileAvatarController.bindUpdates(
             () => Array.from(this.participantViews.values()).filter((view) => view.avatarSource !== 'projected'),
-            (view) => this.applyParticipantViewState(view)
+            (view) => this.applyParticipantAvatarState(view)
         );
     }
 
@@ -54,7 +54,7 @@ export class ParticipantLayoutController {
         this.profileAvatarController.refreshUser(
             userId,
             () => this.participantViews.values(),
-            (view) => this.applyParticipantViewState(view)
+            (view) => this.applyParticipantAvatarState(view)
         );
     }
 
@@ -66,15 +66,29 @@ export class ParticipantLayoutController {
         const profileAvatar = participant?.profileAvatar && typeof participant.profileAvatar === 'object'
             ? participant.profileAvatar
             : null;
-        if (!view || !profileAvatar) return false;
-        view.avatarEnabled = profileAvatar.enabled !== false;
-        view.avatarConfig = view.avatarEnabled && profileAvatar.config && typeof profileAvatar.config === 'object'
+        if (!view || !profileAvatar) {
+            return { projected: false, changed: false };
+        }
+        const avatarEnabled = profileAvatar.enabled !== false;
+        const avatarConfig = avatarEnabled && profileAvatar.config && typeof profileAvatar.config === 'object'
             ? profileAvatar.config
             : null;
-        view.avatarFallbackLetter = String(profileAvatar.fallbackLetter || view.avatarFallbackLetter || getFallbackLetter(view.name)).trim();
+        const avatarFallbackLetter = String(profileAvatar.fallbackLetter || view.avatarFallbackLetter || getFallbackLetter(view.name)).trim();
+        const avatarProjectionKey = JSON.stringify({
+            enabled: avatarEnabled,
+            config: avatarConfig,
+            fallbackLetter: avatarFallbackLetter
+        });
+        const changed = view.avatarSource !== 'projected'
+            || view.avatarProjectionKey !== avatarProjectionKey
+            || view.avatarResolved !== true;
+        view.avatarEnabled = avatarEnabled;
+        view.avatarConfig = avatarConfig;
+        view.avatarFallbackLetter = avatarFallbackLetter;
         view.avatarResolved = true;
         view.avatarSource = 'projected';
-        return true;
+        view.avatarProjectionKey = avatarProjectionKey;
+        return { projected: true, changed };
     }
 
     setElements(elements = {}) {
@@ -130,18 +144,8 @@ export class ParticipantLayoutController {
             canDetachAgent: Boolean(view.canDetachAgent),
             canConfigureAudio: Boolean(view.canConfigureAudio),
             hasCustomAudioSettings: Boolean(view.hasCustomAudioSettings),
-            isAudioMutedLocally: Boolean(view.isAudioMutedLocally),
-            avatarEnabled: Boolean(view.avatarEnabled),
-            avatarConfig: view.avatarConfig || null,
-            avatarFallbackLetter: String(view.avatarFallbackLetter || '').trim(),
-            avatarResolved: Boolean(view.avatarResolved)
+            isAudioMutedLocally: Boolean(view.isAudioMutedLocally)
         };
-        const serializedAvatarConfig = payload.avatarConfig && typeof payload.avatarConfig === 'object'
-            ? JSON.stringify(payload.avatarConfig)
-            : '';
-        const avatarSize = payload.avatarConfig && typeof payload.avatarConfig === 'object'
-            ? String(payload.avatarConfig.size || '').trim()
-            : '';
         view.element.dataset.participantId = payload.participantId;
         view.element.dataset.agentId = payload.agentId;
         view.element.setAttribute('data-display-name', payload.displayName);
@@ -156,11 +160,6 @@ export class ParticipantLayoutController {
         view.element.setAttribute('data-can-configure-audio', payload.canConfigureAudio ? 'true' : 'false');
         view.element.setAttribute('data-has-custom-audio-settings', payload.hasCustomAudioSettings ? 'true' : 'false');
         view.element.setAttribute('data-is-audio-muted-locally', payload.isAudioMutedLocally ? 'true' : 'false');
-        view.element.setAttribute('data-avatar-enabled', payload.avatarEnabled ? 'true' : 'false');
-        view.element.setAttribute('data-avatar-resolved', payload.avatarResolved ? 'true' : 'false');
-        view.element.setAttribute('data-avatar-config', serializedAvatarConfig);
-        view.element.setAttribute('data-avatar-fallback-letter', payload.avatarFallbackLetter);
-        view.element.setAttribute('data-avatar-size', avatarSize);
         const presenter = view.element.webSkelPresenter;
         if (presenter && typeof presenter.setState === 'function') {
             presenter.setState(payload);
@@ -170,6 +169,31 @@ export class ParticipantLayoutController {
             presenter.setVideoElements(videoElements);
         } else if (presenter && typeof presenter.setVideoElement === 'function') {
             presenter.setVideoElement(videoElements[0] || null);
+        }
+    }
+
+    applyParticipantAvatarState(view) {
+        if (!view || !view.element) return;
+        const payload = {
+            avatarEnabled: Boolean(view.avatarEnabled),
+            avatarConfig: view.avatarConfig || null,
+            avatarFallbackLetter: String(view.avatarFallbackLetter || '').trim(),
+            avatarResolved: Boolean(view.avatarResolved)
+        };
+        const serializedAvatarConfig = payload.avatarConfig && typeof payload.avatarConfig === 'object'
+            ? JSON.stringify(payload.avatarConfig)
+            : '';
+        const avatarSize = payload.avatarConfig && typeof payload.avatarConfig === 'object'
+            ? String(payload.avatarConfig.size || '').trim()
+            : '';
+        view.element.setAttribute('data-avatar-enabled', payload.avatarEnabled ? 'true' : 'false');
+        view.element.setAttribute('data-avatar-resolved', payload.avatarResolved ? 'true' : 'false');
+        view.element.setAttribute('data-avatar-config', serializedAvatarConfig);
+        view.element.setAttribute('data-avatar-fallback-letter', payload.avatarFallbackLetter);
+        view.element.setAttribute('data-avatar-size', avatarSize);
+        const presenter = view.element.webSkelPresenter;
+        if (presenter && typeof presenter.setAvatarState === 'function') {
+            presenter.setAvatarState(payload);
         }
     }
 
@@ -205,6 +229,7 @@ export class ParticipantLayoutController {
                 avatarFallbackLetter: getFallbackLetter(this.getParticipantDisplayName(participant)),
                 avatarResolved: false,
                 avatarSource: '',
+                avatarProjectionKey: '',
                 isMini: true,
                 isFocused: false,
                 element,
@@ -228,19 +253,27 @@ export class ParticipantLayoutController {
                 view.videoElements = new Map();
             }
         }
-        const hasProjectedAvatar = this.applyParticipantProfileAvatar(view, participant);
+        const avatarProjection = this.applyParticipantProfileAvatar(view, participant);
         this.applyParticipantViewState(view);
-        if (!hasProjectedAvatar && view.avatarSource === 'projected' && view.avatarConfig) {
+        if (avatarProjection.projected) {
+            if (avatarProjection.changed) {
+                this.applyParticipantAvatarState(view);
+            }
+        } else if (view.avatarSource === 'projected' && view.avatarConfig) {
             this.applyParticipantViewState(view);
-        } else if (participant?.kind === 'local' && !hasProjectedAvatar) {
-            this.profileAvatarController.refresh(view, participant, (nextView) => this.applyParticipantViewState(nextView));
-        } else if (!hasProjectedAvatar) {
+        } else {
             view.avatarEnabled = false;
             view.avatarConfig = null;
             view.avatarFallbackLetter = getFallbackLetter(view.name);
             view.avatarResolved = true;
             view.avatarSource = '';
+            view.avatarProjectionKey = JSON.stringify({
+                enabled: false,
+                config: null,
+                fallbackLetter: view.avatarFallbackLetter
+            });
             this.applyParticipantViewState(view);
+            this.applyParticipantAvatarState(view);
         }
         return view;
     }

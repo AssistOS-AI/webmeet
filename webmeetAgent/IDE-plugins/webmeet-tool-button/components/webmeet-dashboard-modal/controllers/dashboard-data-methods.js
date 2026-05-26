@@ -3,6 +3,7 @@ import { isMissingMeetingError } from '../services/dashboard-utils.js';
 import { WEBMEET_EVENT_TYPES, parseWebMeetEvent } from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
+const MEETING_GET_CACHE_TTL_MS = 1500;
 
 export const dashboardDataMethods = {
     async loadWorkspaces() {
@@ -10,7 +11,75 @@ export const dashboardDataMethods = {
         this.state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
     },
 
-    async loadMeetings() {
+    getMeetingGetCacheKey(meetingId, includeParticipants = false) {
+        const normalizedMeetingId = String(meetingId || '').trim();
+        return `${normalizedMeetingId}:${includeParticipants ? 'participants' : 'summary'}`;
+    },
+
+    clearMeetingGetCache(meetingId = '') {
+        const normalizedMeetingId = String(meetingId || '').trim();
+        if (!this.meetingGetCache) {
+            this.meetingGetCache = new Map();
+            return;
+        }
+        if (!normalizedMeetingId) {
+            this.meetingGetCache.clear();
+            return;
+        }
+        for (const key of this.meetingGetCache.keys()) {
+            if (key.startsWith(`${normalizedMeetingId}:`)) {
+                this.meetingGetCache.delete(key);
+            }
+        }
+    },
+
+    async fetchMeetingSnapshot(meetingId, options = {}) {
+        const normalizedMeetingId = String(meetingId || '').trim();
+        if (!normalizedMeetingId) {
+            throw new Error('Missing meetingId.');
+        }
+        if (!this.meetingGetCache) {
+            this.meetingGetCache = new Map();
+        }
+        const includeParticipants = options.includeParticipants === true;
+        const force = options.force === true;
+        const ttlMs = Number.isFinite(options.ttlMs) && options.ttlMs > 0
+            ? Number(options.ttlMs)
+            : MEETING_GET_CACHE_TTL_MS;
+        const cacheKey = this.getMeetingGetCacheKey(normalizedMeetingId, includeParticipants);
+        const cached = !force ? this.meetingGetCache.get(cacheKey) : null;
+        const now = Date.now();
+        if (cached?.promise) {
+            return cached.promise;
+        }
+        if (cached && Object.prototype.hasOwnProperty.call(cached, 'value') && (now - cached.timestamp) < ttlMs) {
+            return cached.value;
+        }
+        const requestPromise = runTool('webmeet_meeting_get', {
+            meetingId: normalizedMeetingId,
+            includeParticipants
+        })
+            .then((value) => {
+                this.meetingGetCache.set(cacheKey, {
+                    value,
+                    timestamp: Date.now(),
+                    promise: null
+                });
+                return value;
+            })
+            .catch((error) => {
+                this.meetingGetCache.delete(cacheKey);
+                throw error;
+            });
+        this.meetingGetCache.set(cacheKey, {
+            value: cached?.value,
+            timestamp: cached?.timestamp || 0,
+            promise: requestPromise
+        });
+        return requestPromise;
+    },
+
+    async loadMeetings(options = {}) {
         const loadSeq = this.meetingDetailsLoadSeq + 1;
         this.meetingDetailsLoadSeq = loadSeq;
         if (!this.state.selectedWorkspaceId) {
@@ -24,7 +93,7 @@ export const dashboardDataMethods = {
         });
         this.state.meetings = Array.isArray(payload.meetings) ? payload.meetings : [];
         this.state.canManageRooms = payload.canManageRooms === true;
-        await this.loadParticipantsForMeetings();
+        await this.loadParticipantsForMeetings(options);
         if (loadSeq !== this.meetingDetailsLoadSeq) return;
         this.state.selectedMeetingId = this.state.meetings.some((entry) => entry.id === this.state.selectedMeetingId)
             ? this.state.selectedMeetingId
@@ -47,9 +116,12 @@ export const dashboardDataMethods = {
         this.renderAll();
     },
 
-    async refreshWorkspaceRosterFromEvent() {
+    async refreshWorkspaceRosterFromEvent(meetingIds = []) {
         if (this.isGuestSession() || !this.state.selectedWorkspaceId || !this.state.meetings.length) return;
-        await this.loadMeetings();
+        await this.loadMeetings({
+            preserveConnectedRoomRoster: true,
+            rosterMeetingIds: Array.isArray(meetingIds) ? meetingIds : []
+        });
         this.renderMeetingList();
         this.renderMeetingSummary();
     },
@@ -83,11 +155,18 @@ export const dashboardDataMethods = {
         }, 100);
     },
 
-    scheduleWorkspaceRosterRefresh() {
+    scheduleWorkspaceRosterRefresh(meetingId = '') {
+        const normalizedMeetingId = String(meetingId || '').trim();
+        if (normalizedMeetingId) {
+            this.pendingWorkspaceRosterRefreshMeetingIds ??= new Set();
+            this.pendingWorkspaceRosterRefreshMeetingIds.add(normalizedMeetingId);
+        }
         this.clearWorkspaceRosterRefreshTimer();
         this.workspaceRosterRefreshTimer = window.setTimeout(() => {
+            const rosterMeetingIds = Array.from(this.pendingWorkspaceRosterRefreshMeetingIds || []);
+            this.pendingWorkspaceRosterRefreshMeetingIds?.clear?.();
             this.workspaceRosterRefreshTimer = null;
-            this.runBestEffortRealtimeRefresh(() => this.refreshWorkspaceRosterFromEvent());
+            this.runBestEffortRealtimeRefresh(() => this.refreshWorkspaceRosterFromEvent(rosterMeetingIds));
         }, 100);
     },
 
@@ -117,8 +196,18 @@ export const dashboardDataMethods = {
         return this.webMeetRoom.loadGuestRoomState(meetingId);
     },
 
-    async loadParticipantsForMeetings() {
+    async loadParticipantsForMeetings(options = {}) {
         const meetings = Array.isArray(this.state.meetings) ? this.state.meetings : [];
+        const preserveConnectedRoomRoster = Boolean(options.preserveConnectedRoomRoster);
+        const rosterMeetingIds = Array.isArray(options.rosterMeetingIds)
+            ? new Set(options.rosterMeetingIds.map((meetingId) => String(meetingId || '').trim()).filter(Boolean))
+            : null;
+        const connectedMeetingId = preserveConnectedRoomRoster && (this.room || this.state.roomState === 'Connected')
+            ? String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim()
+            : '';
+        const connectedRoster = connectedMeetingId && Array.isArray(this.state.meetingParticipantsById?.[connectedMeetingId])
+            ? this.state.meetingParticipantsById[connectedMeetingId]
+            : null;
         const mapMeetingRoster = (details, meetingId) => {
             const participants = Array.isArray(details?.participants) ? details.participants : [];
             const agents = Array.isArray(details?.agents)
@@ -179,16 +268,36 @@ export const dashboardDataMethods = {
             return;
         }
         const results = await Promise.allSettled(
-            meetings.map((meeting) => runTool('webmeet_meeting_get', {
-                meetingId: meeting.id,
-                includeParticipants: true
-            }))
+            meetings.map((meeting) => {
+                const meetingId = String(meeting?.id || '').trim();
+                const shouldRefreshMeeting = !rosterMeetingIds || rosterMeetingIds.has(meetingId);
+                const hasCachedRoster = Array.isArray(this.state.meetingParticipantsById?.[meetingId]);
+                if (!shouldRefreshMeeting && hasCachedRoster) {
+                    return Promise.resolve(null);
+                }
+                return this.fetchMeetingSnapshot(meetingId, {
+                    includeParticipants: true,
+                    force: Boolean(rosterMeetingIds?.has(meetingId))
+                });
+            })
         );
         const nextMap = {};
         const missingMeetingIds = new Set();
         for (let index = 0; index < meetings.length; index += 1) {
             const meeting = meetings[index];
             const result = results[index];
+            const meetingId = String(meeting?.id || '').trim();
+            const previousRoster = Array.isArray(this.state.meetingParticipantsById?.[meetingId])
+                ? this.state.meetingParticipantsById[meetingId]
+                : [];
+            if (connectedMeetingId && String(meeting?.id || '').trim() === connectedMeetingId && connectedRoster) {
+                nextMap[meeting.id] = connectedRoster;
+                continue;
+            }
+            if (result.status === 'fulfilled' && result.value === null && previousRoster.length) {
+                nextMap[meeting.id] = previousRoster;
+                continue;
+            }
             if (result.status !== 'fulfilled') {
                 if (isMissingMeetingError(result.reason)) {
                     missingMeetingIds.add(String(meeting.id || '').trim());
@@ -285,7 +394,7 @@ export const dashboardDataMethods = {
             const canManageMeetingData = this.canManageRooms();
             if (canManageMeetingData) {
                 [detailsPayload, chatPayload, transcriptPayload, artifactPayload, agentPayload] = await Promise.all([
-                    runTool('webmeet_meeting_get', { meetingId: meeting.id, includeParticipants }),
+                    this.fetchMeetingSnapshot(meeting.id, { includeParticipants }),
                     runTool('webmeet_chat_list', { meetingId: meeting.id }),
                     runTool('webmeet_transcript_list', { meetingId: meeting.id }),
                     runTool('webmeet_artifact_list', { meetingId: meeting.id }),
@@ -293,7 +402,7 @@ export const dashboardDataMethods = {
                 ]);
             } else {
                 [detailsPayload, chatPayload] = await Promise.all([
-                    runTool('webmeet_meeting_get', { meetingId: meeting.id, includeParticipants }),
+                    this.fetchMeetingSnapshot(meeting.id, { includeParticipants }),
                     runTool('webmeet_chat_list', { meetingId: meeting.id })
                 ]);
             }

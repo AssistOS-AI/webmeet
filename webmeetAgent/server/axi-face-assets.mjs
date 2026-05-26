@@ -31,6 +31,33 @@ function getContentType(filePath) {
     }
 }
 
+async function buildAxiFacePackIndex({ fs, path, root }) {
+    const packsRoot = path.join(root, 'packs');
+    const entries = await fs.readdir(packsRoot, { withFileTypes: true }).catch(() => []);
+    const packs = [];
+    for (const entry of entries) {
+        if (!entry?.isDirectory?.()) continue;
+        const id = String(entry.name || '').trim();
+        if (!id) continue;
+        try {
+            const manifest = JSON.parse(await fs.readFile(path.join(packsRoot, id, 'manifest.json'), 'utf8'));
+            packs.push({
+                id: String(manifest.id || id),
+                label: String(manifest.label || manifest.name || manifest.id || id),
+                type: String(manifest.type || ''),
+                defaultEmotion: String(manifest.defaultEmotion || ''),
+                emotions: manifest.emotions && typeof manifest.emotions === 'object'
+                    ? Object.keys(manifest.emotions).sort()
+                    : [],
+                manifestSrc: `/axi-face/packs/${encodeURIComponent(id)}/manifest.json`
+            });
+        } catch {
+            // Ignore malformed or unreadable pack manifests.
+        }
+    }
+    return { ok: true, packs: packs.sort((left, right) => left.label.localeCompare(right.label)) };
+}
+
 export async function resolveAxiFaceRepoRoot({ fs, path, workspaceRoot = '' } = {}) {
     const candidates = [
         String(process.env.AXIFACE_REPO_PATH || '').trim(),
@@ -65,6 +92,15 @@ export function createAxiFaceAssetsHttpHandler({ fs, path, workspaceRoot = '' })
             if (!relativePath || relativePath.includes('\0')) {
                 res.writeHead(404, { 'Content-Type': 'text/plain' });
                 res.end('Not Found');
+                return true;
+            }
+            if (relativePath === 'packs/index.json') {
+                const payload = await buildAxiFacePackIndex({ fs, path, root });
+                res.writeHead(200, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Cache-Control': 'no-cache'
+                });
+                res.end(JSON.stringify(payload));
                 return true;
             }
             const filePath = path.resolve(root, relativePath);

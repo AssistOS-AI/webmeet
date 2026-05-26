@@ -1,5 +1,6 @@
 const DEFAULT_CONFIG = Object.freeze({
     agentId: 'profile:current-user',
+    sourceMode: 'generated',
     generated: true,
     src: '',
     packSrc: '',
@@ -25,6 +26,7 @@ const AVATAR_SETTINGS_STORAGE_KEY = 'assistOS.avatar-settings.updated';
 
 let axiFaceLoadPromise = null;
 let axiFaceModule = null;
+let axiFacePacksPromise = null;
 let explorerProfileAvatarClientPromise = null;
 let updateListenerInstalled = false;
 let avatarBroadcastChannel = null;
@@ -57,10 +59,41 @@ function getAxiFaceModuleUrl() {
         : '/services/explorer/axi-face/src/axi-face.mjs';
 }
 
+function getAxiFaceAssetBaseUrl() {
+    return isGuestWebMeetContext()
+        ? '/public-services/webmeet/axi-face'
+        : '/services/explorer/axi-face';
+}
+
 function normalizeAxiFaceStyleList(styles = []) {
     if (!Array.isArray(styles)) return [];
     return styles
         .map((style) => String(style || '').trim())
+        .filter(Boolean);
+}
+
+function normalizeAxiFacePackList(packs = []) {
+    if (!Array.isArray(packs)) return [];
+    const base = getAxiFaceAssetBaseUrl();
+    return packs
+        .map((pack) => {
+            if (!pack || typeof pack !== 'object') return null;
+            const id = String(pack.id || '').trim();
+            if (!id) return null;
+            const manifestSrc = String(pack.manifestSrc || pack.packSrc || pack.src || '').trim()
+                || `${base}/packs/${encodeURIComponent(id)}/manifest.json`;
+            const resolvedManifestSrc = manifestSrc.startsWith('/axi-face/')
+                ? `${base}${manifestSrc.slice('/axi-face'.length)}`
+                : manifestSrc;
+            return {
+                id,
+                label: String(pack.label || pack.name || id).trim(),
+                type: String(pack.type || '').trim(),
+                defaultEmotion: String(pack.defaultEmotion || '').trim(),
+                emotions: Array.isArray(pack.emotions) ? pack.emotions.map((item) => String(item || '').trim()).filter(Boolean) : [],
+                manifestSrc: resolvedManifestSrc
+            };
+        })
         .filter(Boolean);
 }
 
@@ -111,12 +144,33 @@ function loadExplorerProfileAvatarClient() {
 
 export function normalizeAvatarConfig(config, fallbackId = 'profile:current-user') {
     const source = config && typeof config === 'object' ? config : {};
-    return {
+    const requestedSourceMode = ['generated', 'pack', 'svg'].includes(String(source.sourceMode || source['source-mode'] || '').trim())
+        ? String(source.sourceMode || source['source-mode']).trim()
+        : '';
+    const normalized = {
         ...DEFAULT_CONFIG,
         ...source,
         agentId: String(source.agentId || fallbackId),
         seed: String(source.seed || source.agentId || fallbackId)
     };
+    normalized.src = String(normalized.src || '').trim();
+    normalized.packSrc = String(normalized.packSrc || '').trim();
+    if (normalized.src) {
+        normalized.sourceMode = 'svg';
+        normalized.generated = false;
+        normalized.packSrc = '';
+    } else if (normalized.packSrc) {
+        normalized.sourceMode = 'pack';
+        normalized.generated = false;
+        normalized.src = '';
+    } else {
+        normalized.sourceMode = requestedSourceMode || (normalized.generated === false ? 'pack' : 'generated');
+        normalized.generated = normalized.generated !== false;
+    }
+    if (normalized.sourceMode === 'generated') {
+        normalized.generated = true;
+    }
+    return normalized;
 }
 
 export function getFallbackLetter(value) {
@@ -175,6 +229,33 @@ export async function loadAxiFaceModule() {
 export async function loadAxiFaceGeneratedFaceStyles() {
     const module = await loadAxiFaceModule();
     return normalizeAxiFaceStyleList(module?.GENERATED_FACE_STYLES);
+}
+
+export async function loadAxiFaceGeneratedFacePalettes() {
+    const module = await loadAxiFaceModule();
+    const palettes = module?.listGeneratedFacePalettes?.() || module?.DEFAULT_GENERATED_FACE_PALETTES || {};
+    return Array.isArray(palettes) ? normalizeAxiFaceStyleList(palettes) : Object.keys(palettes);
+}
+
+export async function loadAxiFacePacks() {
+    if (!axiFacePacksPromise) {
+        axiFacePacksPromise = fetch(`${getAxiFaceAssetBaseUrl()}/packs/index.json`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json' }
+        })
+            .then(async (response) => {
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload.ok === false) {
+                    throw new Error(payload.error || `AxiFace pack index request failed (${response.status}).`);
+                }
+                return normalizeAxiFacePackList(payload.packs);
+            })
+            .catch((error) => {
+                axiFacePacksPromise = null;
+                throw error;
+            });
+    }
+    return axiFacePacksPromise;
 }
 
 export async function ensureAxiFaceLoaded() {

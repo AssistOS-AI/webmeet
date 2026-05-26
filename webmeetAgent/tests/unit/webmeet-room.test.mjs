@@ -7,6 +7,7 @@ import {
     createWebMeetRoomApi
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js';
 import { WebMeetRoom } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js';
+import { buildWebMeetAvatarSource } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-avatar-override.js';
 import {
     WEBMEET_EVENT_TYPES,
     buildWebMeetEvent
@@ -66,13 +67,11 @@ test('room API routes guest room actions through scoped public guest endpoints',
 
     await api.publishAvatar({ meetingId: 'meeting-1', participantId: 'guest-a', avatar: { enabled: true } });
     await api.sendChat({ meetingId: 'meeting-1', message: 'hello' });
-    await api.presencePing({ meetingId: 'meeting-1', participantId: 'guest-a' });
     await api.leaveMeeting({ meetingId: 'meeting-1', participantId: 'guest-a' });
 
     assert.deepEqual(calls, [
         { meetingId: 'meeting-1', action: 'guest-avatar', payload: { avatar: { enabled: true } } },
         { meetingId: 'meeting-1', action: 'guest-chat', payload: { message: 'hello' } },
-        { meetingId: 'meeting-1', action: 'guest-presence', payload: {} },
         { meetingId: 'meeting-1', action: 'guest-leave', payload: {} }
     ]);
 });
@@ -198,6 +197,34 @@ test('WebMeetRoom owns join, connectLiveKit, leave and session mutation', async 
     ]);
 });
 
+test('WebMeet avatar fallback profile responses render as initials, not generated room avatars', async () => {
+    const room = new WebMeetRoom(createRoomOptions());
+    const sourceAvatar = buildWebMeetAvatarSource({
+        profileAvatar: {
+            enabled: true,
+            source: { kind: 'fallback' },
+            fallbackLetter: 'A',
+            config: {
+                agentId: 'profile:local:admin',
+                generated: true,
+                style: 'robot-soft',
+                size: '72'
+            }
+        },
+        override: null,
+        userId: 'local:admin',
+        participantId: 'participant-a'
+    });
+    const projection = room.buildAvatarProjection(sourceAvatar, 'participant-a');
+
+    assert.equal(sourceAvatar, null);
+    assert.deepEqual(projection, {
+        enabled: false,
+        config: null,
+        fallbackLetter: ''
+    });
+});
+
 test('room API factory keeps guest and authenticated transport selection explicit', () => {
     assert.ok(createWebMeetRoomApi({
         guest: true,
@@ -230,10 +257,6 @@ test('room API rejects missing required fields instead of silently no-oping', as
         }
     });
     await assert.rejects(
-        () => guestApi.presencePing({ meetingId: '' }),
-        /Missing WebMeet room field: meetingId/
-    );
-    await assert.rejects(
         () => guestApi.loadRoomState({ meetingId: '' }),
         /Missing WebMeet room field: meetingId/
     );
@@ -257,10 +280,6 @@ test('WebMeetRoom rejects missing session fields instead of returning empty fall
     );
     await assert.rejects(
         () => room.sendChat('', 'hello'),
-        /Missing WebMeet room field: meetingId/
-    );
-    await assert.rejects(
-        () => room.presencePing(),
         /Missing WebMeet room field: meetingId/
     );
     await assert.rejects(

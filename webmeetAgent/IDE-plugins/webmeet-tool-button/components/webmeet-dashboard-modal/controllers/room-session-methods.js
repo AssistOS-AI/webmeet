@@ -473,21 +473,22 @@ export const roomSessionMethods = {
             onConnected: ({ room, Track }) => {
                 this.state.roomState = 'Connected';
                 this.syncParticipantsFromRoom(this.room, Track);
+                const skipConnectedAvatarRepublishOnce = Boolean(this.state.skipConnectedAvatarRepublishOnce);
+                this.state.skipConnectedAvatarRepublishOnce = false;
                 void (async () => {
-                    await this.loadMeetingDetails({ includeParticipants: false });
-                    await this.webMeetRoom.republishAvatarProjection();
+                    if (!skipConnectedAvatarRepublishOnce) {
+                        await this.webMeetRoom.republishAvatarProjection();
+                    }
                     await this.webMeetRoom.requestAvatarState();
                 })().catch(() => {});
                 for (const participant of room.remoteParticipants.values()) {
                     subscribeParticipantPublications(participant, Track, 'connected');
                 }
                 scheduleRemoteSubscriptionSweep(Track, 'connected');
-                this.startPresenceHeartbeat();
                 this.renderMeetingSummary();
             },
             onConnectError: (error) => {
                 this.state.roomState = error instanceof Error ? error.message : String(error);
-                this.stopPresenceHeartbeat();
                 this.renderMeetingSummary();
             }
         });
@@ -497,7 +498,6 @@ export const roomSessionMethods = {
         const forceRenderAll = Boolean(options.forceRenderAll);
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
         this.room = this.roomLiveKit.getRoom();
-        this.stopPresenceHeartbeat();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
         this.state.media = { microphone: false, camera: false, screen: false };
@@ -506,6 +506,7 @@ export const roomSessionMethods = {
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
         this.state.roomAvatarsByParticipantId = {};
+        this.state.skipConnectedAvatarRepublishOnce = false;
         this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');

@@ -26,12 +26,13 @@ test('participant layout controller persists avatar config and fallback attribut
 
     assert.match(source, /applyParticipantProfileAvatar/);
     assert.match(source, /participant\?\.profileAvatar/);
-    assert.match(source, /const hasProjectedAvatar = this\.applyParticipantProfileAvatar\(view, participant\)/);
-    assert.match(source, /participant\?\.kind === 'local' && !hasProjectedAvatar/);
+    assert.match(source, /const avatarProjection = this\.applyParticipantProfileAvatar\(view, participant\)/);
+    assert.doesNotMatch(source, /participant\?\.kind === 'local' && !avatarProjection/);
+    assert.doesNotMatch(source, /profileAvatarController\.refresh\(view, participant/);
     assert.doesNotMatch(source, /const shouldUseProjectedAvatar = participant\?\.kind !== 'local'/);
     assert.match(source, /view\.avatarSource = 'projected'/);
     assert.match(source, /filter\(\(view\) => view\.avatarSource !== 'projected'\)/);
-    assert.match(source, /if \(!hasProjectedAvatar\)/);
+    assert.match(source, /applyParticipantAvatarState\(view\)/);
     assert.match(source, /data-avatar-config/);
     assert.match(source, /data-avatar-fallback-letter/);
     assert.match(source, /data-avatar-size/);
@@ -41,8 +42,43 @@ test('participant layout controller persists avatar config and fallback attribut
 test('participant layout controller preserves projected avatars during media-only participant updates', async () => {
     const source = await fs.readFile(layoutControllerPath, 'utf8');
 
-    assert.match(source, /!hasProjectedAvatar && view\.avatarSource === 'projected' && view\.avatarConfig/);
-    assert.match(source, /participant\?\.kind === 'local' && !hasProjectedAvatar/);
+    assert.match(source, /avatarProjection\.projected/);
+    assert.match(source, /avatarProjection\.changed/);
+    assert.match(source, /view\.avatarSource === 'projected' && view\.avatarConfig/);
+    assert.doesNotMatch(source, /profileAvatarController\.refresh\(view, participant/);
+});
+
+test('participant card updates avatar through a dedicated avatar state channel', async () => {
+    const cardSource = await fs.readFile(participantCardPath, 'utf8');
+    const layoutSource = await fs.readFile(layoutControllerPath, 'utf8');
+    const applyStateBody = cardSource.slice(
+        cardSource.indexOf('    applyState() {'),
+        cardSource.indexOf('\n    applyAvatarState() {')
+    );
+
+    assert.match(cardSource, /setAvatarState\(patch = \{\}\)/);
+    assert.match(cardSource, /applyAvatarState\(\)/);
+    assert.doesNotMatch(applyStateBody, /renderAvatar\(initials\)/);
+    assert.match(layoutSource, /presenter\.setAvatarState\(payload\)/);
+});
+
+test('dashboard primes the active local avatar before LiveKit renders participant cards', async () => {
+    const actionSource = await fs.readFile(path.join(
+        repoRoot,
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+    ), 'utf8');
+    const participantSource = await fs.readFile(path.join(
+        repoRoot,
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js'
+    ), 'utf8');
+
+    assert.match(actionSource, /await this\.webMeetRoom\.join\(payload\);\s+await this\.primeCurrentParticipantAvatarProjection\(\{ force: true \}\);/);
+    assert.match(actionSource, /async primeCurrentParticipantAvatarProjection\(options = \{\}\)/);
+    assert.match(actionSource, /this\.setRoomAvatar\(participantId, resolved\.avatar\)/);
+    assert.match(actionSource, /profileAvatar: resolved\.avatar/);
+    assert.match(actionSource, /if \(!profileAvatar && override\)/);
+    assert.match(participantSource, /const profileAvatar = normalizeProfileAvatar\(participant\?\.profileAvatar\)\s+\|\| getRoomAvatarFor\(this, participantId\)/);
+    assert.match(participantSource, /this\.webMeetRoom\.buildAvatarProjection\(localSourceAvatar, localIdentity\)/);
 });
 
 test('participant layout controller clears stale video elements when video state becomes empty', async () => {

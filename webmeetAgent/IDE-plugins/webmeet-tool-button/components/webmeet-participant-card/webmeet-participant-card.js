@@ -119,6 +119,7 @@ export class WebMeetParticipantCard {
             videoLoading: this.element.querySelector('[data-role="videoLoading"]')
         };
         this.applyState();
+        this.applyAvatarState();
         this.syncMediaElements();
     }
 
@@ -128,6 +129,17 @@ export class WebMeetParticipantCard {
             ...patch
         };
         this.applyState();
+    }
+
+    setAvatarState(patch = {}) {
+        this.state = {
+            ...this.state,
+            avatarEnabled: Boolean(patch.avatarEnabled),
+            avatarConfig: patch.avatarConfig || null,
+            avatarFallbackLetter: String(patch.avatarFallbackLetter || '').trim(),
+            avatarResolved: Boolean(patch.avatarResolved)
+        };
+        this.applyAvatarState();
     }
 
     setVideoElement(mediaElement) {
@@ -203,7 +215,6 @@ export class WebMeetParticipantCard {
         this.element.dataset.local = this.state.isLocal ? 'true' : 'false';
         this.element.dataset.hasCustomAudioSettings = this.state.hasCustomAudioSettings ? 'true' : 'false';
         this.refs.name.textContent = displayName;
-        this.renderAvatar(initials);
         this.refs.fallback.style.display = this.state.hasVideo ? 'none' : 'flex';
         this.element.classList.toggle('is-video-loading', Boolean(this.state.videoLoading));
         if (this.refs.videoLoading) {
@@ -241,6 +252,11 @@ export class WebMeetParticipantCard {
             this.refs.agentDetach.style.display = showDetach ? 'inline-flex' : 'none';
             this.refs.agentDetach.dataset.agentId = agentId;
         }
+    }
+
+    applyAvatarState() {
+        if (!this.refs) return;
+        this.renderAvatar(buildInitials(this.state.displayName));
     }
 
     renderAvatar(initials) {

@@ -33,6 +33,37 @@ test('authenticated refresh does not use cached pending leave state', async () =
     assert.doesNotMatch(presenceController, /pendingLeaves|PENDING_LEAVES_STORAGE_KEY|rememberPendingLeave/);
 });
 
+test('connected room roster is not driven by browser presence timers', async () => {
+    const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
+    const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
+    const presenceController = await readModalFile('controllers/meeting-presence-controller.js');
+
+    assert.doesNotMatch(modal, /shouldPing|runPresenceTool/);
+    assert.doesNotMatch(sessionMethods, /startPresenceHeartbeat|sendPresencePing/);
+    assert.doesNotMatch(roomSessionMethods, /startPresenceHeartbeat|loadMeetingDetails\(\{ includeParticipants: false \}\)/);
+    assert.doesNotMatch(presenceController, /setInterval/);
+});
+
+test('workspace event polling is outside the active LiveKit room lifecycle', async () => {
+    const actionMethods = await readModalFile('controllers/meeting-action-methods.js');
+    const joinMeeting = actionMethods.slice(
+        actionMethods.indexOf('async joinMeeting'),
+        actionMethods.indexOf('\n    getCurrentAvatarOverrideUserId', actionMethods.indexOf('async joinMeeting'))
+    );
+    const unjoinCurrentSession = actionMethods.slice(
+        actionMethods.indexOf('async unjoinCurrentSession'),
+        actionMethods.indexOf('\n    async sendPublicChat', actionMethods.indexOf('async unjoinCurrentSession'))
+    );
+
+    assert.match(joinMeeting, /this\.stopWorkspaceEvents\(\)/);
+    assert.ok(
+        joinMeeting.indexOf('this.stopWorkspaceEvents()') < joinMeeting.indexOf('await this.webMeetRoom.join(payload)'),
+        'workspace polling must stop before joining the active LiveKit room'
+    );
+    assert.match(unjoinCurrentSession, /this\.startWorkspaceEvents\(\)/);
+});
+
 test('meeting details use LiveKit participants as the room presence source', async () => {
     const store = await readFile(path.join(root, 'lib/webmeetStore.mjs'), 'utf8');
 

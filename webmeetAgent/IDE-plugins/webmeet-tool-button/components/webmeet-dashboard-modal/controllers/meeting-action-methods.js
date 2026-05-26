@@ -2,6 +2,7 @@ import { getCurrentActorDisplayName } from '../services/dashboard-utils.js';
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
 import {
     getCurrentProfileAvatar,
+    loadAxiFacePacks,
     normalizeAvatarConfig
 } from '../services/webmeet-profile-avatar-runtime.js';
 import {
@@ -13,8 +14,18 @@ import {
     saveWebMeetAvatarOverride
 } from '../services/webmeet-avatar-override.js';
 import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
+import {
+    AVATAR_SOURCE_MODES,
+    deriveAvatarSourceMode,
+    normalizeAvatarForSourceMode
+} from '../services/avatar-settings-model.js';
 
 const runTool = runWebMeetTool;
+const AVATAR_SOURCE_LABELS = Object.freeze({
+    [AVATAR_SOURCE_MODES.GENERATED]: 'Generated',
+    [AVATAR_SOURCE_MODES.PACK]: 'AxiFace pack',
+    [AVATAR_SOURCE_MODES.SVG]: 'SVG source'
+});
 
 export const meetingActionMethods = {
     async createMeeting() {
@@ -161,13 +172,19 @@ export const meetingActionMethods = {
         if (displayName) {
             payload.displayName = displayName;
         }
-        await this.webMeetRoom.join(payload);
+        this.stopWorkspaceEvents();
         try {
+            await this.webMeetRoom.join(payload);
+            await this.primeCurrentParticipantAvatarProjection({ force: true });
+            this.state.skipConnectedAvatarRepublishOnce = true;
             await this.webMeetRoom.connectLiveKit();
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
             this.setError(message);
+            if (!this.isGuestSession() && this.state.selectedWorkspaceId) {
+                this.startWorkspaceEvents();
+            }
             return;
         } finally {
             this.clearRoomTransitionMessage({ render: false });
@@ -212,6 +229,14 @@ export const meetingActionMethods = {
         let profileAvatar = options.avatar && typeof options.avatar === 'object'
             ? options.avatar
             : null;
+        if (!profileAvatar && override) {
+            return buildWebMeetAvatarSource({
+                profileAvatar: null,
+                override,
+                userId,
+                participantId
+            });
+        }
         if (!profileAvatar) {
             try {
                 profileAvatar = await getCurrentProfileAvatar({ force: Boolean(options.force) });
@@ -237,10 +262,63 @@ export const meetingActionMethods = {
                 force: Boolean(options.force),
                 participantId
             });
+        if (!sourceAvatar) {
+            return {
+                sourceAvatar: null,
+                avatar: {
+                    enabled: false,
+                    config: null,
+                    fallbackLetter: ''
+                }
+            };
+        }
         return {
             sourceAvatar,
             avatar: this.webMeetRoom.buildAvatarProjection(sourceAvatar, participantId)
         };
+    },
+
+    async primeCurrentParticipantAvatarProjection(options = {}) {
+        const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        const participantId = String(this.state.session?.participantIdentity || '').trim();
+        if (!participantId) return null;
+        let resolved = null;
+        try {
+            resolved = await this.resolveCurrentParticipantAvatarProjection(options);
+        } catch (_) {
+            resolved = {
+                sourceAvatar: null,
+                avatar: {
+                    enabled: false,
+                    config: null,
+                    fallbackLetter: ''
+                }
+            };
+        }
+        if (!resolved?.avatar) return null;
+        this.setRoomAvatar(participantId, resolved.avatar);
+        if (this.state.session?.participant && typeof this.state.session.participant === 'object') {
+            this.state.session = {
+                ...this.state.session,
+                participant: {
+                    ...this.state.session.participant,
+                    profileAvatar: resolved.avatar
+                }
+            };
+        }
+        const userId = String(
+            resolved.sourceAvatar?.user?.id
+            || resolved.avatar?.config?.agentId?.replace(/^profile:/, '')
+            || this.currentActor?.id
+            || ''
+        ).trim();
+        this.applyRealtimeParticipantAvatar?.({
+            meetingId,
+            participantId,
+            userId,
+            profileAvatar: resolved.avatar
+        });
+        return resolved;
     },
 
     async applyWebMeetAvatarPreset(target) {
@@ -292,7 +370,7 @@ export const meetingActionMethods = {
             override: currentOverride,
             userId: this.getCurrentAvatarOverrideUserId(),
             participantId: this.state.session?.participantIdentity || '',
-            patch: { style }
+            patch: { style, generated: true, src: '', packSrc: '' }
         });
         this.setCurrentWebMeetAvatarOverride({ config });
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
@@ -305,6 +383,46 @@ export const meetingActionMethods = {
         this.setError(published
             ? `WebMeet avatar style set to ${style} and published.`
             : `WebMeet avatar style saved. Join a room to publish ${style}.`);
+    },
+
+    async applyWebMeetAvatarPack(target) {
+        const source = target?.target || target;
+        const packSrc = String(source?.dataset?.avatarPackSrc || source?.closest?.('[data-avatar-pack-src]')?.dataset?.avatarPackSrc || '').trim();
+        if (!packSrc) return;
+        let profileAvatar = null;
+        try {
+            profileAvatar = await getCurrentProfileAvatar({ force: true });
+        } catch (_) {
+            profileAvatar = null;
+        }
+        const currentOverride = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverride = currentOverride;
+        const config = buildWebMeetAvatarOverrideConfig({
+            profileAvatar,
+            override: currentOverride,
+            userId: this.getCurrentAvatarOverrideUserId(),
+            participantId: this.state.session?.participantIdentity || '',
+            patch: {
+                sourceMode: AVATAR_SOURCE_MODES.PACK,
+                generated: false,
+                src: '',
+                packSrc
+            }
+        });
+        this.setCurrentWebMeetAvatarOverride({ config });
+        this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
+        this.state.avatarQuickMenuVisible = false;
+        const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.renderAvatarControls?.();
+        this.renderMeetingSummary();
+        this.renderParticipantLayout?.();
+        this.renderMeetingList?.();
+        const packLabel = this.state.axiFacePacks.find((entry) => String(entry?.manifestSrc || '').trim() === packSrc)?.label
+            || packSrc.split('/').slice(-2, -1)[0]
+            || 'selected pack';
+        this.setError(published
+            ? `WebMeet avatar pack set to ${packLabel} and published.`
+            : `WebMeet avatar pack saved as ${packLabel}. Join a room to publish it.`);
     },
 
     async resetWebMeetAvatarOverride() {
@@ -326,6 +444,79 @@ export const meetingActionMethods = {
         this.renderAvatarControls?.();
     },
 
+    async applyWebMeetAvatarSourceMode(target) {
+        const source = target?.target || target;
+        const sourceModeValue = source?.dataset?.avatarSourceMode || source?.closest?.('[data-avatar-source-mode]')?.dataset?.avatarSourceMode || source;
+        const sourceMode = Object.values(AVATAR_SOURCE_MODES).includes(String(sourceModeValue || '').trim())
+            ? String(sourceModeValue || '').trim()
+            : '';
+        if (!sourceMode) return;
+        if (sourceMode === AVATAR_SOURCE_MODES.PACK && (!Array.isArray(this.state.axiFacePacks) || this.state.axiFacePacks.length === 0)) {
+            try {
+                this.state.axiFacePacks = await loadAxiFacePacks();
+            } catch (_) {
+                // Keep the current draft; the shared normalizer will still preserve source mode.
+            }
+        }
+        let profileAvatar = null;
+        try {
+            profileAvatar = await getCurrentProfileAvatar({ force: true });
+        } catch (_) {
+            profileAvatar = null;
+        }
+        const currentOverride = this.loadCurrentWebMeetAvatarOverride();
+        this.state.webMeetAvatarOverride = currentOverride;
+        const fallbackId = `profile:${this.getCurrentAvatarOverrideUserId() || this.state.session?.participantIdentity || 'current-user'}`;
+        const baseConfig = buildWebMeetAvatarOverrideConfig({
+            profileAvatar,
+            override: this.state.webMeetAvatarOverrideDraft || currentOverride,
+            userId: this.getCurrentAvatarOverrideUserId(),
+            participantId: this.state.session?.participantIdentity || '',
+            patch: { sourceMode }
+        });
+        const config = normalizeAvatarConfig(
+            normalizeAvatarForSourceMode(baseConfig, sourceMode, { packs: this.state.axiFacePacks }),
+            fallbackId
+        );
+        if (sourceMode === AVATAR_SOURCE_MODES.SVG && !String(config.src || '').trim()) {
+            this.setError('Set an SVG source in the avatar form before switching quick source to SVG.');
+            return;
+        }
+        if (sourceMode === AVATAR_SOURCE_MODES.PACK && !String(config.packSrc || '').trim()) {
+            this.setError('No AxiFace pack is available yet. Reload pack metadata and try again.');
+            return;
+        }
+        this.setCurrentWebMeetAvatarOverride({ config });
+        this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
+        this.state.avatarQuickMenuVisible = false;
+        const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.renderAvatarControls?.();
+        this.renderMeetingSummary();
+        this.renderParticipantLayout?.();
+        this.renderMeetingList?.();
+        const label = AVATAR_SOURCE_LABELS[sourceMode] || deriveAvatarSourceMode(config);
+        this.setError(published
+            ? `WebMeet avatar source set to ${label} and published.`
+            : `WebMeet avatar source saved as ${label}. Join a room to publish it.`);
+    },
+
+    handleWebMeetAvatarSettingsChange(event = null) {
+        const currentConfig = this.state.webMeetAvatarOverrideDraft?.config
+            || this.state.webMeetAvatarOverride?.config
+            || this.state.session?.participant?.profileAvatar?.config
+            || {};
+        const fallbackId = `profile:${this.getCurrentAvatarOverrideUserId() || this.state.session?.participantIdentity || 'current-user'}`;
+        const nextConfig = event?.detail?.config || this.avatarSettingsForm?.webSkelPresenter?.getConfig?.() || currentConfig;
+        this.state.webMeetAvatarOverrideDraft = {
+            config: normalizeAvatarConfig({
+                ...nextConfig,
+                agentId: currentConfig.agentId || nextConfig.agentId || fallbackId,
+                seed: nextConfig.seed || currentConfig.seed || currentConfig.agentId || fallbackId
+            }, fallbackId)
+        };
+        this.renderAvatarControls?.();
+    },
+
     syncWebMeetAvatarSettingsDraftFromInputs() {
         const currentOverride = this.loadCurrentWebMeetAvatarOverride();
         this.state.webMeetAvatarOverride = currentOverride;
@@ -336,26 +527,12 @@ export const meetingActionMethods = {
         const presetId = String(this.avatarPresetSelect?.value || '').trim();
         const presetPatch = presetId ? getWebMeetAvatarPreset(presetId).patch : {};
         const fallbackId = `profile:${this.getCurrentAvatarOverrideUserId() || this.state.session?.participantIdentity || 'current-user'}`;
-        const generated = this.avatarGeneratedInput?.checked !== false;
+        const formConfig = this.avatarSettingsForm?.webSkelPresenter?.getConfig?.() || currentConfig;
         this.state.webMeetAvatarOverrideDraft = {
             config: normalizeAvatarConfig({
-                ...currentConfig,
-                generated,
-                src: String(this.avatarSrcInput?.value || '').trim(),
-                packSrc: String(this.avatarPackSrcInput?.value || '').trim(),
-                assetMode: String(this.avatarAssetModeSelect?.value || '').trim(),
-                emotion: String(this.avatarEmotionSelect?.value || '').trim(),
-                size: String(this.avatarSizeInput?.value || '').trim(),
-                thought: String(this.avatarThoughtInput?.value || '').trim(),
-                thoughtMode: String(this.avatarThoughtModeSelect?.value || '').trim(),
-                mode: String(this.avatarModeSelect?.value || '').trim(),
-                shape: String(this.avatarShapeSelect?.value || '').trim(),
-                theme: String(this.avatarThemeSelect?.value || '').trim(),
-                animated: this.avatarAnimatedInput?.checked !== false,
-                listen: this.avatarListenInput?.checked === true,
-                style: String(this.avatarStyleSelect?.value || '').trim(),
-                palette: String(this.avatarPaletteSelect?.value || '').trim(),
-                complexity: String(this.avatarComplexitySelect?.value || '').trim(),
+                ...formConfig,
+                agentId: currentConfig.agentId || formConfig.agentId || fallbackId,
+                seed: formConfig.seed || currentConfig.seed || currentConfig.agentId || fallbackId,
                 ...presetPatch
             }, fallbackId)
         };
@@ -377,6 +554,7 @@ export const meetingActionMethods = {
         this.renderMeetingSummary();
         this.renderParticipantLayout?.();
         this.renderMeetingList?.();
+        this.closeMediaSettings?.();
         if (draft) {
             this.setError(published
                 ? 'WebMeet avatar override applied and published.'
@@ -463,7 +641,6 @@ export const meetingActionMethods = {
             );
             this.renderMeetingSummary();
         }
-        this.stopPresenceHeartbeat();
         this.stopSpeechRecognition();
         await this.webMeetRoom.disconnectLiveKit();
 
@@ -479,6 +656,9 @@ export const meetingActionMethods = {
         this.state.session = preserveDisplayName && preservedName ? { participant: { displayName: preservedName } } : null;
         if (!wasGuestSession) {
             await this.loadParticipantsForMeetings();
+            if (this.state.selectedWorkspaceId) {
+                this.startWorkspaceEvents();
+            }
         }
         if (manageTransition) {
             this.clearRoomTransitionMessage({ render: false });

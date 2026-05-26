@@ -35,6 +35,53 @@ import {
     normalizeCurrentActor
 } from './services/dashboard-utils.js';
 
+let avatarSettingsFormRegistrationPromise = null;
+
+function getSharedAvatarSettingsComponentBaseUrl() {
+    const publicBase = String(window.__WEBMEET_PUBLIC_API_URL || '').replace(/\/+$/g, '');
+    if (publicBase) {
+        return `${publicBase}/assets/shared/ui/avatar-settings-form/avatar-settings-form`;
+    }
+    return '/workspace-files/.ploinky/repos/AchillesIDE/shared/ui/avatar-settings-form/avatar-settings-form';
+}
+
+async function fetchComponentText(url, description) {
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) {
+        throw new Error(`${description} (${response.status})`);
+    }
+    return response.text();
+}
+
+async function ensureAvatarSettingsFormRegistered() {
+    if (customElements.get('avatar-settings-form')) return;
+    if (avatarSettingsFormRegistrationPromise) return avatarSettingsFormRegistrationPromise;
+    avatarSettingsFormRegistrationPromise = (async () => {
+        const baseUrl = getSharedAvatarSettingsComponentBaseUrl();
+        const [template, css, module] = await Promise.all([
+            fetchComponentText(`${baseUrl}.html`, 'Failed to load avatar settings template'),
+            fetchComponentText(`${baseUrl}.css`, 'Failed to load avatar settings stylesheet'),
+            import(`${baseUrl}.js?cacheBust=${Date.now()}`)
+        ]);
+        const webSkel = window.assistOS?.webSkel || window.UI;
+        if (!webSkel?.defineComponent) {
+            throw new Error('WebSkel is not available for avatar settings.');
+        }
+        await webSkel.defineComponent({
+            name: 'avatar-settings-form',
+            type: 'components',
+            loadedTemplate: template,
+            loadedCSSs: [css],
+            presenterClassName: 'AvatarSettingsForm',
+            presenterModule: module
+        });
+    })().catch((error) => {
+        avatarSettingsFormRegistrationPromise = null;
+        throw error;
+    });
+    return avatarSettingsFormRegistrationPromise;
+}
+
 export class WebMeetDashboardModal {
     constructor(element, invalidate, hostContext) {
         this.element = element;
@@ -101,6 +148,10 @@ export class WebMeetDashboardModal {
             activeSettingsTab: 'media',
             webMeetAvatarOverride: null,
             webMeetAvatarOverrideDraft: null,
+            skipConnectedAvatarRepublishOnce: false,
+            axiFacePacks: [],
+            axiFaceGeneratedFaceStyles: [],
+            axiFaceGeneratedFacePalettes: [],
             avatarQuickMenuVisible: false,
             roomAvatarsByParticipantId: {},
             participantAudioSettings: {},
@@ -171,6 +222,8 @@ export class WebMeetDashboardModal {
             getCurrentUserId: () => String(this.currentActor?.id || '').trim()
         });
         this.meetingDetailsLoadSeq = 0;
+        this.meetingGetCache = new Map();
+        this.pendingWorkspaceRosterRefreshMeetingIds = new Set();
         this.cachedStableParticipantId = '';
         this.chatSidebarWidth = this.loadChatSidebarWidth();
         this.handleMediaDeviceChange = null;
@@ -180,12 +233,10 @@ export class WebMeetDashboardModal {
             audioOutput: []
         };
         this.presenceController = new MeetingPresenceController({
-            runTool: (name, args) => this.runPresenceTool(name, args),
             getContext: () => ({
                 meetingId: this.state.session?.meeting?.id,
                 participantId: this.state.session?.participantIdentity
             }),
-            shouldPing: () => this.state.roomState === 'Connected',
             buildLeaveRequest: ({ meetingId, participantId }) => {
                 const encodedMeetingId = encodeURIComponent(String(meetingId || '').trim());
                 if (!encodedMeetingId) return null;
@@ -290,6 +341,7 @@ export class WebMeetDashboardModal {
 
     async afterRender() {
         this.cacheElements();
+        await ensureAvatarSettingsFormRegistered();
         this.roomNotificationSoundService?.bindUnlockEvents?.(this.element);
         this.registerActions();
         this.registerChatSidebarResizer();
@@ -298,6 +350,7 @@ export class WebMeetDashboardModal {
         this.registerMediaSettingsInputHandlers();
         window.addEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         window.addEventListener('assistOS:avatar-settings-updated', this.handleAvatarSettingsUpdatedEvent);
+        this.avatarSettingsForm?.addEventListener('avatar-settings-change', (event) => this.handleWebMeetAvatarSettingsChange(event));
         this.renderMediaSettingsPanel();
         void this.refreshMediaDevices({ requestPermission: false, showToast: false });
         await this.bootstrap();
@@ -327,7 +380,9 @@ export class WebMeetDashboardModal {
                 'applyMediaSettings',
                 'applyWebMeetAvatarSettings',
                 'applyWebMeetAvatarPreset',
+                'applyWebMeetAvatarSourceMode',
                 'applyWebMeetAvatarStyle',
+                'applyWebMeetAvatarPack',
                 'resetWebMeetAvatarOverride',
                 'toggleAvatarQuickMenu',
                 'refreshMediaDevices',
@@ -412,7 +467,7 @@ export class WebMeetDashboardModal {
         this.meetingTitle = this.element.querySelector('#webmeetMeetingTitle');
         this.meetingMeta = this.element.querySelector('#webmeetMeetingMeta');
         this.joinStatus = this.element.querySelector('#webmeetJoinStatus');
-        this.activeRoomTitle = this.element.querySelector('#webmeetActiveRoomTitle');
+     //   this.activeRoomTitle = this.element.querySelector('#webmeetActiveRoomTitle');
         this.lifecycle = this.element.querySelector('#webmeetLifecycle');
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
@@ -444,6 +499,7 @@ export class WebMeetDashboardModal {
         this.settingsTabButtons = Array.from(this.element.querySelectorAll('[data-settings-tab]'));
         this.settingsTabPanels = Array.from(this.element.querySelectorAll('[data-settings-tab-panel]'));
         this.mediaSettingsActions = this.element.querySelector('#webmeetMediaSettingsActions');
+        this.avatarSettingsActions = this.element.querySelector('#webmeetAvatarSettingsActions');
         this.audioInputSelect = this.element.querySelector('#webmeetAudioInputSelect');
         this.videoInputSelect = this.element.querySelector('#webmeetVideoInputSelect');
         this.cameraQualitySelect = this.element.querySelector('#webmeetCameraQualitySelect');
@@ -461,22 +517,7 @@ export class WebMeetDashboardModal {
         this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
         this.roomNotificationSoundsInput = this.element.querySelector('#webmeetRoomNotificationSounds');
         this.avatarPresetSelect = this.element.querySelector('#webmeetAvatarPresetSelect');
-        this.avatarGeneratedInput = this.element.querySelector('#webmeetAvatarGenerated');
-        this.avatarAnimatedInput = this.element.querySelector('#webmeetAvatarAnimated');
-        this.avatarListenInput = this.element.querySelector('#webmeetAvatarListen');
-        this.avatarSrcInput = this.element.querySelector('#webmeetAvatarSrc');
-        this.avatarPackSrcInput = this.element.querySelector('#webmeetAvatarPackSrc');
-        this.avatarAssetModeSelect = this.element.querySelector('#webmeetAvatarAssetMode');
-        this.avatarEmotionSelect = this.element.querySelector('#webmeetAvatarEmotion');
-        this.avatarSizeInput = this.element.querySelector('#webmeetAvatarSize');
-        this.avatarThoughtInput = this.element.querySelector('#webmeetAvatarThought');
-        this.avatarThoughtModeSelect = this.element.querySelector('#webmeetAvatarThoughtMode');
-        this.avatarModeSelect = this.element.querySelector('#webmeetAvatarMode');
-        this.avatarShapeSelect = this.element.querySelector('#webmeetAvatarShape');
-        this.avatarThemeSelect = this.element.querySelector('#webmeetAvatarTheme');
-        this.avatarStyleSelect = this.element.querySelector('#webmeetAvatarStyle');
-        this.avatarPaletteSelect = this.element.querySelector('#webmeetAvatarPalette');
-        this.avatarComplexitySelect = this.element.querySelector('#webmeetAvatarComplexity');
+        this.avatarSettingsForm = this.element.querySelector('#webmeetAvatarSettingsForm');
         this.avatarPreview = this.element.querySelector('#webmeetAvatarPreview');
         this.avatarSourceLabel = this.element.querySelector('#webmeetAvatarSourceLabel');
         this.avatarQuickButton = this.element.querySelector('#webmeetAvatarQuickButton');

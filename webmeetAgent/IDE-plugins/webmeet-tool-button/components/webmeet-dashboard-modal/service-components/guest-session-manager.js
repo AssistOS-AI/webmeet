@@ -72,6 +72,9 @@ export class GuestSessionManager {
         this.renderAll();
         await this.loadParticipantsForMeetings();
         await this.loadMeetingDetails();
+        this.setState({
+            skipConnectedAvatarRepublishOnce: true
+        });
         await this.connectRoom();
     }
 

@@ -84,8 +84,12 @@ export function normalizeWebMeetAvatarOverride(value = null) {
         ? value.config
         : null;
     if (!config) return null;
+    const normalizedConfig = normalizeAvatarConfig({
+        ...config,
+        sourceMode: config.sourceMode || config['source-mode'] || ''
+    }, config.agentId || config.seed || 'profile:current-user');
     return {
-        config: normalizeAvatarConfig(config, config.agentId || config.seed || 'profile:current-user'),
+        config: normalizedConfig,
         updatedAt: String(value.updatedAt || new Date().toISOString())
     };
 }
@@ -124,7 +128,13 @@ export function clearWebMeetAvatarOverride(userId = '') {
 
 export function buildWebMeetAvatarSource({ profileAvatar = null, override = null, userId = '', participantId = '' } = {}) {
     const normalizedOverride = normalizeWebMeetAvatarOverride(override);
-    if (!normalizedOverride) return profileAvatar || null;
+    if (!normalizedOverride) {
+        const sourceKind = String(profileAvatar?.source?.kind || '').trim();
+        if (sourceKind === 'fallback' || sourceKind === 'error') {
+            return null;
+        }
+        return profileAvatar || null;
+    }
     const normalizedUserId = String(userId || profileAvatar?.user?.id || '').trim();
     const fallbackId = `profile:${normalizedUserId || participantId || 'current-user'}`;
     return {

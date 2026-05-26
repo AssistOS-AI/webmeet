@@ -51,12 +51,6 @@ export class AuthenticatedWebMeetRoomApi {
         });
     }
 
-    async presencePing({ meetingId = '', participantId = '' } = {}) {
-        return this.runTool('webmeet_meeting_presence_ping', {
-            meetingId: requireString(meetingId, 'meetingId'),
-            participantId: requireString(participantId, 'participantId')
-        });
-    }
 }
 
 export class GuestWebMeetRoomApi {
@@ -86,10 +80,6 @@ export class GuestWebMeetRoomApi {
             'guest-chat',
             { message: requireString(message, 'message') }
         );
-    }
-
-    async presencePing({ meetingId = '' } = {}) {
-        return this.callPublicGuestApi(requireString(meetingId, 'meetingId'), 'guest-presence', {});
     }
 
     async loadRoomState({ meetingId = '' } = {}) {

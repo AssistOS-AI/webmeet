@@ -99,28 +99,32 @@ describe('concurrent meeting mutations (lock + in-process queue)', () => {
         assert.deepEqual(transcriptTexts, expectedTranscripts);
     });
 
-    test('concurrent presence pings for the same meeting serialize correctly', async () => {
-        const { joinMeeting, pingMeetingPresence, getMeeting } = await import('../../lib/webmeetStore.mjs');
+    test('concurrent LiveKit-backed meeting reads serialize correctly', async () => {
+        const { joinMeeting, getMeeting } = await import('../../lib/webmeetStore.mjs');
+        const liveContext = {
+            ...context,
+            listLiveKitParticipants: async () => [{
+                identity: 'ping-participant',
+                name: 'Pinger',
+                attributes: {}
+            }]
+        };
         const meeting = await createTestMeeting(context);
 
-        await joinMeeting(context, {
+        await joinMeeting(liveContext, {
             meetingId: meeting.id,
             displayName: 'Pinger',
             participantId: 'ping-participant',
             authInfo: ADMIN_AUTH,
         });
 
-        const pings = Array.from({ length: 5 }, () =>
-            pingMeetingPresence(context, {
-                meetingId: meeting.id,
-                participantId: 'ping-participant',
-                skipAccessCheck: true,
-            })
+        const reads = Array.from({ length: 5 }, () =>
+            getMeeting(liveContext, meeting.id, ADMIN_AUTH, { includeParticipants: true })
         );
-        await Promise.all(pings);
+        await Promise.all(reads);
 
-        const meetingDetails = await getMeeting(context, meeting.id, ADMIN_AUTH, { includeParticipants: false });
-        assert.ok(meetingDetails, 'Meeting should still be readable after concurrent pings');
+        const meetingDetails = await getMeeting(liveContext, meeting.id, ADMIN_AUTH, { includeParticipants: false });
+        assert.ok(meetingDetails, 'Meeting should still be readable after concurrent LiveKit-backed reads');
     });
 
     test('child process chat appends serialize through the filesystem lock', async () => {

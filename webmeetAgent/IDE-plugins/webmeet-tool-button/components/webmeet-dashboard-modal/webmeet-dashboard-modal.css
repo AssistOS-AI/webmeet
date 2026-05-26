@@ -961,39 +961,31 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 .webmeet-media-settings {
     display: flex;
     flex-direction: column;
-    gap: 14px;
     position: absolute;
-    top: 15px;
-    left: 15px;
-    right: 15px;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1080px, calc(100% - 32px));
+    height: min(820px, calc(100% - 48px));
+    max-height: calc(100% - 48px);
     z-index: 9;
-    padding: 16px;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--surface) 92%, var(--file-exp-panel) 8%);
-    box-shadow: 0 16px 40px color-mix(in srgb, var(--bg) 42%, transparent);
-    overflow: auto;
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
 }
 
-.webmeet-settings-close-button {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: color-mix(in srgb, var(--surface) 84%, var(--file-exp-panel) 16%);
-    color: var(--text);
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+.webmeet-media-settings .modal-header {
+    flex: 0 0 auto;
 }
 
-.webmeet-settings-close-button:hover {
-    color: var(--accent);
-    border: none;
+.webmeet-media-settings .modal-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .webmeet-settings-tabs {
@@ -1001,9 +993,9 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     flex: 0 0 auto;
     flex-wrap: wrap;
     gap: 8px;
-    width: calc(100% - 44px);
     height: fit-content;
     padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
 }
 
 .webmeet-settings-tab {
@@ -1030,8 +1022,12 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 }
 
 .webmeet-settings-section {
-    display: grid;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
     gap: 12px;
+    min-height: 0;
+    overflow: auto;
 }
 
 .webmeet-settings-section[hidden] {
@@ -1130,7 +1126,7 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     border-radius: 8px;
     background: var(--surface);
     overflow: hidden;
-    margin: 84px auto;
+    margin: 0 auto;
 }
 
 .webmeet-avatar-preview axi-face {
@@ -1147,16 +1143,15 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 .webmeet-avatar-settings-fields {
     min-width: 0;
     display: grid;
-    gap: 25px;
-    grid-template-columns: 1fr 1fr 200px;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    align-items: start;
 }
-
-.webmeet-avatar-settings-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-    gap: 10px 25px;
+.preview-section{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
 }
-
 .webmeet-avatar-status {
     color: var(--text-soft);
     font-size: 0.78rem;
@@ -1167,6 +1162,12 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     flex-wrap: wrap;
     gap: 8px;
     justify-content: end;
+}
+
+@media (max-width: 860px) {
+    .webmeet-avatar-settings-fields {
+        grid-template-columns: 1fr;
+    }
 }
 
 .webmeet-setting-label {
@@ -1356,8 +1357,16 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    align-self: end;
-    height: fit-content;
+    flex-wrap: wrap;
+    min-height: 40px;
+    flex: 1 1 0;
+    align-items: center;
+}
+
+.webmeet-media-settings .modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 .webmeet-apply-media-settings-button {
@@ -2439,8 +2448,10 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     }
 
     .webmeet-media-settings {
-        padding: 10px;
-        gap: 10px;
+        top: 12px;
+        width: calc(100% - 16px);
+        height: calc(100% - 24px);
+        max-height: calc(100% - 24px);
     }
 
     .webmeet-settings-grid {

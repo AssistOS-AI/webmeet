@@ -246,7 +246,7 @@ test('applyRealtimeParticipantAvatar updates remote avatar size by participant o
                 }];
             }
         },
-        applyParticipantViewState(view) {
+        applyParticipantAvatarState(view) {
             appliedViews.push({ ...view });
         }
     };
@@ -309,7 +309,7 @@ test('applyRealtimeParticipantAvatar applies the latest LiveKit payload directly
                 }];
             }
         },
-        applyParticipantViewState(view) {
+        applyParticipantAvatarState(view) {
             appliedViews.push({ ...view });
         }
     };
@@ -847,6 +847,130 @@ test('syncParticipantsFromRoom preserves the current local room avatar during ro
     assert.deepEqual(appliedViews.get('participant-local').profileAvatar, freshLocalAvatar);
 });
 
+test('syncParticipantsFromRoom keeps the browser override as the active local avatar during media resyncs', () => {
+    const appliedViews = new Map();
+    const profileAvatar = {
+        enabled: true,
+        fallbackLetter: 'A',
+        config: {
+            agentId: 'profile:local:admin',
+            seed: 'profile:local:admin',
+            generated: true,
+            style: 'terminal',
+            emotion: 'neutral'
+        }
+    };
+    const liveKitAvatar = {
+        enabled: true,
+        fallbackLetter: 'A',
+        config: {
+            agentId: 'profile:local:admin',
+            seed: 'profile:local:admin',
+            generated: true,
+            style: 'sketch',
+            emotion: 'speaking'
+        }
+    };
+    const override = {
+        config: {
+            agentId: 'profile:local:admin',
+            seed: 'profile:local:admin',
+            generated: true,
+            sourceMode: 'generated',
+            style: 'emoji',
+            emotion: 'happy',
+            size: '88'
+        }
+    };
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Admin',
+                    profileAvatar
+                }
+            },
+            participants: [{
+                id: 'participant-local',
+                kind: 'local',
+                displayName: 'Admin',
+                userId: 'local:admin',
+                attributes: {
+                    webmeetUserId: 'local:admin'
+                },
+                profileAvatar
+            }],
+            webMeetAvatarOverride: override,
+            roomAvatarsByParticipantId: {
+                'participant-local': profileAvatar
+            },
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        webMeetRoom: {
+            buildAvatarProjection(sourceAvatar) {
+                return {
+                    enabled: sourceAvatar?.enabled !== false,
+                    fallbackLetter: sourceAvatar?.fallbackLetter || '',
+                    config: sourceAvatar?.config || null
+                };
+            }
+        },
+        getAgentForParticipant() {
+            return null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                profileAvatar: participant.profileAvatar || null
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView() {},
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Admin',
+            attributes: {
+                webmeetUserId: 'local:admin',
+                webmeetProfileAvatar: JSON.stringify(liveKitAvatar)
+            }
+        },
+        remoteParticipants: new Map()
+    };
+    const Track = {
+        Kind: { Audio: 'audio' },
+        Source: { Microphone: 'microphone' }
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, Track);
+
+    assert.equal(context.state.participants[0].profileAvatar.config.style, 'emoji');
+    assert.equal(context.state.participants[0].profileAvatar.config.emotion, 'happy');
+    assert.equal(appliedViews.get('participant-local').profileAvatar.config.style, 'emoji');
+});
+
 test('syncParticipantsFromRoom preserves a guest local avatar from the active session during media resyncs', () => {
     const appliedViews = new Map();
     const guestAvatar = {
@@ -1286,7 +1410,7 @@ test('applyRealtimeParticipantAvatar marks room avatar as projected state', () =
                 return [view];
             }
         },
-        applyParticipantViewState() {}
+        applyParticipantAvatarState() {}
     };
     const profileAvatar = {
         enabled: true,

@@ -23,6 +23,7 @@ import {
     updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantAvatar
 } from '../../lib/webmeetStore.mjs';
+import { meetingActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js';
 import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-session-methods.js';
 import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
 
@@ -770,6 +771,40 @@ test("authenticated dashboard join connects before publishing avatar best-effort
     assert.doesNotMatch(joinMethod, /payload\.avatar/);
 });
 
+test("initial room connect skips avatar republish and waits for the canonical publish flow", async () => {
+    const meetingActionSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+        ),
+        'utf8'
+    );
+    const roomSessionSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+        ),
+        'utf8'
+    );
+    const guestManagerSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/service-components/guest-session-manager.js'
+        ),
+        'utf8'
+    );
+
+    assert.match(meetingActionSource, /this\.state\.skipConnectedAvatarRepublishOnce = true;/);
+    assert.match(guestManagerSource, /skipConnectedAvatarRepublishOnce: true/);
+    const connected = roomSessionSource.slice(
+        roomSessionSource.indexOf('onConnected:'),
+        roomSessionSource.indexOf('onConnectError:', roomSessionSource.indexOf('onConnected:'))
+    );
+    assert.match(connected, /const skipConnectedAvatarRepublishOnce = Boolean\(this\.state\.skipConnectedAvatarRepublishOnce\)/);
+    assert.match(connected, /if \(!skipConnectedAvatarRepublishOnce\) \{/);
+    assert.match(connected, /await this\.webMeetRoom\.requestAvatarState\(\)/);
+});
+
 test("connected meeting view does not open room EventSource directly", async () => {
     const source = fs.readFileSync(
         path.resolve(
@@ -945,11 +980,34 @@ test("LiveKit participant connection republishes local avatar state for late joi
         source.indexOf('onConnected:'),
         source.indexOf('onConnectError:', source.indexOf('onConnected:'))
     );
-    assert.match(connected, /await this\.loadMeetingDetails\(\{ includeParticipants: false \}\)/);
     assert.match(connected, /this\.syncParticipantsFromRoom\(this\.room, Track\)/);
     assert.match(connected, /await this\.webMeetRoom\.republishAvatarProjection\(\)/);
     assert.match(connected, /await this\.webMeetRoom\.requestAvatarState\(\)/);
+    assert.doesNotMatch(connected, /loadMeetingDetails/);
+    assert.doesNotMatch(connected, /startPresenceHeartbeat/);
     assert.doesNotMatch(connected, /publishCurrentParticipantAvatar\?\.\(\{ force: true \}\)/);
+});
+
+test("local participant sync resolves the effective avatar before the first card render", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js'
+        ),
+        'utf8'
+    );
+    const method = source.slice(
+        source.indexOf('syncParticipantsFromRoom(room, Track) {'),
+        source.indexOf('\n    isParticipantSpeaking(', source.indexOf('syncParticipantsFromRoom(room, Track) {'))
+    );
+
+    assert.match(method, /buildWebMeetAvatarSource\(\{/);
+    assert.match(method, /override: this\.state\.webMeetAvatarOverride \|\| null/);
+    assert.match(method, /setRoomAvatarFor\(this, localIdentity, effectiveLocalAvatar\)/);
+    assert.ok(
+        method.indexOf('buildWebMeetAvatarSource({') < method.indexOf('const items = [{'),
+        'local effective avatar must be resolved before local participant items are rendered'
+    );
 });
 
 test("LiveKit participant attribute changes apply avatar projection before room resync", async () => {
@@ -1168,7 +1226,8 @@ test("WebMeet avatar override is browser scoped and participates in effective av
     assert.match(serviceSource, /window\?\.localStorage\?\.setItem/);
     assert.match(serviceSource, /window\?\.localStorage\?\.removeItem/);
     assert.match(serviceSource, /buildWebMeetAvatarSource/);
-    assert.match(serviceSource, /config: normalizeAvatarConfig\(config/);
+    assert.match(serviceSource, /sourceKind === 'fallback' \|\| sourceKind === 'error'/);
+    assert.match(serviceSource, /const normalizedConfig = normalizeAvatarConfig\(\{/);
     assert.match(serviceSource, /buildWebMeetAvatarOverrideConfig/);
     assert.match(serviceSource, /\.\.\.baseConfig,[\s\S]*\.\.\.patch/);
     assert.match(meetingActionSource, /resolveCurrentWebMeetAvatarSource/);
@@ -1183,6 +1242,8 @@ test("WebMeet avatar override is browser scoped and participates in effective av
     assert.match(meetingActionSource, /WebMeet avatar override saved\. Join a room to publish it\./);
     assert.match(meetingActionSource, /this\.renderParticipantLayout\?\.\(\)/);
     assert.match(meetingActionSource, /this\.renderMeetingList\?\.\(\)/);
+    assert.match(meetingActionSource, /applyWebMeetAvatarSourceMode/);
+    assert.match(serviceSource, /sourceMode/);
 });
 
 test("WebMeet avatar UI exposes settings and quick preset controls", async () => {
@@ -1216,11 +1277,23 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.match(html, /id="webmeetAudioVideoSettingsTabPanel"/);
     assert.match(html, /id="webmeetAvatarSettingsTabPanel"/);
     assert.match(html, /data-settings-tab-panel="avatar" hidden/);
+    assert.match(html, /id="webmeetMediaSettingsPanel" class="webmeet-media-settings webmeet-hidden"/);
+    assert.match(html, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-header"/);
+    assert.match(html, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-body"/);
+    assert.match(html, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-footer"/);
+    assert.match(html, /data-local-action="closeMediaSettings"/);
+    assert.match(html, /id="webmeetMediaSettingsActions"/);
+    assert.match(html, /id="webmeetAvatarSettingsActions"/);
     assert.match(css, /\.webmeet-settings-section\[hidden\][\s\S]*display: none !important/);
     assert.match(css, /\.webmeet-settings-tabs[\s\S]*border-bottom: 1px solid var\(--border\)/);
-    assert.match(html, /id="webmeetAvatarStyle"/);
-    assert.match(html, /id="webmeetAvatarSrc"/);
-    assert.match(html, /id="webmeetAvatarPackSrc"/);
+    assert.match(css, /\.webmeet-media-settings \.modal-body[\s\S]*overflow: hidden/);
+    assert.doesNotMatch(html, /webmeet-settings-close-button/);
+    assert.doesNotMatch(html, /class="gray-button" data-local-action="closeMediaSettings"/);
+    assert.match(html, /id="webmeetAvatarSettingsForm"/);
+    assert.match(html, /<avatar-settings-form/);
+    assert.doesNotMatch(html, /id="webmeetAvatarStyle"/);
+    assert.doesNotMatch(html, /id="webmeetAvatarSrc"/);
+    assert.doesNotMatch(html, /id="webmeetAvatarPackSrc"/);
     assert.match(html, /id="webmeetAvatarPreview"/);
     assert.match(html, /Reset to profile/);
     assert.match(html, /data-local-action="applyWebMeetAvatarSettings"/);
@@ -1232,13 +1305,118 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.match(renderSource, /avatarPreviewLoadPromise/);
     assert.match(renderSource, /data-local-action="applyWebMeetAvatarPreset"/);
     assert.match(renderSource, /data-avatar-preset/);
+    assert.match(renderSource, /data-local-action="applyWebMeetAvatarSourceMode"/);
+    assert.match(renderSource, /data-avatar-source-mode/);
     assert.match(renderSource, /data-local-action="applyWebMeetAvatarStyle"/);
     assert.match(renderSource, /data-avatar-style/);
+    assert.match(renderSource, /data-local-action="applyWebMeetAvatarPack"/);
+    assert.match(renderSource, /data-avatar-pack-src/);
+    assert.match(renderSource, /Avatar source/);
     assert.match(renderSource, /loadAxiFaceGeneratedFaceStyles/);
+    assert.match(renderSource, /loadAxiFaceGeneratedFacePalettes/);
+    assert.match(renderSource, /loadAxiFacePacks/);
     assert.match(renderSource, /getLoadedAxiFaceGeneratedFaceStyles/);
     assert.match(renderSource, /formatAvatarOptionLabel/);
+    assert.match(renderSource, /hiddenFields: \['seed'\]/);
     assert.doesNotMatch(renderSource, /AVATAR_STYLE_LABELS/);
     assert.doesNotMatch(renderSource, /resetWebMeetAvatarOverride">Profile avatar/);
+});
+
+test("Apply avatar closes the WebMeet settings panel after saving", async () => {
+    let closeCalls = 0;
+    let publishedOptions = null;
+    const context = {
+        state: {
+            webMeetAvatarOverrideDraft: {
+                config: {
+                    sourceMode: 'generated',
+                    style: 'robot-soft',
+                    seed: 'profile:current-user'
+                }
+            },
+            webMeetAvatarOverride: null
+        },
+        syncWebMeetAvatarSettingsDraftFromInputs() {},
+        setCurrentWebMeetAvatarOverride(draft) {
+            this.state.webMeetAvatarOverride = draft;
+        },
+        clearCurrentWebMeetAvatarOverride() {
+            this.state.webMeetAvatarOverride = null;
+        },
+        async publishCurrentParticipantAvatar(options) {
+            publishedOptions = options;
+            return true;
+        },
+        renderAvatarControls() {},
+        renderMeetingSummary() {},
+        renderParticipantLayout() {},
+        renderMeetingList() {},
+        closeMediaSettings() {
+            closeCalls += 1;
+        },
+        setError(message) {
+            this.lastError = message;
+        }
+    };
+
+    await meetingActionMethods.applyWebMeetAvatarSettings.call(context);
+
+    assert.deepEqual(publishedOptions, { force: true });
+    assert.equal(closeCalls, 1);
+    assert.equal(context.lastError, 'WebMeet avatar override applied and published.');
+});
+
+test("Apply pack switches the quick menu selection to the chosen AxiFace pack", async () => {
+    let publishedOptions = null;
+    const context = {
+        state: {
+            session: {
+                participantIdentity: 'room:local-user'
+            },
+            axiFacePacks: [
+                {
+                    id: 'robot-soft',
+                    label: 'Robot Soft',
+                    manifestSrc: '/services/explorer/axi-face/packs/robot-soft/manifest.json'
+                }
+            ],
+            webMeetAvatarOverride: null,
+            webMeetAvatarOverrideDraft: null,
+            avatarQuickMenuVisible: true
+        },
+        loadCurrentWebMeetAvatarOverride() {
+            return null;
+        },
+        getCurrentAvatarOverrideUserId() {
+            return 'local-user';
+        },
+        setCurrentWebMeetAvatarOverride(override) {
+            this.state.webMeetAvatarOverride = override;
+        },
+        async publishCurrentParticipantAvatar(options) {
+            publishedOptions = options;
+            return true;
+        },
+        renderAvatarControls() {},
+        renderMeetingSummary() {},
+        renderParticipantLayout() {},
+        renderMeetingList() {},
+        setError(message) {
+            this.lastError = message;
+        }
+    };
+
+    await meetingActionMethods.applyWebMeetAvatarPack.call(context, {
+        dataset: {
+            avatarPackSrc: '/services/explorer/axi-face/packs/robot-soft/manifest.json'
+        }
+    });
+
+    assert.deepEqual(publishedOptions, { force: true });
+    assert.equal(context.state.avatarQuickMenuVisible, false);
+    assert.equal(context.state.webMeetAvatarOverride.config.sourceMode, 'pack');
+    assert.equal(context.state.webMeetAvatarOverride.config.packSrc, '/services/explorer/axi-face/packs/robot-soft/manifest.json');
+    assert.equal(context.lastError, 'WebMeet avatar pack set to Robot Soft and published.');
 });
 
 test("dashboard guest session detection is safe before guest manager init", async () => {
@@ -1494,8 +1672,52 @@ test("workspace roster events reload meeting list before fetching meeting detail
     );
     const startIndex = source.indexOf('async refreshWorkspaceRosterFromEvent');
     const method = source.slice(startIndex, source.indexOf('\n    async refreshMeetingDetailsFromRealtimeEvent', startIndex));
-    assert.match(method, /await this\.loadMeetings\(\)/);
+    assert.match(method, /await this\.loadMeetings\(\{[\s\S]*preserveConnectedRoomRoster: true/);
     assert.doesNotMatch(method, /await this\.loadParticipantsForMeetings\(\)/);
+});
+
+test("workspace roster refresh batches affected meeting ids", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+        ),
+        'utf8'
+    );
+    const method = source.slice(
+        source.indexOf('scheduleWorkspaceRosterRefresh(meetingId = \'\')'),
+        source.indexOf('\n    clearWorkspaceMeetingsRefreshTimer', source.indexOf('scheduleWorkspaceRosterRefresh(meetingId = \'\')'))
+    );
+    assert.match(method, /this\.pendingWorkspaceRosterRefreshMeetingIds\.add\(normalizedMeetingId\)/);
+    assert.match(method, /this\.refreshWorkspaceRosterFromEvent\(rosterMeetingIds\)/);
+});
+
+test("workspace roster events for the connected room stay on the live roster path", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+        ),
+        'utf8'
+    );
+    const helper = source.slice(
+        source.indexOf('usesLiveRosterForWorkspaceEvent'),
+        source.indexOf('\n\n    bindRoomEventHandlers', source.indexOf('usesLiveRosterForWorkspaceEvent'))
+    );
+    const joinedHandler = source.slice(
+        source.indexOf('ROOM_EVENT_TYPES.PARTICIPANT_JOINED'),
+        source.indexOf('ROOM_EVENT_TYPES.PARTICIPANT_LEFT')
+    );
+    const leftHandler = source.slice(
+        source.indexOf('ROOM_EVENT_TYPES.PARTICIPANT_LEFT'),
+        source.indexOf('ROOM_EVENT_TYPES.AVATAR_PROJECTED')
+    );
+
+    assert.match(helper, /this\.room \|\| this\.state\.roomState === 'Connected'/);
+    assert.match(joinedHandler, /this\.usesLiveRosterForWorkspaceEvent\(parsed\.payload\)/);
+    assert.match(leftHandler, /this\.usesLiveRosterForWorkspaceEvent\(parsed\.payload\)/);
+    assert.match(joinedHandler, /this\.renderMeetingList\(\);\s+return;/);
+    assert.match(leftHandler, /this\.renderMeetingList\(\);\s+return;/);
 });
 
 test("meeting detail refresh skips participant snapshots while the room is connected", async () => {
@@ -1523,15 +1745,47 @@ test("meeting list refreshes do not require LiveKit participant snapshots", asyn
         'utf8'
     );
     const loadMeetingsMethod = source.slice(
-        source.indexOf('async loadMeetings()'),
-        source.indexOf('\n    async refreshMeetingsFromWorkspaceEvent', source.indexOf('async loadMeetings()'))
+        source.indexOf('async loadMeetings(options = {})'),
+        source.indexOf('\n    async refreshMeetingsFromWorkspaceEvent', source.indexOf('async loadMeetings(options = {})'))
     );
     const loadParticipantsMethod = source.slice(
-        source.indexOf('async loadParticipantsForMeetings()'),
-        source.indexOf('\n    async loadMeetingDetails', source.indexOf('async loadParticipantsForMeetings()'))
+        source.indexOf('async loadParticipantsForMeetings(options = {})'),
+        source.indexOf('\n    async loadMeetingDetails', source.indexOf('async loadParticipantsForMeetings(options = {})'))
     );
     assert.match(loadMeetingsMethod, /includeParticipants: false/);
     assert.match(loadParticipantsMethod, /includeParticipants: true/);
+    assert.match(loadParticipantsMethod, /preserveConnectedRoomRoster/);
+    assert.match(loadParticipantsMethod, /nextMap\[meeting\.id\] = connectedRoster/);
+});
+
+test("targeted roster refresh reuses cached non-target room rosters", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+        ),
+        'utf8'
+    );
+    const method = source.slice(
+        source.indexOf('async loadParticipantsForMeetings(options = {})'),
+        source.indexOf('\n    async loadMeetingDetails', source.indexOf('async loadParticipantsForMeetings(options = {})'))
+    );
+    assert.match(method, /const rosterMeetingIds = Array\.isArray\(options\.rosterMeetingIds\)/);
+    assert.match(method, /if \(!shouldRefreshMeeting && hasCachedRoster\) \{/);
+    assert.match(method, /if \(result\.status === 'fulfilled' && result\.value === null && previousRoster\.length\) \{/);
+});
+
+test("meeting_get requests go through the dashboard snapshot cache", async () => {
+    const source = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+        ),
+        'utf8'
+    );
+    assert.match(source, /async fetchMeetingSnapshot\(meetingId, options = \{\}\)/);
+    assert.match(source, /this\.fetchMeetingSnapshot\(meetingId, \{\s*includeParticipants: true,/);
+    assert.match(source, /this\.fetchMeetingSnapshot\(meeting\.id, \{ includeParticipants \}\)/);
 });
 
 test("missing meeting ids are removed from local roster state", async () => {

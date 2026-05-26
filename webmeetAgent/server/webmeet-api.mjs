@@ -21,8 +21,6 @@ import {
     isAdminAuthInfo,
     leaveGuestMeeting,
     leaveMeeting,
-    pingGuestMeetingPresence,
-    pingMeetingPresence,
     recordProfileAvatarUpdated,
     listMeetingAgents,
     listMeetingArtifacts,
@@ -246,10 +244,8 @@ function matchRoute(method, pathname) {
         ['meetings.guest.avatar', 'POST', /^\/api\/meetings\/([^/]+)\/guest-avatar$/],
         ['meetings.guest.state', 'POST', /^\/api\/meetings\/([^/]+)\/guest-state$/],
         ['meetings.guest.leave', 'POST', /^\/api\/meetings\/([^/]+)\/guest-leave$/],
-        ['meetings.guest.presence', 'POST', /^\/api\/meetings\/([^/]+)\/guest-presence$/],
         ['chat.guest.send', 'POST', /^\/api\/meetings\/([^/]+)\/guest-chat$/],
         ['meetings.leave', 'POST', /^\/api\/meetings\/([^/]+)\/leave$/],
-        ['meetings.presence', 'POST', /^\/api\/meetings\/([^/]+)\/presence$/],
         ['chat.list', 'GET', /^\/api\/meetings\/([^/]+)\/chat$/],
         ['chat.send', 'POST', /^\/api\/meetings\/([^/]+)\/chat$/],
         ['agents.list', 'GET', /^\/api\/meetings\/([^/]+)\/agents$/],
@@ -412,27 +408,9 @@ async function handler(req, res) {
             }));
             return;
         }
-        if (route.name === 'meetings.guest.presence') {
-            const body = await readBody(req);
-            json(res, 200, await pingGuestMeetingPresence(context, {
-                meetingId: route.params[0],
-                guestToken: String(body.guestToken || '').trim(),
-                participantId: String(body.participantId || '').trim()
-            }));
-            return;
-        }
         if (route.name === 'meetings.leave') {
             const body = await readBody(req);
             json(res, 200, await leaveMeeting(context, {
-                meetingId: route.params[0],
-                participantId: String(body.participantId || '').trim(),
-                authInfo: getRequestActor(req, body)
-            }));
-            return;
-        }
-        if (route.name === 'meetings.presence') {
-            const body = await readBody(req);
-            json(res, 200, await pingMeetingPresence(context, {
                 meetingId: route.params[0],
                 participantId: String(body.participantId || '').trim(),
                 authInfo: getRequestActor(req, body)

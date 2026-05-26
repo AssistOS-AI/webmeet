@@ -99,27 +99,7 @@ export const mediaSettingsMethods = {
         this.backgroundEffectSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.avatarPresetSelect?.addEventListener?.('change', handleAvatarPresetChange);
         this.avatarPresetSelect?.addEventListener?.('input', handleAvatarPresetChange);
-        [
-            this.avatarGeneratedInput,
-            this.avatarAnimatedInput,
-            this.avatarListenInput,
-            this.avatarSrcInput,
-            this.avatarPackSrcInput,
-            this.avatarAssetModeSelect,
-            this.avatarEmotionSelect,
-            this.avatarSizeInput,
-            this.avatarThoughtInput,
-            this.avatarThoughtModeSelect,
-            this.avatarModeSelect,
-            this.avatarShapeSelect,
-            this.avatarThemeSelect,
-            this.avatarStyleSelect,
-            this.avatarPaletteSelect,
-            this.avatarComplexitySelect
-        ].forEach((input) => {
-            input?.addEventListener?.('change', handleAvatarPresetChange);
-            input?.addEventListener?.('input', handleAvatarPresetChange);
-        });
+        this.avatarSettingsForm?.addEventListener?.('avatar-settings-change', handleAvatarPresetChange);
         this.backgroundBlurInput?.addEventListener?.('input', updateBackgroundBlurPreview);
         this.backgroundImageInput?.addEventListener?.('change', async (event) => {
             await this.handleBackgroundImageSelection(event?.target?.files);
@@ -792,6 +772,7 @@ export const mediaSettingsMethods = {
             panel.hidden = !isActive;
         }
         this.mediaSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
+        this.avatarSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'avatar');
         const syncSelectOptions = (selectElement, devices, selectedId, emptyLabel) => {
             if (!selectElement) return;
             const currentValue = String(selectElement.value || '').trim();

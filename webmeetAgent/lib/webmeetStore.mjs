@@ -753,11 +753,15 @@ const AVATAR_ALLOWED_THEMES = new Set(['light', 'dark', 'auto']);
 const AVATAR_ALLOWED_ASSET_MODES = new Set(['img', 'inline']);
 const AVATAR_ALLOWED_STYLES = new Set(['robot-soft', 'robot-minimal', 'sketch', 'emoji', 'terminal']);
 const AVATAR_ALLOWED_COMPLEXITIES = new Set(['', 'low', 'minimal', 'medium', 'default', 'high', 'detailed']);
+const AVATAR_ALLOWED_SOURCE_MODES = new Set(['generated', 'pack', 'svg']);
 const AVATAR_CONFIG_FIELDS = new Set([
     'agentId',
     'src',
     'packSrc',
     'pack_src',
+    'sourceMode',
+    'source_mode',
+    'source-mode',
     'assetMode',
     'asset_mode',
     'emotion',
@@ -828,11 +832,12 @@ function sanitizeParticipantAvatarConfig(config = null, fallbackId = '') {
     if (!AVATAR_ALLOWED_COMPLEXITIES.has(complexity) && !/^(0(\.\d+)?|1(\.0+)?)$/.test(complexity)) {
         throw new Error(`Invalid participant avatar complexity: ${complexity}`);
     }
-    return {
+    const normalized = {
         agentId: sanitizeAvatarText(source.agentId || fallback, 128),
         generated: source.generated !== false,
         src: sanitizeAvatarUrl(source.src, 'src'),
         packSrc: sanitizeAvatarUrl(source.packSrc || source.pack_src, 'packSrc'),
+        sourceMode: sanitizeAvatarEnum(source.sourceMode || source.source_mode || source['source-mode'], AVATAR_ALLOWED_SOURCE_MODES, '', 'sourceMode'),
         assetMode: sanitizeAvatarEnum(source.assetMode || source.asset_mode, AVATAR_ALLOWED_ASSET_MODES, 'img', 'assetMode'),
         emotion: sanitizeAvatarEnum(source.emotion, AVATAR_ALLOWED_EMOTIONS, 'neutral', 'emotion'),
         size: sanitizeAvatarSize(source.size),
@@ -848,6 +853,20 @@ function sanitizeParticipantAvatarConfig(config = null, fallbackId = '') {
         palette: sanitizeAvatarText(source.palette || 'default', 64),
         complexity
     };
+    if (normalized.src) {
+        normalized.sourceMode = 'svg';
+        normalized.generated = false;
+        normalized.packSrc = '';
+    } else if (normalized.packSrc) {
+        normalized.sourceMode = 'pack';
+        normalized.generated = false;
+    } else {
+        normalized.sourceMode = normalized.sourceMode || (normalized.generated === false ? 'pack' : 'generated');
+        if (normalized.sourceMode === 'generated') {
+            normalized.generated = true;
+        }
+    }
+    return normalized;
 }
 
 function createDefaultParticipantAvatarConfig(fallbackId = '') {
@@ -1698,14 +1717,6 @@ export async function getGuestMeetingDetails(context, { meetingId, guestToken, p
     };
 }
 
-export async function pingGuestMeetingPresence(context, { meetingId, guestToken, participantId }) {
-    const record = await loadMeetingRecord(context, meetingId);
-    assertGuestMeetingAccess(record, guestToken);
-    const payload = decryptMeetingPayload(context, record);
-    assertGuestParticipant(payload, participantId);
-    return pingMeetingPresence(context, { meetingId, participantId, skipAccessCheck: true });
-}
-
 export async function leaveGuestMeeting(context, { meetingId, guestToken, participantId }) {
     const record = await loadMeetingRecord(context, meetingId);
     assertGuestMeetingAccess(record, guestToken);
@@ -1918,33 +1929,6 @@ export async function leaveMeeting(context, { meetingId, participantId, authInfo
         removed: Boolean(removedParticipant),
         participantId: targetParticipantId,
         detachedAgents
-    };
-}
-
-export async function pingMeetingPresence(context, { meetingId, participantId, authInfo = null, skipAccessCheck = false }) {
-    const targetParticipantId = String(participantId || '').trim();
-    if (!targetParticipantId) {
-        throw new Error('Missing participantId.');
-    }
-    const pingAt = nowIso();
-    let touched = false;
-    await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
-        cleanupStaleMembers(context, meetingId, payload, stageEvent);
-        if (!skipAccessCheck) {
-            assertParticipantAccess(payload, targetParticipantId, authInfo);
-        }
-        const participant = (Array.isArray(payload.members) ? payload.members : []).find((entry) => (
-            String(entry?.id || '').trim() === targetParticipantId
-        )) || null;
-        if (!participant) return;
-        participant.lastSeenAt = pingAt;
-        touched = true;
-    });
-    return {
-        ok: true,
-        touched,
-        participantId: targetParticipantId,
-        lastSeenAt: pingAt
     };
 }
 

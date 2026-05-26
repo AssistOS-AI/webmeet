@@ -314,12 +314,21 @@ export class WebMeetRoom extends EventTarget {
     }
 
     buildAvatarProjection(sourceAvatar = null, participantId = '') {
-        const source = sourceAvatar && typeof sourceAvatar === 'object' ? sourceAvatar : {};
+        if (!sourceAvatar || typeof sourceAvatar !== 'object' || Array.isArray(sourceAvatar)) {
+            return {
+                enabled: false,
+                config: null,
+                fallbackLetter: ''
+            };
+        }
+        const source = sourceAvatar;
         const profileUserId = String(source.user?.id || '').trim();
         const fallbackAvatarId = `profile:${profileUserId || participantId}`;
         return {
             enabled: source.enabled !== false,
-            config: normalizeAvatarConfig(source.config, fallbackAvatarId),
+            config: source.enabled !== false && source.config && typeof source.config === 'object'
+                ? normalizeAvatarConfig(source.config, fallbackAvatarId)
+                : null,
             fallbackLetter: source.fallbackLetter || ''
         };
     }
@@ -440,14 +449,6 @@ export class WebMeetRoom extends EventTarget {
         return this.getApi().sendChat({
             meetingId: requireString(targetMeetingId, 'meetingId'),
             message: requireString(message, 'message')
-        });
-    }
-
-    async presencePing() {
-        const state = this.getState();
-        return this.getApi().presencePing({
-            meetingId: requireString(state.meetingId, 'meetingId'),
-            participantId: requireString(state.participantId, 'participantId')
         });
     }
 

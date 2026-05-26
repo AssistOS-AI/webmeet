@@ -1,4 +1,5 @@
 import { isMicrophonePublication } from '../services/microphone-publication.js';
+import { buildWebMeetAvatarSource } from '../services/webmeet-avatar-override.js';
 
 function getParticipantUserIdFromParticipant(participant = null) {
     return String(
@@ -62,7 +63,7 @@ function applyProfileAvatarToView(owner, view, profileAvatar) {
     view.avatarFallbackLetter = avatar.fallbackLetter || view.avatarFallbackLetter || '';
     view.avatarResolved = true;
     view.avatarSource = 'projected';
-    owner.applyParticipantViewState(view);
+    owner.applyParticipantAvatarState?.(view);
     return true;
 }
 
@@ -147,11 +148,14 @@ export const participantViewMethods = {
         }
         let changed = false;
         for (const id of matchedParticipantIds) {
-            changed = setRoomAvatarFor(this, id, profileAvatar) || changed;
+            const roomAvatarChanged = setRoomAvatarFor(this, id, profileAvatar);
+            changed = roomAvatarChanged || changed;
             const view = this.participantLayoutController?.getParticipantView?.(id)
                 || (this.participantLayoutController?.getViews?.() || [])
                     .find((entry) => String(entry?.id || '').trim() === id);
-            changed = applyProfileAvatarToView(this, view, profileAvatar) || changed;
+            if (roomAvatarChanged || view?.avatarSource !== 'projected') {
+                changed = applyProfileAvatarToView(this, view, profileAvatar) || changed;
+            }
         }
         return changed;
     },
@@ -233,8 +237,18 @@ export const participantViewMethods = {
         this.participantLayoutController.applyParticipantViewState(view);
     },
 
+    applyParticipantAvatarState(view) {
+        this.participantLayoutController.applyParticipantAvatarState(view);
+    },
+
     upsertParticipantView(participant) {
-        return this.participantLayoutController.upsertParticipantView(participant);
+        const participantId = String(participant?.identity || participant?.id || '').trim();
+        const profileAvatar = normalizeProfileAvatar(participant?.profileAvatar)
+            || getRoomAvatarFor(this, participantId);
+        return this.participantLayoutController.upsertParticipantView({
+            ...(participant && typeof participant === 'object' ? participant : {}),
+            ...(profileAvatar ? { profileAvatar } : {})
+        });
     },
 
     renderParticipantLayout() {
@@ -379,10 +393,6 @@ export const participantViewMethods = {
                 }
             }
             : (storedLocalParticipant || (sessionMatchesLocal ? sessionParticipant : null) || null);
-        const localLiveKitAvatar = parseLiveKitProfileAvatar(localAttributes);
-        if (localLiveKitAvatar && !getRoomAvatarFor(this, localIdentity)) {
-            setRoomAvatarFor(this, localIdentity, localLiveKitAvatar);
-        }
         const localUserId = String(
             localStoredParticipant?.userId
             || localAttributes.ploinkyUserId
@@ -391,6 +401,26 @@ export const participantViewMethods = {
             || localAttributes.webmeetUserId
             || ''
         ).trim();
+        const localProfileSourceAvatar = normalizeProfileAvatar(
+            localStoredParticipant?.profileAvatar
+            || sessionParticipant?.profileAvatar
+        );
+        const localLiveKitAvatar = parseLiveKitProfileAvatar(localAttributes);
+        if (localIdentity) {
+            const currentLocalRoomAvatar = getRoomAvatarFor(this, localIdentity);
+            const localSourceAvatar = buildWebMeetAvatarSource({
+                profileAvatar: localProfileSourceAvatar || localLiveKitAvatar || currentLocalRoomAvatar,
+                override: this.state.webMeetAvatarOverride || null,
+                userId: localUserId,
+                participantId: localIdentity
+            });
+            const effectiveLocalAvatar = this.webMeetRoom?.buildAvatarProjection
+                ? this.webMeetRoom.buildAvatarProjection(localSourceAvatar, localIdentity)
+                : localSourceAvatar;
+            if (effectiveLocalAvatar) {
+                setRoomAvatarFor(this, localIdentity, effectiveLocalAvatar);
+            }
+        }
         const items = [{
             id: localIdentity,
             identity: localIdentity,

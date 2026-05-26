@@ -35,7 +35,7 @@ Some of this may be intentional room-state sharing, and the dashboard does not v
 
 The commits introduce a much clearer `WebMeetRoom` concept and adapter set. The dashboard now instantiates `WebMeetRoomLiveKit` and `WebMeetRoom` (`webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js:123`, `webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js:133`). However, `WebMeetRoom` is currently constructed with `livekit: null`, so it falls back to controller methods `connectRoom()` and `disconnectRoom()` (`webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js:133`, `webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js:145`).
 
-The large LiveKit hook body still lives in `room-session-methods.js` and still owns track rendering, participant sync, data-channel dispatch, participant attributes, presence heartbeat, and media state (`webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js:316`). That is not a regression; the new split is better. But the architecture is not yet "Room owns all selected-room runtime" in the strong sense. It is "Room owns lifecycle/API/event/state contracts, while dashboard controllers still own media and DOM projection."
+The large LiveKit hook body still lives in `room-session-methods.js` and still owns track rendering, participant sync, data-channel dispatch, participant attributes, and media state (`webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js:316`). That is not a regression; the new split is better. But the architecture is not yet "Room owns all selected-room runtime" in the strong sense. It is "Room owns lifecycle/API/event/state contracts, while dashboard controllers still own media and DOM projection."
 
 ### P3: `webmeet_chat_send` schema still asks for fields the tool ignores
 
@@ -188,7 +188,6 @@ The main remaining coupling is that `WebMeetRoomLiveKit` is an adapter for conne
 - Active speaker state.
 - Avatar republish and request behavior.
 - Data-channel event decoding and forwarding.
-- Presence heartbeat start.
 - Meeting-detail refresh after LiveKit connect.
 
 That hook body begins at `room-session-methods.js:316` and runs through the connected/error handling at `room-session-methods.js:493`. This is a reasonable intermediate state because the DOM-heavy pieces belong in UI controllers. If the target is a reusable room runtime, the next step is to move non-DOM room semantics out of the hook body and leave only actual rendering operations in the dashboard.

@@ -36,14 +36,16 @@ Admin users create, rename, delete, expose guest links, start and stop recording
 
 Guest room creation must store a random `guestToken` in the meeting metadata. The public URL has the form `/public-services/webmeet/guest?room=<meetingId>&token=<guestToken>`. Possession of the token is necessary but not sufficient: the request must also arrive through the Ploinky manifest-declared guest HTTP service, and `webmeet-public-proxy.mjs` must verify the router-issued `__http_service__` invocation token with a guest role before serving guest pages or forwarding guest APIs.
 
-The guest public API is intentionally narrow. It may expose guest join, room state for the joined guest identity, leave, presence, chat, avatar publication for that participant, and transcript download with guest token plus participant id. It must not expose Explorer, generic MCP access, protected WebMeet APIs, room management, recording controls, AI controls, or administrative artifacts. The guest room-state response (`getGuestMeetingDetails`) returns exactly `{meeting, participants, chat}`. It must not include transcript segments, artifacts, recordings, tasks, decisions, or agent dispatch metadata.
+The guest public API is intentionally narrow. It may expose guest join, room state for the joined guest identity, leave, chat, avatar publication for that participant, and transcript download with guest token plus participant id. It must not expose Explorer, generic MCP access, protected WebMeet APIs, room management, recording controls, AI controls, presence ping endpoints, or administrative artifacts. The guest room-state response (`getGuestMeetingDetails`) returns exactly `{meeting, participants, chat}`. It must not include transcript segments, artifacts, recordings, tasks, decisions, or agent dispatch metadata.
 
 After join, WebMeet keeps two participant views:
 
-- Durable WebMeet presence in the encrypted meeting payload, updated by join, heartbeat, leave, and stale-presence cleanup.
+- Durable WebMeet membership in the encrypted meeting payload, updated by join, explicit leave, LiveKit reconciliation, and stale cleanup. Browser room UI must not drive the connected participant list through presence timers; the connected roster is LiveKit state.
 - Live room presence in LiveKit, surfaced through participant, publication, subscription, mute, active-speaker, data-channel, participant-attribute, and disconnect events.
 
 A participant that completed the WebMeet join step but has not appeared in LiveKit yet must remain in durable membership until LiveKit exposes that identity or normal presence TTL cleanup removes it. A room-detail reconciliation must not drop a pending member only because another viewer refreshes before the media-plane connection finishes.
+
+When a local participant connects to LiveKit, WebMeet must not publish a provisional room avatar and then a second canonical avatar for the same join. Initial join uses the already resolved effective avatar (WebMeet override first, then saved profile avatar, then fallback) and skips the generic reconnect republish path once, so participant cards render only the final resolved avatar unless the user explicitly changes avatar settings or quick actions.
 
 Recording files are not part of the encrypted meeting JSON. MP4 outputs live under `/data/recordings/<meetingId>/<recordingId>.mp4`, backed by `.ploinky/data/webmeet/recordings`. `webmeetAgent` persists recording metadata and artifact entries in the encrypted payload, while LiveKit Egress writes the media file.
 

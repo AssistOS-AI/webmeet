@@ -7,6 +7,15 @@ import {
 import { ROOM_EVENT_TYPES } from '../services/room/webmeet-room-events.js';
 
 export const dashboardRealtimeMethods = {
+    usesLiveRosterForWorkspaceEvent(payload = {}) {
+        const eventMeetingId = String(payload?.meetingId || '').trim();
+        const activeMeetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+        if (!eventMeetingId || !activeMeetingId || eventMeetingId !== activeMeetingId) {
+            return false;
+        }
+        return Boolean(this.room || this.state.roomState === 'Connected');
+    },
+
     bindRoomEventHandlers() {
         if (this.roomEventHandlersBound) {
             return;
@@ -18,7 +27,11 @@ export const dashboardRealtimeMethods = {
             const parsed = detail.parsed || null;
             if (!parsed) return;
             if (source === 'authenticated-workspace') {
-                this.scheduleWorkspaceRosterRefresh();
+                if (this.usesLiveRosterForWorkspaceEvent(parsed.payload)) {
+                    this.renderMeetingList();
+                    return;
+                }
+                this.scheduleWorkspaceRosterRefresh(parsed.payload?.meetingId);
                 return;
             }
             void this.handleParticipantRosterEvent({ data: parsed.encoded });
@@ -29,7 +42,11 @@ export const dashboardRealtimeMethods = {
             const parsed = detail.parsed || null;
             if (!parsed) return;
             if (source === 'authenticated-workspace') {
-                this.scheduleWorkspaceRosterRefresh();
+                if (this.usesLiveRosterForWorkspaceEvent(parsed.payload)) {
+                    this.renderMeetingList();
+                    return;
+                }
+                this.scheduleWorkspaceRosterRefresh(parsed.payload?.meetingId);
                 return;
             }
             void this.handleParticipantRosterEvent({ data: parsed.encoded });
@@ -73,7 +90,7 @@ export const dashboardRealtimeMethods = {
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.AGENT_ATTACHED, (event) => {
             const source = String(event?.detail?.source || '').trim();
             if (source === 'authenticated-workspace') {
-                this.scheduleWorkspaceRosterRefresh();
+                this.scheduleWorkspaceRosterRefresh(event?.detail?.parsed?.payload?.meetingId);
                 return;
             }
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());

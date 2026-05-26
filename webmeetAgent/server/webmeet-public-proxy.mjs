@@ -14,6 +14,7 @@ const REPO_NAME = String(process.env.PLOINKY_REPO_NAME || 'AchillesIDE').trim() 
 const PLUGIN_DIR = path.join(ROOT_DIR, 'IDE-plugins/webmeet-tool-button');
 const EXPLORER_DIR = path.join(WORKSPACE_ROOT, '.ploinky', 'repos', REPO_NAME, 'explorer');
 const EXPLORER_WEBSKEL_DIR = path.join(WORKSPACE_ROOT, '.ploinky', 'repos', REPO_NAME, 'explorer', 'WebSkel');
+const SHARED_UI_DIR = path.join(WORKSPACE_ROOT, '.ploinky', 'repos', REPO_NAME, 'shared', 'ui');
 const EXPLORER_SHARED_STYLE_FILES = [
     path.join(EXPLORER_DIR, 'styles.css'),
     path.join(EXPLORER_DIR, 'plugins.css')
@@ -24,6 +25,7 @@ const PUBLIC_ASSET_ROOTS = [
     path.join(PLUGIN_DIR, 'components/webmeet-participant-audio-modal'),
     path.join(PLUGIN_DIR, 'vendor'),
     EXPLORER_WEBSKEL_DIR,
+    SHARED_UI_DIR,
     ...EXPLORER_SHARED_STYLE_FILES
 ];
 const PUBLIC_SERVICE_PREFIX = '/public-services/webmeet/';
@@ -745,6 +747,11 @@ async function resolveAssetPath(pathname) {
             EXPLORER_WEBSKEL_DIR,
             relativePath.replace(/^explorer\/WebSkel\//, '')
         ));
+    } else if (relativePath.startsWith('shared/ui/')) {
+        candidates.push(path.join(
+            SHARED_UI_DIR,
+            relativePath.replace(/^shared\/ui\//, '')
+        ));
     } else if (relativePath === 'explorer/styles.css' || relativePath === 'explorer/plugins.css') {
         candidates.push(path.join(
             EXPLORER_DIR,
@@ -893,7 +900,6 @@ function isAllowedPublicApi(req, pathname) {
         /^\/api\/meetings\/[^/]+\/join-guest$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-state$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-leave$/.test(pathname)
-        || /^\/api\/meetings\/[^/]+\/guest-presence$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-chat$/.test(pathname)
         || /^\/api\/meetings\/[^/]+\/guest-avatar$/.test(pathname)
     );
@@ -903,7 +909,7 @@ function isAllowedAuthenticatedApi(req, pathname) {
     // Allow all /api/* routes for authenticated users (via x-ploinky-auth-info header)
     if (!pathname.startsWith('/api/')) return false;
     // Exclude guest-only routes that require special handling
-    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-presence|guest-chat|guest-avatar)$/;
+    const guestOnlyPattern = /^\/api\/meetings\/[^/]+\/(join-guest|guest-state|guest-leave|guest-chat|guest-avatar)$/;
     if (guestOnlyPattern.test(pathname)) return false;
     return true;
 }

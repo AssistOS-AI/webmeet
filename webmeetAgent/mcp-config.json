@@ -116,18 +116,6 @@
       "env": { "TOOL_NAME": "webmeet_meeting_leave" }
     },
     {
-      "name": "webmeet_meeting_presence_ping",
-      "title": "WebMeet Presence Ping",
-      "description": "Update participant lastSeenAt for active presence.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
-        "participantId": { "type": "string", "optional": false }
-      },
-      "env": { "TOOL_NAME": "webmeet_meeting_presence_ping" }
-    },
-    {
       "name": "webmeet_workspace_events_list",
       "title": "WebMeet List Workspace Events",
       "description": "List authenticated workspace events after an optional event id.",

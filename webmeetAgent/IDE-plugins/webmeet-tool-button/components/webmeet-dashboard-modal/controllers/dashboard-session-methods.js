@@ -4,9 +4,6 @@ import {
     isAdminActor,
     readGuestSessionFromUrl
 } from '../services/dashboard-utils.js';
-import { runWebMeetTool } from '../services/webmeet-api-client.js';
-
-const runTool = runWebMeetTool;
 
 export const dashboardSessionMethods = {
     async bootstrap() {
@@ -59,32 +56,12 @@ export const dashboardSessionMethods = {
         return this.guestManager.callPublicGuestApi(meetingId, action, body);
     },
 
-    async runPresenceTool(name, args = {}) {
-        if (!this.isGuestSession()) {
-            return runTool(name, args);
-        }
-        if (name !== 'webmeet_meeting_presence_ping') return {};
-        return this.webMeetRoom.presencePing();
-    },
-
     registerWindowPresenceHandlers() {
         this.presenceController.registerWindowHandlers();
     },
 
     unregisterWindowPresenceHandlers() {
         this.presenceController.unregisterWindowHandlers();
-    },
-
-    async sendPresencePing() {
-        await this.presenceController.sendPresencePing();
-    },
-
-    startPresenceHeartbeat() {
-        this.presenceController.startHeartbeat();
-    },
-
-    stopPresenceHeartbeat() {
-        this.presenceController.stopHeartbeat();
     },
 
     sendLeaveKeepalive(meetingId, participantId) {

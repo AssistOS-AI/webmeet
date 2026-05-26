@@ -269,7 +269,7 @@ Keep this split:
 
 | Owner | Should own |
 | --- | --- |
-| `WebMeetRoom` | room identity, selected-room lifecycle, API calls, presence heartbeat, WebMeet event validation, chat send, avatar projection protocol, participant semantic updates |
+| `WebMeetRoom` | room identity, selected-room lifecycle, API calls, WebMeet event validation, chat send, avatar projection protocol, participant semantic updates |
 | `WebMeetRoomLiveKit` | LiveKit client creation, connect/disconnect, raw LiveKit event binding, media option setup |
 | Dashboard controllers | DOM rendering, media track element attachment/removal, buttons, modals, layout, user feedback |
 | `WebMeetRoomState` | serializable state only, no DOM and no network |
@@ -280,24 +280,21 @@ Keep this split:
 2. Change `WebMeetRoom.connectLiveKit()` to use its current session and to accept or construct a hook adapter.
 3. Move data-channel event decoding and validation fully into `WebMeetRoom`.
 4. Move avatar republish/request orchestration into `WebMeetRoom`.
-5. Move presence heartbeat into `WebMeetRoom`, with dashboard only rendering connection state.
-6. Move participant attribute parsing into `WebMeetRoom` or a DOM-free participant projection helper.
-7. Leave track rendering and media element management in the dashboard.
-8. Shrink `room-session-methods.js` so it mostly adapts room events to DOM operations.
-9. Add tests around room-level handling of:
+5. Move participant attribute parsing into `WebMeetRoom` or a DOM-free participant projection helper.
+6. Leave track rendering and media element management in the dashboard.
+7. Shrink `room-session-methods.js` so it mostly adapts room events to DOM operations.
+8. Add tests around room-level handling of:
    - LiveKit data-channel chat event,
    - avatar request and projection,
    - participant attributes,
-   - presence heartbeat start/stop,
    - disconnect cleanup.
 
 ### Suggested Refactor Sequence
 
 1. Data-channel decode/validate move.
 2. Avatar projection orchestration move.
-3. Presence heartbeat move.
-4. Participant attribute projection move.
-5. LiveKit adapter injection cleanup.
+3. Participant attribute projection move.
+4. LiveKit adapter injection cleanup.
 
 Each step should be separately testable and should keep the dashboard working.
 
