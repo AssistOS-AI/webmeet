@@ -21,9 +21,9 @@ A WebMeet room is two related objects:
 | WebMeet meeting record | Durable application object with a `meeting_<uuid>` id, workspace id, title, `roomType`, derived `roomName`, optional `guestToken`, status, expiration, wrapped data-encryption key, and encrypted payload. | `/data/meetings/*.json`, backed by `.ploinky/data/webmeetAgent/data/meetings/*.json`. |
 | LiveKit room | Media room name derived as `${WEBMEET_ROOM_PREFIX || "webmeet"}-${workspaceId}-${meetingId}`, sanitized and capped for LiveKit. | LiveKit runtime state, coordinated through Redis while active. |
 
-The encrypted WebMeet payload contains members, chat messages, transcript segments, recordings, artifacts, tasks, decisions, AI agent metadata, and event snapshots. Meeting payloads use AES-256-GCM with per-meeting data keys wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. That key must be derived from `PLOINKY_DERIVED_MASTER_KEY` through the manifest and must be distinct from the raw derived master key. The store does not support legacy meeting-key fallbacks.
+The encrypted WebMeet payload contains members, chat messages, transcript segments, recordings, artifacts, tasks, decisions, AI agent metadata, and event snapshots. Meeting payloads use AES-256-GCM with per-meeting data keys wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. That key currently uses the manifest `derive: "derived-master"` compatibility path so existing encrypted meeting records do not rotate before an explicit generated-secret migration verifies value equivalence. The store does not support automatic legacy meeting-key fallback.
 
-WebMeet store operations are asynchronous. Meeting records, workspace records, and event logs are read and written through promise-based filesystem APIs. Record writes keep the temp-file plus rename pattern for atomic replacement. Meeting mutations are serialized in two layers: an in-process per-meeting promise queue prevents interleaving within one Node process, and a cross-process filesystem lock (`<meetingLocksDir>/<meetingId>.lock/`) prevents interleaving across concurrent MCP tool subprocesses. The lock is acquired via atomic `fs.mkdir()`, writes an `owner.json` with pid, hostname, timestamp, and a random token, retries with jittered backoff, and cleans up stale locks when their age exceeds a configurable TTL (`WEBMEET_LOCK_TIMEOUT_MS`, `WEBMEET_LOCK_STALE_TTL_MS`). Release verifies token ownership before removing the lock directory.
+WebMeet store operations are asynchronous. Meeting records, workspace records, and event logs are read and written through promise-based filesystem APIs. Record writes keep the temp-file plus rename pattern for atomic replacement. Meeting payload writes, meeting deletion, expired-meeting purge, and LiveKit participant reconciliation are serialized in two layers: an in-process per-meeting promise queue prevents interleaving within one Node process, and a cross-process filesystem lock (`<meetingLocksDir>/<meetingId>.lock`) prevents interleaving across concurrent MCP tool subprocesses. The lock is acquired by atomically creating the lock file with `open(..., "wx")`, writing pid, hostname, timestamp, meeting id, and a random token into the file, retrying with jittered backoff, and cleaning up stale locks only after the lock file itself is older than the configured stale TTL (`WEBMEET_LOCK_TIMEOUT_MS`, `WEBMEET_LOCK_STALE_TTL_MS`) and the recorded same-host owner process is not alive. Release verifies token ownership before removing the lock file.
 
 `webmeetAgent` supports two room types:
 
@@ -65,6 +65,16 @@ Router guest identity proves that the request came through the declared guest HT
 
 Response:
 Recordings are large binary Egress outputs written through the shared recording volume. The encrypted meeting payload stores metadata and artifact references, not the MP4 bytes. Access control for the file depends on workspace filesystem/container exposure and WebMeet artifact policy.
+
+### Question #4: Why keep `PLOINKY_WEBMEET_MASTER_KEY` on `derive: "derived-master"` for now?
+
+Response:
+`PLOINKY_WEBMEET_MASTER_KEY` protects existing encrypted meeting payloads. Although Ploinky now prefers `generatedSecret: true` for per-agent generated secrets, rotating this value without proving derivation equivalence would make historical meeting records unreadable. WebMeet can migrate to `generatedSecret: true` only in a dedicated change that verifies the derived value or provides an explicit data migration/fallback.
+
+### Question #5: Why use a lock file rather than a lock directory with an owner file?
+
+Response:
+The previous lock-directory design created the directory before writing `owner.json`, so a competing process could observe a fresh but ownerless lock and incorrectly remove it as stale. A single atomically-created lock file removes that owner-write window. Stale cleanup still waits for file age to exceed the TTL and refuses to clean up a same-host owner process that is still alive.
 
 ## Conclusion
 

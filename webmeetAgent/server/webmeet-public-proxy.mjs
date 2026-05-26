@@ -53,7 +53,7 @@ const CONTENT_TYPES = new Map([
 ]);
 
 const handlePublicAxiFaceAssetRequest = createAxiFaceAssetsHttpHandler({
-    fs: fs.promises,
+    fs,
     path,
     workspaceRoot: WORKSPACE_ROOT
 });

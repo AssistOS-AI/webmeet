@@ -45,7 +45,7 @@ Agent-local contract:
 - Persistent state: Meeting data lives under `/data`; recordings live under `/data/recordings`; LiveKit secrets stay server-side.
 - Volumes: `.ploinky/data/webmeetAgent/data:/data` and `.ploinky/data/webmeet/recordings:/data/recordings`.
 - Dependencies: Base startup uses Ploinky's shared prepared dependency cache. Optional native LiveKit worker dependencies belong to `webmeetLivekitAiAgent`.
-- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` uses `generatedSecret: true` as a per-agent generated secret. LiveKit API key/secret, TURN password, and `WEBMEET_AGENT_INTERNAL_TOKEN` remain as explicit `derive: "derived-master"` shared derivations because they are consumed by sibling agents (`liveKitServerAgent`, `webmeetLivekitAiAgent`). These shared derivations are legacy exceptions; the target migration is for `liveKitServerAgent` to own raw LiveKit and TURN credentials and expose owner-mediated operations, and for `WEBMEET_AGENT_INTERNAL_TOKEN` to be replaced by router/secure-wire identity.
+- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` remains on `derive: "derived-master"` until a dedicated encrypted-data migration verifies that switching to `generatedSecret: true` preserves the same value or safely rewraps existing meeting records. LiveKit API key/secret, TURN password, and `WEBMEET_AGENT_INTERNAL_TOKEN` also remain as explicit `derive: "derived-master"` shared derivations because they are consumed by sibling agents (`liveKitServerAgent`, `webmeetLivekitAiAgent`). These shared derivations are legacy exceptions; the target migration is for `liveKitServerAgent` to own raw LiveKit and TURN credentials and expose owner-mediated operations, and for `WEBMEET_AGENT_INTERNAL_TOKEN` to be replaced by router/secure-wire identity.
 - Documentation: `docs/index.html` and `docs/specs/matrix.md`.
 - Validation: Run proxy/plugin syntax checks and a Ploinky guest invite smoke test for auth or route changes.
 
@@ -66,7 +66,7 @@ Ploinky establishes who the caller is and signs the invocation path. `webmeetAge
 ### Question #3: Why derive WebMeet secrets instead of storing local development defaults?
 
 Response:
-LiveKit, TURN, WebMeet encryption, and internal worker calls need shared secrets across several Ploinky agents. Deterministic derived-master labels let every participant receive the same workspace-owned secret without committing plaintext defaults or requiring manual setup on a fresh workspace. Per-agent secrets that are not shared (`PLOINKY_WEBMEET_MASTER_KEY`) now use `generatedSecret: true`. The remaining cross-agent shared derivations (LiveKit, TURN, internal token) are legacy exceptions whose target state is owner-mediated service operations rather than raw shared credentials.
+LiveKit, TURN, WebMeet encryption, and internal worker calls need stable workspace-owned secrets without committing plaintext defaults or requiring manual setup on a fresh workspace. `generatedSecret: true` is the preferred target for per-agent secrets, but WebMeet encryption is deliberately held on the compatibility derivation until existing payload readability is verified or migrated. The remaining cross-agent shared derivations (LiveKit, TURN, internal token) are legacy exceptions whose target state is owner-mediated service operations rather than raw shared credentials.
 
 ## Conclusion
 

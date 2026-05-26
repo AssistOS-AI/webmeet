@@ -50,8 +50,87 @@ function getLockStaleTtlMs() {
     return Number.isFinite(env) && env >= 1_000 ? env : LOCK_DEFAULT_STALE_TTL_MS;
 }
 
+function isLockOwnerProcessAlive(owner) {
+    if (String(owner?.hostname || '') !== os.hostname()) {
+        return false;
+    }
+    const pid = Number(owner?.pid);
+    if (!Number.isInteger(pid) || pid <= 0) {
+        return false;
+    }
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return error?.code === 'EPERM';
+    }
+}
+
+async function readMeetingLockInfo(lockPath) {
+    let stat;
+    try {
+        stat = await fs.stat(lockPath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return { exists: false };
+        }
+        throw error;
+    }
+    const ownerPath = stat.isDirectory() ? path.join(lockPath, 'owner.json') : lockPath;
+    try {
+        const raw = await fs.readFile(ownerPath, 'utf8');
+        const owner = JSON.parse(raw);
+        const ownerStartedAt = Date.parse(owner?.startedAt || '');
+        return {
+            exists: true,
+            stat,
+            owner,
+            ageMs: Number.isFinite(ownerStartedAt) ? Date.now() - ownerStartedAt : Date.now() - stat.mtimeMs,
+            readableOwner: true
+        };
+    } catch {
+        return {
+            exists: true,
+            stat,
+            owner: null,
+            ageMs: Date.now() - stat.mtimeMs,
+            readableOwner: false
+        };
+    }
+}
+
+function isSameLockInfo(left, right) {
+    if (!left?.exists || !right?.exists) {
+        return false;
+    }
+    return left.stat.dev === right.stat.dev
+        && left.stat.ino === right.stat.ino
+        && left.stat.mtimeMs === right.stat.mtimeMs
+        && left.stat.size === right.stat.size
+        && String(left.owner?.token || '') === String(right.owner?.token || '');
+}
+
+async function removeStaleMeetingLock(lockPath, observedInfo) {
+    const latestInfo = await readMeetingLockInfo(lockPath);
+    if (!isSameLockInfo(observedInfo, latestInfo)) {
+        return false;
+    }
+    await fs.rm(lockPath, { recursive: true, force: true });
+    return true;
+}
+
+function isStaleMeetingLock(info, staleTtlMs) {
+    if (!info?.exists || info.ageMs <= staleTtlMs) {
+        return false;
+    }
+    if (info.readableOwner && isLockOwnerProcessAlive(info.owner)) {
+        return false;
+    }
+    return true;
+}
+
 async function acquireMeetingLock(context, meetingId, options = {}) {
-    const lockDir = path.join(context.meetingLocksDir, `${meetingId}.lock`);
+    const lockPath = path.join(context.meetingLocksDir, `${meetingId}.lock`);
     const token = crypto.randomUUID();
     const timeoutMs = options.timeoutMs ?? getLockTimeoutMs();
     const staleTtlMs = options.staleTtlMs ?? getLockStaleTtlMs();
@@ -60,35 +139,33 @@ async function acquireMeetingLock(context, meetingId, options = {}) {
     await fs.mkdir(context.meetingLocksDir, { recursive: true });
 
     while (true) {
+        const owner = {
+            pid: process.pid,
+            hostname: os.hostname(),
+            startedAt: new Date().toISOString(),
+            meetingId,
+            token,
+        };
         try {
-            await fs.mkdir(lockDir);
-            const ownerPath = path.join(lockDir, 'owner.json');
-            await fs.writeFile(ownerPath, JSON.stringify({
-                pid: process.pid,
-                hostname: os.hostname(),
-                startedAt: new Date().toISOString(),
-                meetingId,
-                token,
-            }));
-            return { lockDir, token, meetingId };
+            const handle = await fs.open(lockPath, 'wx');
+            try {
+                await handle.writeFile(JSON.stringify(owner));
+            } finally {
+                await handle.close();
+            }
+            return { lockPath, token, meetingId };
         } catch (error) {
             if (error?.code !== 'EEXIST') throw error;
 
-            const ownerPath = path.join(lockDir, 'owner.json');
-            let stale = false;
-            try {
-                const raw = await fs.readFile(ownerPath, 'utf8');
-                const owner = JSON.parse(raw);
-                const age = Date.now() - Date.parse(owner.startedAt || '');
-                stale = Number.isFinite(age) && age > staleTtlMs;
-            } catch {
-                stale = true;
+            const lockInfo = await readMeetingLockInfo(lockPath);
+            if (!lockInfo.exists) {
+                continue;
             }
-
-            if (stale) {
+            if (isStaleMeetingLock(lockInfo, staleTtlMs)) {
                 try {
-                    await fs.rm(lockDir, { recursive: true, force: true });
-                    continue;
+                    if (await removeStaleMeetingLock(lockPath, lockInfo)) {
+                        continue;
+                    }
                 } catch {
                     // Another process may have cleaned it up already.
                 }
@@ -105,15 +182,14 @@ async function acquireMeetingLock(context, meetingId, options = {}) {
 }
 
 async function releaseMeetingLock(handle) {
-    if (!handle?.lockDir || !handle?.token) return;
+    if (!handle?.lockPath || !handle?.token) return;
     try {
-        const ownerPath = path.join(handle.lockDir, 'owner.json');
-        const raw = await fs.readFile(ownerPath, 'utf8');
+        const raw = await fs.readFile(handle.lockPath, 'utf8');
         const owner = JSON.parse(raw);
         if (owner.token !== handle.token) return;
-        await fs.rm(handle.lockDir, { recursive: true, force: true });
+        await fs.rm(handle.lockPath, { force: true });
     } catch {
-        // Lock dir already removed or unreadable — safe to proceed.
+        // Lock file already removed or unreadable; the timeout path can recover it.
     }
 }
 
@@ -123,6 +199,23 @@ async function withMeetingLock(context, meetingId, fn, options = {}) {
         return await fn();
     } finally {
         await releaseMeetingLock(handle);
+    }
+}
+
+async function withQueuedMeetingLock(context, meetingId, fn, options = {}) {
+    const key = String(meetingId || '').trim();
+    if (!key) {
+        throw new Error('Meeting not found.');
+    }
+    const previous = meetingMutationQueues.get(key) || Promise.resolve();
+    const run = previous.catch(() => {}).then(() => withMeetingLock(context, key, fn, options));
+    meetingMutationQueues.set(key, run);
+    try {
+        return await run;
+    } finally {
+        if (meetingMutationQueues.get(key) === run) {
+            meetingMutationQueues.delete(key);
+        }
     }
 }
 
@@ -312,10 +405,20 @@ async function purgeExpiredMeetings(paths) {
         try {
             const record = await readJsonFile(filePath);
             if (record?.expiresAt && now > Date.parse(record.expiresAt)) {
-                await fs.unlink(filePath);
                 const meetingId = String(record?.meetingId || path.basename(filePath, '.json')).trim();
                 if (meetingId) {
-                    await fs.rm(path.join(paths.eventsDir, meetingId), { recursive: true, force: true });
+                    await withQueuedMeetingLock(paths, meetingId, async () => {
+                        let latestRecord = null;
+                        try {
+                            latestRecord = await readJsonFile(filePath);
+                        } catch (error) {
+                            if (error?.code !== 'ENOENT') throw error;
+                        }
+                        if (latestRecord?.expiresAt && now > Date.parse(latestRecord.expiresAt)) {
+                            await fs.rm(path.join(paths.eventsDir, meetingId), { recursive: true, force: true });
+                            await fs.rm(filePath, { force: true });
+                        }
+                    });
                 }
             }
         } catch (_) {
@@ -376,39 +479,28 @@ async function saveMeetingRecord(context, record, payload) {
 
 async function mutateMeeting(context, meetingId, mutator) {
     const key = String(meetingId || '').trim();
-    const previous = meetingMutationQueues.get(key) || Promise.resolve();
-    const run = previous.catch(() => {}).then(async () => {
-        return withMeetingLock(context, key, async () => {
-            const record = await loadMeetingRecord(context, meetingId);
-            const payload = decryptMeetingPayload(context, record);
-            const stagedEvents = [];
-            const stageEvent = (scope, type, data = {}) => {
-                stagedEvents.push({ scope, meetingId: key, type, data });
-            };
-            const result = await mutator(record, payload, stageEvent) || {};
-            await saveMeetingRecord(context, record, payload);
-            for (const intent of stagedEvents) {
-                try {
-                    if (intent.scope === 'workspace') {
-                        await recordWorkspaceEvent(context, intent.data.workspaceId || record.workspaceId, intent.type, intent.data);
-                    } else {
-                        await recordMeetingEvent(context, intent.meetingId, payload, intent.type, intent.data);
-                    }
-                } catch {
-                    // Event append is best-effort after successful payload save.
+    return withQueuedMeetingLock(context, key, async () => {
+        const record = await loadMeetingRecord(context, meetingId);
+        const payload = decryptMeetingPayload(context, record);
+        const stagedEvents = [];
+        const stageEvent = (scope, type, data = {}) => {
+            stagedEvents.push({ scope, meetingId: key, type, data });
+        };
+        const result = await mutator(record, payload, stageEvent) || {};
+        await saveMeetingRecord(context, record, payload);
+        for (const intent of stagedEvents) {
+            try {
+                if (intent.scope === 'workspace') {
+                    await recordWorkspaceEvent(context, intent.data.workspaceId || record.workspaceId, intent.type, intent.data);
+                } else {
+                    await recordMeetingEvent(context, intent.meetingId, payload, intent.type, intent.data);
                 }
+            } catch {
+                // Event append is best-effort after successful payload save.
             }
-            return { record, payload, result };
-        });
-    });
-    meetingMutationQueues.set(key, run);
-    try {
-        return await run;
-    } finally {
-        if (meetingMutationQueues.get(key) === run) {
-            meetingMutationQueues.delete(key);
         }
-    }
+        return { record, payload, result };
+    });
 }
 
 function createMeetingEvent(meetingId, type, data = {}) {
@@ -1023,7 +1115,7 @@ function shouldPreserveStoredMemberDuringReconcile(context, member) {
     return (Date.now() - lastSeenAt) <= getPresenceTtlMs(context.workspaceRoot);
 }
 
-async function syncPayloadMembersToLiveKitParticipants(context, record, payload, participants) {
+function syncPayloadMembersToLiveKitParticipants(context, record, payload, participants, stageEvent) {
     const currentMembers = Array.isArray(payload.members) ? payload.members : [];
     const preservedMembers = currentMembers.filter((member) => {
         const participantId = String(member?.id || '').trim();
@@ -1059,7 +1151,7 @@ async function syncPayloadMembersToLiveKitParticipants(context, record, payload,
         for (const member of currentMembers) {
             const participantId = String(member?.id || '').trim();
             if (!participantId || nextIds.has(participantId)) continue;
-            await recordMeetingEvent(context, record.meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT, {
                 meetingId: record.meetingId,
                 participantId,
                 reason: 'livekit_reconcile'
@@ -1068,14 +1160,13 @@ async function syncPayloadMembersToLiveKitParticipants(context, record, payload,
         for (const member of participants) {
             const participantId = String(member?.id || '').trim();
             if (!participantId || currentIds.has(participantId)) continue;
-            await recordMeetingEvent(context, record.meetingId, payload, WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, {
                 meetingId: record.meetingId,
                 participantId,
                 source: 'livekit_reconcile'
             });
         }
     }
-    await saveMeetingRecord(context, record, payload);
     return nextParticipants;
 }
 
@@ -1095,8 +1186,17 @@ async function getRealtimeMeetingParticipants(context, record, payload, options 
     if (options.preserveStoredMembersOnEmpty === true && liveParticipants.length === 0) {
         return projectStoredMeetingParticipants(payload);
     }
-    const participants = projectLiveKitMeetingParticipants(payload, liveParticipants);
-    const reconciledParticipants = await syncPayloadMembersToLiveKitParticipants(context, record, payload, participants);
+    let reconciledParticipants = [];
+    await mutateMeeting(context, record.meetingId, (lockedRecord, lockedPayload, stageEvent) => {
+        const participants = projectLiveKitMeetingParticipants(lockedPayload, liveParticipants);
+        reconciledParticipants = syncPayloadMembersToLiveKitParticipants(
+            context,
+            lockedRecord,
+            lockedPayload,
+            participants,
+            stageEvent
+        );
+    });
     if (reconciledParticipants.length === 0) {
         scheduleEmptyRoomAgentDetach(context, record.meetingId, 'no_human_participants');
     }
@@ -1376,7 +1476,6 @@ async function createMeetingRecord(context, effectiveWorkspaceId, title, roomTyp
     const masterKey = ensureMasterKey(context.workspaceRoot);
     const { wrapped, dek } = createWrappedDek(masterKey);
     const payload = createMeetingPayload();
-    await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.MEETING_CREATED, { meetingId, roomType });
 
     const isGuestRoom = roomType === 'guest';
     const guestToken = isGuestRoom ? crypto.randomUUID() : null;
@@ -1401,6 +1500,16 @@ async function createMeetingRecord(context, effectiveWorkspaceId, title, roomTyp
         payload: encryptPayload(dek, payload)
     };
     await writeJsonFile(filePathFor(context.meetingsDir, meetingId), record);
+    try {
+        await recordMeetingEvent(context, meetingId, payload, WEBMEET_EVENT_TYPES.MEETING_CREATED, {
+            meetingId,
+            workspaceId: effectiveWorkspaceId,
+            roomType: record.roomType,
+            meeting: buildMeetingView(record)
+        });
+    } catch {
+        // Event append is best-effort after the meeting record is durable.
+    }
     return record;
 }
 
@@ -1484,11 +1593,6 @@ export async function createMeeting(context, { workspaceId, title, roomType = 't
         createdAt: record.createdAt,
         closedAt: record.closedAt
     };
-    await recordWorkspaceEvent(context, effectiveWorkspaceId, WEBMEET_EVENT_TYPES.MEETING_CREATED, {
-        workspaceId: effectiveWorkspaceId,
-        meetingId: meeting.id,
-        meeting
-    });
     return meeting;
 }
 
@@ -2192,9 +2296,12 @@ export async function deleteMeeting(context, meetingId, authInfo = null) {
     if (!targetMeetingId) {
         throw new Error('Meeting not found.');
     }
-    const record = await loadMeetingRecord(context, targetMeetingId);
-    await fs.rm(path.join(context.eventsDir, targetMeetingId), { recursive: true, force: true });
-    await fs.rm(filePathFor(context.meetingsDir, targetMeetingId), { force: true });
+    let record = null;
+    await withQueuedMeetingLock(context, targetMeetingId, async () => {
+        record = await loadMeetingRecord(context, targetMeetingId);
+        await fs.rm(path.join(context.eventsDir, targetMeetingId), { recursive: true, force: true });
+        await fs.rm(filePathFor(context.meetingsDir, targetMeetingId), { force: true });
+    });
     return {
         ok: true,
         meeting: buildMeetingView(record)

@@ -57,7 +57,7 @@ The `room` segment is the meeting id for meeting-scoped events and the workspace
 
 Persistent event types include room creation/rename, participant membership changes, profile avatar updates, persisted chat/transcript notifications, AI dispatch metadata, recording events, and artifact creation. Realtime-only event types include LiveKit data-channel chat delivery, live avatar projection, and avatar state requests. Realtime-only event types must not be written to durable meeting or workspace event logs.
 
-Meeting mutation callbacks stage event intents via a `stageEvent(scope, type, data)` closure instead of calling `recordMeetingEvent` directly. Staged events are appended to the event log only after the encrypted payload save succeeds, ensuring the event log never references state that was not persisted. Event append failures after a successful save are best-effort and do not roll back the mutation.
+Meeting mutation callbacks stage event intents via a `stageEvent(scope, type, data)` closure instead of calling `recordMeetingEvent` directly. Staged events are appended to the event log only after the encrypted payload save succeeds, ensuring the event log never references payload state that was not persisted. Meeting creation writes the meeting record before appending its creation event. Event append failures after a successful save are best-effort and do not roll back the mutation.
 
 The authenticated dashboard shell owns workspace discovery, room management, profile settings, and admin actions. The guest shell owns invite-token entry and bootstraps exactly one room session from the public link. Both shells share the common `WebMeetRoom` class for selected-room behavior. `WebMeetRoom` is the central orchestration boundary and must keep room identity (`meetingId`, `workspaceId`, `roomName`, `participantId`, `session`) plus lifecycle methods (`join`, `connectLiveKit`, `disconnectLiveKit`, `leave`, `refreshState`, `destroy`) separated from UI rendering. `WebMeetRoom` emits typed room events to the UI (`room:joined`, `room:left`, `room:participant-joined`, `room:participant-left`, `room:chat`, `room:transcript`, `room:avatar-projected`, `room:agent-attached`, `room:recording-started`). `WebMeetRoomLiveKit` owns browser LiveKit connection options and low-level room event hook binding. `WebMeetRoomEvents` owns encoded realtime publish/parse and event normalization. `WebMeetRoomState` owns serializable room state and must stay DOM-free. Dashboard controllers keep media capture controls, media track rendering, participant-card rendering, and UI actions. The future speech/text Audio Agent has no browser room implementation until its TTS/STT contract is specified.
 
@@ -67,7 +67,7 @@ Participant avatars are live rendering projections, not durable room profile sta
 
 Routine meeting-detail refreshes may update durable room data such as chat, transcript, artifacts, tasks, decisions, recordings, and agents, but they must not overwrite the live participant list or recalculate avatars from stale snapshot copies. Existing participants must republish avatar projections when new participants connect, and avatar publish failures must not block joining.
 
-Meeting chat has an authoritative persistence path and a best-effort realtime path. The durable chat write always goes through `webmeetAgent`; the browser or AI worker may then publish a reliable LiveKit data-channel payload of type `chat` so connected clients update quickly. LiveKit does not store WebMeet chat history. The MCP `webmeet_chat_send` tool accepts `authorId` and `authorName` as optional fields; when provided by authenticated callers they are stored as-is (the caller is identity-verified via router auth). Guest chat writes derive `authorId` and `authorName` from the stored participant record, preventing callers from spoofing another participant's identity.
+Meeting chat has an authoritative persistence path and a best-effort realtime path. The durable chat write always goes through `webmeetAgent`; the browser or AI worker may then publish a reliable LiveKit data-channel payload of type `chat` so connected clients update quickly. LiveKit does not store WebMeet chat history. The MCP `webmeet_chat_send` schema accepts `authorId` and `authorName` as optional compatibility fields, but authenticated tool execution derives durable chat authorship from router auth and does not trust caller-supplied author fields. Guest chat writes derive `authorId` and `authorName` from the stored participant record, preventing callers from spoofing another participant's identity.
 
 Transcripts, artifacts, tasks, decisions, recording metadata, and AI dispatch metadata are persisted by `webmeetAgent`. Internal scribe transcript writes may use the `/internal/meetings/:meetingId/transcript` API only with `WEBMEET_AGENT_INTERNAL_TOKEN`, derived from the shared WebMeet agent-secret identity.
 
@@ -87,6 +87,16 @@ The encoded string is compact, easy to carry over SSE and LiveKit data channels,
 
 Response:
 Profile avatars can come from protected Explorer user settings or browser-local overrides. Persisting them in meeting records would leak stale or cross-user presentation state. LiveKit participant attributes and reliable data-channel messages are the connected-room rendering channel, while the durable meeting store keeps membership and event metadata.
+
+### Question #4: Why stage events instead of appending them directly inside mutators?
+
+Response:
+Most WebMeet events describe a payload mutation. Appending those events before the encrypted payload write succeeds can leave the event stream pointing at state that never became durable. Staging keeps event emission after the save boundary while allowing the mutation code to declare the intended event next to the state change.
+
+### Question #5: Why keep optional chat author fields in the MCP schema?
+
+Response:
+Older callers may still include `authorId` and `authorName`, and keeping the fields optional avoids breaking those clients. The server-side tool derives the persisted author from verified router auth, so the compatibility fields do not grant spoofing authority.
 
 ## Conclusion
 
