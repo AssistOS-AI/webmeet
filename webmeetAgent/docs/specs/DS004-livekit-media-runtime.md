@@ -35,10 +35,11 @@ Two LiveKit URLs matter:
 
 | Env var | Used by | Contract |
 | --- | --- | --- |
-| `WEBMEET_PUBLIC_LIVEKIT_URL` | Browser LiveKit client | Browser-reachable `ws://` or `wss://` signaling URL. Public deployments should use `wss://`. |
+| `WEBMEET_PUBLIC_LIVEKIT_URL` | Browser LiveKit client | Browser-reachable `ws://` or `wss://` signaling URL. Public deployments should use `wss://`; local default/dev installs may seed this to the detected workstation IPv4 address so Firefox can form usable ICE pairs with Podman-published media ports. |
 | `WEBMEET_LIVEKIT_URL` | `webmeetAgent` server-side Twirp API calls | Internal LiveKit HTTP API URL. Default is `http://liveKitServerAgent:7880`, dev is `http://liveKitServerAgent:17880`, and prod host-network topology is `http://host.containers.internal:7880`. |
 
 `WEBMEET_EGRESS_URL` may appear in recording metadata, but recording control calls use `WEBMEET_LIVEKIT_URL` and LiveKit's `/twirp/livekit.Egress/*` API. Egress itself uses `WEBMEET_LIVEKIT_INTERNAL_WS_URL`, normally loopback inside the consolidated `liveKitServerAgent` container.
+`WEBMEET_LOCAL_PUBLIC_HOST` is an optional default/dev operator override for the browser-facing local host address detected by preinstall hooks.
 
 When a WebMeet user joins a room:
 
@@ -55,6 +56,18 @@ When a WebMeet user joins a room:
 LiveKit is an SFU. It terminates each browser's WebRTC connection, receives RTP/RTCP packets for published audio/video/screen tracks, tracks subscriber interest, forwards selected encoded streams, handles congestion feedback and retransmission, and re-encrypts media for each receiver. It normally forwards browser-encoded media rather than transcoding room media. The egress worker is the component that subscribes to a room, renders/composites, encodes MP4, and writes recording files.
 
 Media is encrypted in transit on the browser-to-LiveKit and LiveKit-to-browser WebRTC hops. End-to-end media encryption is not configured in this codebase, so LiveKit is trusted infrastructure that can access the encoded media/data-channel payloads needed for SFU routing.
+
+ICE configuration sent in join payloads is kept small enough that Firefox does not emit the five-or-more STUN/TURN warning:
+
+- The default STUN set is at most one URL. A single public STUN URL is included for non-loopback deployments; loopback deployments omit public STUN unless an operator explicitly sets `WEBMEET_STUN_URLS`.
+- TURN may contribute at most two URLs by default when a TURN host and credentials are configured: one UDP and one TCP.
+- Default and dev local deployments should prefer a detected workstation IPv4 browser URL and TURN host over loopback. This is required for Firefox on macOS/Podman, which can fail ICE when LiveKit advertises only loopback candidates.
+- Loopback deployments omit public STUN by default but keep generated TURN entries when TURN credentials are configured. Explicit `WEBMEET_TURN_URLS` remains the custom TURN override.
+- The total default ICE URL count is at most three for non-loopback deployments and at most two for loopback fallback.
+- `WEBMEET_STUN_URLS` is optional, non-secret, manifest-declared, comma-separated, trimmed, deduped, and deterministic. An empty value disables STUN. When unset, the profile-aware code default applies.
+- `WEBMEET_TURN_URLS` remains the explicit TURN override.
+- When no useful ICE server entries remain (no STUN URLs and no TURN with credentials), the join payload omits `rtcConfig` entirely so browsers fall back to their default ICE behavior.
+- Diagnostics may report ICE URL counts and categories (STUN/TURN/TURNS presence, `iceTransportPolicy`, elapsed connect time) but must not log TURN credentials, LiveKit tokens, SDP, ICE candidates, API keys, or authorization values.
 
 The WebMeet browser client must create LiveKit rooms with the current no-surprise media options:
 
@@ -88,8 +101,8 @@ Profile topology is:
 
 | Profile | LiveKit topology | Browser URL | `webmeetAgent` server URL | Egress internal URL |
 | --- | --- | --- | --- | --- |
-| `default` | Bridge alias `liveKitServerAgent`, default ports. | `ws://127.0.0.1:7880` | `http://liveKitServerAgent:7880` | `ws://127.0.0.1:7880` inside the infra container. |
-| `dev` | Bridge alias `liveKitServerAgent`, alternate ports. | `ws://127.0.0.1:17880` | `http://liveKitServerAgent:17880` | `ws://127.0.0.1:17880` inside the infra container. |
+| `default` | Bridge alias `liveKitServerAgent`, default ports. | `ws://<detected-local-ip>:7880` seeded by preinstall, with `ws://127.0.0.1:7880` only as a fallback. | `http://liveKitServerAgent:7880` | `ws://127.0.0.1:7880` inside the infra container. |
+| `dev` | Bridge alias `liveKitServerAgent`, alternate ports. | `ws://<detected-local-ip>:17880` seeded by preinstall, with `ws://127.0.0.1:17880` only as a fallback. | `http://liveKitServerAgent:17880` | `ws://127.0.0.1:17880` inside the infra container. |
 | `prod` | Host-network `liveKitServerAgent`. | `wss://livekit-skills.axiologic.dev` by profile default. | `http://host.containers.internal:7880` from bridge-resident `webmeetAgent`. | `ws://127.0.0.1:7880` inside the infra container. |
 
 Production host networking is the preferred path for LiveKit media because bridge-mode UDP source-NAT can break the SFU downlink. The Nginx TLS terminator proxies HTTPS/WebSocket signaling to LiveKit `7880/tcp`; it is not the WebRTC media relay. Public media must reach LiveKit host candidates directly on the declared UDP media range, with TCP/TURN fallback available. Cloudflare Tunnel may carry Explorer application traffic and LiveKit signaling in some deployments, but it is not a general public UDP media proxy.

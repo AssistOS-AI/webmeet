@@ -117,12 +117,26 @@ export class WebMeetRoomLiveKit {
                 hooks.onDisconnected?.({ livekit, Track, RoomEvent });
             });
 
+        const connectStartMs = Date.now();
         try {
             hooks.onConnecting?.({ room, livekit, Track, RoomEvent });
             const connectOptions = {
                 autoSubscribe: true,
                 ...(rtcConfig ? { rtcConfig } : {})
             };
+            const iceUrlCount = (rtcConfig?.iceServers || []).reduce((sum, s) => {
+                const u = s?.urls;
+                return sum + (Array.isArray(u) ? u.length : (u ? 1 : 0));
+            }, 0);
+            const iceCategories = (rtcConfig?.iceServers || []).reduce((acc, s) => {
+                for (const u of [].concat(s?.urls || [])) {
+                    const lower = String(u || '').toLowerCase();
+                    if (lower.startsWith('stun:')) acc.hasStun = true;
+                    else if (lower.startsWith('turns:')) acc.hasTurns = true;
+                    else if (lower.startsWith('turn:')) acc.hasTurn = true;
+                }
+                return acc;
+            }, { hasStun: false, hasTurn: false, hasTurns: false });
             logMediaDiagnostic('room-connect-start', {
                 livekitHost: (() => {
                     try {
@@ -133,6 +147,9 @@ export class WebMeetRoomLiveKit {
                 })(),
                 hasRtcConfig: Boolean(rtcConfig),
                 iceServerCount: Number(rtcConfig?.iceServers?.length || 0),
+                iceUrlCount,
+                ...iceCategories,
+                iceTransportPolicy: rtcConfig?.iceTransportPolicy || '',
                 roomOptions: {
                     adaptiveStream: false,
                     dynacast: false,
@@ -150,12 +167,18 @@ export class WebMeetRoomLiveKit {
             );
             logMediaDiagnostic('room-connect-complete', {
                 localIdentity: room.localParticipant?.identity || '',
-                remoteParticipantCount: Number(room.remoteParticipants?.size || 0)
+                remoteParticipantCount: Number(room.remoteParticipants?.size || 0),
+                elapsedMs: Date.now() - connectStartMs,
             });
             hooks.onConnected?.({ room, livekit, Track, RoomEvent });
             return { room, livekit, Track, RoomEvent };
         } catch (error) {
             hooks.onConnectError?.(error, { room, livekit, Track, RoomEvent });
+            logMediaDiagnostic('room-connect-error', {
+                errorName: String(error?.name || ''),
+                errorMessage: String(error?.message || '').slice(0, 200),
+                elapsedMs: Date.now() - connectStartMs,
+            });
             try {
                 await room.disconnect();
             } catch (_) {

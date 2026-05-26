@@ -36,6 +36,7 @@
     ],
     "profiles": {
         "default": {
+            "preinstall": "scripts/hooks/preinstall.sh",
             "env": [
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
@@ -55,6 +56,10 @@
                     "name": "WEBMEET_DATA_DIR",
                     "required": false,
                     "default": "/data"
+                },
+                {
+                    "name": "WEBMEET_LOCAL_PUBLIC_HOST",
+                    "required": false
                 },
                 {
                     "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
@@ -80,6 +85,10 @@
                     "name": "WEBMEET_EGRESS_URL",
                     "required": false,
                     "default": "http://liveKitServerAgent:7980"
+                },
+                {
+                    "name": "WEBMEET_STUN_URLS",
+                    "required": false
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",
@@ -153,6 +162,7 @@
             ]
         },
         "dev": {
+            "preinstall": "scripts/hooks/preinstall.sh",
             "env": [
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
@@ -172,6 +182,10 @@
                     "name": "WEBMEET_DATA_DIR",
                     "required": false,
                     "default": "/data"
+                },
+                {
+                    "name": "WEBMEET_LOCAL_PUBLIC_HOST",
+                    "required": false
                 },
                 {
                     "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
@@ -197,6 +211,10 @@
                     "name": "WEBMEET_EGRESS_URL",
                     "required": false,
                     "default": "http://liveKitServerAgent:7980"
+                },
+                {
+                    "name": "WEBMEET_STUN_URLS",
+                    "required": false
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",
@@ -314,6 +332,10 @@
                     "name": "WEBMEET_EGRESS_URL",
                     "required": true,
                     "default": "http://host.containers.internal:7980"
+                },
+                {
+                    "name": "WEBMEET_STUN_URLS",
+                    "required": false
                 },
                 {
                     "name": "WEBMEET_TURN_EXTERNAL_IP",

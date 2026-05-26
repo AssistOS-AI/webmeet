@@ -1,25 +1,39 @@
-function normalizeUrls(value) {
+function flattenUrls(value) {
     if (Array.isArray(value)) {
         return value.map((entry) => String(entry || '').trim()).filter(Boolean);
     }
     const text = String(value || '').trim();
-    return text ? text : '';
+    return text ? [text] : [];
 }
 
-function normalizeIceServer(server) {
+function dedupeKeyForIceUrl(url, username, credential) {
+    const normalizedUrl = String(url || '').trim();
+    const lowerUrl = normalizedUrl.toLowerCase();
+    if (lowerUrl.startsWith('turn:') || lowerUrl.startsWith('turns:')) {
+        return `turn:${normalizedUrl}\n${username}\n${credential}`;
+    }
+    return `url:${normalizedUrl}`;
+}
+
+function normalizeIceServer(server, seen) {
     if (!server || typeof server !== 'object') {
         return null;
     }
-    const urls = normalizeUrls(server.urls);
-    if (Array.isArray(urls) && !urls.length) {
-        return null;
-    }
-    if (!urls) {
-        return null;
-    }
-    const next = { urls };
+    const rawUrls = flattenUrls(server.urls);
     const username = String(server.username || '').trim();
     const credential = String(server.credential || '').trim();
+    const urls = [];
+    for (const url of rawUrls) {
+        const key = dedupeKeyForIceUrl(url, username, credential);
+        if (!seen.has(key)) {
+            seen.add(key);
+            urls.push(url);
+        }
+    }
+    if (!urls.length) {
+        return null;
+    }
+    const next = { urls: urls.length === 1 ? urls[0] : urls };
     if (username) {
         next.username = username;
     }
@@ -34,8 +48,9 @@ export function buildRtcConfigForSession(session) {
     if (!rawConfig || typeof rawConfig !== 'object') {
         return undefined;
     }
+    const seen = new Set();
     const iceServers = Array.isArray(rawConfig.iceServers)
-        ? rawConfig.iceServers.map(normalizeIceServer).filter(Boolean)
+        ? rawConfig.iceServers.map((server) => normalizeIceServer(server, seen)).filter(Boolean)
         : [];
     if (!iceServers.length) {
         return undefined;

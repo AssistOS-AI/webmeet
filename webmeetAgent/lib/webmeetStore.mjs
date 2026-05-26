@@ -21,11 +21,8 @@ const PRESENCE_TTL_MS_VAR = 'PLOINKY_WEBMEET_PRESENCE_TTL_MS';
 const DEFAULT_RETENTION_DAYS = 30;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
 const DEFAULT_ROOM_TITLE = 'General';
-const DEFAULT_STUN_URLS = [
-    'stun:global.stun.twilio.com:3478',
-    'stun:stun.l.google.com:19302',
-    'stun:stun1.l.google.com:19302'
-];
+const DEFAULT_STUN_URL = 'stun:stun.l.google.com:19302';
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 const ACTIVE_RECORDING_STATUSES = new Set([
     'recording',
     'EGRESS_STARTING',
@@ -686,10 +683,49 @@ function normalizeTurnHost(value) {
         .replace(/\/+$/u, '');
 }
 
+function isLoopbackHostname(hostname) {
+    const normalized = String(hostname || '').trim().toLowerCase();
+    return LOOPBACK_HOSTNAMES.has(normalized);
+}
+
+function isLoopbackUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return false;
+    try {
+        const url = new URL(raw.replace(/^ws:/i, 'http:').replace(/^wss:/i, 'https:'));
+        return isLoopbackHostname(url.hostname);
+    } catch {
+        return false;
+    }
+}
+
+function dedupeStrings(values) {
+    const seen = new Set();
+    const result = [];
+    for (const value of values) {
+        if (!seen.has(value)) {
+            seen.add(value);
+            result.push(value);
+        }
+    }
+    return result;
+}
+
+function buildStunUrls(context) {
+    const explicitRaw = context.stunExplicitUrls;
+    if (explicitRaw !== undefined) {
+        return dedupeStrings(splitCsvEnv(explicitRaw));
+    }
+    if (isLoopbackUrl(context.livekitPublicUrl)) {
+        return [];
+    }
+    return [DEFAULT_STUN_URL];
+}
+
 function buildTurnUrls({ host, port, explicitUrls }) {
     const urls = splitCsvEnv(explicitUrls);
     if (urls.length) {
-        return urls;
+        return dedupeStrings(urls);
     }
     const normalizedHost = normalizeTurnHost(host);
     if (!normalizedHost) {
@@ -707,21 +743,23 @@ function buildRtcConfig(context) {
     const turn = context.turn || {};
     const username = String(turn.username || '').trim();
     const credential = String(turn.credential || '').trim();
+    const iceTransportPolicy = String(turn.iceTransportPolicy || '').trim();
     const turnUrls = buildTurnUrls(turn);
-    if (!username || !credential || !turnUrls.length) {
+    const stunUrls = buildStunUrls(context);
+
+    const iceServers = [];
+    if (stunUrls.length) {
+        iceServers.push({ urls: stunUrls });
+    }
+    if (username && credential && turnUrls.length) {
+        iceServers.push({ urls: turnUrls, username, credential });
+    }
+    if (!iceServers.length) {
         return null;
     }
-    const iceTransportPolicy = String(turn.iceTransportPolicy || '').trim();
     return {
         iceTransportPolicy: iceTransportPolicy === 'relay' ? 'relay' : 'all',
-        iceServers: [
-            { urls: DEFAULT_STUN_URLS },
-            {
-                urls: turnUrls,
-                username,
-                credential
-            }
-        ]
+        iceServers,
     };
 }
 
@@ -1404,6 +1442,9 @@ export async function createStoreContext(startDir = '') {
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
         livekitAgentName: String(process.env.WEBMEET_LIVEKIT_AGENT_NAME || 'webmeet-agent').trim() || 'webmeet-agent',
+        stunExplicitUrls: process.env.WEBMEET_STUN_URLS !== undefined
+            ? String(process.env.WEBMEET_STUN_URLS || '').trim()
+            : undefined,
         egressUrl: String(process.env.WEBMEET_EGRESS_URL || '').trim(),
         recordingsDir: String(process.env.WEBMEET_RECORDINGS_DIR || '/data/recordings').trim() || '/data/recordings',
         turn: {
@@ -2291,3 +2332,11 @@ export async function deleteMeeting(context, meetingId, authInfo = null) {
         meeting: buildMeetingView(record)
     };
 }
+
+export {
+    buildRtcConfig as _buildRtcConfig,
+    buildStunUrls as _buildStunUrls,
+    isLoopbackUrl as _isLoopbackUrl,
+    dedupeStrings as _dedupeStrings,
+    splitCsvEnv as _splitCsvEnv,
+};

@@ -36,6 +36,8 @@ File and static-content handling must stay workspace-confined. Paths must resolv
 
 Logs and user-facing errors must not expose secrets, cookies, bearer tokens, invocation JWTs, LiveKit participant JWTs, API keys, raw prompts, hidden policy text, internal payloads, SDP, ICE credentials, screenshots, or DOM dumps. Detailed diagnostics belong behind explicit debug modes and must still redact sensitive values before persistence.
 
+`WEBMEET_STUN_URLS` is a non-secret, manifest-declared, operator-configurable topology variable that controls the STUN URLs included in join payloads. `WEBMEET_LOCAL_PUBLIC_HOST` is a non-secret default/dev topology override for the workstation IPv4 address used in browser-facing local LiveKit and TURN URLs. Neither variable is secret-derived or requires `generatedSecret`/`sharedGeneratedSecret`. See DS004 for ICE cardinality and local Firefox invariants.
+
 Agent-local contract:
 
 - Manifest: `manifest.json`.
