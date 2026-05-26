@@ -20,6 +20,8 @@ The optional worker is owned by the separate `webmeetLivekitAiAgent` Ploinky age
 
 `webmeetAgent` must not import `@livekit/agents`, start `server/livekit-agent.mjs`, depend on the worker dependency cache, or reintroduce `webmeetAgent/package.json` for the AI worker. The worker's native LiveKit dependency tree belongs only to `webmeetLivekitAiAgent/package.json`.
 
+The worker may mount `webmeetAgent` at `/webmeetAgent` to import the canonical WebMeet event contract. This mount must not be used to move the LiveKit worker runtime or native dependency installation back into `webmeetAgent`.
+
 The worker may be launched through a no-wait manifest edge so it never blocks default WebMeet readiness. Normal rooms, chat, guest access, camera, screen share, and recording flows must remain usable when the optional worker is still preparing or has failed.
 
 An attach request must be rejected for an empty room because AI agents must not remain in a room without a human participant. A successful attach requires a real LiveKit `AGENT` participant in the target room. A `CreateDispatch` HTTP 200 response is not enough, because LiveKit can persist a dispatch record before a worker accepts the job.
