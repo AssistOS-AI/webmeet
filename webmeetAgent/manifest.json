@@ -1,6 +1,6 @@
 {
     "agent": "sh /code/scripts/startAgent.sh",
-    "container": "node:24.15.0",
+    "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
     "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and meeting artifacts.",
     "network": {
         "name": "webmeet",
