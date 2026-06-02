@@ -1441,10 +1441,10 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 }
 
 .webmeet-icon-button.webmeet-leave-button {
-    background-color: #ed4245; /* Discord Red */
-    border-color: #ed4245;
+    background-color: #DB5C5C; /* Discord Red */
+    border-color: #DB5C5C;
     color: white;
-    box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
+    box-shadow: 0 4px 12px rgba(219, 92, 92, 0.3);
 }
 
 .webmeet-leave-button:hover {
@@ -1452,7 +1452,7 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     border-color: #c03537;
     color: white;
     transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(237, 66, 69, 0.45);
+    box-shadow: 0 6px 16px rgba(219, 92, 92, 0.45);
 }
 
 .webmeet-icon-button {

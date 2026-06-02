@@ -53,8 +53,8 @@
 
 .form-input:focus {
     outline: none;
-    border-color: var(--accent, #3b82f6);
-    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 37, 99, 235), 0.1);
+    border-color: var(--accent, #60A5FA);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 96, 165, 250), 0.1);
 }
 
 .room-type-options {
@@ -80,8 +80,8 @@
 }
 
 .room-type-option input[type="radio"]:checked + .room-type-card {
-    border-color: var(--accent, #3b82f6);
-    background-color: rgba(var(--accent-rgb, 37, 99, 235), 0.12);
+    border-color: var(--accent, #60A5FA);
+    background-color: rgba(var(--accent-rgb, 96, 165, 250), 0.12);
 }
 
 .room-type-icon {

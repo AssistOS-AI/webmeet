@@ -37,7 +37,7 @@ export class CreateRoomModal {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
         errorDiv.textContent = message;
-        errorDiv.style.cssText = 'color: #dc2626; font-size: 14px; margin-top: 8px;';
+        errorDiv.style.cssText = 'color: #DB5C5C; font-size: 14px; margin-top: 8px;';
 
         const footer = this.element.querySelector('.modal-footer');
         if (footer) {
