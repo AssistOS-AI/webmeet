@@ -26,27 +26,30 @@ export class AuthenticatedWebMeetRoomApi {
     }
 
     async joinMeeting(payload = {}) {
-        return this.runTool('webmeet_meeting_join', payload);
+        return this.runTool('webmeet_room_join', {
+            ...payload,
+            roomId: requireString(payload.roomId || payload.meetingId, 'roomId')
+        });
     }
 
-    async leaveMeeting({ meetingId = '', participantId = '' } = {}) {
-        return this.runTool('webmeet_meeting_leave', {
-            meetingId: requireString(meetingId, 'meetingId'),
+    async leaveMeeting({ meetingId = '', roomId = '', participantId = '' } = {}) {
+        return this.runTool('webmeet_room_leave', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
             participantId: requireString(participantId, 'participantId')
         });
     }
 
-    async publishAvatar({ meetingId = '', participantId = '', avatar = null } = {}) {
+    async publishAvatar({ meetingId = '', roomId = '', participantId = '', avatar = null } = {}) {
         return this.runTool('webmeet_participant_avatar_update', {
-            meetingId: requireString(meetingId, 'meetingId'),
+            roomId: requireString(roomId || meetingId, 'roomId'),
             participantId: requireString(participantId, 'participantId'),
             avatar: requireObject(avatar, 'avatar')
         });
     }
 
-    async sendChat({ meetingId = '', message = '' } = {}) {
+    async sendChat({ meetingId = '', roomId = '', message = '' } = {}) {
         return this.runTool('webmeet_chat_send', {
-            meetingId: requireString(meetingId, 'meetingId'),
+            roomId: requireString(roomId || meetingId, 'roomId'),
             message: requireString(message, 'message')
         });
     }
@@ -55,35 +58,40 @@ export class AuthenticatedWebMeetRoomApi {
 
 export class GuestWebMeetRoomApi {
     constructor(options = {}) {
-        this.callPublicGuestApi = assertFunction(options.callPublicGuestApi, 'callPublicGuestApi');
+        this.runTool = assertFunction(options.runTool, 'runTool');
     }
 
     async joinMeeting() {
-        throw new Error('Guest room sessions are created by the public invite join endpoint.');
+        throw new Error('Guest room sessions are created by the room entrypoint.');
     }
 
-    async leaveMeeting({ meetingId = '' } = {}) {
-        return this.callPublicGuestApi(requireString(meetingId, 'meetingId'), 'guest-leave', {});
+    async leaveMeeting({ meetingId = '', roomId = '', participantId = '' } = {}) {
+        return this.runTool('webmeet_room_leave', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
+            participantId: requireString(participantId, 'participantId')
+        });
     }
 
-    async publishAvatar({ meetingId = '', avatar = null } = {}) {
-        return this.callPublicGuestApi(
-            requireString(meetingId, 'meetingId'),
-            'guest-avatar',
-            { avatar: requireObject(avatar, 'avatar') }
-        );
+    async publishAvatar({ meetingId = '', roomId = '', participantId = '', avatar = null } = {}) {
+        return this.runTool('webmeet_participant_avatar_update', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
+            participantId: requireString(participantId, 'participantId'),
+            avatar: requireObject(avatar, 'avatar')
+        });
     }
 
-    async sendChat({ meetingId = '', message = '' } = {}) {
-        return this.callPublicGuestApi(
-            requireString(meetingId, 'meetingId'),
-            'guest-chat',
-            { message: requireString(message, 'message') }
-        );
+    async sendChat({ meetingId = '', roomId = '', message = '' } = {}) {
+        return this.runTool('webmeet_chat_send', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
+            message: requireString(message, 'message')
+        });
     }
 
-    async loadRoomState({ meetingId = '' } = {}) {
-        return this.callPublicGuestApi(requireString(meetingId, 'meetingId'), 'guest-state', {});
+    async loadRoomState({ meetingId = '', roomId = '' } = {}) {
+        return this.runTool('webmeet_room_get', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
+            includeParticipants: true
+        });
     }
 }
 

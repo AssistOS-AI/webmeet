@@ -1,22 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ChatTranscriptComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/service-components/chat-transcript-component.js';
+import { ChatComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/service-components/chat-component.js';
 
 function makeComponent(overrides = {}) {
-    const state = { chat: [], transcript: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
+    const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
     const calls = [];
     const meeting = { id: 'meeting-1' };
-    const component = new ChatTranscriptComponent({
+    const component = new ChatComponent({
         isGuestSession: () => false,
-        canManageArtifacts: () => true,
         getState: () => state,
         setState: (updates) => Object.assign(state, updates),
         getSelectedMeeting: () => meeting,
         getSession: () => state.session,
         renderFeedLists: () => {},
-        renderMeetingSummary: () => {},
-        renderAll: () => {},
         publishRealtimePayload: async () => {},
         loadMeetingDetails: async () => {},
         getRoom: () => null,
@@ -87,19 +84,6 @@ test('sendChat does not call any tool when the input is empty', async () => {
     component.elements = { chatInput: { value: '   ' } };
     await component.sendChat();
     assert.equal(calls.length, 0);
-});
-
-test('appendTranscript routes through webmeet_transcript_append', async () => {
-    const { component, calls, meeting } = makeComponent();
-    component.elements = {
-        chatInput: { value: '' },
-        transcriptInput: { value: 'spoken' },
-        transcriptSpeaker: { value: 'Speaker' }
-    };
-    await component.appendTranscript();
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].name, 'webmeet_transcript_append');
-    assert.equal(calls[0].args.meetingId, meeting.id);
 });
 
 test('getKnownAgentTokens returns no provider tokens', () => {

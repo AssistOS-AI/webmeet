@@ -59,6 +59,60 @@ export function getCurrentActorDisplayName() {
     return email && email !== 'local@example.com' ? email : '';
 }
 
+const WEBMEET_GUEST_DISPLAY_NAME_KEY = 'webmeet.guestDisplayName';
+
+export function readStoredGuestDisplayName() {
+    try {
+        return String(window?.localStorage?.getItem(WEBMEET_GUEST_DISPLAY_NAME_KEY) || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+export function storeGuestDisplayName(displayName) {
+    const value = String(displayName || '').trim();
+    if (!value) return;
+    try {
+        window?.localStorage?.setItem(WEBMEET_GUEST_DISPLAY_NAME_KEY, value);
+    } catch {
+        // localStorage can be unavailable in private browsing; joining should still work.
+    }
+}
+
+export function requestGuestDisplayName() {
+    const storedName = readStoredGuestDisplayName();
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'webmeet-guest-name-overlay';
+        overlay.innerHTML = `
+            <form class="webmeet-guest-name-form">
+                <div class="webmeet-guest-name-title">Join room</div>
+                <label class="webmeet-guest-name-label" for="webmeetGuestDisplayName">Your name</label>
+                <input id="webmeetGuestDisplayName" class="webmeet-guest-name-input" type="text"
+                       autocomplete="name" maxlength="80" required>
+                <button type="submit" class="webmeet-guest-name-submit">Join</button>
+            </form>
+        `;
+        const form = overlay.querySelector('form');
+        const input = overlay.querySelector('input');
+        input.value = storedName;
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const displayName = String(input.value || '').trim();
+            if (!displayName) {
+                input.focus();
+                return;
+            }
+            storeGuestDisplayName(displayName);
+            overlay.remove();
+            resolve(displayName);
+        });
+        document.body.appendChild(overlay);
+        input.focus();
+        input.select();
+    });
+}
+
 export function isAdminActor(actor = null) {
     if (!actor || typeof actor !== 'object') return false;
     const roles = Array.isArray(actor.roles) ? actor.roles : [];
@@ -78,37 +132,53 @@ export function isMissingMeetingError(error) {
         || message.includes('no such file or directory');
 }
 
-function getGuestSessionKeyFromUrl() {
-    const hash = String(window.location.hash || '');
-    const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
-    const params = new URLSearchParams(query);
-    return String(params.get('guestSession') || '').trim();
-}
-
-export function readGuestInviteTokenFromUrl() {
+export function readRoomIdFromUrl() {
     try {
         const params = new URLSearchParams(String(window.location.search || ''));
-        return String(params.get('token') || '').trim();
+        const roomId = String(params.get('roomId') || '').trim();
+        return /^room_[0-9a-fA-F-]{36}$/.test(roomId) ? roomId : '';
     } catch {
         return '';
     }
 }
 
-export function readGuestSessionFromUrl() {
-    const key = getGuestSessionKeyFromUrl();
-    if (!key) return null;
+export function readRoomIdFromExplorerHash() {
     try {
-        const raw = String(window.sessionStorage?.getItem(key) || '').trim();
-        return raw ? JSON.parse(raw) : null;
+        const hash = String(window.location.hash || '');
+        const queryStart = hash.indexOf('?');
+        if (queryStart === -1) {
+            return '';
+        }
+        const params = new URLSearchParams(hash.slice(queryStart + 1));
+        const roomId = String(params.get('roomId') || '').trim();
+        return /^room_[0-9a-fA-F-]{36}$/.test(roomId) ? roomId : '';
     } catch {
-        return null;
+        return '';
     }
 }
 
-export function buildPublicWebMeetApiBaseUrl() {
-    return `${window.location.origin}/public-services/webmeet`;
-}
-
-export function buildAuthenticatedWebMeetApiBaseUrl() {
-    return `${window.location.origin}/services/webmeet`;
+export function syncBrowserRoomUrl(roomId, options = {}) {
+    const id = String(roomId || '').trim();
+    if (!id || !/^room_[0-9a-fA-F-]{36}$/.test(id)) {
+        return false;
+    }
+    if (typeof window === 'undefined' || !window.history || !window.location) {
+        return false;
+    }
+    const targetPath = `/explorer/index.html?roomId=${encodeURIComponent(id)}#webmeet-dashboard`;
+    const currentPath = `${window.location.pathname || ''}${window.location.search || ''}${window.location.hash || ''}`;
+    if (currentPath === targetPath) {
+        return false;
+    }
+    const replace = options.replace === true;
+    const state = {
+        ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}),
+        webmeetRoomId: id
+    };
+    if (replace) {
+        window.history.replaceState(state, '', targetPath);
+    } else {
+        window.history.pushState(state, '', targetPath);
+    }
+    return true;
 }

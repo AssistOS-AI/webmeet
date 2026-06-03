@@ -1,7 +1,7 @@
 {
     "agent": "sh /code/scripts/startAgent.sh",
     "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
-    "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and meeting artifacts.",
+    "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and room resources.",
     "network": {
         "name": "webmeet",
         "aliases": [
@@ -15,25 +15,8 @@
         "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
     },
     "volumes": {
-        ".ploinky/data/webmeetAgent/data": "/data",
-        ".ploinky/data/webmeet/recordings": "/data/recordings"
+        ".ploinky/data/webmeetAgent/data": "/data"
     },
-    "httpServices": [
-        {
-            "externalPrefix": "/services/webmeet/",
-            "internalPrefix": "/api/",
-            "auth": "protected",
-            "notFoundMessage": "WebMeet route not found."
-        },
-        {
-            "externalPrefix": "/public-services/webmeet/",
-            "internalPrefix": "/api/",
-            "auth": "guest",
-            "guestScope": "webmeet-public-service",
-            "forceGuest": true,
-            "notFoundMessage": "WebMeet route not found."
-        }
-    ],
     "profiles": {
         "default": {
             "preinstall": "scripts/hooks/preinstall.sh",
@@ -80,11 +63,6 @@
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
                     "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_EGRESS_URL",
-                    "required": false,
-                    "default": "http://liveKitServerAgent:7980"
                 },
                 {
                     "name": "WEBMEET_STUN_URLS",
@@ -143,21 +121,6 @@
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",
                     "required": false,
                     "default": "webmeet-agent"
-                },
-                {
-                    "name": "WEBMEET_RECORDINGS_DIR",
-                    "required": false,
-                    "default": "/data/recordings"
-                },
-                {
-                    "name": "WEBMEET_API_PORT",
-                    "required": false,
-                    "default": "8791"
-                },
-                {
-                    "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
-                    "required": false,
-                    "sharedGeneratedSecret": true
                 }
             ]
         },
@@ -206,11 +169,6 @@
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": false,
                     "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_EGRESS_URL",
-                    "required": false,
-                    "default": "http://liveKitServerAgent:7980"
                 },
                 {
                     "name": "WEBMEET_STUN_URLS",
@@ -269,21 +227,6 @@
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",
                     "required": false,
                     "default": "webmeet-agent"
-                },
-                {
-                    "name": "WEBMEET_RECORDINGS_DIR",
-                    "required": false,
-                    "default": "/data/recordings"
-                },
-                {
-                    "name": "WEBMEET_API_PORT",
-                    "required": false,
-                    "default": "8791"
-                },
-                {
-                    "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
-                    "required": false,
-                    "sharedGeneratedSecret": true
                 }
             ]
         },
@@ -327,11 +270,6 @@
                     "name": "WEBMEET_LIVEKIT_API_SECRET",
                     "required": true,
                     "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_EGRESS_URL",
-                    "required": true,
-                    "default": "http://host.containers.internal:7980"
                 },
                 {
                     "name": "WEBMEET_STUN_URLS",
@@ -389,21 +327,6 @@
                     "name": "WEBMEET_LIVEKIT_AGENT_NAME",
                     "required": false,
                     "default": "webmeet-agent"
-                },
-                {
-                    "name": "WEBMEET_RECORDINGS_DIR",
-                    "required": false,
-                    "default": "/data/recordings"
-                },
-                {
-                    "name": "WEBMEET_API_PORT",
-                    "required": false,
-                    "default": "8791"
-                },
-                {
-                    "name": "WEBMEET_AGENT_INTERNAL_TOKEN",
-                    "required": false,
-                    "sharedGeneratedSecret": true
                 }
             ]
         }

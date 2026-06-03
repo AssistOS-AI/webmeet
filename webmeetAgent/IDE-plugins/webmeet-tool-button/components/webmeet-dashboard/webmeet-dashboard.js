@@ -1,4 +1,4 @@
-export class WebMeetDashboardPage {
+export class WebMeetDashboard {
     constructor(element, invalidate) {
         this.element = element;
         this.invalidate = invalidate;

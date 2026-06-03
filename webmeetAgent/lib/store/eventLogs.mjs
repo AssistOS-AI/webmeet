@@ -1,0 +1,99 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+import { appendEventLog, appendWorkspaceEventLog } from '../webmeetQueue.mjs';
+import {
+    buildWebMeetEvent,
+    getWebMeetEventId,
+    isPersistentWebMeetEvent,
+    isWorkspacePersistentWebMeetEvent
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+
+async function pathExists(filePath) {
+    try {
+        await fs.access(filePath);
+        return true;
+    } catch (error) {
+        if (error?.code === 'ENOENT') return false;
+        throw error;
+    }
+}
+
+async function listEventLog(eventsDir, afterId = '') {
+    if (!(await pathExists(eventsDir))) return [];
+    const afterEventId = String(afterId || '').trim();
+    let foundAfter = !afterEventId;
+    const names = await fs.readdir(eventsDir);
+    const events = await Promise.all(names
+        .filter((name) => name.endsWith('.event'))
+        .sort()
+        .map(async (name) => {
+            try {
+                return (await fs.readFile(path.join(eventsDir, name), 'utf8')).trim();
+            } catch (_) {
+                return null;
+            }
+        }));
+    return events
+        .filter(Boolean)
+        .filter((event) => {
+            const eventId = getWebMeetEventId(event);
+            if (!afterEventId) return true;
+            if (foundAfter) return true;
+            if (eventId === afterEventId) {
+                foundAfter = true;
+            }
+            return false;
+        })
+        .filter((event) => getWebMeetEventId(event) !== afterEventId);
+}
+
+function createRoomEvent(roomId, type, data = {}) {
+    return buildWebMeetEvent(roomId, type, {
+        ...data,
+        meetingId: String(data?.meetingId || roomId || '').trim()
+    });
+}
+
+export async function recordRoomEvent(context, roomId, type, data = {}) {
+    const event = createRoomEvent(roomId, type, data);
+    if (!isPersistentWebMeetEvent(type)) {
+        throw new Error(`WebMeet event type is not meeting-persistent: ${type}`);
+    }
+    await appendEventLog(context.workspaceRoot, roomId, event);
+    if (isWorkspacePersistentWebMeetEvent(type)) {
+        try {
+            const record = await context.loadRoomRecord?.(roomId);
+            if (record?.workspaceId) {
+                await appendWorkspaceEventLog(context.workspaceRoot, record.workspaceId, event);
+            }
+        } catch (_) {
+            // Room creation records workspace events after the room file exists.
+        }
+    }
+    return event;
+}
+
+export async function recordWorkspaceEvent(context, workspaceId, type, data = {}) {
+    const event = buildWebMeetEvent(workspaceId, type, {
+        ...data,
+        workspaceId: String(data?.workspaceId || workspaceId || '').trim()
+    });
+    if (!isWorkspacePersistentWebMeetEvent(type)) {
+        throw new Error(`WebMeet event type is not workspace-persistent: ${type}`);
+    }
+    await appendWorkspaceEventLog(context.workspaceRoot, workspaceId, event);
+    return event;
+}
+
+export async function listRoomEvents(context, roomId, { afterId = '' } = {}) {
+    const targetRoomId = String(roomId || '').trim();
+    if (!targetRoomId) return [];
+    return await listEventLog(path.join(context.eventsDir, targetRoomId), afterId);
+}
+
+export async function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {}) {
+    const targetWorkspaceId = String(workspaceId || '').trim();
+    if (!targetWorkspaceId) return [];
+    return await listEventLog(path.join(context.eventsDir, 'workspaces', targetWorkspaceId), afterId);
+}

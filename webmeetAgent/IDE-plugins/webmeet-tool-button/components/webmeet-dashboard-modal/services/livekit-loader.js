@@ -6,8 +6,7 @@ let backgroundEffectsModulePromise = null;
 
 function getWebMeetAssetUrl(path) {
     const cleanPath = String(path || '').replace(/^\/+/, '');
-    const origin = globalThis.location?.origin || new URL('../../../', import.meta.url).origin;
-    return new URL(`/public-services/webmeet/assets/${cleanPath}`, origin).href;
+    return new URL(`../../../${cleanPath}`, import.meta.url).href;
 }
 
 export async function ensureLiveKitClient() {

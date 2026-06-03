@@ -12,10 +12,7 @@ import { dashboardChromeMethods } from './controllers/dashboard-chrome-methods.j
 import { dashboardDataMethods } from './controllers/dashboard-data-methods.js';
 import { dashboardRealtimeMethods } from './controllers/dashboard-realtime-methods.js';
 import { dashboardSessionMethods } from './controllers/dashboard-session-methods.js';
-import {
-    ChatTranscriptComponent,
-    GuestSessionManager
-} from './service-components/index.js';
+import { ChatComponent } from './service-components/index.js';
 import {
     DEFAULT_OUTPUT_VOLUME,
     DEFAULT_VOICE_PROCESSING_MODE
@@ -30,10 +27,7 @@ import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './se
 import { WebMeetRoom } from './services/room/webmeet-room.js';
 import { WebMeetRoomEvents } from './services/room/webmeet-room-events.js';
 import { runWebMeetTool } from './services/webmeet-api-client.js';
-import {
-    buildPublicWebMeetApiBaseUrl,
-    normalizeCurrentActor
-} from './services/dashboard-utils.js';
+import { normalizeCurrentActor } from './services/dashboard-utils.js';
 
 let avatarSettingsFormRegistrationPromise = null;
 
@@ -91,11 +85,7 @@ export class WebMeetDashboardModal {
             workspaces: [],
             meetings: [],
             chat: [],
-            transcript: [],
-            artifacts: [],
-            recordings: [],
-            tasks: [],
-            decisions: [],
+            resources: [],
             agents: [],
             meetingParticipantsById: {},
             selectedWorkspaceId: '',
@@ -109,7 +99,6 @@ export class WebMeetDashboardModal {
             canManageRooms: false,
             session: null,
             roomState: 'Disconnected',
-            transcriptState: 'Idle',
             media: {
                 microphone: false,
                 camera: false,
@@ -192,7 +181,6 @@ export class WebMeetDashboardModal {
             },
             isGuestSession: () => this.isGuestSession(),
             getSelectedWorkspaceId: () => this.state.selectedWorkspaceId,
-            callPublicGuestApi: (meetingId, action, payload) => this.callPublicGuestApi(meetingId, action, payload),
             connectLiveKit: () => this.connectRoom(),
             disconnectLiveKit: (options) => this.disconnectRoom(options),
             runTool: runWebMeetTool,
@@ -211,7 +199,6 @@ export class WebMeetDashboardModal {
             getCurrentActorId: () => String(this.currentActor?.id || '').trim()
         });
         this.bindRoomEventHandlers();
-        this.speechRecognition = null;
         this.meetingListController = new MeetingListController();
         this.participantLayoutController = new ParticipantLayoutController({
             getParticipantDisplayName: (participant) => this.getParticipantDisplayName(participant),
@@ -237,21 +224,9 @@ export class WebMeetDashboardModal {
                 meetingId: this.state.session?.meeting?.id,
                 participantId: this.state.session?.participantIdentity
             }),
-            buildLeaveRequest: ({ meetingId, participantId }) => {
-                const encodedMeetingId = encodeURIComponent(String(meetingId || '').trim());
-                if (!encodedMeetingId) return null;
-                if (this.isGuestSession()) {
-                    const baseUrl = this.state.session?.publicApiBaseUrl || buildPublicWebMeetApiBaseUrl();
-                    return {
-                        url: `${baseUrl}/meetings/${encodedMeetingId}/guest-leave`,
-                        body: {
-                            guestToken: this.getGuestToken(),
-                            participantId: String(participantId || '').trim()
-                        }
-                    };
-                }
-                return null;
-            }
+            cleanupLocalMedia: () => this.cleanupLocalLiveKitMediaForWindowExit(),
+            disconnectLiveKit: () => this.webMeetRoom.disconnectLiveKit(),
+            leaveCurrentSession: () => this.webMeetRoom.leaveCurrentSession()
         });
         this.mediaController = new WebmeetMediaController({
             getRoom: () => this.room,
@@ -303,38 +278,20 @@ export class WebMeetDashboardModal {
     }
 
     _initComponents() {
-        // Chat and Transcript Component
-        this.chatComponent = new ChatTranscriptComponent({
+        this.chatComponent = new ChatComponent({
             isGuestSession: () => this.isGuestSession(),
             sendPublicChat: (meetingId, message) => this.sendPublicChat(meetingId, message),
-            callPublicGuestApi: (meetingId, action, payload) => this.callPublicGuestApi(meetingId, action, payload),
-            canManageArtifacts: () => this.canManageRooms(),
             getState: () => this.state,
             setState: (updates) => Object.assign(this.state, updates),
             setError: (msg) => this.setError(msg),
             getSelectedMeeting: () => this.selectedMeeting,
             getSession: () => this.state.session,
             renderFeedLists: () => this.renderFeedLists(),
-            renderMeetingSummary: () => this.renderMeetingSummary(),
-            renderAll: () => this.renderAll(),
             publishRealtimePayload: (payload) => this.publishRealtimePayload(payload),
             loadMeetingDetails: () => this.loadMeetingDetails(),
             getRoom: () => this.room
         });
 
-        // Guest Session Manager
-        this.guestManager = new GuestSessionManager({
-            getState: () => this.state,
-            setState: (updates) => Object.assign(this.state, updates),
-            getSession: () => this.state.session,
-            setSession: (session) => { this.state.session = session; },
-            setError: (msg) => this.setError(msg),
-            loadParticipantsForMeetings: () => this.loadParticipantsForMeetings(),
-            loadMeetingDetails: () => this.loadMeetingDetails(),
-            renderAll: () => this.renderAll(),
-            connectRoom: () => this.webMeetRoom.connectLiveKit(),
-            hostContext: this.hostContext
-        });
     }
 
     beforeRender() {}
@@ -362,12 +319,10 @@ export class WebMeetDashboardModal {
             const actions = [
                 'closeModal',
                 'createMeeting',
-                'renameMeeting',
-                'deleteMeeting',
-                'copyGuestInviteLink',
+                'openRoomSettings',
+                'copyRoomLink',
                 'joinMeeting',
                 'leaveMeeting',
-                'toggleRecording',
                 'toggleMicrophone',
                 'toggleDeafen',
                 'toggleCamera',
@@ -389,21 +344,13 @@ export class WebMeetDashboardModal {
                 'openParticipantAudioSettings',
                 'focusParticipantCard',
                 'sendChat',
-                'appendTranscript',
-                'startAutoTranscript',
-                'stopAutoTranscript',
                 'attachObserver',
                 'attachAssistant',
                 'attachScribe',
                 'detachAgent',
                 'detachAgentFromCard',
                 'selectMeeting',
-                'selectAndJoinMeeting',
-                'openTranscript',
-                'openArtifacts',
-                'openRecordings',
-                'openAI',
-                'showRoomAiMenu'
+                'selectAndJoinMeeting'
             ];
 
             actions.forEach(action => {
@@ -446,7 +393,6 @@ export class WebMeetDashboardModal {
             // Toggle button state
             collapseButton.classList.toggle('collapsed');
 
-            // Handle transcript collapse (vertical content)
             const collapsibles = this.element.querySelectorAll(`[data-collapsible="${collapsibleId}"]`);
             const isCollapsed = collapseButton.classList.contains('collapsed');
 
@@ -472,14 +418,11 @@ export class WebMeetDashboardModal {
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
-        this.taskList = this.element.querySelector('#webmeetTaskList');
-        this.decisionList = this.element.querySelector('#webmeetDecisionList');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
         this.videoGridEmpty = this.element.querySelector('#webmeetVideoEmpty');
         this.videoGridAll = this.element.querySelector('#webmeetVideoAll');
         this.videoGridThumbnails = this.element.querySelector('#webmeetVideoThumbnails');
-        this.recordingButton = this.element.querySelector('#webmeetRecordingButton');
         this.leaveButton = this.element.querySelector('#webmeetLeaveButton');
         this.exitOverlay = this.element.querySelector('#webmeetExitOverlay');
         this.roomTransitionMessage = this.element.querySelector('#webmeetRoomTransitionMessage');

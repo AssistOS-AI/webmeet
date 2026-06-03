@@ -37,10 +37,9 @@ async function createGuestMeetingWithParticipant(ctx, title = 'Guest Room') {
     const meeting = await createMeeting(ctx, { title, roomType: 'guest', authInfo: ADMIN_AUTH });
     const joinResult = await joinGuestMeeting(ctx, {
         meetingId: meeting.id,
-        guestToken: meeting.guestToken,
         displayName: 'Test Guest',
     });
-    return { meeting, joinResult, participantId: joinResult.participantIdentity, guestToken: meeting.guestToken };
+    return { meeting, joinResult, participantId: joinResult.participantIdentity };
 }
 
 before(async () => {
@@ -56,12 +55,11 @@ after(async () => {
 });
 
 describe('concurrent meeting mutations (lock + in-process queue)', () => {
-    test('concurrent chat and transcript appends do not lose data', async () => {
-        const { appendMeetingChat, appendMeetingTranscript, listMeetingChat, listMeetingTranscript } = await import('../../lib/webmeetStore.mjs');
+    test('concurrent chat appends do not lose data', async () => {
+        const { appendMeetingChat, listMeetingChat } = await import('../../lib/webmeetStore.mjs');
         const meeting = await createTestMeeting(context);
 
-        const chatCount = 5;
-        const transcriptCount = 5;
+        const chatCount = 10;
         const promises = [];
 
         for (let i = 0; i < chatCount; i++) {
@@ -73,30 +71,16 @@ describe('concurrent meeting mutations (lock + in-process queue)', () => {
                 skipAccessCheck: true,
             }));
         }
-        for (let i = 0; i < transcriptCount; i++) {
-            promises.push(appendMeetingTranscript(context, {
-                meetingId: meeting.id,
-                speakerId: `speaker-${i}`,
-                speakerName: `Speaker ${i}`,
-                text: `transcript-${i}`,
-            }));
-        }
 
         await Promise.all(promises);
 
         const chats = await listMeetingChat(context, meeting.id, ADMIN_AUTH);
-        const transcripts = await listMeetingTranscript(context, meeting.id);
 
         assert.equal(chats.length, chatCount, `Expected ${chatCount} chat messages, got ${chats.length}`);
-        assert.equal(transcripts.length, transcriptCount, `Expected ${transcriptCount} transcript segments, got ${transcripts.length}`);
 
         const chatMessages = chats.map((c) => c.message).sort();
         const expectedChats = Array.from({ length: chatCount }, (_, i) => `chat-${i}`).sort();
         assert.deepEqual(chatMessages, expectedChats);
-
-        const transcriptTexts = transcripts.map((t) => t.text).sort();
-        const expectedTranscripts = Array.from({ length: transcriptCount }, (_, i) => `transcript-${i}`).sort();
-        assert.deepEqual(transcriptTexts, expectedTranscripts);
     });
 
     test('concurrent LiveKit-backed meeting reads serialize correctly', async () => {
@@ -186,27 +170,12 @@ describe('event staging — events recorded only after successful payload save',
         assert.ok(chatEvents.length >= 1, 'At least one chat.message.created event should exist in the event log');
     });
 
-    test('transcript event appears in event log after mutation completes', async () => {
-        const { appendMeetingTranscript, listMeetingEvents } = await import('../../lib/webmeetStore.mjs');
-        const meeting = await createTestMeeting(context);
-
-        await appendMeetingTranscript(context, {
-            meetingId: meeting.id,
-            speakerId: 'speaker-evt',
-            speakerName: 'Event Speaker',
-            text: 'event-test-transcript',
-        });
-
-        const events = await listMeetingEvents(context, meeting.id);
-        const transcriptEvents = events.filter((e) => String(e).includes('transcript.updated'));
-        assert.ok(transcriptEvents.length >= 1, 'At least one transcript.updated event should exist');
-    });
 });
 
 describe('guest-state response narrowing', () => {
     test('getGuestMeetingDetails returns only meeting, participants, and chat', async () => {
         const { getGuestMeetingDetails, appendMeetingChat } = await import('../../lib/webmeetStore.mjs');
-        const { meeting, participantId, guestToken } = await createGuestMeetingWithParticipant(context);
+        const { meeting, participantId } = await createGuestMeetingWithParticipant(context);
 
         await appendMeetingChat(context, {
             meetingId: meeting.id,
@@ -218,7 +187,6 @@ describe('guest-state response narrowing', () => {
 
         const details = await getGuestMeetingDetails(context, {
             meetingId: meeting.id,
-            guestToken,
             participantId,
         });
 
@@ -230,25 +198,21 @@ describe('guest-state response narrowing', () => {
         assert.ok(Array.isArray(details.participants), 'participants should be an array');
         assert.ok(Array.isArray(details.chat), 'chat should be an array');
 
-        assert.equal(details.transcript, undefined, 'transcript must not be exposed to guests');
-        assert.equal(details.artifacts, undefined, 'artifacts must not be exposed to guests');
-        assert.equal(details.recordings, undefined, 'recordings must not be exposed to guests');
-        assert.equal(details.tasks, undefined, 'tasks must not be exposed to guests');
-        assert.equal(details.decisions, undefined, 'decisions must not be exposed to guests');
+        assert.equal(details.resources, undefined, 'resources must not be exposed to guests through room details');
         assert.equal(details.agents, undefined, 'agents must not be exposed to guests');
     });
 });
 
-describe('MCP chat schema — authorId/authorName optional', () => {
-    test('mcp-config.json marks authorId and authorName as optional for webmeet_chat_send', async () => {
+describe('MCP chat schema — author is derived from invocation context', () => {
+    test('mcp-config.json does not accept caller-supplied author fields for webmeet_chat_send', async () => {
         const configPath = path.resolve(import.meta.dirname, '../../mcp-config.json');
         const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
         const chatSend = config.tools.find((t) => t.name === 'webmeet_chat_send');
         assert.ok(chatSend, 'webmeet_chat_send tool should exist in mcp-config.json');
 
-        assert.equal(chatSend.inputSchema.authorId?.optional, true, 'authorId should be optional');
-        assert.equal(chatSend.inputSchema.authorName?.optional, true, 'authorName should be optional');
-        assert.equal(chatSend.inputSchema.meetingId?.optional, false, 'meetingId should remain required');
+        assert.equal(chatSend.inputSchema.authorId, undefined, 'authorId should not be accepted from the client');
+        assert.equal(chatSend.inputSchema.authorName, undefined, 'authorName should not be accepted from the client');
+        assert.equal(chatSend.inputSchema.roomId?.optional, false, 'roomId should remain required');
         assert.equal(chatSend.inputSchema.message?.optional, false, 'message should remain required');
     });
 });
@@ -256,11 +220,10 @@ describe('MCP chat schema — authorId/authorName optional', () => {
 describe('guest chat derives author from participant record, not caller-supplied fields', () => {
     test('appendGuestMeetingChat uses participant displayName, not caller-supplied author', async () => {
         const { appendGuestMeetingChat, listMeetingChat } = await import('../../lib/webmeetStore.mjs');
-        const { meeting, participantId, guestToken } = await createGuestMeetingWithParticipant(context, 'Guest Author Room');
+        const { meeting, participantId } = await createGuestMeetingWithParticipant(context, 'Guest Author Room');
 
         await appendGuestMeetingChat(context, {
             meetingId: meeting.id,
-            guestToken,
             participantId,
             message: 'guest says hello',
         });
@@ -388,9 +351,9 @@ describe('filesystem lock mechanics', () => {
         await fs.rm(lockPath, { force: true });
     });
 
-    test('deleteMeeting waits for the meeting lock', async () => {
-        const { deleteMeeting } = await import('../../lib/webmeetStore.mjs');
-        const meeting = await createTestMeeting(context, 'Locked Delete Room');
+    test('archiveMeeting waits for the meeting lock', async () => {
+        const { archiveMeeting } = await import('../../lib/webmeetStore.mjs');
+        const meeting = await createTestMeeting(context, 'Locked Archive Room');
         const lockPath = path.join(context.meetingLocksDir, `${meeting.id}.lock`);
         await fs.writeFile(lockPath, JSON.stringify({
             pid: process.pid,
@@ -403,7 +366,7 @@ describe('filesystem lock mechanics', () => {
         process.env.WEBMEET_LOCK_STALE_TTL_MS = '2000';
 
         await assert.rejects(
-            deleteMeeting(context, meeting.id, ADMIN_AUTH),
+            archiveMeeting(context, meeting.id, ADMIN_AUTH),
             /Timed out acquiring meeting lock/
         );
 
@@ -412,84 +375,10 @@ describe('filesystem lock mechanics', () => {
     });
 });
 
-describe('async proxy asset resolution', () => {
-    test('sendAsset call is awaited in the request handler', async () => {
-        const proxyPath = path.resolve(import.meta.dirname, '../../server/webmeet-public-proxy.mjs');
-        const source = await fs.readFile(proxyPath, 'utf8');
-
-        const sendAssetCalls = [...source.matchAll(/\bsendAsset\s*\(/g)];
-        assert.ok(sendAssetCalls.length >= 2, 'sendAsset should be called at least twice (definition + invocation)');
-
-        const invocationPattern = /(?:^|\n)\s*(?:await\s+)?sendAsset\s*\([^)]+\)/g;
-        const invocations = [...source.matchAll(invocationPattern)].filter((m) => {
-            const line = m[0].trim();
-            return !line.startsWith('async function') && !line.startsWith('function');
-        });
-        for (const match of invocations) {
-            const line = match[0].trim();
-            if (line.startsWith('const') || line.startsWith('return') || line.startsWith('async')) continue;
-            assert.ok(line.startsWith('await'), `sendAsset invocation should be awaited: "${line.slice(0, 60)}"`);
-        }
-    });
-
-    test('resolveAssetPath and sendAsset are async functions', async () => {
-        const proxyPath = path.resolve(import.meta.dirname, '../../server/webmeet-public-proxy.mjs');
-        const source = await fs.readFile(proxyPath, 'utf8');
-
-        assert.match(source, /async\s+function\s+resolveAssetPath/, 'resolveAssetPath should be async');
-        assert.match(source, /async\s+function\s+sendAsset/, 'sendAsset should be async');
-    });
-
-    test('proxy imports fs/promises instead of sync fs', async () => {
-        const proxyPath = path.resolve(import.meta.dirname, '../../server/webmeet-public-proxy.mjs');
-        const source = await fs.readFile(proxyPath, 'utf8');
-
-        assert.match(source, /from\s+['"]node:fs\/promises['"]/, 'proxy should import from node:fs/promises');
-        assert.match(source, /createAxiFaceAssetsHttpHandler\(\{\s*fs,/s, 'proxy should pass the fs/promises object to AxiFace handler');
-        assert.doesNotMatch(source, /fs:\s*fs\.promises\b/, 'proxy must not pass undefined fs.promises from node:fs/promises');
-        assert.doesNotMatch(source, /\bfs\.existsSync\b/, 'proxy should not use fs.existsSync');
-        assert.doesNotMatch(source, /\bfs\.readFileSync\b/, 'proxy should not use fs.readFileSync');
-        assert.doesNotMatch(source, /\bfs\.statSync\b/, 'proxy should not use fs.statSync');
-    });
-
-    test('AxiFace asset handler works with fs/promises object', async () => {
-        const { createAxiFaceAssetsHttpHandler } = await import('../../server/axi-face-assets.mjs');
-        const previousAxiFaceRepoPath = process.env.AXIFACE_REPO_PATH;
-        const repoRoot = path.join(tmpRoot, 'AxiFace');
-        await fs.mkdir(path.join(repoRoot, 'src'), { recursive: true });
-        await fs.writeFile(path.join(repoRoot, 'src', 'axi-face.mjs'), 'export const ok = true;\n');
-        process.env.AXIFACE_REPO_PATH = repoRoot;
-        try {
-            const handler = createAxiFaceAssetsHttpHandler({ fs, path, workspaceRoot: tmpRoot });
-            const chunks = [];
-            const res = {
-                statusCode: 0,
-                headers: {},
-                writeHead(status, headers = {}) {
-                    this.statusCode = status;
-                    this.headers = headers;
-                },
-                end(body = '') {
-                    chunks.push(Buffer.isBuffer(body) ? body : Buffer.from(String(body)));
-                }
-            };
-
-            const handled = await handler(
-                { method: 'GET' },
-                res,
-                new URL('http://webmeet.local/axi-face/src/axi-face.mjs')
-            );
-
-            assert.equal(handled, true);
-            assert.equal(res.statusCode, 200);
-            assert.equal(Buffer.concat(chunks).toString('utf8'), 'export const ok = true;\n');
-        } finally {
-            if (previousAxiFaceRepoPath === undefined) {
-                delete process.env.AXIFACE_REPO_PATH;
-            } else {
-                process.env.AXIFACE_REPO_PATH = previousAxiFaceRepoPath;
-            }
-        }
+describe('removed WebMeet public server', () => {
+    test('public proxy file is not present', async () => {
+        const proxyPath = path.resolve(import.meta.dirname, '../../server', `webmeet-public-${'proxy'}.mjs`);
+        await assert.rejects(fs.access(proxyPath), /ENOENT/);
     });
 });
 

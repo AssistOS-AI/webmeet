@@ -1,0 +1,143 @@
+.webmeet-room-settings-modal {
+    min-width: min(520px, calc(100vw - 32px));
+    color: var(--text, #111827);
+}
+
+.webmeet-room-settings-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.webmeet-room-settings-modal .modal-header-left {
+    min-width: 0;
+}
+
+.webmeet-room-settings-modal .modal-title {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.webmeet-room-settings-modal .modal-subtitle {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-soft, #6b7280);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-room-settings-modal .close {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+
+.webmeet-room-settings-modal .modal-body {
+    padding: 20px;
+    display: grid;
+    gap: 16px;
+}
+
+.webmeet-room-settings-field {
+    display: grid;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.webmeet-room-settings-field input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text, #111827);
+    background: var(--surface, #fff);
+}
+
+.webmeet-room-settings-field input:focus {
+    outline: none;
+    border-color: var(--accent, #2563eb);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.webmeet-room-settings-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: end;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.webmeet-room-settings-link code {
+    display: block;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    color: var(--text-soft, #4b5563);
+    background: var(--surface-soft, #f9fafb);
+    font-size: 12px;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-room-settings-copy-status {
+    min-width: 48px;
+    color: var(--success, #047857);
+    font-size: 13px;
+}
+
+.webmeet-room-settings-error {
+    color: var(--danger, #b91c1c);
+    font-size: 13px;
+}
+
+.webmeet-room-settings-modal .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.webmeet-room-settings-archive-button {
+    margin-right: auto;
+    border: 1px solid var(--danger, #b91c1c);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--danger, #b91c1c);
+    background: transparent;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.webmeet-room-settings-archive-button:hover {
+    background: color-mix(in srgb, var(--danger, #b91c1c) 10%, transparent);
+}
+
+@media (max-width: 560px) {
+    .webmeet-room-settings-modal {
+        min-width: 0;
+    }
+
+    .webmeet-room-settings-link {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+}

@@ -35,6 +35,62 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     resize: none !important;
 }
 
+.webmeet-guest-name-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--bg, #0f172a) 70%, transparent);
+    padding: 24px;
+}
+
+.webmeet-guest-name-form {
+    width: min(360px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 22px;
+    border: 1px solid var(--border-strong, rgba(148, 163, 184, 0.28));
+    border-radius: 8px;
+    background: var(--file-exp-panel, #ffffff);
+    color: var(--text, #111827);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.webmeet-guest-name-title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.webmeet-guest-name-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-button-border, #4b5563);
+}
+
+.webmeet-guest-name-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 11px;
+    border: 1px solid var(--border-strong, #cbd5e1);
+    border-radius: 6px;
+    background: var(--surface, #ffffff);
+    color: var(--text, #111827);
+    font: inherit;
+}
+
+.webmeet-guest-name-submit {
+    height: 40px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent, #2563eb);
+    color: #ffffff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
 /* Shared hidden state for WebSkel-controlled UI regions. */
 .webmeet-meeting-bar.webmeet-hidden,
 #webmeetChatSidebar.webmeet-hidden,
@@ -542,6 +598,23 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     display: none;
 }
 
+.webmeet-dashboard-modal.is-archive-readonly .webmeet-main-content {
+    grid-template-columns: minmax(280px, 720px);
+    justify-content: center;
+    padding: 16px;
+}
+
+.webmeet-dashboard-modal.is-archive-readonly .webmeet-chat-area,
+.webmeet-dashboard-modal.is-archive-readonly .webmeet-chat-resizer {
+    display: none;
+}
+
+.webmeet-dashboard-modal.is-archive-readonly #webmeetChatSidebar {
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
 .webmeet-chat-area {
     display: flex;
     flex-direction: column;
@@ -762,6 +835,12 @@ dialog.modal.webmeet-dashboard-modal-dialog {
 #webmeetChatInput.webmeet-chat-input-highlighted::placeholder {
     color: var(--text-soft);
     -webkit-text-fill-color: var(--text-soft);
+}
+
+.webmeet-dashboard-modal.is-archive-readonly #webmeetChatInput,
+.webmeet-dashboard-modal.is-archive-readonly #webmeetChatSidebar .webmeet-compose .general-button {
+    cursor: not-allowed;
+    opacity: 0.68;
 }
 
 .webmeet-composer-mention {
@@ -1409,29 +1488,6 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     display: block;
 }
 
-.webmeet-recording-button {
-    border-color: var(--gray-button-border);
-    color: var(--gray-button-text);
-}
-
-.webmeet-recording-button.active {
-    background: var(--red);
-    border-color: var(--red);
-    color: var(--white);
-}
-
-.webmeet-recording-button.active .icon-on {
-    display: none;
-}
-
-.webmeet-recording-button.active .icon-off {
-    display: block;
-}
-
-.webmeet-recording-button .icon-off {
-    display: none;
-}
-
 .webmeet-media-toggles {
     display: flex;
     gap: 8px;
@@ -1625,6 +1681,15 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     line-height: 1.4;
 }
 
+.webmeet-room-section-title {
+    margin: 10px 0 6px;
+    color: var(--text-soft);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
 #webmeetChatList .webmeet-feed-item {
     border: none;
     background: transparent;
@@ -1814,6 +1879,18 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     background: color-mix(in srgb, var(--accent) 18%, var(--surface) 82%);
 }
 
+.webmeet-list-item.is-archived {
+    background: color-mix(in srgb, var(--surface) 82%, var(--border) 18%);
+    border-color: var(--border);
+    color: var(--text-soft);
+}
+
+.webmeet-list-item.is-archived:hover,
+.webmeet-list-item.is-archived.is-selected {
+    background: color-mix(in srgb, var(--surface) 74%, var(--border) 26%);
+    border-color: var(--border);
+}
+
 .webmeet-meeting-row {
     display: flex;
     align-items: center;
@@ -1870,6 +1947,24 @@ dialog.modal.webmeet-dashboard-modal-dialog {
     background: var(--surface);
     color: var(--accent);
     border-color: var(--gray-button-border);
+}
+
+.webmeet-room-icon.is-archived {
+    color: var(--text-soft);
+    background: color-mix(in srgb, var(--surface) 72%, var(--border) 28%);
+    border-color: var(--border);
+}
+
+.webmeet-room-archived-label {
+    display: inline-flex;
+    width: max-content;
+    margin-top: 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 6px;
+    color: var(--text-soft);
+    font-size: 0.7rem;
+    font-weight: 600;
 }
 
 .webmeet-meeting-title {

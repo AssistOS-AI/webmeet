@@ -272,6 +272,9 @@ export const dashboardRenderMethods = {
         const canManageRooms = this.canManageRooms();
         const meeting = this.selectedMeeting;
         const isJoined = !!this.state.session?.participantIdentity;
+        const isArchivedMeeting = String(meeting?.status || '').trim().toLowerCase() === 'archived'
+            || Boolean(String(meeting?.archivedAt || '').trim());
+        const isArchiveReadOnlyView = Boolean(canManageRooms && meeting && isArchivedMeeting && !isJoined);
         const isLeaving = Boolean(this.state.leavingMeeting);
         const roomTransition = this.state.roomTransition || {};
         const isTransitioningRoom = Boolean(roomTransition.active);
@@ -281,6 +284,7 @@ export const dashboardRenderMethods = {
             this.dashboardModalRoot.classList.toggle('is-joined', isJoined);
             this.dashboardModalRoot.classList.toggle('is-leaving-room', isLeaving);
             this.dashboardModalRoot.classList.toggle('is-room-transitioning', isTransitioningRoom);
+            this.dashboardModalRoot.classList.toggle('is-archive-readonly', isArchiveReadOnlyView);
             this.dashboardModalRoot.setAttribute('aria-busy', isTransitioningRoom ? 'true' : 'false');
         }
         this.renderAvatarControls?.();
@@ -293,13 +297,13 @@ export const dashboardRenderMethods = {
         
         // Toggle welcome screen vs meeting UI
         if (this.welcomeScreen) {
-            this.welcomeScreen.classList.toggle('webmeet-hidden', isJoined);
+            this.welcomeScreen.classList.toggle('webmeet-hidden', isJoined || isArchiveReadOnlyView);
         }
         if (this.meetingBar) {
-            this.meetingBar.classList.toggle('webmeet-hidden', !isJoined);
+            this.meetingBar.classList.toggle('webmeet-hidden', !isJoined && !isArchiveReadOnlyView);
         }
         if (this.mainContent) {
-            this.mainContent.classList.toggle('webmeet-hidden', !isJoined);
+            this.mainContent.classList.toggle('webmeet-hidden', !isJoined && !isArchiveReadOnlyView);
         }
         if (!isJoined && this.state.videoGridFullscreen) {
             this.state.videoGridFullscreen = false;
@@ -316,27 +320,16 @@ export const dashboardRenderMethods = {
             this.activeRoomTitle.textContent = meeting?.title || 'Select a room';
         }*/
         this.lifecycle.textContent = meeting?.status || 'Idle';
-        this.joinStatus.textContent = isJoined ? 'Joined' : 'Not joined';
+        this.joinStatus.textContent = isArchiveReadOnlyView ? 'Archived' : (isJoined ? 'Joined' : 'Not joined');
         this.joinPayload.value = this.state.session ? JSON.stringify(this.state.session, null, 2) : '';
-        this.roomConnectionState.textContent = `${this.state.roomState} · transcript ${this.state.transcriptState}`;
-
-        // Update recording button
-        const latestRecording = [...(Array.isArray(this.state.recordings) ? this.state.recordings : [])].reverse()[0] || null;
-        if (this.recordingButton) {
-            this.recordingButton.classList.toggle('webmeet-hidden', !canManageRooms);
-            if (latestRecording && latestRecording.status === 'recording') {
-                this.recordingButton.classList.add('active');
-                this.recordingButton.title = 'Stop recording';
-                this.recordingButton.setAttribute('aria-label', 'Stop recording');
-            } else {
-                this.recordingButton.classList.remove('active');
-                this.recordingButton.title = 'Start recording';
-                this.recordingButton.setAttribute('aria-label', 'Start recording');
-            }
+        this.roomConnectionState.textContent = this.state.roomState;
+        if (this.chatInput) {
+            this.chatInput.disabled = isArchiveReadOnlyView;
+            this.chatInput.placeholder = isArchiveReadOnlyView ? 'Archived room chat is read-only.' : 'Type a message...';
         }
-
-        if (meeting && latestRecording) {
-            this.meetingMeta.textContent = `${this.meetingMeta.textContent} · rec ${latestRecording.status}`;
+        const sendChatButton = this.element.querySelector('[data-local-action="sendChat"]');
+        if (sendChatButton) {
+            sendChatButton.disabled = isArchiveReadOnlyView;
         }
 
         // Update icon button states
@@ -378,9 +371,6 @@ export const dashboardRenderMethods = {
         if (this.mediaSettingsButton) {
             this.mediaSettingsButton.disabled = isLeaving || isTransitioningRoom;
         }
-        if (this.recordingButton) {
-            this.recordingButton.disabled = isLeaving || isTransitioningRoom;
-        }
     },
 
     renderFeedLists() {
@@ -395,6 +385,13 @@ export const dashboardRenderMethods = {
 
         const knownAgentTokens = this.chatComponent?.getKnownAgentTokens?.() || [];
         const chatMessageHtml = (message) => renderMessageWithMentionHighlights(message || '', knownAgentTokens);
+        const meeting = this.selectedMeeting;
+        const isArchiveReadOnlyView = Boolean(
+            this.canManageRooms()
+            && meeting
+            && (String(meeting?.status || '').trim().toLowerCase() === 'archived' || Boolean(String(meeting?.archivedAt || '').trim()))
+            && !this.state.session?.participantIdentity
+        );
         renderFeed(this.chatList, this.state.chat, (entry) => `
             <div class="webmeet-feed-item">
                 <div class="webmeet-chat-entry ${
@@ -411,29 +408,10 @@ export const dashboardRenderMethods = {
                     </div>
                 </div>
             </div>
-        `, true, '<div class="webmeet-chat-empty">No messages yet. Start the conversation.</div>');
+        `, true, isArchiveReadOnlyView
+            ? '<div class="webmeet-chat-empty">No messages in this archived room.</div>'
+            : '<div class="webmeet-chat-empty">No messages yet. Start the conversation.</div>');
 
-        renderFeed(this.transcriptListSidebar, this.state.transcript, (entry) => `
-            <div class="webmeet-feed-item">
-                <div class="webmeet-chat-meta">
-                    <strong class="webmeet-chat-author">${escapeHtml(entry.speakerName || entry.speakerId || 'unknown')}</strong>
-                    <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.startedAt || entry.createdAt))}</span>
-                </div>
-                <div class="webmeet-chat-text">${escapeHtml(entry.text || '')}</div>
-            </div>
-        `, true, '<div class="webmeet-chat-empty">No transcript yet.</div>');
-
-        renderFeed(this.taskList, this.state.tasks, (entry) => `
-            <div class="webmeet-feed-item">
-                <strong>${escapeHtml(entry.title || '')}</strong>
-                <div>${escapeHtml(entry.status || '')}</div>
-            </div>
-        `);
-        renderFeed(this.decisionList, this.state.decisions, (entry) => `
-            <div class="webmeet-feed-item">
-                <strong>${escapeHtml(entry.title || '')}</strong>
-            </div>
-        `);
     }
 
 };

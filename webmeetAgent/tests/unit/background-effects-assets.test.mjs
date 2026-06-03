@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-test('background effects use the WebMeet asset route for MediaPipe wasm assets', async () => {
+test('background effects use plugin-relative assets for MediaPipe wasm assets', async () => {
     const source = await fs.readFile(
         path.resolve(
             import.meta.dirname,
@@ -12,7 +12,8 @@ test('background effects use the WebMeet asset route for MediaPipe wasm assets',
         'utf8'
     );
 
-    assert.match(source, /\/public-services\/webmeet\/assets\//);
+    assert.doesNotMatch(source, /\/public-services\/webmeet\/assets\//);
+    assert.match(source, /import\.meta\.url/);
     assert.match(source, /vendor\/background-effects\/wasm\//);
     assert.match(source, /vendor\/background-effects\/models\/selfie_segmenter\.tflite/);
 });

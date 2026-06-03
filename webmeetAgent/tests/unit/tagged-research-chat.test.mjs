@@ -8,7 +8,6 @@ import path from 'node:path';
 import {
     createMeeting,
     createStoreContext,
-    createWorkspace,
     listMeetingChat
 } from '../../lib/webmeetStore.mjs';
 import { dispatch } from '../../tools/webmeet_tool.mjs';
@@ -59,10 +58,8 @@ async function makeContext() {
     const authInfo = { user: { id: 'local:admin', username: 'admin', name: 'Admin', roles: ['admin'] } };
     const context = await createStoreContext(tempRoot);
     context.envelope = { metadata: { invocationToken: 'caller-token' } };
-    const workspace = await createWorkspace(context);
     const meeting = await createMeeting(context, {
-        workspaceId: workspace.id,
-        title: 'Research room',
+        name: 'Research room',
         authInfo
     });
     return { context, authInfo, meeting };
@@ -90,7 +87,7 @@ describe('WebMeet no-agent-tag chat', () => {
             process.env.PLOINKY_ROUTER_URL = `http://127.0.0.1:${port}`;
             const { context, authInfo, meeting } = await makeContext();
             const result = await dispatch('webmeet_chat_send', {
-                meetingId: meeting.id,
+                roomId: meeting.id,
                 message: '@open-interpreter Give status.'
             }, context, authInfo);
             const messages = await listMeetingChat(context, meeting.id, authInfo);
@@ -107,7 +104,7 @@ describe('WebMeet no-agent-tag chat', () => {
     it('persists unknown @word mentions as ordinary chat', async () => {
         const { context, authInfo, meeting } = await makeContext();
         const result = await dispatch('webmeet_chat_send', {
-            meetingId: meeting.id,
+            roomId: meeting.id,
             message: '@teammate please review this'
         }, context, authInfo);
         const messages = await listMeetingChat(context, meeting.id, authInfo);
@@ -120,7 +117,7 @@ describe('WebMeet no-agent-tag chat', () => {
         const { context, meeting } = await makeContext();
         await assert.rejects(
             dispatch('webmeet_chat_send', {
-                meetingId: meeting.id,
+                roomId: meeting.id,
                 authorId: 'research:open-interpreter',
                 authorName: 'Research Relay',
                 message: 'not allowed'

@@ -66,13 +66,17 @@ test('workspace event polling is outside the active LiveKit room lifecycle', asy
 
 test('meeting details use LiveKit participants as the room presence source', async () => {
     const store = await readFile(path.join(root, 'lib/webmeetStore.mjs'), 'utf8');
+    const roomParticipants = await readFile(path.join(root, 'lib/services/roomParticipants.mjs'), 'utf8');
+    const livekitRuntime = await readFile(path.join(root, 'lib/runtime/livekitRuntime.mjs'), 'utf8');
 
-    assert.match(store, /async function listLiveKitRoomParticipants/);
-    assert.match(store, /callLiveKitRoomApi\(context,\s*'ListParticipants'/);
-    assert.match(store, /projectLiveKitMeetingParticipants/);
+    assert.match(livekitRuntime, /export async function listLiveKitRoomParticipants/);
+    assert.match(livekitRuntime, /callLiveKitRoomApi\(context,\s*'ListParticipants'/);
+    assert.match(roomParticipants, /projectLiveKitRoomParticipants/);
+    assert.match(roomParticipants, /await listLiveKitRoomParticipants/);
+    assert.match(roomParticipants, /options\.includeParticipants === false/);
+    assert.match(roomParticipants, /await getRealtimeRoomParticipants/);
     assert.match(store, /export async function getMeeting/);
-    assert.match(store, /options\.includeParticipants === false/);
-    assert.match(store, /await getRealtimeMeetingParticipants/);
+    assert.match(store, /getMeetingImpl/);
 });
 
 test('LiveKit mute handlers gate microphone state updates to microphone publications', async () => {

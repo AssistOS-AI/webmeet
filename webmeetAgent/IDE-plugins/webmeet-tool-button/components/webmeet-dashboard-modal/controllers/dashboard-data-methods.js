@@ -7,8 +7,8 @@ const MEETING_GET_CACHE_TTL_MS = 1500;
 
 export const dashboardDataMethods = {
     async loadWorkspaces() {
-        const payload = await runTool('webmeet_workspace_list');
-        this.state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
+        this.state.workspaces = [{ id: 'rooms', name: 'Rooms' }];
+        this.state.selectedWorkspaceId = this.state.selectedWorkspaceId || 'rooms';
     },
 
     getMeetingGetCacheKey(meetingId, includeParticipants = false) {
@@ -55,8 +55,8 @@ export const dashboardDataMethods = {
         if (cached && Object.prototype.hasOwnProperty.call(cached, 'value') && (now - cached.timestamp) < ttlMs) {
             return cached.value;
         }
-        const requestPromise = runTool('webmeet_meeting_get', {
-            meetingId: normalizedMeetingId,
+        const requestPromise = runTool('webmeet_room_get', {
+            roomId: normalizedMeetingId,
             includeParticipants
         })
             .then((value) => {
@@ -88,9 +88,7 @@ export const dashboardDataMethods = {
             this.state.selectedMeetingId = '';
             return;
         }
-        const payload = await runTool('webmeet_meeting_list', {
-            workspaceId: this.state.selectedWorkspaceId
-        });
+        const payload = await runTool('webmeet_room_list');
         this.state.meetings = Array.isArray(payload.meetings) ? payload.meetings : [];
         this.state.canManageRooms = payload.canManageRooms === true;
         await this.loadParticipantsForMeetings(options);
@@ -183,9 +181,7 @@ export const dashboardDataMethods = {
     },
 
     async refreshMeetingsAfterMissingMeeting(missingMeetingId) {
-        const payload = await runTool('webmeet_meeting_list', {
-            workspaceId: this.state.selectedWorkspaceId
-        });
+        const payload = await runTool('webmeet_room_list');
         this.state.meetings = Array.isArray(payload.meetings) ? payload.meetings : [];
         this.state.canManageRooms = payload.canManageRooms === true;
         await this.loadParticipantsForMeetings();
@@ -316,11 +312,7 @@ export const dashboardDataMethods = {
                 this.state.selectedMeetingId = '';
                 this.state.participants = [];
                 this.state.chat = [];
-                this.state.transcript = [];
-                this.state.artifacts = [];
-                this.state.recordings = [];
-                this.state.tasks = [];
-                this.state.decisions = [];
+                this.state.resources = [];
                 this.state.agents = [];
                 this.state.session = null;
             }
@@ -344,11 +336,7 @@ export const dashboardDataMethods = {
                 return;
             }
             this.state.chat = [];
-            this.state.transcript = [];
-            this.state.artifacts = [];
-            this.state.recordings = [];
-            this.state.tasks = [];
-            this.state.decisions = [];
+            this.state.resources = [];
             this.state.agents = [];
             this.state.session = null;
             this.state.participants = [];
@@ -364,11 +352,7 @@ export const dashboardDataMethods = {
                     this.state.participants = Array.isArray(details?.participants) ? details.participants : [];
                 }
                 this.state.chat = Array.isArray(details?.chat) ? details.chat : [];
-                this.state.transcript = Array.isArray(details?.transcript) ? details.transcript : [];
-                this.state.artifacts = Array.isArray(details?.artifacts) ? details.artifacts : [];
-                this.state.recordings = Array.isArray(details?.recordings) ? details.recordings : [];
-                this.state.tasks = Array.isArray(details?.tasks) ? details.tasks : [];
-                this.state.decisions = Array.isArray(details?.decisions) ? details.decisions : [];
+                this.state.resources = Array.isArray(details?.resources) ? details.resources : [];
                 this.state.agents = Array.isArray(details?.agents) ? details.agents : [];
             } catch (error) {
                 if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
@@ -376,28 +360,22 @@ export const dashboardDataMethods = {
                     this.state.participants = [];
                 }
                 this.state.chat = [];
-                this.state.transcript = [];
-                this.state.artifacts = [];
-                this.state.recordings = [];
-                this.state.tasks = [];
-                this.state.decisions = [];
+                this.state.resources = [];
                 this.state.agents = [];
             }
             return;
         }
         let detailsPayload = null;
         let chatPayload;
-        let transcriptPayload = { transcript: [] };
-        let artifactPayload = { artifacts: [], recordings: [], tasks: [], decisions: [] };
+        let resourcePayload = { resources: [] };
         let agentPayload = { agents: [] };
         try {
             const canManageMeetingData = this.canManageRooms();
             if (canManageMeetingData) {
-                [detailsPayload, chatPayload, transcriptPayload, artifactPayload, agentPayload] = await Promise.all([
+                [detailsPayload, chatPayload, resourcePayload, agentPayload] = await Promise.all([
                     this.fetchMeetingSnapshot(meeting.id, { includeParticipants }),
                     runTool('webmeet_chat_list', { meetingId: meeting.id }),
-                    runTool('webmeet_transcript_list', { meetingId: meeting.id }),
-                    runTool('webmeet_artifact_list', { meetingId: meeting.id }),
+                    runTool('webmeet_resource_list', { meetingId: meeting.id }),
                     runTool('webmeet_agent_list', { meetingId: meeting.id })
                 ]);
             } else {
@@ -419,11 +397,7 @@ export const dashboardDataMethods = {
             this.state.meetings = this.state.meetings.filter((entry) => entry.id !== meeting.id);
             this.state.selectedMeetingId = '';
             this.state.chat = [];
-            this.state.transcript = [];
-            this.state.artifacts = [];
-            this.state.recordings = [];
-            this.state.tasks = [];
-            this.state.decisions = [];
+            this.state.resources = [];
             this.state.agents = [];
             this.state.session = null;
             this.state.participants = [];
@@ -436,11 +410,7 @@ export const dashboardDataMethods = {
             this.state.participants = Array.isArray(detailsPayload?.participants) ? detailsPayload.participants : [];
         }
         this.state.chat = Array.isArray(chatPayload.messages) ? chatPayload.messages : [];
-        this.state.transcript = Array.isArray(transcriptPayload.transcript) ? transcriptPayload.transcript : [];
-        this.state.artifacts = Array.isArray(artifactPayload.artifacts) ? artifactPayload.artifacts : [];
-        this.state.recordings = Array.isArray(artifactPayload.recordings) ? artifactPayload.recordings : [];
-        this.state.tasks = Array.isArray(artifactPayload.tasks) ? artifactPayload.tasks : [];
-        this.state.decisions = Array.isArray(artifactPayload.decisions) ? artifactPayload.decisions : [];
+        this.state.resources = Array.isArray(resourcePayload.resources) ? resourcePayload.resources : [];
         this.state.agents = Array.isArray(agentPayload.agents) ? agentPayload.agents : [];
     },
 

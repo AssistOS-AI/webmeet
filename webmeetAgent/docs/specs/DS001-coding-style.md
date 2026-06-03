@@ -21,11 +21,10 @@ The local source layout is contract-bearing:
 | Path | Purpose |
 | --- | --- |
 | `manifest.json` | Ploinky agent command, network, dependency edges, volumes, HTTP services, and profile env. |
-| `scripts/startAgent.sh` | Starts `webmeet-api.mjs`, the MCP AgentServer, and `webmeet-public-proxy.mjs`. |
-| `server/` | HTTP API, public/protected proxy, AxiFace guest assets, and runtime validation. |
+| `scripts/startAgent.sh` | Starts the MCP AgentServer. |
 | `lib/` | Store, crypto, event append files, secrets helpers, and workspace path resolution. |
 | `tools/` | MCP tool dispatcher and shell entrypoint. |
-| `IDE-plugins/webmeet-tool-button/` | Explorer and guest WebMeet browser UI, LiveKit client integration, media settings, participant cards, and local vendored assets. |
+| `IDE-plugins/webmeet-tool-button/` | Explorer and direct room-entry WebMeet browser UI, LiveKit client integration, media settings, participant cards, and local vendored assets. |
 | `tests/unit/` | Focused regression tests for auth routing, events, media controls, runtime APIs, and UI service helpers. |
 | `docs/specs/` | Authoritative DS contracts. |
 
@@ -39,21 +38,18 @@ Runtime paths must be derived from `PLOINKY_WORKSPACE_ROOT`, `WORKSPACE_ROOT`, `
 
 Validation should start with the narrowest check that covers the edited surface. Useful local checks include:
 
-- `node --check server/webmeet-api.mjs`
-- `node --check server/webmeet-public-proxy.mjs`
-- `node --check server/validate-runtime.mjs`
 - `node --check tools/webmeet_tool.mjs`
 - `node --check IDE-plugins/webmeet-tool-button/webmeet-tool-button.js`
 - `node --test tests/unit/*.test.mjs` when behavior or browser-service helpers change.
 
-Auth, guest-route, LiveKit token, recording, or runtime topology changes also require a Ploinky smoke path that starts WebMeet through Explorer or a clear note explaining why that runtime check was not run.
+Auth, guest-route, LiveKit token, or runtime topology changes also require a Ploinky smoke path that starts WebMeet through Explorer or a clear note explaining why that runtime check was not run.
 
 ## Decisions & Questions
 
 ### Question #1: Why keep `DS001-coding-style.md` local when AssistOSExplorer already defines coding conventions?
 
 Response:
-The parent conventions define the shared Explorer baseline. `webmeetAgent` adds local constraints around optional LiveKit worker dependencies, manifest-declared guest routes, browser-vendored media assets, and validation commands. Future edits from this directory need those rules without searching across the workspace.
+The parent conventions define the shared Explorer baseline. `webmeetAgent` adds local constraints around optional LiveKit worker dependencies, room-scoped public entry, browser-vendored media assets, and validation commands. Future edits from this directory need those rules without searching across the workspace.
 
 ### Question #2: Why is dependency ownership part of coding style?
 

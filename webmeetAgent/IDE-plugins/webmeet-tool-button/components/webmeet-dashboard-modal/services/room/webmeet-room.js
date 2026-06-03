@@ -32,7 +32,6 @@ function resolveRoomApi(options = {}) {
     }
     return createWebMeetRoomApi({
         guest: options.isGuestSession(),
-        callPublicGuestApi: options.callPublicGuestApi,
         runTool: options.runTool
     });
 }
@@ -64,7 +63,6 @@ export class WebMeetRoom extends EventTarget {
         this.getSession = assertFunction(options.getSession, 'getSession');
         this.setSession = assertFunction(options.setSession, 'setSession');
         this.isGuestSession = assertFunction(options.isGuestSession, 'isGuestSession');
-        this.callPublicGuestApi = assertFunction(options.callPublicGuestApi, 'callPublicGuestApi');
         this.runTool = assertFunction(options.runTool, 'runTool');
         this.getRoom = assertFunction(options.getRoom, 'getRoom');
         this.getRoomAvatars = assertFunction(options.getRoomAvatars, 'getRoomAvatars');
@@ -76,7 +74,6 @@ export class WebMeetRoom extends EventTarget {
         this.getApi = resolveRoomApiFactory({
             api: options.api,
             isGuestSession: this.isGuestSession,
-            callPublicGuestApi: this.callPublicGuestApi,
             runTool: this.runTool
         });
         this.livekit = resolveLiveKitAdapter({
@@ -181,41 +178,38 @@ export class WebMeetRoom extends EventTarget {
 
     startWorkspaceEvents() {
         this.stopWorkspaceEvents();
-        if (this.isGuestSession()) {
-            return;
-        }
         const workspaceId = String(this.getSelectedWorkspaceId() || '').trim();
-        if (!workspaceId) {
-            return;
-        }
         this.workspacePollInitialized = false;
         const poll = async () => {
-            if (this.isGuestSession()) {
-                return;
-            }
-            const selectedWorkspaceId = String(this.getSelectedWorkspaceId() || '').trim();
-            if (!selectedWorkspaceId || selectedWorkspaceId !== workspaceId) {
-                return;
-            }
-            const payload = await this.runTool('webmeet_workspace_events_list', {
-                workspaceId,
-                afterId: this.lastWorkspaceEventId
-            });
-            const events = Array.isArray(payload?.events) ? payload.events : [];
-            if (!this.workspacePollInitialized) {
-                this.workspacePollInitialized = true;
-                if (events.length) {
-                    const parsed = this.eventCodec.parse(events[events.length - 1]);
-                    this.lastWorkspaceEventId = parsed.id || this.lastWorkspaceEventId;
+            try {
+                if (this.isGuestSession()) {
+                    return;
                 }
-            } else {
-                for (const encodedEvent of events) {
-                    const parsed = this.handleIncomingEvent('authenticated-workspace', encodedEvent);
-                    this.lastWorkspaceEventId = parsed?.id || this.lastWorkspaceEventId;
+                const selectedWorkspaceId = String(this.getSelectedWorkspaceId() || '').trim();
+                if (!selectedWorkspaceId || selectedWorkspaceId !== workspaceId) {
+                    return;
                 }
-            }
-            if (!this.isGuestSession()) {
-                this.workspaceEventsPollTimer = window.setTimeout(poll, 5000);
+                const payload = await this.runTool('webmeet_room_events_list', {
+                    roomId: workspaceId,
+                    afterId: this.lastWorkspaceEventId
+                });
+                const events = Array.isArray(payload?.events) ? payload.events : [];
+                if (!this.workspacePollInitialized) {
+                    this.workspacePollInitialized = true;
+                    if (events.length) {
+                        const parsed = this.eventCodec.parse(events[events.length - 1]);
+                        this.lastWorkspaceEventId = parsed.id || this.lastWorkspaceEventId;
+                    }
+                } else {
+                    for (const encodedEvent of events) {
+                        const parsed = this.handleIncomingEvent('authenticated-workspace', encodedEvent);
+                        this.lastWorkspaceEventId = parsed?.id || this.lastWorkspaceEventId;
+                    }
+                }
+            } finally {
+                if (!this.isGuestSession()) {
+                    this.workspaceEventsPollTimer = window.setTimeout(poll, 5000);
+                }
             }
         };
         this.workspaceEventsPollTimer = window.setTimeout(poll, 0);
@@ -286,14 +280,12 @@ export class WebMeetRoom extends EventTarget {
             });
             this.stateModel.setParticipants(details?.participants);
             this.stateModel.setChat(details?.chat);
-            this.stateModel.setTranscript(details?.transcript);
             this.stateModel.setAgents(details?.agents);
-            this.stateModel.setRecordings(details?.recordings);
-            this.stateModel.setArtifacts(details?.artifacts);
+            this.stateModel.setResources(details?.resources);
             return details;
         }
-        const details = await this.runTool('webmeet_meeting_get', {
-            meetingId: requireString(state.meetingId, 'meetingId')
+        const details = await this.runTool('webmeet_room_get', {
+            roomId: requireString(state.meetingId, 'roomId')
         });
         this.stateModel.setParticipants(details?.participants);
         return details;

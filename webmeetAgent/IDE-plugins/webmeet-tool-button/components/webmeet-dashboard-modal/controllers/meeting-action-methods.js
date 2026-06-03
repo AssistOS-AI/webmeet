@@ -1,4 +1,4 @@
-import { getCurrentActorDisplayName } from '../services/dashboard-utils.js';
+import { getCurrentActorDisplayName, requestGuestDisplayName, syncBrowserRoomUrl } from '../services/dashboard-utils.js';
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
 import {
     getCurrentProfileAvatar,
@@ -41,14 +41,13 @@ export const meetingActionMethods = {
         const result = await assistOS.UI.showModal('create-room-modal', {}, true);
         if (!result || !result.roomTitle) return;
 
-        const meeting = await runTool('webmeet_meeting_create', {
-            workspaceId: this.state.selectedWorkspaceId,
-            title: result.roomTitle,
+        const meeting = await runTool('webmeet_room_create', {
+            name: result.roomTitle,
             roomType: result.roomType
         });
 
-        if (result.roomType === 'guest' && meeting?.guestToken) {
-            const guestUrl = this.buildGuestJoinUrl(meeting.id, meeting.guestToken);
+        if (result.roomType === 'guest' && meeting?.id) {
+            const guestUrl = this.buildRoomLink(meeting.id);
             await assistOS.UI.showModal('confirm-action-modal', {
                 message: `Public meeting created! Share this link:\n\n${guestUrl}\n\n(Click Yes to copy to clipboard)`
             }, true);
@@ -65,84 +64,64 @@ export const meetingActionMethods = {
         this.renderAll();
     },
 
-    buildGuestJoinUrl(meetingId, guestToken) {
-        const url = new URL('/public-services/webmeet/guest', window.location.origin);
-        const params = new URLSearchParams({
-            room: String(meetingId || ''),
-            token: String(guestToken || '')
-        });
-        url.search = params.toString();
+    buildRoomLink(meetingId) {
+        const roomId = String(meetingId || '').trim();
+        const url = new URL('/explorer/index.html', window.location.origin);
+        url.searchParams.set('roomId', roomId);
+        url.hash = 'webmeet-dashboard';
         return url.toString();
     },
 
-    async getGuestInviteLink(meeting) {
-        if (!meeting || meeting.roomType !== 'guest') {
-            return '';
-        }
-        let guestToken = String(meeting.guestToken || '').trim();
-        if (!guestToken) {
-            try {
-                const details = await runTool('webmeet_meeting_get', {
-                    meetingId: meeting.id,
-                    includeParticipants: false
-                });
-                guestToken = String(details?.meeting?.guestToken || '').trim();
-            } catch {
-                guestToken = '';
-            }
-        }
-        return guestToken ? this.buildGuestJoinUrl(meeting.id, guestToken) : '';
-    },
-
-    async copyGuestInviteLink(target) {
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting || meeting.roomType !== 'guest') {
-            this.setError('Invite links are available only for public meetings.');
-            return;
-        }
-        const guestUrl = await this.getGuestInviteLink(meeting);
-        if (!guestUrl) {
-            this.setError('Public meeting invite link is unavailable.');
-            return;
-        }
-        try {
-            await navigator.clipboard.writeText(guestUrl);
-            this.setError('Public meeting invite link copied to clipboard.');
-        } catch {
-            this.setError(`Public meeting invite link: ${guestUrl}`);
-        }
-    },
-
-    getMeetingFromActionTarget(target) {
-        const source = target?.target || target;
-        const meetingId = String(source?.dataset?.id || source?.closest?.('[data-id]')?.dataset?.id || '').trim();
-        if (!meetingId) {
-            return this.selectedMeeting;
-        }
-        return this.state.meetings.find((entry) => entry.id === meetingId) || null;
-    },
-
-    async renameMeeting(target) {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can rename rooms.');
-            return;
-        }
+    async copyRoomLink(target) {
         const meeting = this.getMeetingFromActionTarget(target);
         if (!meeting) {
             this.setError('Room unavailable.');
             return;
         }
-        const title = String(window.prompt('Room title', meeting.title || '') || '').trim();
-        if (!title || title === meeting.title) {
+        const roomLink = this.buildRoomLink(meeting.id);
+        try {
+            await navigator.clipboard.writeText(roomLink);
+            this.setError('Room link copied to clipboard.');
+        } catch {
+            this.setError(`Room link: ${roomLink}`);
+        }
+    },
+
+    async openRoomSettings(target) {
+        const meeting = this.getMeetingFromActionTarget(target);
+        if (!meeting) {
+            this.setError('Room unavailable.');
             return;
         }
-        const updated = await runTool('webmeet_meeting_rename', {
-            meetingId: meeting.id,
-            title
-        });
-        if (updated?.title) {
-            this.applyMeetingRename(meeting.id, updated.title, updated.updatedAt || '');
-            if (String(this.state.session?.meeting?.id || '').trim() === String(meeting.id || '').trim()) {
+        if (!this.canManageRooms()) {
+            this.setError('Only admin can manage room settings.');
+            return;
+        }
+        const isArchived = String(meeting.status || '').trim().toLowerCase() === 'archived'
+            || Boolean(String(meeting.archivedAt || '').trim());
+        if (isArchived) {
+            this.setError('Archived rooms cannot be modified.');
+            return;
+        }
+        const result = await assistOS.UI.showModal('webmeet-room-settings-modal', {
+            roomId: meeting.id,
+            roomTitle: meeting.title || meeting.name || 'Room',
+            roomLink: this.buildRoomLink(meeting.id)
+        }, true);
+        if (!result) return;
+
+        if (result.archive === true) {
+            await runTool('webmeet_room_archive', { roomId: meeting.id });
+            await this.loadMeetings();
+            this.renderAll();
+            return;
+        }
+
+        const nextName = String(result.name || '').trim();
+        const currentName = String(meeting.title || meeting.name || '').trim();
+        if (nextName && nextName !== currentName) {
+            const updated = await runTool('webmeet_room_rename', { roomId: meeting.id, name: nextName });
+            if (updated?.title && String(this.state.session?.meeting?.id || '').trim() === String(meeting.id || '').trim()) {
                 try {
                     await this.publishRealtimePayload({
                         type: WEBMEET_EVENT_TYPES.MEETING_RENAMED,
@@ -157,6 +136,15 @@ export const meetingActionMethods = {
         }
         await this.loadMeetings();
         this.renderAll();
+    },
+
+    getMeetingFromActionTarget(target) {
+        const source = target?.target || target;
+        const meetingId = String(source?.dataset?.id || source?.closest?.('[data-id]')?.dataset?.id || '').trim();
+        if (!meetingId) {
+            return this.selectedMeeting;
+        }
+        return this.state.meetings.find((entry) => entry.id === meetingId) || null;
     },
 
     async joinMeeting(options = {}) {
@@ -174,10 +162,30 @@ export const meetingActionMethods = {
         }
         this.stopWorkspaceEvents();
         try {
-            await this.webMeetRoom.join(payload);
+            try {
+                await this.webMeetRoom.join(payload);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (!displayName && /missing required argument "displayName"/i.test(message)) {
+                    const guestDisplayName = await requestGuestDisplayName();
+                    await this.webMeetRoom.join({
+                        ...payload,
+                        displayName: guestDisplayName
+                    });
+                } else {
+                    throw error;
+                }
+            }
+            syncBrowserRoomUrl(meeting.id);
             await this.primeCurrentParticipantAvatarProjection({ force: true });
             this.state.skipConnectedAvatarRepublishOnce = true;
             await this.webMeetRoom.connectLiveKit();
+            try {
+                await this.webMeetRoom.refreshState();
+                this.syncParticipantsFromRoom(this.room, window.LivekitClient?.Track || null);
+            } catch (_) {
+                // LiveKit is connected; state reconciliation can recover on the next roster refresh.
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.state.roomState = message;
@@ -641,7 +649,6 @@ export const meetingActionMethods = {
             );
             this.renderMeetingSummary();
         }
-        this.stopSpeechRecognition();
         await this.webMeetRoom.disconnectLiveKit();
 
         if (previousMeetingId && previousParticipantId) {
@@ -764,127 +771,5 @@ export const meetingActionMethods = {
             this.setError(error instanceof Error ? error.message : String(error));
         }
     },
-
-    async startRecording() {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can manage recording.');
-            return;
-        }
-        const meeting = this.selectedMeeting;
-        if (!meeting) {
-            this.setError('Select a meeting before starting recording.');
-            return;
-        }
-        await runTool('webmeet_recording_start', { meetingId: meeting.id });
-        await this.loadMeetingDetails();
-        this.renderAll();
-    },
-
-    async stopRecording() {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can manage recording.');
-            return;
-        }
-        const meeting = this.selectedMeeting;
-        if (!meeting) {
-            this.setError('Select a meeting before stopping recording.');
-            return;
-        }
-        await runTool('webmeet_recording_stop', { meetingId: meeting.id });
-        await this.loadMeetingDetails();
-        this.renderAll();
-    },
-
-    async toggleRecording() {
-        const meeting = this.selectedMeeting;
-        if (!meeting) {
-            this.setError('Select a meeting before toggling recording.');
-            return;
-        }
-
-        const latestRecording = [...this.state.recordings].reverse()[0];
-        if (latestRecording && latestRecording.status === 'recording') {
-            await this.stopRecording();
-        } else {
-            await this.startRecording();
-        }
-    },
-
-    async deleteMeeting(target) {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can delete rooms.');
-            return;
-        }
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting) {
-            this.setError('Room unavailable.');
-            return;
-        }
-        const confirmed = window.confirm(`Delete "${meeting.title || 'this room'}"?`);
-        if (!confirmed) {
-            return;
-        }
-        await runTool('webmeet_delete_meeting', { meetingId: meeting.id });
-        await this.loadMeetings();
-        this.renderAll();
-    },
-
-    async openTranscript(target) {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can view transcripts.');
-            return;
-        }
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting) return;
-        await assistOS.UI.showModal('webmeet-transcript-modal', {
-            meetingId: meeting.id,
-            meetingTitle: meeting.title
-        }, true);
-    },
-
-    async openArtifacts(target) {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can view artifacts.');
-            return;
-        }
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting) return;
-        await assistOS.UI.showModal('webmeet-artifacts-modal', {
-            meetingId: meeting.id,
-            meetingTitle: meeting.title
-        }, true);
-    },
-
-    async openRecordings(target) {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can view recordings.');
-            return;
-        }
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting) return;
-        await assistOS.UI.showModal('webmeet-recordings-modal', {
-            meetingId: meeting.id,
-            meetingTitle: meeting.title
-        }, true);
-    },
-
-    async openAI(target) {
-        if (!this.canManageRooms()) {
-            this.setError('Only admin can manage AI agents.');
-            return;
-        }
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting) return;
-        await assistOS.UI.showModal('webmeet-ai-modal', {
-            meetingId: meeting.id,
-            meetingTitle: meeting.title
-        }, true);
-    },
-
-    async showRoomAiMenu(target) {
-        const meeting = this.getMeetingFromActionTarget(target);
-        if (!meeting) return;
-        await assistOS.UI.showActionBox(target, meeting.id, 'webmeet-room-ai-menu', 'append', { id: meeting.id });
-    }
 
 };

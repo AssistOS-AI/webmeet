@@ -46,23 +46,19 @@ function escapeHtml(value) {
 
 function isGuestWebMeetContext() {
     try {
-        const pathname = String(window?.location?.pathname || '').trim();
-        return pathname.startsWith('/public-services/webmeet/');
+        const params = new URLSearchParams(String(window?.location?.search || ''));
+        return Boolean(params.get('roomId'));
     } catch (_) {
         return false;
     }
 }
 
 function getAxiFaceModuleUrl() {
-    return isGuestWebMeetContext()
-        ? '/public-services/webmeet/axi-face/src/axi-face.mjs'
-        : '/services/explorer/axi-face/src/axi-face.mjs';
+    return '/services/explorer/axi-face/src/axi-face.mjs';
 }
 
 function getAxiFaceAssetBaseUrl() {
-    return isGuestWebMeetContext()
-        ? '/public-services/webmeet/axi-face'
-        : '/services/explorer/axi-face';
+    return '/services/explorer/axi-face';
 }
 
 function normalizeAxiFaceStyleList(styles = []) {

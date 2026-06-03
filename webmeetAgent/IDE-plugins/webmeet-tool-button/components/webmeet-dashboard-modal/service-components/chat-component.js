@@ -26,24 +26,16 @@ async function defaultResolveWorkspaceRoot() {
     return '';
 }
 
-/**
- * ChatTranscriptComponent - Manages chat, transcript, artifacts, and recordings
- * Extracted from webmeet-dashboard-modal.js for better maintainability
- */
-export class ChatTranscriptComponent {
+export class ChatComponent {
     constructor(options = {}) {
         this.isGuestSession = options.isGuestSession || (() => false);
         this.sendPublicChat = options.sendPublicChat;
-        this.callPublicGuestApi = options.callPublicGuestApi;
-        this.canManageArtifacts = options.canManageArtifacts || (() => false);
         this.getState = options.getState || (() => ({}));
         this.setState = options.setState || (() => {});
         this.setError = options.setError || console.error;
         this.getSelectedMeeting = options.getSelectedMeeting || (() => null);
         this.getSession = options.getSession || (() => null);
         this.renderFeedLists = options.renderFeedLists || (() => {});
-        this.renderMeetingSummary = options.renderMeetingSummary || (() => {});
-        this.requestRenderAll = options.renderAll || (() => {});
         this.publishRealtimePayload = options.publishRealtimePayload || (() => Promise.resolve());
         this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
         this.getRoom = options.getRoom || (() => null);
@@ -54,7 +46,6 @@ export class ChatTranscriptComponent {
         this.resolveWorkspaceRoot = typeof options.resolveWorkspaceRoot === 'function'
             ? options.resolveWorkspaceRoot
             : defaultResolveWorkspaceRoot;
-        this.speechRecognition = null;
         this.elements = {};
         this.autocomplete = null;
         this.autocompleteInput = null;
@@ -302,102 +293,6 @@ export class ChatTranscriptComponent {
             }
         } catch (error) {
             this.setError(`Failed to send message: ${error.message}`);
-        }
-    }
-
-    async appendTranscript() {
-        const meeting = this.getSelectedMeeting();
-        if (!meeting) {
-            this.setError('Select a meeting first.');
-            return;
-        }
-        const session = this.getSession();
-        if (!session?.participantIdentity) {
-            this.setError('Join the meeting before appending transcript.');
-            return;
-        }
-        const text = String(this.elements.transcriptInput?.value || '').trim();
-        const speakerName = String(this.elements.transcriptSpeaker?.value || session.participant?.displayName || '').trim();
-        if (!text || !speakerName) return;
-
-        await this.runTool('webmeet_transcript_append', {
-            meetingId: meeting.id,
-            speakerId: session.participantIdentity,
-            speakerName,
-            text
-        });
-        this.elements.transcriptInput.value = '';
-        await this.loadMeetingDetails();
-        this.requestRenderAll();
-    }
-
-    startSpeechRecognition() {
-        if (this.isGuestSession() || !this.canManageArtifacts()) {
-            this.setError('Only admin can append transcript.');
-            return;
-        }
-        const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!Recognition) {
-            this.setState({ transcriptState: 'Unavailable' });
-            this.renderMeetingSummary();
-            return;
-        }
-        this.stopSpeechRecognition();
-        const recognition = new Recognition();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = navigator.language || 'en-US';
-        recognition.onstart = () => {
-            this.setState({ transcriptState: 'Listening' });
-            this.renderMeetingSummary();
-        };
-        recognition.onerror = () => {
-            this.setState({ transcriptState: 'Error' });
-            this.renderMeetingSummary();
-        };
-        recognition.onend = () => {
-            if (this.getState().transcriptState === 'Listening') {
-                this.setState({ transcriptState: 'Idle' });
-                this.renderMeetingSummary();
-            }
-        };
-        recognition.onresult = async (event) => {
-            const meeting = this.getSelectedMeeting();
-            if (!meeting) return;
-            const chunks = [];
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                if (event.results[i].isFinal) {
-                    chunks.push(event.results[i][0].transcript);
-                }
-            }
-            const text = chunks.join(' ').trim();
-            if (!text) return;
-
-            const session = this.getSession();
-            await this.runTool('webmeet_transcript_append', {
-                meetingId: meeting.id,
-                speakerId: session.participantIdentity,
-                speakerName: session.participant?.displayName || 'User',
-                text
-            });
-            await this.loadMeetingDetails();
-            this.requestRenderAll();
-        };
-        this.speechRecognition = recognition;
-        try {
-            recognition.start();
-        } catch {
-            this.setState({ transcriptState: 'Error' });
-            this.renderMeetingSummary();
-        }
-    }
-
-    stopSpeechRecognition() {
-        if (this.speechRecognition) {
-            try {
-                this.speechRecognition.stop();
-            } catch {}
-            this.speechRecognition = null;
         }
     }
 

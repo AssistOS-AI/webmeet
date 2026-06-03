@@ -1,16 +1,18 @@
 export class MeetingPresenceController {
     constructor(options = {}) {
         this.getContext = typeof options.getContext === 'function' ? options.getContext : (() => ({}));
-        this.buildLeaveRequest = typeof options.buildLeaveRequest === 'function' ? options.buildLeaveRequest : null;
+        this.cleanupLocalMedia = typeof options.cleanupLocalMedia === 'function' ? options.cleanupLocalMedia : null;
+        this.disconnectLiveKit = typeof options.disconnectLiveKit === 'function' ? options.disconnectLiveKit : null;
+        this.leaveCurrentSession = typeof options.leaveCurrentSession === 'function' ? options.leaveCurrentSession : null;
 
         this.lastKeepaliveLeaveKey = '';
         this.windowHandlersRegistered = false;
 
         this.handlePageHide = () => {
-            this.sendLeaveKeepaliveForCurrentSession();
+            this.leaveCurrentSessionOnWindowExit();
         };
         this.handleBeforeUnload = () => {
-            this.sendLeaveKeepaliveForCurrentSession();
+            this.leaveCurrentSessionOnWindowExit();
         };
     }
 
@@ -36,7 +38,7 @@ export class MeetingPresenceController {
         };
     }
 
-    sendLeaveKeepaliveForCurrentSession() {
+    leaveCurrentSessionOnWindowExit() {
         const { meetingId, participantId } = this.getMeetingAndParticipant();
         this.sendLeaveKeepalive(meetingId, participantId);
     }
@@ -49,32 +51,23 @@ export class MeetingPresenceController {
         if (this.lastKeepaliveLeaveKey === key) return;
         this.lastKeepaliveLeaveKey = key;
 
-        const request = this.buildLeaveRequest?.({
-            meetingId: safeMeetingId,
-            participantId: safeParticipantId
-        });
-        const endpoint = String(request?.url || '').trim();
-        if (!endpoint) return;
-        const body = JSON.stringify(request?.body || { participantId: safeParticipantId });
         try {
-            if (navigator?.sendBeacon) {
-                const blob = new Blob([body], { type: 'application/json' });
-                const sent = navigator.sendBeacon(endpoint, blob);
-                if (sent) return;
-            }
+            this.cleanupLocalMedia?.();
         } catch (_) {
-            // ignore sendBeacon errors, fallback to keepalive fetch
+            // Browser teardown must continue even when media cleanup fails.
         }
         try {
-            void fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body,
-                credentials: 'include',
-                keepalive: true
-            });
+            void Promise.resolve(this.disconnectLiveKit?.()).catch(() => {});
         } catch (_) {
-            // ignore keepalive failures
+            // LiveKit also disconnects on page teardown; this is best effort.
+        }
+        try {
+            void Promise.resolve(this.leaveCurrentSession?.({
+                meetingId: safeMeetingId,
+                participantId: safeParticipantId
+            })).catch(() => {});
+        } catch (_) {
+            // Leave persistence is best effort during browser teardown.
         }
     }
 

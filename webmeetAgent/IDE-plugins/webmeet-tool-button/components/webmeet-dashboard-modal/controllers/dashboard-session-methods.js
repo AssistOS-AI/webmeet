@@ -2,22 +2,31 @@ import {
     buildStableParticipantId,
     createParticipantInstanceId,
     isAdminActor,
-    readGuestSessionFromUrl
+    requestGuestDisplayName,
+    readRoomIdFromExplorerHash,
+    readRoomIdFromUrl,
+    syncBrowserRoomUrl
 } from '../services/dashboard-utils.js';
+import { runWebMeetTool } from '../services/webmeet-api-client.js';
 
 export const dashboardSessionMethods = {
     async bootstrap() {
         try {
-            const guestSession = readGuestSessionFromUrl();
-            if (guestSession?.meeting?.id && guestSession?.participantToken) {
-                await this.bootstrapGuestSession(guestSession);
-                return;
-            }
+            const initialRoomId = String(globalThis.__WEBMEET_INITIAL_ROOM_ID__ || readRoomIdFromUrl() || '').trim();
             await this.loadWorkspaces();
             this.state.selectedWorkspaceId = this.state.workspaces[0]?.id || '';
             if (this.state.selectedWorkspaceId) {
                 await this.loadMeetings();
                 this.startWorkspaceEvents();
+            }
+            if (initialRoomId) {
+                await this.joinRoomFromExplorerHash(initialRoomId);
+                return;
+            }
+            const hashRoomId = readRoomIdFromExplorerHash();
+            if (hashRoomId) {
+                await this.joinRoomFromExplorerHash(hashRoomId);
+                return;
             }
             this.renderAll();
         } catch (error) {
@@ -25,8 +34,78 @@ export const dashboardSessionMethods = {
         }
     },
 
-    async bootstrapGuestSession(session) {
-        await this.guestManager.bootstrapGuestSession(session);
+    async joinRoomFromExplorerHash(roomId) {
+        const targetRoomId = String(roomId || '').trim();
+        if (!targetRoomId) {
+            return;
+        }
+        this.state.selectedMeetingId = targetRoomId;
+        if (!this.state.meetings.some((entry) => String(entry.id || entry.roomId || '') === targetRoomId)) {
+            const details = await runWebMeetTool('webmeet_room_get', {
+                roomId: targetRoomId,
+                includeParticipants: false
+            });
+            const meeting = details?.meeting || details?.room || null;
+            if (meeting) {
+                this.state.meetings = [
+                    ...this.state.meetings,
+                    {
+                        ...meeting,
+                        id: String(meeting.id || meeting.roomId || targetRoomId),
+                        roomId: String(meeting.roomId || meeting.id || targetRoomId),
+                        title: String(meeting.title || meeting.name || 'Room'),
+                        name: String(meeting.name || meeting.title || 'Room')
+                    }
+                ];
+            }
+        }
+        await this.loadMeetingDetails({ expectedMeetingId: targetRoomId });
+        this.renderAll();
+        await this.selectAndJoinMeeting({ dataset: { id: targetRoomId } });
+    },
+
+    async bootstrapGuestRoomEntry(roomEntry = {}) {
+        const roomId = String(roomEntry.roomId || '').trim();
+        if (!roomId) {
+            throw new Error('Missing room id.');
+        }
+        const displayName = await requestGuestDisplayName();
+        const participantId = this.getStableParticipantId(displayName);
+        const session = await runWebMeetTool('webmeet_room_join', {
+            roomId,
+            displayName,
+            participantId
+        });
+        const details = await runWebMeetTool('webmeet_room_get', {
+            roomId,
+            includeParticipants: true
+        }).catch(() => ({}));
+        const meeting = session?.meeting || details?.meeting || details?.room || { id: roomId, roomId, title: roomId, name: roomId };
+        const normalizedMeeting = {
+            ...meeting,
+            id: String(meeting.id || meeting.roomId || roomId),
+            roomId: String(meeting.roomId || meeting.id || roomId),
+            title: String(meeting.title || meeting.name || 'Room'),
+            name: String(meeting.name || meeting.title || 'Room')
+        };
+        this.state.workspaces = [{ id: 'rooms', name: 'Rooms', rootPath: '' }];
+        this.state.meetings = [normalizedMeeting];
+        this.state.selectedWorkspaceId = 'rooms';
+        this.state.selectedMeetingId = normalizedMeeting.id;
+        this.state.canManageRooms = Boolean(details?.canManageRooms);
+        this.renderAll();
+
+        this.state.session = {
+            ...session,
+            meeting: session?.meeting || normalizedMeeting,
+            guest: Boolean(session?.participant?.guest)
+        };
+        syncBrowserRoomUrl(roomId, { replace: true });
+        await this.loadParticipantsForMeetings();
+        await this.loadMeetingDetails({ expectedMeetingId: normalizedMeeting.id });
+        this.renderAll();
+        this.state.skipConnectedAvatarRepublishOnce = true;
+        await this.connectRoom();
         void this.publishCurrentParticipantAvatar({ force: true }).catch((error) => {
             const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
             this.setError(`Joined room, but WebMeet could not publish the avatar: ${message}`);
@@ -41,19 +120,12 @@ export const dashboardSessionMethods = {
     },
 
     isGuestSession() {
-        if (this.guestManager && typeof this.guestManager.isGuestSession === 'function') {
-            return this.guestManager.isGuestSession();
-        }
         const session = this.state?.session;
-        return session?.guest === true || Boolean(session?.publicApiBaseUrl);
+        return session?.guest === true;
     },
 
     getGuestToken() {
-        return String(this.state.session?.guestToken || '').trim();
-    },
-
-    async callPublicGuestApi(meetingId, action, body = {}) {
-        return this.guestManager.callPublicGuestApi(meetingId, action, body);
+        return '';
     },
 
     registerWindowPresenceHandlers() {
@@ -112,6 +184,13 @@ export const dashboardSessionMethods = {
         const nextMeetingId = String(element?.dataset?.id || '').trim();
         if (!nextMeetingId) return;
         if (this.state.joiningMeetingId) return;
+        const nextMeeting = this.state.meetings.find((entry) => String(entry?.id || '').trim() === nextMeetingId);
+        const isArchived = String(nextMeeting?.status || '').trim().toLowerCase() === 'archived'
+            || Boolean(String(nextMeeting?.archivedAt || '').trim());
+        if (isArchived) {
+            await this.selectMeeting(element);
+            return;
+        }
         const currentMeetingId = String(this.state.session?.meeting?.id || '').trim();
         const currentlyJoined = Boolean(this.state.session?.participantIdentity);
         const switchingRoom = Boolean(currentlyJoined && currentMeetingId && currentMeetingId !== nextMeetingId);
@@ -173,28 +252,6 @@ export const dashboardSessionMethods = {
 
     async sendChat() {
         return this.chatComponent.sendChat();
-    },
-
-    async appendTranscript() {
-        return this.chatComponent.appendTranscript();
-    },
-
-    startSpeechRecognition() {
-        this.chatComponent.startSpeechRecognition();
-        this.speechRecognition = this.chatComponent.speechRecognition;
-    },
-
-    stopSpeechRecognition() {
-        this.chatComponent.stopSpeechRecognition();
-        this.speechRecognition = null;
-    },
-
-    async startAutoTranscript() {
-        this.startSpeechRecognition();
-    },
-
-    async stopAutoTranscript() {
-        this.stopSpeechRecognition();
     },
 
     async closeModal(target) {

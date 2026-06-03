@@ -1,239 +1,205 @@
 {
   "tools": [
     {
-      "name": "webmeet_workspace_list",
-      "title": "WebMeet List Workspaces",
-      "description": "List WebMeet workspaces.",
+      "name": "webmeet_room_list",
+      "title": "WebMeet List Rooms",
+      "description": "List WebMeet rooms visible to the current authenticated user.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {},
-      "env": { "TOOL_NAME": "webmeet_workspace_list" }
+      "env": { "TOOL_NAME": "webmeet_room_list" }
     },
     {
-      "name": "webmeet_workspace_create",
-      "title": "WebMeet Create Workspace",
-      "description": "Create a WebMeet workspace.",
+      "name": "webmeet_room_create",
+      "title": "WebMeet Create Room",
+      "description": "Create a WebMeet room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "name": { "type": "string", "optional": false }
-      },
-      "env": { "TOOL_NAME": "webmeet_workspace_create" }
-    },
-    {
-      "name": "webmeet_meeting_list",
-      "title": "WebMeet List Meetings",
-      "description": "List meetings for a workspace.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "workspaceId": { "type": "string", "optional": false }
-      },
-      "env": { "TOOL_NAME": "webmeet_meeting_list" }
-    },
-    {
-      "name": "webmeet_meeting_create",
-      "title": "WebMeet Create Meeting",
-      "description": "Create a meeting in a workspace.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "workspaceId": { "type": "string", "optional": false },
-        "title": { "type": "string", "optional": false },
+        "name": { "type": "string", "optional": false },
         "roomType": { "type": "string", "optional": true, "enum": ["team", "guest"] }
       },
-      "env": { "TOOL_NAME": "webmeet_meeting_create" }
+      "env": { "TOOL_NAME": "webmeet_room_create" }
     },
     {
-      "name": "webmeet_meeting_join",
-      "title": "WebMeet Join Meeting",
-      "description": "Create a participant session and LiveKit token for a meeting.",
+      "name": "webmeet_room_get",
+      "title": "WebMeet Get Room",
+      "description": "Get room details and participants.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
+        "includeParticipants": { "type": "boolean", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_get" }
+    },
+    {
+      "name": "webmeet_room_join",
+      "title": "WebMeet Join Room",
+      "description": "Join a room as an authenticated user and receive a LiveKit token.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
         "displayName": { "type": "string", "optional": true },
         "participantId": { "type": "string", "optional": true },
-        "avatar": {
-          "type": "object",
-          "optional": true,
-          "properties": {
-            "enabled": { "type": "boolean", "optional": true },
-            "fallbackLetter": { "type": "string", "optional": true },
-            "config": {
-              "type": "object",
-              "optional": true,
-              "properties": {
-                "agentId": { "type": "string", "optional": true },
-                "generated": { "type": "boolean", "optional": true },
-                "src": { "type": "string", "optional": true },
-                "packSrc": { "type": "string", "optional": true },
-                "assetMode": { "type": "string", "optional": true },
-                "emotion": { "type": "string", "optional": true },
-                "size": { "type": "string", "optional": true },
-                "thought": { "type": "string", "optional": true },
-                "thoughtMode": { "type": "string", "optional": true },
-                "mode": { "type": "string", "optional": true },
-                "shape": { "type": "string", "optional": true },
-                "theme": { "type": "string", "optional": true },
-                "animated": { "type": "boolean", "optional": true },
-                "listen": { "type": "boolean", "optional": true },
-                "seed": { "type": "string", "optional": true },
-                "style": { "type": "string", "optional": true },
-                "palette": { "type": "string", "optional": true },
-                "complexity": { "type": "string", "optional": true }
-              }
-            }
-          }
-        }
+        "avatar": { "type": "object", "optional": true }
       },
-      "env": { "TOOL_NAME": "webmeet_meeting_join" }
+      "env": { "TOOL_NAME": "webmeet_room_join" }
     },
     {
-      "name": "webmeet_meeting_join_guest",
-      "title": "WebMeet Join Guest Meeting",
-      "description": "Create a guest participant session and LiveKit token for a guest meeting.",
+      "name": "webmeet_room_join_guest",
+      "title": "WebMeet Join Guest Room",
+      "description": "Join a public guest-enabled room as a scoped guest visitor.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
-        "guestToken": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
         "displayName": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": true }
       },
-      "env": { "TOOL_NAME": "webmeet_meeting_join_guest" }
+      "env": { "TOOL_NAME": "webmeet_room_join_guest" }
     },
     {
-      "name": "webmeet_meeting_leave",
-      "title": "WebMeet Leave Meeting",
-      "description": "Remove a participant from active meeting members.",
+      "name": "webmeet_room_leave",
+      "title": "WebMeet Leave Room",
+      "description": "Leave a room participant session.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_meeting_leave" }
+      "env": { "TOOL_NAME": "webmeet_room_leave" }
     },
     {
-      "name": "webmeet_workspace_events_list",
-      "title": "WebMeet List Workspace Events",
-      "description": "List authenticated workspace events after an optional event id.",
+      "name": "webmeet_presence_heartbeat",
+      "title": "WebMeet Presence Heartbeat",
+      "description": "Refresh the current participant presence timestamp for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "workspaceId": { "type": "string", "optional": false },
-        "afterId": { "type": "string", "optional": true }
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_workspace_events_list" }
+      "env": { "TOOL_NAME": "webmeet_presence_heartbeat" }
     },
     {
-      "name": "webmeet_meeting_events_list",
-      "title": "WebMeet List Meeting Events",
-      "description": "List authenticated meeting events after an optional event id.",
+      "name": "webmeet_participant_list",
+      "title": "WebMeet List Participants",
+      "description": "List current participants for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
-        "afterId": { "type": "string", "optional": true }
+        "roomId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_meeting_events_list" }
+      "env": { "TOOL_NAME": "webmeet_participant_list" }
     },
     {
-      "name": "webmeet_meeting_get",
-      "title": "WebMeet Get Meeting",
-      "description": "Get meeting details, including participants.",
+      "name": "webmeet_participant_update_role",
+      "title": "WebMeet Update Participant Role",
+      "description": "Update a room participant role.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
-        "includeParticipants": { "type": "boolean", "optional": true }
-      },
-      "env": { "TOOL_NAME": "webmeet_meeting_get" }
-    },
-    {
-      "name": "webmeet_participant_avatar_update",
-      "title": "WebMeet Update Participant Avatar",
-      "description": "Publish the current user's safe participant avatar projection for a meeting.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": false },
-        "avatar": { "type": "object", "optional": true }
+        "role": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_participant_avatar_update" }
+      "env": { "TOOL_NAME": "webmeet_participant_update_role" }
     },
     {
-      "name": "webmeet_meeting_rename",
-      "title": "WebMeet Rename Meeting",
-      "description": "Rename a meeting.",
+      "name": "webmeet_participant_remove",
+      "title": "WebMeet Remove Participant",
+      "description": "Remove a participant from a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
-        "title": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_meeting_rename" }
+      "env": { "TOOL_NAME": "webmeet_participant_remove" }
+    },
+    {
+      "name": "webmeet_room_rename",
+      "title": "WebMeet Rename Room",
+      "description": "Rename a room.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "name": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_rename" }
+    },
+    {
+      "name": "webmeet_room_archive",
+      "title": "WebMeet Archive Room",
+      "description": "Archive a room without deleting its data.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_archive" }
+    },
+    {
+      "name": "webmeet_room_events_list",
+      "title": "WebMeet List Room Events",
+      "description": "List room events after an optional event id.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "afterId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_events_list" }
     },
     {
       "name": "webmeet_chat_list",
       "title": "WebMeet List Chat",
-      "description": "List meeting chat messages.",
+      "description": "List room chat messages.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_chat_list" }
     },
     {
       "name": "webmeet_chat_send",
       "title": "WebMeet Send Chat",
-      "description": "Send a chat message to a meeting.",
+      "description": "Send a chat message to a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
         "message": { "type": "string", "optional": false },
-        "authorId": { "type": "string", "optional": true },
-        "authorName": { "type": "string", "optional": true }
+        "resourceIds": { "type": "array", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_chat_send" }
     },
     {
-      "name": "webmeet_transcript_append",
-      "title": "WebMeet Append Transcript",
-      "description": "Append a transcript segment to a meeting.",
+      "name": "webmeet_participant_avatar_update",
+      "title": "WebMeet Update Participant Avatar",
+      "description": "Publish the current participant avatar projection for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
-        "speakerId": { "type": "string", "optional": false },
-        "speakerName": { "type": "string", "optional": false },
-        "text": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false },
+        "avatar": { "type": "object", "optional": true }
       },
-      "env": { "TOOL_NAME": "webmeet_transcript_append" }
-    },
-    {
-      "name": "webmeet_transcript_list",
-      "title": "WebMeet List Transcript",
-      "description": "List transcript segments for a meeting.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
-      },
-      "env": { "TOOL_NAME": "webmeet_transcript_list" }
+      "env": { "TOOL_NAME": "webmeet_participant_avatar_update" }
     },
     {
       "name": "webmeet_agent_attach",
       "title": "WebMeet Attach Agent",
-      "description": "Explicitly dispatch the self-hosted LiveKit AI agent to a meeting.",
+      "description": "Dispatch the self-hosted LiveKit AI agent to a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
         "agentType": { "type": "string", "optional": false },
         "mode": { "type": "string", "optional": false }
       },
@@ -242,69 +208,90 @@
     {
       "name": "webmeet_agent_list",
       "title": "WebMeet List Agents",
-      "description": "List LiveKit AI agent dispatch metadata for a meeting.",
+      "description": "List LiveKit AI agent dispatch metadata for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_agent_list" }
     },
     {
       "name": "webmeet_agent_detach",
       "title": "WebMeet Detach Agent",
-      "description": "Stop a self-hosted LiveKit AI agent in a meeting.",
+      "description": "Stop a self-hosted LiveKit AI agent in a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false },
+        "roomId": { "type": "string", "optional": false },
         "agentId": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_agent_detach" }
     },
     {
-      "name": "webmeet_recording_start",
-      "title": "WebMeet Start Recording",
-      "description": "Start a real LiveKit Egress recording for a meeting.",
+      "name": "webmeet_resource_authorize_upload",
+      "title": "WebMeet Authorize Resource Upload",
+      "description": "Authorize a Ploinky-managed upload for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false },
+        "filename": { "type": "string", "optional": false },
+        "mimeType": { "type": "string", "optional": true },
+        "size": { "type": "number", "optional": true }
       },
-      "env": { "TOOL_NAME": "webmeet_recording_start" }
+      "env": { "TOOL_NAME": "webmeet_resource_authorize_upload" }
     },
     {
-      "name": "webmeet_recording_stop",
-      "title": "WebMeet Stop Recording",
-      "description": "Stop a real LiveKit Egress recording and persist the resulting artifact metadata.",
+      "name": "webmeet_resource_commit_upload",
+      "title": "WebMeet Commit Resource Upload",
+      "description": "Commit metadata for a Ploinky-managed room upload.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false },
+        "filename": { "type": "string", "optional": false },
+        "mimeType": { "type": "string", "optional": true },
+        "size": { "type": "number", "optional": true },
+        "storagePath": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_recording_stop" }
+      "env": { "TOOL_NAME": "webmeet_resource_commit_upload" }
     },
     {
-      "name": "webmeet_artifact_list",
-      "title": "WebMeet List Artifacts",
-      "description": "List artifacts for a meeting.",
+      "name": "webmeet_resource_authorize_download",
+      "title": "WebMeet Authorize Resource Download",
+      "description": "Authorize a Ploinky-managed resource download.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_artifact_list" }
+      "env": { "TOOL_NAME": "webmeet_resource_authorize_download" }
     },
     {
-      "name": "webmeet_delete_meeting",
-      "title": "WebMeet Delete Meeting",
-      "description": "Delete a meeting and its event data.",
+      "name": "webmeet_resource_list",
+      "title": "WebMeet List Resources",
+      "description": "List resources for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
-        "meetingId": { "type": "string", "optional": false }
+        "roomId": { "type": "string", "optional": false }
       },
-      "env": { "TOOL_NAME": "webmeet_delete_meeting" }
+      "env": { "TOOL_NAME": "webmeet_resource_list" }
+    },
+    {
+      "name": "webmeet_resource_remove",
+      "title": "WebMeet Remove Resource",
+      "description": "Mark a room resource as removed.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_resource_remove" }
     }
   ]
 }

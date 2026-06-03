@@ -11,10 +11,8 @@ function normalizeInitialState(initialState = {}) {
         session: base.session && typeof base.session === 'object' ? { ...base.session } : null,
         participants: Array.isArray(base.participants) ? [...base.participants] : [],
         chat: Array.isArray(base.chat) ? [...base.chat] : [],
-        transcript: Array.isArray(base.transcript) ? [...base.transcript] : [],
         agents: Array.isArray(base.agents) ? [...base.agents] : [],
-        recordings: Array.isArray(base.recordings) ? [...base.recordings] : [],
-        artifacts: Array.isArray(base.artifacts) ? [...base.artifacts] : [],
+        resources: Array.isArray(base.resources) ? [...base.resources] : [],
         livekitState: String(base.livekitState || 'disconnected').trim() || 'disconnected',
         mediaState: base.mediaState && typeof base.mediaState === 'object'
             ? { ...base.mediaState }
@@ -46,8 +44,8 @@ export class WebMeetRoomState {
             : null;
         this.state.session = nextSession ? { ...nextSession } : null;
         this.state.meeting = meeting;
-        this.state.meetingId = String(meeting?.id || '').trim();
-        this.state.workspaceId = String(meeting?.workspaceId || '').trim();
+        this.state.meetingId = String(meeting?.id || meeting?.roomId || nextSession?.roomId || '').trim();
+        this.state.workspaceId = String(meeting?.workspaceId || 'rooms').trim();
         this.state.roomName = String(nextSession?.roomName || meeting?.roomName || '').trim();
         this.state.participantId = String(nextSession?.participantIdentity || '').trim();
         this.state.guest = guest === true;
@@ -61,10 +59,6 @@ export class WebMeetRoomState {
         this.state.chat = Array.isArray(items) ? [...items] : [];
     }
 
-    setTranscript(items = []) {
-        this.state.transcript = Array.isArray(items) ? [...items] : [];
-    }
-
     setParticipants(items = []) {
         this.state.participants = Array.isArray(items) ? [...items] : [];
     }
@@ -73,12 +67,8 @@ export class WebMeetRoomState {
         this.state.agents = Array.isArray(items) ? [...items] : [];
     }
 
-    setRecordings(items = []) {
-        this.state.recordings = Array.isArray(items) ? [...items] : [];
-    }
-
-    setArtifacts(items = []) {
-        this.state.artifacts = Array.isArray(items) ? [...items] : [];
+    setResources(items = []) {
+        this.state.resources = Array.isArray(items) ? [...items] : [];
     }
 
     setAvatar(participantId, avatar) {

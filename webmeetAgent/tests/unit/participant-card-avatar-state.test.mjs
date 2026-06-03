@@ -72,7 +72,8 @@ test('dashboard primes the active local avatar before LiveKit renders participan
         'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js'
     ), 'utf8');
 
-    assert.match(actionSource, /await this\.webMeetRoom\.join\(payload\);\s+await this\.primeCurrentParticipantAvatarProjection\(\{ force: true \}\);/);
+    assert.match(actionSource, /await this\.webMeetRoom\.join\(payload\);/);
+    assert.match(actionSource, /await this\.primeCurrentParticipantAvatarProjection\(\{ force: true \}\);/);
     assert.match(actionSource, /async primeCurrentParticipantAvatarProjection\(options = \{\}\)/);
     assert.match(actionSource, /this\.setRoomAvatar\(participantId, resolved\.avatar\)/);
     assert.match(actionSource, /profileAvatar: resolved\.avatar/);

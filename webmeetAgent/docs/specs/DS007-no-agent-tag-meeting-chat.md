@@ -10,15 +10,15 @@ summary: Defines WebMeet chat behavior after inline provider tag dispatch was re
 
 ## Introduction
 
-WebMeet chat is a meeting transcript surface. It must not dispatch provider-looking tags through optional research, Copilot, or LiveKit AI infrastructure just because a user typed an `@word` in the meeting chat composer.
+WebMeet chat is a room conversation surface. It must not dispatch provider-looking tags through optional research, Copilot, or LiveKit AI infrastructure just because a user typed an `@word` in the meeting chat composer.
 
 ## Core Content
 
-`webmeet_chat_send` must persist the user's chat message and return the appended chat record. Text such as `@open-interpreter list primes` is ordinary meeting chat. It must not call a research relay, create a task artifact, or dispatch a provider.
+`webmeet_chat_send` must persist the user's chat message and return the appended chat record. Text such as `@open-interpreter list primes` is ordinary meeting chat. It must not call a research relay, create a task, or dispatch a provider.
 
 The durable chat write is authoritative and goes through `webmeetAgent`. A connected browser or LiveKit AI worker may publish a LiveKit reliable data-channel payload after persistence so other connected clients update quickly, but that payload is a realtime hint. LiveKit does not store WebMeet chat history.
 
-Authenticated MCP chat submissions should derive the normal user author identity from invocation auth when available instead of trusting caller-supplied `authorId` and `authorName` fields. Public guest HTTP chat keeps its separate guest-token and participant-validation path.
+Authenticated MCP chat submissions should derive the normal user author identity from invocation auth when available instead of trusting caller-supplied `authorId` and `authorName` fields. Public-protected guest MCP chat derives guest authorship from the room-scoped invocation context and stored participant record.
 
 The `research:` author id prefix is reserved for relay-generated chat messages if a future explicit bridge reintroduces relay output. Normal authenticated callers must not spoof that prefix.
 
@@ -47,4 +47,4 @@ The WebMeet plugin runs inside AssistOSExplorer and the guest shell, not inside 
 
 ## Conclusion
 
-WebMeet chat remains a meeting transcript and collaboration surface. Provider-looking text is persisted as ordinary chat unless a future explicit bridge changes the contract and updates this specification.
+WebMeet chat remains a room collaboration surface. Provider-looking text is persisted as ordinary chat unless a future explicit bridge changes the contract and updates this specification.

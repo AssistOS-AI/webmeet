@@ -536,6 +536,32 @@ export const roomSessionMethods = {
         }
     },
 
+    cleanupLocalLiveKitMediaForWindowExit() {
+        const room = this.roomLiveKit?.getRoom?.() || this.room;
+        try {
+            this.mediaController?.reset?.();
+        } catch (_) {
+            // Window teardown must continue even if controller cleanup fails.
+        }
+        try {
+            const publications = room?.localParticipant?.trackPublications?.values
+                ? Array.from(room.localParticipant.trackPublications.values())
+                : [];
+            for (const publication of publications) {
+                try { publication?.track?.stop?.(); } catch (_) {}
+                try { publication?.track?.mediaStreamTrack?.stop?.(); } catch (_) {}
+                try { room.localParticipant?.unpublishTrack?.(publication.track); } catch (_) {}
+            }
+        } catch (_) {
+            // LiveKit will also tear down on page close; this is best effort.
+        }
+        try {
+            this.muteRoomPlaybackElements();
+        } catch (_) {
+            // Ignore media element cleanup failures during page close.
+        }
+    },
+
     unsubscribeRemotePublications(room = this.roomLiveKit.getRoom()) {
         for (const participant of room?.remoteParticipants?.values?.() || []) {
             for (const publication of participant?.trackPublications?.values?.() || []) {

@@ -1,30 +1,31 @@
 import { pathToFileURL } from 'node:url';
 
 import {
+    archiveMeeting,
     attachMeetingAgent,
     appendMeetingChat,
-    appendMeetingTranscript,
+    authorizeResourceDownload,
+    authorizeResourceUpload,
+    commitResourceUpload,
     createMeeting,
     createStoreContext,
-    createWorkspace,
-    deleteMeeting,
     detachMeetingAgent,
     getMeeting,
+    heartbeatMeetingPresence,
     isAdminAuthInfo,
     joinGuestMeeting,
     joinMeeting,
     leaveMeeting,
+    listMeetingParticipants,
+    listRoomResources,
     listMeetingAgents,
-    listMeetingArtifacts,
     listMeetingChat,
     listMeetingEvents,
     listMeetings,
-    listMeetingTranscript,
     listWorkspaceEvents,
-    listWorkspaces,
-    startMeetingRecording,
-    stopMeetingRecording,
-    updateGuestMeetingParticipantAvatar,
+    removeMeetingParticipant,
+    removeRoomResource,
+    updateMeetingParticipantRole,
     updateMeetingParticipantAvatar,
     updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
@@ -51,7 +52,7 @@ const SUPPORTED_AGENT_MODES = new Set(['passive', 'on_mention', 'post_event']);
 
 function assertAdminTool(authInfo) {
     if (!isAdminAuthInfo(authInfo)) {
-        throw new Error('Access denied: only admin can access meeting artifacts.');
+        throw new Error('Access denied: only admin can access room management data.');
     }
 }
 
@@ -155,109 +156,149 @@ function assertUserChatAuthor(args, authInfo = null) {
     throw new Error('Authentication is required to send meeting chat.');
 }
 
+function assertPublicRoomInvocation(authInfo, roomId) {
+    const invocationScopes = Array.isArray(authInfo?.invocation?.scope) ? authInfo.invocation.scope.map((scope) => String(scope || '').trim()) : [];
+    const targetRoomId = String(roomId || '').trim();
+    const accepted = new Set([
+        `webmeet:room:${targetRoomId}`,
+        `public:webmeet:room:${targetRoomId}`
+    ]);
+    if (!invocationScopes.some((scope) => accepted.has(scope))) {
+        throw new Error('Public room join scope does not match this room.');
+    }
+}
+
+function isPublicRoomInvocation(authInfo, roomId) {
+    try {
+        assertPublicRoomInvocation(authInfo, roomId);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export async function dispatch(toolName, args, context, authInfo) {
     switch (toolName) {
-    case 'webmeet_workspace_list':
-        return { workspaces: await listWorkspaces(context) };
-    case 'webmeet_workspace_create':
-        return await createWorkspace(context, { name: String(args?.name || '').trim() });
-    case 'webmeet_meeting_list':
+    case 'webmeet_room_list':
         return {
-            meetings: await listMeetings(context, getRequiredString(args, 'workspaceId'), authInfo),
+            rooms: await listMeetings(context, '', authInfo),
             canManageRooms: isAdminAuthInfo(authInfo)
         };
-    case 'webmeet_meeting_create':
+    case 'webmeet_room_create':
         return await createMeeting(context, {
-            workspaceId: getRequiredString(args, 'workspaceId'),
-            title: getRequiredString(args, 'title'),
+            name: getRequiredString(args, 'name'),
             roomType: String(args?.roomType || 'team').trim(),
             authInfo
         });
-    case 'webmeet_meeting_join':
-        return await joinMeeting(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
-            displayName: String(args?.displayName || '').trim(),
-            participantId: String(args?.participantId || '').trim(),
-            avatar: args?.avatar || null,
-            authInfo
-        });
-    case 'webmeet_meeting_join_guest':
-        return await joinGuestMeeting(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
-            guestToken: getRequiredString(args, 'guestToken'),
-            displayName: getRequiredString(args, 'displayName'),
-            participantId: String(args?.participantId || '').trim()
-        });
-    case 'webmeet_meeting_leave':
+    case 'webmeet_room_join':
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            if (isPublicRoomInvocation(authInfo, roomId)) {
+                return await joinGuestMeeting(context, {
+                    meetingId: roomId,
+                    displayName: getRequiredString(args, 'displayName'),
+                    participantId: String(args?.participantId || '').trim()
+                });
+            }
+            return await joinMeeting(context, {
+                meetingId: roomId,
+                displayName: String(args?.displayName || '').trim(),
+                participantId: String(args?.participantId || '').trim(),
+                avatar: args?.avatar || null,
+                authInfo
+            });
+        }
+    case 'webmeet_room_join_guest':
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            assertPublicRoomInvocation(authInfo, roomId);
+            return await joinGuestMeeting(context, {
+                meetingId: roomId,
+                displayName: getRequiredString(args, 'displayName'),
+                participantId: String(args?.participantId || '').trim()
+            });
+        }
+    case 'webmeet_room_leave':
         return await leaveMeeting(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
+            meetingId: getRequiredString(args, 'roomId'),
             participantId: getRequiredString(args, 'participantId'),
             authInfo
         });
-    case 'webmeet_workspace_events_list':
-        return {
-            events: await listWorkspaceEvents(context, getRequiredString(args, 'workspaceId'), {
-                afterId: String(args?.afterId || '').trim()
-            })
-        };
-    case 'webmeet_meeting_events_list':
-        await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo, { includeParticipants: false });
-        return {
-            events: await listMeetingEvents(context, getRequiredString(args, 'meetingId'), {
-                afterId: String(args?.afterId || '').trim()
-            })
-        };
+    case 'webmeet_presence_heartbeat':
+        return await heartbeatMeetingPresence(context, {
+            meetingId: getRequiredString(args, 'roomId'),
+            participantId: getRequiredString(args, 'participantId'),
+            authInfo
+        });
+    case 'webmeet_participant_list':
+        return await listMeetingParticipants(context, getRequiredString(args, 'roomId'), authInfo);
+    case 'webmeet_participant_update_role':
+        return await updateMeetingParticipantRole(context, {
+            meetingId: getRequiredString(args, 'roomId'),
+            participantId: getRequiredString(args, 'participantId'),
+            role: getRequiredString(args, 'role'),
+            authInfo
+        });
+    case 'webmeet_participant_remove':
+        return await removeMeetingParticipant(context, {
+            meetingId: getRequiredString(args, 'roomId'),
+            participantId: getRequiredString(args, 'participantId'),
+            authInfo
+        });
+    case 'webmeet_room_events_list':
+        {
+            const targetId = getRequiredString(args, 'roomId');
+            if (targetId.startsWith('room_')) {
+                await getMeeting(context, targetId, authInfo, { includeParticipants: false });
+                return {
+                    events: await listMeetingEvents(context, targetId, {
+                        afterId: String(args?.afterId || '').trim()
+                    })
+                };
+            }
+            if (!isAdminAuthInfo(authInfo)) {
+                await listMeetings(context, '', authInfo);
+            }
+            return {
+                events: await listWorkspaceEvents(context, targetId, {
+                    afterId: String(args?.afterId || '').trim()
+                })
+            };
+        }
     case 'webmeet_participant_avatar_update':
         return await updateMeetingParticipantAvatar(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
+            meetingId: getRequiredString(args, 'roomId'),
             participantId: getRequiredString(args, 'participantId'),
             avatar: args?.avatar || null,
             authInfo
         });
-    case 'webmeet_guest_participant_avatar_update':
-        return await updateGuestMeetingParticipantAvatar(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
-            guestToken: getRequiredString(args, 'guestToken'),
-            participantId: getRequiredString(args, 'participantId'),
-            avatar: args?.avatar || null
-        });
-    case 'webmeet_meeting_get':
-        return await getMeeting(context, getRequiredString(args, 'meetingId'), authInfo, {
+    case 'webmeet_room_get':
+        return await getMeeting(context, getRequiredString(args, 'roomId'), authInfo, {
             includeParticipants: args?.includeParticipants !== false
         });
-    case 'webmeet_meeting_rename':
+    case 'webmeet_room_rename':
         return await updateMeetingTitle(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
-            title: getRequiredString(args, 'title'),
+            meetingId: getRequiredString(args, 'roomId'),
+            title: getRequiredString(args, 'name'),
             authInfo
         });
     case 'webmeet_chat_list':
-        return { messages: await listMeetingChat(context, getRequiredString(args, 'meetingId'), authInfo) };
+        return { messages: await listMeetingChat(context, getRequiredString(args, 'roomId'), authInfo) };
     case 'webmeet_chat_send':
         {
             const author = assertUserChatAuthor(args, authInfo);
             const appended = await appendMeetingChat(context, {
-                meetingId: getRequiredString(args, 'meetingId'),
+                meetingId: getRequiredString(args, 'roomId'),
                 authorId: author.authorId,
                 authorName: author.authorName,
                 message: getRequiredString(args, 'message'),
+                metadata: Array.isArray(args?.resourceIds) ? { resourceIds: args.resourceIds } : null,
                 authInfo
             });
             return { ...appended, researchTask: null };
         }
-    case 'webmeet_transcript_append':
-        assertAdminTool(authInfo);
-        return await appendMeetingTranscript(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
-            speakerId: getRequiredString(args, 'speakerId'),
-            speakerName: getRequiredString(args, 'speakerName'),
-            text: getRequiredString(args, 'text')
-        });
-    case 'webmeet_transcript_list':
-        assertAdminTool(authInfo);
-        return { transcript: await listMeetingTranscript(context, getRequiredString(args, 'meetingId')) };
     case 'webmeet_agent_attach': {
-        const meetingId = getRequiredString(args, 'meetingId');
+        const meetingId = getRequiredString(args, 'roomId');
         const agentType = getRequiredString(args, 'agentType');
         const mode = getRequiredString(args, 'mode');
         if (!SUPPORTED_AGENT_TYPES.has(agentType)) {
@@ -270,24 +311,47 @@ export async function dispatch(toolName, args, context, authInfo) {
     }
     case 'webmeet_agent_list':
         assertAdminTool(authInfo);
-        return { agents: await listMeetingAgents(context, getRequiredString(args, 'meetingId')) };
+        return { agents: await listMeetingAgents(context, getRequiredString(args, 'roomId')) };
     case 'webmeet_agent_detach':
         return await detachMeetingAgent(context, {
-            meetingId: getRequiredString(args, 'meetingId'),
+            meetingId: getRequiredString(args, 'roomId'),
             agentId: getRequiredString(args, 'agentId'),
             authInfo
         });
-    case 'webmeet_recording_start':
-        assertAdminTool(authInfo);
-        return await startMeetingRecording(context, getRequiredString(args, 'meetingId'));
-    case 'webmeet_recording_stop':
-        assertAdminTool(authInfo);
-        return await stopMeetingRecording(context, getRequiredString(args, 'meetingId'));
-    case 'webmeet_artifact_list':
-        assertAdminTool(authInfo);
-        return await listMeetingArtifacts(context, getRequiredString(args, 'meetingId'));
-    case 'webmeet_delete_meeting':
-        return await deleteMeeting(context, getRequiredString(args, 'meetingId'), authInfo);
+    case 'webmeet_room_archive':
+        return await archiveMeeting(context, getRequiredString(args, 'roomId'), authInfo);
+    case 'webmeet_resource_authorize_upload':
+        return await authorizeResourceUpload(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            filename: getRequiredString(args, 'filename'),
+            mimeType: String(args?.mimeType || '').trim(),
+            size: Number(args?.size || 0),
+            authInfo
+        });
+    case 'webmeet_resource_commit_upload':
+        return await commitResourceUpload(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            resourceId: getRequiredString(args, 'resourceId'),
+            filename: getRequiredString(args, 'filename'),
+            mimeType: String(args?.mimeType || '').trim(),
+            size: Number(args?.size || 0),
+            storagePath: getRequiredString(args, 'storagePath'),
+            authInfo
+        });
+    case 'webmeet_resource_authorize_download':
+        return await authorizeResourceDownload(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            resourceId: getRequiredString(args, 'resourceId'),
+            authInfo
+        });
+    case 'webmeet_resource_list':
+        return await listRoomResources(context, getRequiredString(args, 'roomId'), authInfo);
+    case 'webmeet_resource_remove':
+        return await removeRoomResource(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            resourceId: getRequiredString(args, 'resourceId'),
+            authInfo
+        });
     default:
         throw new Error(`Unsupported TOOL_NAME "${toolName}".`);
     }

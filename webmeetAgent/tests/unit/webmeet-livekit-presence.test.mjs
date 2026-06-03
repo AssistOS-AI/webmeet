@@ -7,7 +7,6 @@ import path from 'node:path';
 import {
     createMeeting,
     createStoreContext,
-    createWorkspace,
     getMeeting,
     joinMeeting
 } from '../../lib/webmeetStore.mjs';
@@ -40,7 +39,6 @@ afterEach(() => {
 
 test('meeting participants include LiveKit participants and pending joined members', async () => {
     const context = await createStoreContext(tempRoot);
-    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -49,8 +47,7 @@ test('meeting participants include LiveKit participants and pending joined membe
         }
     };
     const meeting = await createMeeting(context, {
-        workspaceId: workspace.id,
-        title: 'Presence source room',
+        name: 'Presence source room',
         authInfo
     });
     await joinMeeting(context, {
@@ -87,7 +84,6 @@ test('meeting participants include LiveKit participants and pending joined membe
 
 test('meeting participant projection fails when no LiveKit source is available', async () => {
     const context = await createStoreContext(tempRoot);
-    const workspace = await createWorkspace(context);
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -96,8 +92,7 @@ test('meeting participant projection fails when no LiveKit source is available',
         }
     };
     const meeting = await createMeeting(context, {
-        workspaceId: workspace.id,
-        title: 'Missing LiveKit source room',
+        name: 'Missing LiveKit source room',
         authInfo
     });
 

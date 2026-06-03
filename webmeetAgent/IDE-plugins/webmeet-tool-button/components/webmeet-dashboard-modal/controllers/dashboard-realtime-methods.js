@@ -16,6 +16,14 @@ export const dashboardRealtimeMethods = {
         return Boolean(this.room || this.state.roomState === 'Connected');
     },
 
+    syncConnectedRoomRosterFromWorkspaceEvent() {
+        if (this.room) {
+            this.syncParticipantsFromRoom(this.room);
+            return;
+        }
+        this.renderMeetingList();
+    },
+
     bindRoomEventHandlers() {
         if (this.roomEventHandlersBound) {
             return;
@@ -28,7 +36,7 @@ export const dashboardRealtimeMethods = {
             if (!parsed) return;
             if (source === 'authenticated-workspace') {
                 if (this.usesLiveRosterForWorkspaceEvent(parsed.payload)) {
-                    this.renderMeetingList();
+                    this.syncConnectedRoomRosterFromWorkspaceEvent();
                     return;
                 }
                 this.scheduleWorkspaceRosterRefresh(parsed.payload?.meetingId);
@@ -43,13 +51,18 @@ export const dashboardRealtimeMethods = {
             if (!parsed) return;
             if (source === 'authenticated-workspace') {
                 if (this.usesLiveRosterForWorkspaceEvent(parsed.payload)) {
-                    this.renderMeetingList();
+                    this.syncConnectedRoomRosterFromWorkspaceEvent();
                     return;
                 }
                 this.scheduleWorkspaceRosterRefresh(parsed.payload?.meetingId);
                 return;
             }
             void this.handleParticipantRosterEvent({ data: parsed.encoded });
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.ARCHIVED, () => {
+            this.setError('Room was archived by an admin.');
+            void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+            this.scheduleWorkspaceMeetingsRefresh();
         });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.AVATAR_PROJECTED, (event) => {
             const detail = event?.detail || {};
@@ -144,6 +157,14 @@ export const dashboardRealtimeMethods = {
             }
             return;
         }
+        if (type === WEBMEET_EVENT_TYPES.MEETING_ARCHIVED) {
+            if (selectedMeetingId && meetingId === selectedMeetingId) {
+                this.setError('Room was archived by an admin.');
+                void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+            }
+            this.scheduleWorkspaceMeetingsRefresh();
+            return;
+        }
         if (source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST) {
             const requesterParticipantId = String(
                 detail?.meta?.participantId
@@ -157,7 +178,7 @@ export const dashboardRealtimeMethods = {
             void this.webMeetRoom.republishAvatarProjection().catch(() => {});
             return;
         }
-        if ([WEBMEET_EVENT_TYPES.AGENT_DETACHED, WEBMEET_EVENT_TYPES.ARTIFACT_CREATED, WEBMEET_EVENT_TYPES.RECORDING_STOPPED, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED].includes(type)) {
+        if ([WEBMEET_EVENT_TYPES.AGENT_DETACHED, WEBMEET_EVENT_TYPES.RESOURCE_CREATED, WEBMEET_EVENT_TYPES.RESOURCE_REMOVED, WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED].includes(type)) {
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
             return;
         }

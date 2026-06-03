@@ -14,6 +14,7 @@ function randomEventId() {
 export const WEBMEET_EVENT_TYPES = Object.freeze({
     MEETING_CREATED: 'meeting.created',
     MEETING_RENAMED: 'meeting.renamed',
+    MEETING_ARCHIVED: 'meeting.archived',
     PARTICIPANT_JOINED: 'participant.joined',
     PARTICIPANT_LEFT: 'participant.left',
     PARTICIPANT_TIMED_OUT: 'participant.timed_out',
@@ -22,12 +23,10 @@ export const WEBMEET_EVENT_TYPES = Object.freeze({
     PROFILE_AVATAR_UPDATED: 'profile.avatar.updated',
     CHAT_MESSAGE_CREATED: 'chat.message.created',
     CHAT_REALTIME: 'chat',
-    TRANSCRIPT_UPDATED: 'transcript.updated',
     AGENT_DISPATCHED: 'agent.dispatched',
     AGENT_DETACHED: 'agent.detached',
-    RECORDING_STARTED: 'recording.started',
-    RECORDING_STOPPED: 'recording.stopped',
-    ARTIFACT_CREATED: 'artifact.created'
+    RESOURCE_CREATED: 'resource.created',
+    RESOURCE_REMOVED: 'resource.removed'
 });
 
 const EVENT_DEFINITIONS = Object.freeze({
@@ -40,6 +39,11 @@ const EVENT_DEFINITIONS = Object.freeze({
         persistent: true,
         workspacePersistent: true,
         required: ['meetingId', 'title']
+    },
+    [WEBMEET_EVENT_TYPES.MEETING_ARCHIVED]: {
+        persistent: true,
+        workspacePersistent: true,
+        required: ['meetingId', 'archivedAt']
     },
     [WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED]: {
         persistent: true,
@@ -81,11 +85,6 @@ const EVENT_DEFINITIONS = Object.freeze({
         workspacePersistent: false,
         required: ['meetingId', 'message']
     },
-    [WEBMEET_EVENT_TYPES.TRANSCRIPT_UPDATED]: {
-        persistent: true,
-        workspacePersistent: false,
-        required: ['meetingId', 'segmentId']
-    },
     [WEBMEET_EVENT_TYPES.AGENT_DISPATCHED]: {
         persistent: true,
         workspacePersistent: true,
@@ -96,20 +95,15 @@ const EVENT_DEFINITIONS = Object.freeze({
         workspacePersistent: true,
         required: ['meetingId', 'agentId']
     },
-    [WEBMEET_EVENT_TYPES.RECORDING_STARTED]: {
+    [WEBMEET_EVENT_TYPES.RESOURCE_CREATED]: {
         persistent: true,
         workspacePersistent: false,
-        required: ['meetingId', 'recordingId']
+        required: ['meetingId', 'resourceId']
     },
-    [WEBMEET_EVENT_TYPES.RECORDING_STOPPED]: {
+    [WEBMEET_EVENT_TYPES.RESOURCE_REMOVED]: {
         persistent: true,
         workspacePersistent: false,
-        required: ['meetingId', 'recordingId']
-    },
-    [WEBMEET_EVENT_TYPES.ARTIFACT_CREATED]: {
-        persistent: true,
-        workspacePersistent: false,
-        required: ['meetingId', 'artifactId']
+        required: ['meetingId', 'resourceId']
     }
 });
 

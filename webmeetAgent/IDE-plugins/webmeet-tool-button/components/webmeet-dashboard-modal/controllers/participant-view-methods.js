@@ -468,7 +468,9 @@ export const participantViewMethods = {
             const view = this.upsertParticipantView(item);
             if (!view) continue;
             const sourceParticipant = item.kind === 'local' ? room.localParticipant : room.remoteParticipants.get(id);
-            view.micOn = this.isParticipantMicOn(sourceParticipant, Track);
+            view.micOn = Track
+                ? this.isParticipantMicOn(sourceParticipant, Track)
+                : Boolean(view.micOn);
             this.applyParticipantViewState(view);
         }
 

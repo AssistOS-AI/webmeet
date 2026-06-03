@@ -1,4 +1,4 @@
-.webmeet-dashboard-page {
+.webmeet-dashboard {
     width: 100%;
     min-height: 100vh;
     background: var(--file-exp-panel);
@@ -6,13 +6,13 @@
     overflow: hidden;
 }
 
-.webmeet-dashboard-page webmeet-dashboard-modal {
+.webmeet-dashboard webmeet-dashboard-modal {
     display: block;
     width: 100%;
     min-height: 100vh;
 }
 
-.webmeet-dashboard-page .webmeet-dashboard-modal {
+.webmeet-dashboard .webmeet-dashboard-modal {
     position: relative;
     top: auto;
     left: auto;
@@ -26,14 +26,14 @@
     resize: none;
 }
 
-.webmeet-dashboard-page .modal-header {
+.webmeet-dashboard .modal-header {
     min-height: 64px;
 }
 
-.webmeet-dashboard-page .webmeet-modal-window-actions {
+.webmeet-dashboard .webmeet-modal-window-actions {
     display: inline-flex;
 }
 
-.webmeet-dashboard-page #webmeetModalFullscreen {
+.webmeet-dashboard #webmeetModalFullscreen {
     display: none;
 }
