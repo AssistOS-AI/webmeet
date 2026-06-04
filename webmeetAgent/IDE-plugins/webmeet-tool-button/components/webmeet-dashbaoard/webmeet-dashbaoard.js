@@ -23,6 +23,11 @@ import {
     getBackgroundEffectsAssetPaths
 } from './services/livekit-loader.js';
 import { createRoomNotificationSoundService } from './services/room-notification-sounds.js';
+import { RemoteAudioNormalizer } from './services/audio-processing/remote-audio-normalizer.js';
+import {
+    logMediaDiagnostic,
+    summarizeAudioMetrics
+} from './services/media-diagnostics.js';
 import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
 import { WebMeetRoom } from './services/room/webmeet-room.js';
 import { WebMeetRoomEvents } from './services/room/webmeet-room-events.js';
@@ -76,7 +81,7 @@ async function ensureAvatarSettingsFormRegistered() {
     return avatarSettingsFormRegistrationPromise;
 }
 
-export class WebMeetDashboardModal {
+export class WebMeetDashbaoard {
     constructor(element, invalidate, hostContext) {
         this.element = element;
         this.invalidate = invalidate;
@@ -118,6 +123,7 @@ export class WebMeetDashboardModal {
                 echoCancellation: true,
                 noiseSuppression: true,
                 autoGainControl: false,
+                automaticParticipantVolume: true,
                 microphoneGain: 1,
                 voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
                 humFilter: 'off',
@@ -144,6 +150,8 @@ export class WebMeetDashboardModal {
             avatarQuickMenuVisible: false,
             roomAvatarsByParticipantId: {},
             participantAudioSettings: {},
+            audioHealth: 'Good',
+            audioNetworkUnstable: false,
             participants: [],
             activeSpeakerIds: new Set(),
             chatSidebarVisible: true,
@@ -153,10 +161,15 @@ export class WebMeetDashboardModal {
         this.room = null;
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
+        this.audioWebRtcStatsTimer = null;
         this.avatarPreviewLoadPromise = null;
         this.handleParticipantAudioPreviewEvent = (event) => this.handleParticipantAudioPreview(event);
         this.handleAvatarSettingsUpdatedEvent = (event) => this.handleAvatarSettingsUpdated(event);
         this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
+        this.handleSettingsModalReadyEvent = (event) => this.mountMediaSettingsModal(event);
+        this.handleSettingsModalActionEvent = (event) => this.handleMediaSettingsModalAction(event);
+        this.handleSettingsModalClosedEvent = (event) => this.handleMediaSettingsModalClosed(event);
+        this.lastAudioMetricsDiagnosticAt = 0;
         this.roomNotificationSoundService = createRoomNotificationSoundService({
             isEnabled: () => this.state.mediaSettings?.roomNotificationSounds !== false
         });
@@ -262,6 +275,20 @@ export class WebMeetDashboardModal {
                 this.persistMediaSettings();
                 this.renderMediaSettingsPanel();
             },
+            onAudioMetrics: (metrics) => {
+                this.state.audioHealth = this.state.audioNetworkUnstable
+                    ? 'Network unstable'
+                    : String(metrics?.health || 'Good');
+                const now = Date.now();
+                if (now - this.lastAudioMetricsDiagnosticAt >= 5000) {
+                    this.lastAudioMetricsDiagnosticAt = now;
+                    logMediaDiagnostic('local-audio-health', summarizeAudioMetrics({
+                        ...metrics,
+                        health: this.state.audioHealth
+                    }));
+                }
+                this.updateAudioHealthIndicator();
+            },
             onAfterToggle: () => {
                 this.renderMeetingSummary();
             }
@@ -270,6 +297,13 @@ export class WebMeetDashboardModal {
         this.state.webMeetAvatarOverride = this.loadCurrentWebMeetAvatarOverride();
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.mediaController.setSettings(this.state.mediaSettings);
+        this.remoteAudioNormalizer = new RemoteAudioNormalizer({
+            isEnabled: () => this.state.mediaSettings?.automaticParticipantVolume !== false,
+            hasManualOverride: (participantId) => this.hasParticipantAudioOverrides(
+                this.getParticipantAudioSettings(participantId)
+            ),
+            onMultiplierChange: (mediaElement) => this.applyOutputVolumePreviewToElement(mediaElement)
+        });
 
         // Initialize new modular components
         this._initComponents();
@@ -431,7 +465,7 @@ export class WebMeetDashboardModal {
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');
         this.screenShareButton = this.element.querySelector('#webmeetScreenShareButton');
         this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
-        this.dashboardModalRoot = this.element.querySelector('.webmeet-dashboard-modal');
+        this.dashboardRoot = this.element.querySelector('.webmeet-dashbaoard');
         this.chatSidebar = this.element.querySelector('#webmeetChatSidebar');
         this.chatResizer = this.element.querySelector('#webmeetChatResizer');
         this.toggleChatButton = this.element.querySelector('#webmeetToggleChatButton');
@@ -439,6 +473,7 @@ export class WebMeetDashboardModal {
         this.mediaSettingsButton = this.element.querySelector('#webmeetMediaSettingsButton');
         this.applyMediaSettingsButton = this.element.querySelector('#webmeetApplyMediaSettingsButton');
         this.mediaSettingsPanel = this.element.querySelector('#webmeetMediaSettingsPanel');
+        this.mediaSettingsMount = this.element.querySelector('#webmeetMediaSettingsMount');
         this.settingsTabButtons = Array.from(this.element.querySelectorAll('[data-settings-tab]'));
         this.settingsTabPanels = Array.from(this.element.querySelectorAll('[data-settings-tab-panel]'));
         this.mediaSettingsActions = this.element.querySelector('#webmeetMediaSettingsActions');
@@ -451,6 +486,7 @@ export class WebMeetDashboardModal {
         this.echoCancellationInput = this.element.querySelector('#webmeetAudioEchoCancellation');
         this.noiseSuppressionInput = this.element.querySelector('#webmeetAudioNoiseSuppression');
         this.autoGainControlInput = this.element.querySelector('#webmeetAudioAutoGainControl');
+        this.automaticParticipantVolumeInput = this.element.querySelector('#webmeetAutomaticParticipantVolume');
         this.microphoneGainInput = this.element.querySelector('#webmeetMicrophoneGain');
         this.microphoneGainValue = this.element.querySelector('#webmeetMicrophoneGainValue');
         this.microphoneGainWarning = this.element.querySelector('#webmeetMicrophoneGainWarning');
@@ -477,6 +513,7 @@ export class WebMeetDashboardModal {
         this.backgroundImageRemoveButton = this.element.querySelector('#webmeetBackgroundImageRemoveButton');
         this.backgroundImageWarning = this.element.querySelector('#webmeetBackgroundImageWarning');
         this.mediaDeviceWarnings = this.element.querySelector('#webmeetMediaDeviceWarnings');
+        this.audioHealthIndicator = this.element.querySelector('#webmeetAudioHealthIndicator');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
@@ -497,6 +534,7 @@ export class WebMeetDashboardModal {
 
         this.applyChatSidebarWidth();
         this.applyMobilePanelState();
+        this.updateAudioHealthIndicator();
     }
 
     afterUnload() {
@@ -506,7 +544,15 @@ export class WebMeetDashboardModal {
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();
+        window.clearInterval(this.audioWebRtcStatsTimer);
+        this.audioWebRtcStatsTimer = null;
         this.unregisterMediaDeviceChangeHandler();
+        window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
+        window.removeEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
+        window.removeEventListener('webmeet:settings-modal-closed', this.handleSettingsModalClosedEvent);
+        this.restoreMediaSettingsPanel();
+        this.remoteAudioNormalizer?.stopAll?.();
+        this.participantLayoutController?.dispose?.();
         this.roomNotificationSoundService?.teardown?.();
         window.removeEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         this.presenceController.teardown();
@@ -521,6 +567,20 @@ export class WebMeetDashboardModal {
         return this.state.meetings.find((entry) => entry.id === this.state.selectedMeetingId) || null;
     }
 
+    updateAudioHealthIndicator() {
+        const health = String(this.state.audioHealth || 'Good').trim() || 'Good';
+        const healthKey = health.toLowerCase().replaceAll(' ', '-');
+        if (this.audioHealthIndicator) {
+            this.audioHealthIndicator.dataset.health = healthKey;
+            this.audioHealthIndicator.title = `Audio: ${health}`;
+        }
+        if (this.micButton) {
+            const label = `Toggle Microphone - Audio: ${health}`;
+            this.micButton.title = label;
+            this.micButton.setAttribute('aria-label', label);
+        }
+    }
+
     get currentActor() {
         return normalizeCurrentActor();
     }
@@ -528,7 +588,7 @@ export class WebMeetDashboardModal {
 }
 
 Object.assign(
-    WebMeetDashboardModal.prototype,
+    WebMeetDashbaoard.prototype,
     dashboardChromeMethods,
     dashboardDataMethods,
     dashboardRealtimeMethods,

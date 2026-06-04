@@ -102,6 +102,63 @@ export function summarizeVideoElement(videoElement) {
     };
 }
 
+function roundedNumber(value, decimals = 1) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return undefined;
+    const factor = 10 ** decimals;
+    return Math.round(number * factor) / factor;
+}
+
+export function summarizeAudioMetrics(metrics = {}) {
+    return {
+        rmsDb: roundedNumber(metrics.rmsDb),
+        peakDb: roundedNumber(metrics.peakDb),
+        noiseFloorDb: roundedNumber(metrics.noiseFloorDb),
+        clipping: Boolean(metrics.clipping),
+        speaking: Boolean(metrics.speaking),
+        humFrequency: ['50', '60'].includes(String(metrics.humFrequency)) ? String(metrics.humFrequency) : 'off',
+        adaptiveGain: roundedNumber(metrics.adaptiveGain, 2),
+        mode: safeString(metrics.mode || ''),
+        health: safeString(metrics.health || '')
+    };
+}
+
+export function summarizeAudioWebRtcStats(stats = []) {
+    const summary = {
+        inboundAudioStreams: 0,
+        outboundAudioStreams: 0,
+        jitterMs: undefined,
+        packetsLost: 0,
+        concealedSamples: 0,
+        roundTripTimeMs: undefined
+    };
+    for (const item of stats || []) {
+        const report = Array.isArray(item) && item.length === 2 ? item[1] : item;
+        if (!report || report.kind !== 'audio') continue;
+        if (report.type === 'inbound-rtp') {
+            summary.inboundAudioStreams += 1;
+            summary.packetsLost += Number(report.packetsLost || 0);
+            summary.concealedSamples += Number(report.concealedSamples || 0);
+            const jitterMs = Number(report.jitter) * 1000;
+            if (Number.isFinite(jitterMs)) {
+                summary.jitterMs = Math.max(summary.jitterMs || 0, jitterMs);
+            }
+        }
+        if (report.type === 'outbound-rtp') {
+            summary.outboundAudioStreams += 1;
+        }
+        if (report.type === 'remote-inbound-rtp') {
+            const rttMs = Number(report.roundTripTime) * 1000;
+            if (Number.isFinite(rttMs)) {
+                summary.roundTripTimeMs = Math.max(summary.roundTripTimeMs || 0, rttMs);
+            }
+        }
+    }
+    summary.jitterMs = roundedNumber(summary.jitterMs);
+    summary.roundTripTimeMs = roundedNumber(summary.roundTripTimeMs);
+    return summary;
+}
+
 function redactSensitive(value) {
     if (Array.isArray(value)) {
         return value.map((item) => redactSensitive(item));

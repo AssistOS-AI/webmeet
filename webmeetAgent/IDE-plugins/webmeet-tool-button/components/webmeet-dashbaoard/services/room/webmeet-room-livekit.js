@@ -116,6 +116,11 @@ export class WebMeetRoomLiveKit {
                 this.room = null;
                 hooks.onDisconnected?.({ livekit, Track, RoomEvent });
             });
+        if (RoomEvent.ConnectionQualityChanged) {
+            room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+                hooks.onConnectionQualityChanged?.(quality, participant, { room, livekit, Track, RoomEvent });
+            });
+        }
 
         const connectStartMs = Date.now();
         try {

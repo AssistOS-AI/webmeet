@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { findTriggerAt } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/chat-autocomplete/find-trigger.js';
+import { findTriggerAt } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/chat-autocomplete/find-trigger.js';
 
 test('findTriggerAt detects @ at the start of input', () => {
     const result = findTriggerAt('@op', 3, ['@']);

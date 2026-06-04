@@ -1,5 +1,7 @@
 import {
+    isMediaDiagnosticsEnabled,
     logMediaDiagnostic,
+    summarizeAudioWebRtcStats,
     summarizeParticipant,
     summarizePublication,
     summarizeTrack,
@@ -313,6 +315,27 @@ export const roomSessionMethods = {
             }
         };
 
+        const collectAudioWebRtcDiagnostics = async () => {
+            if (!isMediaDiagnosticsEnabled() || !this.room) return;
+            const publications = [
+                ...(this.room.localParticipant?.trackPublications?.values?.() || []),
+                ...[...(this.room.remoteParticipants?.values?.() || [])]
+                    .flatMap((participant) => [...(participant.trackPublications?.values?.() || [])])
+            ];
+            const reports = [];
+            for (const publication of publications) {
+                const track = publication?.track || null;
+                if (typeof track?.getRTCStatsReport !== 'function') continue;
+                try {
+                    const report = await track.getRTCStatsReport();
+                    reports.push(...(report?.values?.() || report || []));
+                } catch (_) {
+                    // A track may disappear while diagnostics are being collected.
+                }
+            }
+            logMediaDiagnostic('audio-webrtc-stats', summarizeAudioWebRtcStats(reports));
+        };
+
         await this.roomLiveKit.connect(this.state.session, {
             onRoomCreated: ({ room }) => {
                 this.room = room;
@@ -467,6 +490,20 @@ export const roomSessionMethods = {
                 }
                 this.syncParticipantsFromRoom(this.room, Track);
             },
+            onConnectionQualityChanged: (quality, participant) => {
+                const qualityLabel = String(quality || '').trim().toLowerCase();
+                const participantId = String(participant?.identity || '').trim();
+                const localParticipantId = String(this.room?.localParticipant?.identity || '').trim();
+                const isLocalParticipant = !participantId || participantId === localParticipantId;
+                logMediaDiagnostic('connection-quality-changed', {
+                    quality: qualityLabel,
+                    participant: summarizeParticipant(participant)
+                });
+                if (!isLocalParticipant) return;
+                this.state.audioNetworkUnstable = qualityLabel.includes('poor') || qualityLabel.includes('lost');
+                this.state.audioHealth = this.state.audioNetworkUnstable ? 'Network unstable' : 'Good';
+                this.updateAudioHealthIndicator?.();
+            },
             onDisconnected: () => {
                 this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
             },
@@ -485,6 +522,11 @@ export const roomSessionMethods = {
                     subscribeParticipantPublications(participant, Track, 'connected');
                 }
                 scheduleRemoteSubscriptionSweep(Track, 'connected');
+                window.clearInterval(this.audioWebRtcStatsTimer);
+                this.audioWebRtcStatsTimer = isMediaDiagnosticsEnabled()
+                    ? window.setInterval(() => void collectAudioWebRtcDiagnostics(), 10000)
+                    : null;
+                void collectAudioWebRtcDiagnostics();
                 this.renderMeetingSummary();
             },
             onConnectError: (error) => {
@@ -509,6 +551,11 @@ export const roomSessionMethods = {
         this.state.skipConnectedAvatarRepublishOnce = false;
         this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
+        this.state.audioHealth = 'Good';
+        this.state.audioNetworkUnstable = false;
+        window.clearInterval(this.audioWebRtcStatsTimer);
+        this.audioWebRtcStatsTimer = null;
+        this.remoteAudioNormalizer?.stopAll?.();
         this.participantLayoutController.clearAll('Join a meeting to attach media tracks.');
         if (applyVideoFullscreenMode) {
             this.applyVideoGridFullscreenMode();

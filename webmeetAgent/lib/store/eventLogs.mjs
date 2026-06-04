@@ -7,7 +7,7 @@ import {
     getWebMeetEventId,
     isPersistentWebMeetEvent,
     isWorkspacePersistentWebMeetEvent
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
 async function pathExists(filePath) {
     try {

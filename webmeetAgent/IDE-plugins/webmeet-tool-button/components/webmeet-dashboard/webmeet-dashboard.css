@@ -6,13 +6,13 @@
     overflow: hidden;
 }
 
-.webmeet-dashboard webmeet-dashboard-modal {
+.webmeet-dashboard webmeet-dashbaoard {
     display: block;
     width: 100%;
     min-height: 100vh;
 }
 
-.webmeet-dashboard .webmeet-dashboard-modal {
+.webmeet-dashboard .webmeet-dashbaoard {
     position: relative;
     top: auto;
     left: auto;

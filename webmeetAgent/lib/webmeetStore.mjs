@@ -69,7 +69,7 @@ import {
 } from './services/roomArchive.mjs';
 import {
     WEBMEET_EVENT_TYPES,
-} from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+} from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
 const DEFAULT_ROOM_TITLE = 'General';
 

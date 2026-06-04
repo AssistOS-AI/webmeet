@@ -7,9 +7,12 @@ import {
     normalizeMicrophoneGain,
     normalizeVoiceProcessingMode,
     usesAudioGraph
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/audio-processing/settings.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/settings.js';
 
-test('voice processing mode normalization defaults to standard', () => {
+test('voice processing mode normalization defaults to auto', () => {
+    assert.equal(DEFAULT_VOICE_PROCESSING_MODE, 'auto');
+    assert.equal(normalizeVoiceProcessingMode('auto'), 'auto');
+    assert.equal(normalizeVoiceProcessingMode('custom'), 'custom');
     assert.equal(normalizeVoiceProcessingMode('enhanced'), 'enhanced');
     assert.equal(normalizeVoiceProcessingMode('standard'), 'standard');
     assert.equal(normalizeVoiceProcessingMode('off'), 'off');
@@ -33,6 +36,9 @@ test('microphone gain normalization clamps to supported range', () => {
 });
 
 test('audio graph is used only when processing steps are requested', () => {
+    assert.equal(usesAudioGraph({ voiceProcessingMode: 'auto', humFilter: 'off', microphoneGain: 1 }), true);
+    assert.equal(usesAudioGraph({ voiceProcessingMode: 'custom', humFilter: 'off', microphoneGain: 1 }), false);
+    assert.equal(usesAudioGraph({ voiceProcessingMode: 'custom', humFilter: '60', microphoneGain: 1 }), true);
     assert.equal(usesAudioGraph({ voiceProcessingMode: 'standard', humFilter: 'off', microphoneGain: 1 }), false);
     assert.equal(usesAudioGraph({ voiceProcessingMode: 'enhanced', humFilter: 'off', microphoneGain: 1 }), true);
     assert.equal(usesAudioGraph({ voiceProcessingMode: 'standard', humFilter: '50', microphoneGain: 1 }), true);

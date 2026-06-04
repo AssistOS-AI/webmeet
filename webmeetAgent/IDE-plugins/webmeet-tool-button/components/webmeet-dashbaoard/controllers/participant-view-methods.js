@@ -295,13 +295,19 @@ export const participantViewMethods = {
 
     attachAudioTrack(participantId, trackSid, mediaElement) {
         this.participantLayoutController.attachAudioTrack(participantId, trackSid, mediaElement);
+        this.remoteAudioNormalizer?.start?.(mediaElement, participantId);
     },
 
     removeTrack(trackSid) {
+        const trackEntry = this.participantLayoutController.getTrackEntry(trackSid);
+        if (trackEntry?.kind === 'audio' && trackEntry.element) {
+            this.remoteAudioNormalizer?.stop?.(trackEntry.element);
+        }
         this.participantLayoutController.removeTrack(trackSid);
     },
 
     removeParticipantView(participantId) {
+        this.remoteAudioNormalizer?.stopParticipant?.(participantId);
         this.participantLayoutController.removeParticipantView(participantId);
     },
 

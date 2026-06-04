@@ -1,4 +1,4 @@
-<div class="webmeet-dashboard-modal">
+<div class="webmeet-dashbaoard">
     <!--    <div class="modal-header">
             <div class="modal-header-left">
                 <div id="webmeetActiveRoomTitle" class="modal-title">Select a room</div>
@@ -22,19 +22,27 @@
         <span class="webmeet-room-transition-spinner" aria-hidden="true"></span>
         <span id="webmeetRoomTransitionMessage">Connecting to room...</span>
     </div>
+    <div id="webmeetMediaSettingsMount"></div>
     <div id="webmeetMediaSettingsPanel" class="webmeet-media-settings webmeet-hidden">
         <div class="modal-header">
             <div class="modal-header-left">
                 <div class="modal-title">WebMeet settings</div>
             </div>
-            <button type="button" class="close" data-local-action="closeMediaSettings"
-                    aria-label="Close settings" title="Close settings">
-                <svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
+            <div class="webmeet-modal-window-actions">
+                <button type="button" class="webmeet-icon-button" id="webmeetSettingsFullscreenButton"
+                        data-local-action="toggleFullscreen"
+                        aria-label="Toggle fullscreen" title="Toggle fullscreen">
+                    <img src="/explorer/assets/icons/fullscreen.svg" alt="" aria-hidden="true">
+                </button>
+                <button type="button" class="close" data-local-action="closeMediaSettings"
+                        aria-label="Close settings" title="Close settings">
+                    <svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
         </div>
         <div class="modal-body">
             <div class="webmeet-settings-tabs" role="tablist" aria-label="WebMeet settings">
@@ -206,10 +214,12 @@
                                         aria-label="About Voice processing"
                                         aria-describedby="webmeetSettingHelpVoiceProcessing">i</button>
                                 <span id="webmeetSettingHelpVoiceProcessing" role="tooltip"
-                                      class="webmeet-setting-help-tooltip">Chooses how WebMeet cleans up your mic audio, from standard browser processing to enhanced local denoise.</span>
+                                      class="webmeet-setting-help-tooltip">Chooses how WebMeet cleans up your mic audio. Adjusting gain, hum filter, echo cancellation, noise suppression, or AGC switches Automatic to Custom.</span>
                             </span>
                         </div>
                         <select id="webmeetVoiceProcessingMode" class="form-input">
+                            <option value="auto">Automatic, recommended</option>
+                            <option value="custom">Custom manual controls</option>
                             <option value="standard">Standard browser processing</option>
                             <option value="enhanced">Enhanced local denoise</option>
                             <option value="off">Off</option>
@@ -269,6 +279,19 @@
                                         aria-describedby="webmeetSettingHelpAutoGainControl">i</button>
                                 <span id="webmeetSettingHelpAutoGainControl" role="tooltip"
                                       class="webmeet-setting-help-tooltip">Automatically raises or lowers mic level. It can help quiet voices, but may also lift room noise.</span>
+                            </span>
+                        </div>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAutomaticParticipantVolume">
+                                <span>Automatic participant volume</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Automatic participant volume"
+                                        aria-describedby="webmeetSettingHelpAutomaticParticipantVolume">i</button>
+                                <span id="webmeetSettingHelpAutomaticParticipantVolume" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Gradually balances remote voices in this browser. Manual participant volume settings take priority.</span>
                             </span>
                         </div>
                     </div>
@@ -546,7 +569,8 @@
                         <div class="webmeet-media-controls">
                             <div class="webmeet-media-toggles">
                                 <button type="button" class="webmeet-icon-button" data-local-action="toggleMicrophone"
-                                        id="webmeetMicButton" title="Toggle Microphone">
+                                        id="webmeetMicButton" title="Toggle Microphone - Audio: Good"
+                                        aria-label="Toggle Microphone - Audio: Good">
                                     <!-- Mic ON icon -->
                                     <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none"
                                          stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -566,6 +590,10 @@
                                         <line x1="12" y1="19" x2="12" y2="23"></line>
                                         <line x1="8" y1="23" x2="16" y2="23"></line>
                                     </svg>
+                                    <span id="webmeetAudioHealthIndicator"
+                                          class="webmeet-audio-health-indicator"
+                                          data-health="good"
+                                          aria-hidden="true"></span>
                                 </button>
                                 <button type="button" class="webmeet-icon-button webmeet-deafen-button"
                                         data-local-action="toggleDeafen" id="webmeetDeafenButton" title="Deafen"

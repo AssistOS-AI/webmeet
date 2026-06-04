@@ -14,7 +14,7 @@ import {
 } from './roomParticipants.mjs';
 import {
     WEBMEET_EVENT_TYPES
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
 function nowIso() {
     return new Date().toISOString();

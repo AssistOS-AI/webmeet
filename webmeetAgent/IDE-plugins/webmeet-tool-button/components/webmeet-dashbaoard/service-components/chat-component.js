@@ -109,7 +109,7 @@ export class ChatComponent {
             this.autocomplete?.handleKeydown(event);
         };
         // Keydown listener in capture phase keeps autocomplete from being preempted
-        // by the chat send-on-Enter shortcut wired in webmeet-dashboard-modal.
+        // by the chat send-on-Enter shortcut wired in webmeet-dashbaoard.
         input.addEventListener('keydown', this.autocompleteKeydownHandler, true);
     }
 

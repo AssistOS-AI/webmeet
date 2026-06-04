@@ -15,8 +15,12 @@
             "presenter": "WebMeetDashboard"
         },
         {
-            "component": "webmeet-dashboard-modal",
-            "presenter": "WebMeetDashboardModal",
+            "component": "webmeet-dashbaoard",
+            "presenter": "WebMeetDashbaoard"
+        },
+        {
+            "component": "webmeet-settings-modal",
+            "presenter": "WebmeetSettingsModal",
             "type": "modal"
         },
         {

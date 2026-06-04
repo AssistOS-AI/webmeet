@@ -7,7 +7,7 @@ test('background effects use plugin-relative assets for MediaPipe wasm assets', 
     const source = await fs.readFile(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/livekit-loader.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/livekit-loader.js'
         ),
         'utf8'
     );

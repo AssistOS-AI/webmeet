@@ -22,9 +22,9 @@ import {
     updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantAvatar
 } from '../../lib/webmeetStore.mjs';
-import { meetingActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js';
-import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-session-methods.js';
-import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+import { meetingActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js';
+import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-session-methods.js';
+import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
@@ -693,14 +693,14 @@ test("authenticated dashboard join keeps using the protected MCP tool path", asy
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
@@ -715,14 +715,14 @@ test("participant avatar refresh keeps using the protected MCP tool path", async
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
@@ -736,14 +736,14 @@ test("guest participant avatar refresh uses the scoped room MCP tool path", asyn
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
     const apiSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-api.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-api.js'
         ),
         'utf8'
     );
@@ -758,7 +758,7 @@ test("authenticated dashboard join connects before publishing avatar best-effort
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
@@ -785,14 +785,14 @@ test("initial room connect skips avatar republish and waits for the canonical pu
     const meetingActionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
     const roomSessionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
@@ -811,14 +811,14 @@ test("connected meeting view does not open room EventSource directly", async () 
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
     const realtimeSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -833,14 +833,14 @@ test("all WebMeet realtime transports normalize into the same internal event han
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js'
         ),
         'utf8'
     );
     const roomSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
@@ -855,7 +855,7 @@ test("authenticated workspace view does not open protected HTTP EventSource dire
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js'
         ),
         'utf8'
     );
@@ -872,21 +872,21 @@ test("browser exit disconnects LiveKit and leaves through the room session witho
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.js'
         ),
         'utf8'
     );
     const presenceSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-presence-controller.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-presence-controller.js'
         ),
         'utf8'
     );
     const sessionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
@@ -910,14 +910,14 @@ test("LiveKit data channel applies participant avatar changes without snapshot r
     const roomSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -935,7 +935,7 @@ test("LiveKit data channel publishes reliable payloads with current client API",
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js'
         ),
         'utf8'
     );
@@ -953,7 +953,7 @@ test("LiveKit transport publishes encoded realtime events without double JSON en
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.js'
         ),
         'utf8'
     );
@@ -969,7 +969,7 @@ test("LiveKit avatar updates are applied without reloading stale meeting details
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -986,7 +986,7 @@ test("LiveKit participant connection republishes local avatar state for late joi
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
@@ -1015,7 +1015,7 @@ test("local participant sync resolves the effective avatar before the first card
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/participant-view-methods.js'
         ),
         'utf8'
     );
@@ -1037,14 +1037,14 @@ test("LiveKit participant attribute changes apply avatar projection before room 
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room-livekit.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-livekit.js'
         ),
         'utf8'
     );
     const roomSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
         ),
         'utf8'
     );
@@ -1060,14 +1060,14 @@ test("participant avatar realtime payload includes sanitized avatar projection",
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js'
         ),
         'utf8'
     );
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
@@ -1087,7 +1087,7 @@ test("LiveKit avatar republish reuses the current live projection before recompu
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/room/webmeet-room.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js'
         ),
         'utf8'
     );
@@ -1102,7 +1102,7 @@ test("LiveKit avatar republish reuses the current live projection before recompu
     const actionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
@@ -1123,7 +1123,7 @@ test("participant avatar publish does not resync the room snapshot", async () =>
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
@@ -1141,7 +1141,7 @@ test("LiveKit avatar sync requests trigger live republish without backend writes
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -1161,7 +1161,7 @@ test("profile avatar workspace events only refresh and republish current user ro
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -1186,7 +1186,7 @@ test("avatar settings updates republish the joined participant avatar even witho
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -1211,7 +1211,7 @@ test("avatar settings updates from another logged-in user update the matching re
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -1233,14 +1233,14 @@ test("WebMeet avatar override is browser scoped and participates in effective av
     const serviceSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-avatar-override.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-avatar-override.js'
         ),
         'utf8'
     );
     const meetingActionSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
         ),
         'utf8'
     );
@@ -1273,21 +1273,21 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     const html = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.html'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.html'
         ),
         'utf8'
     );
     const renderSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-render-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-render-methods.js'
         ),
         'utf8'
     );
     const css = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.css'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.css'
         ),
         'utf8'
     );
@@ -1465,7 +1465,7 @@ test("guest room entry republishes the current avatar override after connecting"
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-session-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-session-methods.js'
         ),
         'utf8'
     );
@@ -1487,7 +1487,7 @@ test("guest WebMeet avatar runtime avoids protected Explorer imports and uses pu
     const runtimeSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-profile-avatar-runtime.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-profile-avatar-runtime.js'
         ),
         'utf8'
     );
@@ -1503,7 +1503,7 @@ test("participant audio settings use the registered modal API and do not use bro
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/media-settings-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/media-settings-methods.js'
         ),
         'utf8'
     );
@@ -1585,7 +1585,7 @@ test("WebMeet tools use generic Ploinky MCP, not a room-specific server bridge",
     const apiClientSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-api-client.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-api-client.js'
         ),
         'utf8'
     );
@@ -1599,12 +1599,12 @@ test("WebMeet tools use generic Ploinky MCP, not a room-specific server bridge",
 test("legacy guest session manager is removed", async () => {
     const managerPath = path.resolve(
         import.meta.dirname,
-        '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/service-components/guest-session-manager.js'
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/service-components/guest-session-manager.js'
     );
     const indexSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/service-components/index.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/service-components/index.js'
         ),
         'utf8'
     );
@@ -1634,7 +1634,7 @@ test("workspace roster events reload meeting list before fetching meeting detail
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -1648,7 +1648,7 @@ test("workspace roster refresh batches affected meeting ids", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -1664,7 +1664,7 @@ test("workspace roster events for the connected room resync the dashboard from L
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-realtime-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-realtime-methods.js'
         ),
         'utf8'
     );
@@ -1694,7 +1694,7 @@ test("meeting detail refresh skips participant snapshots while the room is conne
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -1710,7 +1710,7 @@ test("meeting list refreshes do not require LiveKit participant snapshots", asyn
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -1732,7 +1732,7 @@ test("dashboard live roster sync preserves mic state when Track is unavailable",
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/participant-view-methods.js'
         ),
         'utf8'
     );
@@ -1747,7 +1747,7 @@ test("targeted roster refresh reuses cached non-target room rosters", async () =
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -1764,7 +1764,7 @@ test("meeting_get requests go through the dashboard snapshot cache", async () =>
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );
@@ -1777,7 +1777,7 @@ test("missing meeting ids are removed from local roster state", async () => {
     const source = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
-            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/dashboard-data-methods.js'
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-data-methods.js'
         ),
         'utf8'
     );

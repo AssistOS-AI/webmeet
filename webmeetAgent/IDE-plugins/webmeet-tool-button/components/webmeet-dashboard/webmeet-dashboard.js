@@ -11,7 +11,7 @@ export class WebMeetDashboard {
             return;
         }
         await Promise.all([
-            ensureComponentRegistered('webmeet-dashboard-modal'),
+            ensureComponentRegistered('webmeet-dashbaoard'),
             ensureComponentRegistered('webmeet-participant-card')
         ]);
     }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { participantViewMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js';
+import { participantViewMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/participant-view-methods.js';
 
 test('syncParticipantsFromRoom does not reuse stored remote avatars for connected-room cards', () => {
     const appliedViews = new Map();

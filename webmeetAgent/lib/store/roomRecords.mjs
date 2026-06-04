@@ -11,7 +11,7 @@ import {
 } from './eventLogs.mjs';
 import {
     WEBMEET_EVENT_TYPES,
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
 const MASTER_KEY_VAR = 'PLOINKY_WEBMEET_MASTER_KEY';
 const RETENTION_DAYS_VAR = 'PLOINKY_WEBMEET_RETENTION_DAYS';

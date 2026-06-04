@@ -6,19 +6,23 @@ import path from 'node:path';
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const audioProcessingPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/audio-processing/microphone-track-factory.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/microphone-track-factory.js'
 );
 const rnnoiseWorkletPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/audio-processing/rnnoise-worklet.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/rnnoise-worklet.js'
 );
 const mediaControllerPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/webmeet-media-controller.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/webmeet-media-controller.js'
 );
 const dashboardPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.js'
+);
+const dashboardHtmlPath = path.join(
+    repoRoot,
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.html'
 );
 
 test('RNNoise initialization timeout disposes the worklet node', async () => {
@@ -47,6 +51,38 @@ test('unsupported enhanced voice processing is persisted as standard', async () 
     assert.match(controllerSource, /replaceUnsupportedVoiceProcessingMode\('standard', 'enhanced-failed'\)/);
     assert.match(dashboardSource, /onSettingsChange: \(settings\) =>/);
     assert.match(dashboardSource, /this\.persistMediaSettings\(\)/);
+});
+
+test('automatic voice processing falls back without overwriting the automatic preference', async () => {
+    const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
+    const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
+
+    assert.match(factorySource, /const automatic = mode === 'auto'/);
+    assert.match(factorySource, /const humFilter = automatic \? 'off'/);
+    assert.match(factorySource, /const configuredGain = automatic \? 1/);
+    assert.match(factorySource, /autoGainControl: automatic \? false/);
+    assert.match(factorySource, /adaptiveGainController = new AdaptiveGainController/);
+    assert.ok(factorySource.indexOf('currentNode = connectIfPresent(currentNode, gainNode)') < factorySource.indexOf('createDynamicsCompressor'));
+    assert.match(controllerSource, /if \(mode === 'auto'\)/);
+    assert.match(controllerSource, /await this\.enableMicrophoneWithMode\(room, 'standard'/);
+    assert.match(controllerSource, /microphoneGain: 1/);
+    assert.match(controllerSource, /humFilter: 'off'/);
+    assert.doesNotMatch(controllerSource, /replaceUnsupportedVoiceProcessingMode\('standard', 'auto/);
+});
+
+test('manual audio controls switch automatic voice processing to custom instead of disabling controls', async () => {
+    const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
+    const dashboardTemplate = await fs.readFile(dashboardHtmlPath, 'utf8');
+    const mediaSettingsSource = await fs.readFile(path.join(
+        repoRoot,
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/media-settings-methods.js'
+    ), 'utf8');
+
+    assert.match(dashboardTemplate, /<option value="custom">Custom manual controls<\/option>/);
+    assert.match(mediaSettingsSource, /switchAutomaticVoiceProcessingToCustom/);
+    assert.match(mediaSettingsSource, /this\.voiceProcessingModeSelect\.value = 'custom'/);
+    assert.doesNotMatch(mediaSettingsSource, /control\.disabled = automaticVoiceProcessing/);
+    assert.match(factorySource, /\['standard', 'custom'\]\.includes\(mode\)/);
 });
 
 test('dashboard audio defaults favor browser anti-feedback settings', async () => {

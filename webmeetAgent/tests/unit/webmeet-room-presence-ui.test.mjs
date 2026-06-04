@@ -3,10 +3,10 @@ import path from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MeetingListController } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-list-controller.js';
+import { MeetingListController } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-list-controller.js';
 
 const root = path.resolve(import.meta.dirname, '../..');
-const modalDir = path.join(root, 'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal');
+const modalDir = path.join(root, 'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard');
 
 async function readModalFile(relativePath) {
     return readFile(path.join(modalDir, relativePath), 'utf8');
@@ -25,7 +25,7 @@ test('LiveKit active speaker events are forwarded into participant roster state'
 });
 
 test('authenticated refresh does not use cached pending leave state', async () => {
-    const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const modal = await readModalFile('webmeet-dashbaoard.js');
     const presenceController = await readModalFile('controllers/meeting-presence-controller.js');
 
     assert.doesNotMatch(modal, /consumePendingMeetingLeaves/);
@@ -34,7 +34,7 @@ test('authenticated refresh does not use cached pending leave state', async () =
 });
 
 test('connected room roster is not driven by browser presence timers', async () => {
-    const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const modal = await readModalFile('webmeet-dashbaoard.js');
     const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
     const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
     const presenceController = await readModalFile('controllers/meeting-presence-controller.js');
@@ -112,7 +112,7 @@ test('microphone publication helper is shared by participant and media controlle
 });
 
 test('room notification sounds are local, generated, and setting controlled', async () => {
-    const modal = await readModalFile('webmeet-dashboard-modal.js');
+    const modal = await readModalFile('webmeet-dashbaoard.js');
     const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
     const mediaSettings = await readModalFile('controllers/media-settings-methods.js');
     const soundService = await readModalFile('services/room-notification-sounds.js');
@@ -124,12 +124,18 @@ test('room notification sounds are local, generated, and setting controlled', as
     assert.match(modal, /webmeetRoomNotificationSounds/);
     assert.match(mediaSettings, /roomNotificationSounds:\s*true/);
     assert.match(soundService, /createOscillator/);
+    assert.match(soundService, /isJoin\s*\?\s*0\.18\s*:\s*0\.16/);
+    assert.match(soundService, /frequency:\s*587\.33/);
+    assert.match(soundService, /frequency:\s*880/);
+    assert.match(soundService, /frequency:\s*783\.99/);
+    assert.match(soundService, /frequency:\s*493\.88/);
+    assert.match(soundService, /oscillator\.type = isJoin \? 'triangle' : 'sine'/);
     assert.doesNotMatch(soundService, /fetch\(/);
 });
 
 test('participant room list renders stable active speaker indicator markup', async () => {
     const meetingListController = await readModalFile('controllers/meeting-list-controller.js');
-    const stylesheet = await readModalFile('webmeet-dashboard-modal.css');
+    const stylesheet = await readModalFile('webmeet-dashbaoard.css');
 
     assert.match(meetingListController, /is-speaking/);
     assert.match(meetingListController, /webmeet-room-participant-speaking/);
@@ -139,8 +145,8 @@ test('participant room list renders stable active speaker indicator markup', asy
 });
 
 test('room transitions expose a blocking overlay with dynamic status text', async () => {
-    const modal = await readModalFile('webmeet-dashboard-modal.js');
-    const dashboardHtml = await readModalFile('webmeet-dashboard-modal.html');
+    const modal = await readModalFile('webmeet-dashbaoard.js');
+    const dashboardHtml = await readModalFile('webmeet-dashbaoard.html');
     const renderMethods = await readModalFile('controllers/dashboard-render-methods.js');
     const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
     const actionMethods = await readModalFile('controllers/meeting-action-methods.js');

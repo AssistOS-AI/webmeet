@@ -7,7 +7,7 @@ import {
     isPersistentWebMeetEvent,
     isWorkspacePersistentWebMeetEvent,
     parseWebMeetEvent
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
 test('WebMeet events encode as room:type:base64_payload and parse through the central contract', () => {
     const event = buildWebMeetEvent('meeting_1', WEBMEET_EVENT_TYPES.CHAT_REALTIME, {

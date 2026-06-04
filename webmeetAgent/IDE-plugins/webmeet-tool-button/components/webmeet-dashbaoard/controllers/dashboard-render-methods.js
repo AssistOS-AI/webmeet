@@ -280,12 +280,12 @@ export const dashboardRenderMethods = {
         const isTransitioningRoom = Boolean(roomTransition.active);
         const roomTransitionMessage = String(roomTransition.message || '').trim();
 
-        if (this.dashboardModalRoot) {
-            this.dashboardModalRoot.classList.toggle('is-joined', isJoined);
-            this.dashboardModalRoot.classList.toggle('is-leaving-room', isLeaving);
-            this.dashboardModalRoot.classList.toggle('is-room-transitioning', isTransitioningRoom);
-            this.dashboardModalRoot.classList.toggle('is-archive-readonly', isArchiveReadOnlyView);
-            this.dashboardModalRoot.setAttribute('aria-busy', isTransitioningRoom ? 'true' : 'false');
+        if (this.dashboardRoot) {
+            this.dashboardRoot.classList.toggle('is-joined', isJoined);
+            this.dashboardRoot.classList.toggle('is-leaving-room', isLeaving);
+            this.dashboardRoot.classList.toggle('is-room-transitioning', isTransitioningRoom);
+            this.dashboardRoot.classList.toggle('is-archive-readonly', isArchiveReadOnlyView);
+            this.dashboardRoot.setAttribute('aria-busy', isTransitioningRoom ? 'true' : 'false');
         }
         this.renderAvatarControls?.();
         if (this.exitOverlay) {

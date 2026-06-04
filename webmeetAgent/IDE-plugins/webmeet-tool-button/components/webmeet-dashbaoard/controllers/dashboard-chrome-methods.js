@@ -28,18 +28,18 @@ export const dashboardChromeMethods = {
 
     setMobilePanel(panelName) {
         const nextPanel = ['room', 'rooms', 'chat', 'info', 'settings'].includes(panelName) ? panelName : 'room';
-        this.state.activeMobilePanel = nextPanel;
         if (nextPanel === 'settings') {
-            this.state.mediaSettingsPanelVisible = true;
-            this.renderMediaSettingsPanel?.();
+            this.toggleMediaSettings?.();
+            return;
         }
+        this.state.activeMobilePanel = nextPanel;
         this.applyMobilePanelState();
     },
 
     applyMobilePanelState() {
         const activePanel = String(this.state.activeMobilePanel || 'room').trim() || 'room';
-        if (this.dashboardModalRoot) {
-            this.dashboardModalRoot.dataset.mobilePanel = activePanel;
+        if (this.dashboardRoot) {
+            this.dashboardRoot.dataset.mobilePanel = activePanel;
         }
         if (Array.isArray(this.mobileNavButtons)) {
             this.mobileNavButtons.forEach((button) => {
@@ -117,8 +117,8 @@ export const dashboardChromeMethods = {
 
     applyVideoGridFullscreenMode() {
         const isActive = Boolean(this.state.videoGridFullscreen);
-        if (this.dashboardModalRoot) {
-            this.dashboardModalRoot.classList.toggle('webmeet-video-grid-fullscreen-mode', isActive);
+        if (this.dashboardRoot) {
+            this.dashboardRoot.classList.toggle('webmeet-video-grid-fullscreen-mode', isActive);
         }
         if (this.videoGridFullscreenButton) {
             this.videoGridFullscreenButton.classList.toggle('active', isActive);

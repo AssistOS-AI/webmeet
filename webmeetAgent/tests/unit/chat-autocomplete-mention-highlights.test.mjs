@@ -7,7 +7,7 @@ import {
     normalizeMentionToken,
     renderComposerMentionOverlayHtml,
     renderMessageWithMentionHighlights
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/services/chat-autocomplete/mention-highlights.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/chat-autocomplete/mention-highlights.js';
 
 test('normalizeMentionToken keeps file tokens and drops provider-looking tokens', () => {
     assert.equal(normalizeMentionToken('@open-interpreter'), '');

@@ -6,7 +6,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const layoutControllerPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-layout-controller.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/participant-layout-controller.js'
 );
 const participantCardPath = path.join(
     repoRoot,
@@ -14,11 +14,11 @@ const participantCardPath = path.join(
 );
 const roomSessionMethodsPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/room-session-methods.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js'
 );
 const dashboardModalPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/webmeet-dashboard-modal.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.js'
 );
 
 test('participant layout controller persists avatar config and fallback attributes for late presenter init', async () => {
@@ -65,11 +65,11 @@ test('participant card updates avatar through a dedicated avatar state channel',
 test('dashboard primes the active local avatar before LiveKit renders participant cards', async () => {
     const actionSource = await fs.readFile(path.join(
         repoRoot,
-        'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/meeting-action-methods.js'
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js'
     ), 'utf8');
     const participantSource = await fs.readFile(path.join(
         repoRoot,
-        'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard-modal/controllers/participant-view-methods.js'
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/participant-view-methods.js'
     ), 'utf8');
 
     assert.match(actionSource, /await this\.webMeetRoom\.join\(payload\);/);

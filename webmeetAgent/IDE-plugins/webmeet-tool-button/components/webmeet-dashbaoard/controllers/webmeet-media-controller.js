@@ -32,6 +32,7 @@ export class WebmeetMediaController {
         this.onError = typeof options.onError === 'function' ? options.onError : (() => {});
         this.onAfterToggle = typeof options.onAfterToggle === 'function' ? options.onAfterToggle : (() => {});
         this.onSettingsChange = typeof options.onSettingsChange === 'function' ? options.onSettingsChange : (() => {});
+        this.onAudioMetrics = typeof options.onAudioMetrics === 'function' ? options.onAudioMetrics : (() => {});
         this.settings = {
             audioInputDeviceId: '',
             videoInputDeviceId: '',
@@ -39,6 +40,7 @@ export class WebmeetMediaController {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: false,
+            automaticParticipantVolume: true,
             microphoneGain: 1,
             voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
             humFilter: 'off',
@@ -219,9 +221,21 @@ export class WebmeetMediaController {
             deviceId,
             channelCount: 1,
             sampleRate: 48000,
-            echoCancellation: audioProcessingEnabled && Boolean(this.settings.echoCancellation),
-            noiseSuppression: audioProcessingEnabled && Boolean(this.settings.noiseSuppression),
-            autoGainControl: Boolean(this.settings.autoGainControl)
+            echoCancellation: mode === 'auto'
+                ? true
+                : audioProcessingEnabled && (overrides.echoCancellation === undefined
+                    ? Boolean(this.settings.echoCancellation)
+                    : Boolean(overrides.echoCancellation)),
+            noiseSuppression: mode === 'auto'
+                ? false
+                : audioProcessingEnabled && (overrides.noiseSuppression === undefined
+                    ? Boolean(this.settings.noiseSuppression)
+                    : Boolean(overrides.noiseSuppression)),
+            autoGainControl: mode === 'auto'
+                ? false
+                : overrides.autoGainControl === undefined
+                    ? Boolean(this.settings.autoGainControl)
+                    : Boolean(overrides.autoGainControl)
         };
     }
 
@@ -232,7 +246,7 @@ export class WebmeetMediaController {
     usesProcessedMicrophoneTrack(settings = this.settings) {
         return usesAudioGraph({
             ...settings,
-            microphoneGain: this.getMicrophoneGain(),
+            microphoneGain: normalizeMicrophoneGain(settings.microphoneGain),
             voiceProcessingMode: normalizeVoiceProcessingMode(settings.voiceProcessingMode),
             humFilter: normalizeHumFilter(settings.humFilter)
         });
@@ -284,9 +298,13 @@ export class WebmeetMediaController {
         }
     }
 
-    async enableDefaultMicrophone(room, voiceProcessingMode = normalizeVoiceProcessingMode(this.settings.voiceProcessingMode)) {
+    async enableDefaultMicrophone(
+        room,
+        voiceProcessingMode = normalizeVoiceProcessingMode(this.settings.voiceProcessingMode),
+        overrides = {}
+    ) {
         await this.stopProcessedMicrophoneCapture();
-        const options = this.getMicrophoneEnableOptions({ voiceProcessingMode });
+        const options = this.getMicrophoneEnableOptions({ ...overrides, voiceProcessingMode });
         try {
             await room.localParticipant.setMicrophoneEnabled(true, options);
         } catch (_) {
@@ -297,7 +315,10 @@ export class WebmeetMediaController {
     async enableProcessedMicrophone(room, settings = this.settings) {
         await room.localParticipant.setMicrophoneEnabled(false);
         await this.stopProcessedMicrophoneCapture();
-        const capture = await createProcessedMicrophoneTrack(settings);
+        const capture = await createProcessedMicrophoneTrack({
+            ...settings,
+            onMetrics: (metrics) => this.onAudioMetrics(metrics)
+        });
         const Track = this.getTrack();
         const publishOptions = Track?.Source?.Microphone
             ? { source: Track.Source.Microphone, name: 'microphone' }
@@ -308,6 +329,24 @@ export class WebmeetMediaController {
 
     async enableMicrophone(room) {
         const mode = normalizeVoiceProcessingMode(this.settings.voiceProcessingMode);
+        if (mode === 'auto') {
+            if (isEnhancedVoiceProcessingSupported()) {
+                try {
+                    await this.enableProcessedMicrophone(room, { ...this.settings, voiceProcessingMode: 'auto' });
+                    return;
+                } catch (_) {
+                    this.onError('Automatic enhanced processing failed. Using standard microphone processing.');
+                }
+            }
+            await this.enableMicrophoneWithMode(room, 'standard', {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                microphoneGain: 1,
+                humFilter: 'off'
+            });
+            return;
+        }
         if (mode === 'enhanced' && !isEnhancedVoiceProcessingSupported()) {
             this.replaceUnsupportedVoiceProcessingMode('standard', 'enhanced-unsupported');
             this.onError('Enhanced voice processing is unavailable in this browser. Using standard microphone processing.');
@@ -328,16 +367,16 @@ export class WebmeetMediaController {
         await this.enableMicrophoneWithMode(room, mode);
     }
 
-    async enableMicrophoneWithMode(room, mode) {
-        const settings = { ...this.settings, voiceProcessingMode: mode };
+    async enableMicrophoneWithMode(room, mode, overrides = {}) {
+        const settings = { ...this.settings, ...overrides, voiceProcessingMode: mode };
         if (!this.usesProcessedMicrophoneTrack(settings)) {
-            await this.enableDefaultMicrophone(room, mode);
+            await this.enableDefaultMicrophone(room, mode, overrides);
             return;
         }
         try {
             await this.enableProcessedMicrophone(room, settings);
         } catch (error) {
-            await this.enableDefaultMicrophone(room, mode);
+            await this.enableDefaultMicrophone(room, mode, overrides);
             this.onError('Microphone processing is unavailable. Using standard microphone audio.');
         }
     }

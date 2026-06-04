@@ -3,6 +3,10 @@ import {
     normalizeMicrophoneGain,
     normalizeVoiceProcessingMode
 } from './settings.js';
+import {
+    AdaptiveGainController,
+    createAudioLevelMonitor
+} from './audio-level-analyzer.js';
 
 const WORKLET_MODULE_URL = new URL('./rnnoise-worklet.js', import.meta.url).href;
 
@@ -110,13 +114,15 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
     }
 
     const mode = normalizeVoiceProcessingMode(settings.voiceProcessingMode);
-    const humFilter = normalizeHumFilter(settings.humFilter);
-    const enhanced = mode === 'enhanced';
+    const automatic = mode === 'auto';
+    const humFilter = automatic ? 'off' : normalizeHumFilter(settings.humFilter);
+    const enhanced = automatic || mode === 'enhanced';
+    const configuredGain = automatic ? 1 : normalizeMicrophoneGain(settings.microphoneGain);
     const sourceStream = await browserNavigator.mediaDevices.getUserMedia({
         audio: buildCaptureConstraints(settings, {
-            echoCancellation: mode !== 'off' && settings.echoCancellation !== false,
-            noiseSuppression: mode === 'standard' && settings.noiseSuppression !== false,
-            autoGainControl: settings.autoGainControl === true
+            echoCancellation: automatic || (mode !== 'off' && settings.echoCancellation !== false),
+            noiseSuppression: ['standard', 'custom'].includes(mode) && settings.noiseSuppression !== false,
+            autoGainControl: automatic ? false : settings.autoGainControl === true
         }),
         video: false
     });
@@ -127,12 +133,15 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
 
     const nodes = [];
     let rnnoiseNode = null;
+    let levelMonitor = null;
+    let adaptiveGainController = null;
     let processedTrack = null;
     let destination = null;
     try {
         const sourceNode = audioContext.createMediaStreamSource(sourceStream);
         nodes.push(sourceNode);
         let currentNode = sourceNode;
+        let automaticHumNode = null;
 
         if (enhanced) {
             const highPassNode = createBiquad(audioContext, 'highpass', 90, 0.707);
@@ -149,6 +158,42 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
             const humNode = createBiquad(audioContext, 'notch', humFrequency, 18);
             nodes.push(humNode);
             currentNode = connectIfPresent(currentNode, humNode);
+        } else if (automatic) {
+            automaticHumNode = createBiquad(audioContext, 'notch', 10, 1);
+            nodes.push(automaticHumNode);
+            currentNode = connectIfPresent(currentNode, automaticHumNode);
+        }
+
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = configuredGain;
+        nodes.push(gainNode);
+        currentNode = connectIfPresent(currentNode, gainNode);
+
+        if (automatic) {
+            adaptiveGainController = new AdaptiveGainController();
+            levelMonitor = createAudioLevelMonitor(audioContext, sourceNode, {
+                onMetrics(metrics) {
+                    const adaptiveGain = adaptiveGainController.update(metrics);
+                    gainNode.gain.setTargetAtTime(
+                        configuredGain * adaptiveGain,
+                        audioContext.currentTime,
+                        adaptiveGain < 1 ? 0.08 : 0.35
+                    );
+                    if (automaticHumNode) {
+                        const frequency = metrics.humFrequency === '60' ? 60
+                            : metrics.humFrequency === '50' ? 50
+                                : 10;
+                        const q = metrics.humFrequency === 'off' ? 1 : 18;
+                        automaticHumNode.frequency.setTargetAtTime(frequency, audioContext.currentTime, 0.4);
+                        automaticHumNode.Q.setTargetAtTime(q, audioContext.currentTime, 0.4);
+                    }
+                    settings.onMetrics?.({
+                        ...metrics,
+                        adaptiveGain,
+                        mode
+                    });
+                }
+            });
         }
 
         const compressorNode = audioContext.createDynamicsCompressor();
@@ -159,11 +204,6 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
         compressorNode.release.value = 0.12;
         nodes.push(compressorNode);
         currentNode = connectIfPresent(currentNode, compressorNode);
-
-        const gainNode = audioContext.createGain();
-        gainNode.gain.value = normalizeMicrophoneGain(settings.microphoneGain);
-        nodes.push(gainNode);
-        currentNode = connectIfPresent(currentNode, gainNode);
 
         destination = audioContext.createMediaStreamDestination();
         currentNode.connect(destination);
@@ -184,6 +224,7 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
             for (const node of nodes) {
                 try { node?.disconnect?.(); } catch (_) {}
             }
+            levelMonitor?.stop?.();
             try { await audioContext?.close?.(); } catch (_) {}
         };
 
@@ -195,8 +236,10 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
             cleanup,
             status: {
                 mode,
-                rnnoise: Boolean(rnnoiseNode)
-            }
+                rnnoise: Boolean(rnnoiseNode),
+                adaptiveGain: automatic
+            },
+            getMetrics: () => levelMonitor?.getMetrics?.() || null
         };
     } catch (error) {
         for (const track of [
@@ -209,6 +252,7 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
         for (const node of nodes) {
             try { node?.disconnect?.(); } catch (_) {}
         }
+        levelMonitor?.stop?.();
         try { await audioContext?.close?.(); } catch (_) {}
         throw error;
     }
