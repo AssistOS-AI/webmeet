@@ -14,6 +14,7 @@ import { dashboardRealtimeMethods } from './controllers/dashboard-realtime-metho
 import { dashboardSessionMethods } from './controllers/dashboard-session-methods.js';
 import { ChatComponent } from './service-components/index.js';
 import {
+    DEFAULT_MICROPHONE_GAIN,
     DEFAULT_OUTPUT_VOLUME,
     DEFAULT_VOICE_PROCESSING_MODE
 } from './services/audio-processing/settings.js';
@@ -124,7 +125,7 @@ export class WebMeetDashbaoard {
                 noiseSuppression: true,
                 autoGainControl: false,
                 automaticParticipantVolume: true,
-                microphoneGain: 1,
+                microphoneGain: DEFAULT_MICROPHONE_GAIN,
                 voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
                 humFilter: 'off',
                 outputVolume: DEFAULT_OUTPUT_VOLUME,
@@ -148,6 +149,7 @@ export class WebMeetDashbaoard {
             axiFaceGeneratedFaceStyles: [],
             axiFaceGeneratedFacePalettes: [],
             avatarQuickMenuVisible: false,
+            avatarSubmenuVisible: false,
             roomAvatarsByParticipantId: {},
             participantAudioSettings: {},
             audioHealth: 'Good',
@@ -369,11 +371,11 @@ export class WebMeetDashbaoard {
                 'applyMediaSettings',
                 'applyWebMeetAvatarSettings',
                 'applyWebMeetAvatarPreset',
-                'applyWebMeetAvatarSourceMode',
                 'applyWebMeetAvatarStyle',
                 'applyWebMeetAvatarPack',
                 'resetWebMeetAvatarOverride',
                 'toggleAvatarQuickMenu',
+                'toggleAvatarSubmenu',
                 'refreshMediaDevices',
                 'openParticipantAudioSettings',
                 'focusParticipantCard',
@@ -495,7 +497,6 @@ export class WebMeetDashbaoard {
         this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
         this.outputVolumeValue = this.element.querySelector('#webmeetOutputVolumeValue');
         this.roomNotificationSoundsInput = this.element.querySelector('#webmeetRoomNotificationSounds');
-        this.avatarPresetSelect = this.element.querySelector('#webmeetAvatarPresetSelect');
         this.avatarSettingsForm = this.element.querySelector('#webmeetAvatarSettingsForm');
         this.avatarPreview = this.element.querySelector('#webmeetAvatarPreview');
         this.avatarSourceLabel = this.element.querySelector('#webmeetAvatarSourceLabel');

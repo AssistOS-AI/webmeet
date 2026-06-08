@@ -85,6 +85,22 @@ test('manual audio controls switch automatic voice processing to custom instead 
     assert.match(factorySource, /\['standard', 'custom'\]\.includes\(mode\)/);
 });
 
+test('dashboard defaults microphone and output volume to eighty percent', async () => {
+    const settingsSource = await fs.readFile(path.join(
+        repoRoot,
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/settings.js'
+    ), 'utf8');
+    const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
+    const dashboardSource = await fs.readFile(dashboardPath, 'utf8');
+
+    assert.match(settingsSource, /DEFAULT_MICROPHONE_GAIN = 0\.8/);
+    assert.match(settingsSource, /DEFAULT_OUTPUT_VOLUME = 0\.8/);
+    assert.match(controllerSource, /microphoneGain: DEFAULT_MICROPHONE_GAIN/);
+    assert.match(controllerSource, /outputVolume: DEFAULT_OUTPUT_VOLUME/);
+    assert.match(dashboardSource, /microphoneGain: DEFAULT_MICROPHONE_GAIN/);
+    assert.match(dashboardSource, /outputVolume: DEFAULT_OUTPUT_VOLUME/);
+});
+
 test('dashboard audio defaults favor browser anti-feedback settings', async () => {
     const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
     const dashboardSource = await fs.readFile(dashboardPath, 'utf8');

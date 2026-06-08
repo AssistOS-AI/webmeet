@@ -1,4 +1,5 @@
 import {
+    DEFAULT_MICROPHONE_GAIN,
     DEFAULT_OUTPUT_VOLUME,
     DEFAULT_VOICE_PROCESSING_MODE,
     normalizeHumFilter as normalizeSharedHumFilter,
@@ -109,8 +110,6 @@ export const mediaSettingsMethods = {
         this.humFilterSelect?.addEventListener?.('input', handleManualVoiceProcessingControlChange);
         this.backgroundEffectSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.backgroundEffectSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
-        this.avatarPresetSelect?.addEventListener?.('change', handleAvatarPresetChange);
-        this.avatarPresetSelect?.addEventListener?.('input', handleAvatarPresetChange);
         this.avatarSettingsForm?.addEventListener?.('avatar-settings-change', handleAvatarPresetChange);
         this.backgroundBlurInput?.addEventListener?.('input', updateBackgroundBlurPreview);
         this.backgroundImageInput?.addEventListener?.('change', async (event) => {
@@ -134,7 +133,7 @@ export const mediaSettingsMethods = {
             noiseSuppression: true,
             autoGainControl: false,
             automaticParticipantVolume: true,
-            microphoneGain: 1,
+            microphoneGain: DEFAULT_MICROPHONE_GAIN,
             voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
             humFilter: 'off',
             outputVolume: DEFAULT_OUTPUT_VOLUME,
@@ -153,6 +152,9 @@ export const mediaSettingsMethods = {
             return {
                 ...fallback,
                 ...parsed,
+                audioInputDeviceId: this.normalizeMediaDeviceId(parsed?.audioInputDeviceId),
+                videoInputDeviceId: this.normalizeMediaDeviceId(parsed?.videoInputDeviceId),
+                audioOutputDeviceId: this.normalizeMediaDeviceId(parsed?.audioOutputDeviceId),
                 microphoneGain: this.normalizeMicrophoneGain(parsed?.microphoneGain),
                 voiceProcessingMode: this.normalizeVoiceProcessingMode(parsed?.voiceProcessingMode),
                 humFilter: this.normalizeHumFilter(parsed?.humFilter),
@@ -172,9 +174,9 @@ export const mediaSettingsMethods = {
 
     normalizeMediaSettings(settings = {}) {
         return {
-            audioInputDeviceId: String(settings.audioInputDeviceId || '').trim(),
-            videoInputDeviceId: String(settings.videoInputDeviceId || '').trim(),
-            audioOutputDeviceId: String(settings.audioOutputDeviceId || '').trim(),
+            audioInputDeviceId: this.normalizeMediaDeviceId(settings.audioInputDeviceId),
+            videoInputDeviceId: this.normalizeMediaDeviceId(settings.videoInputDeviceId),
+            audioOutputDeviceId: this.normalizeMediaDeviceId(settings.audioOutputDeviceId),
             echoCancellation: settings.echoCancellation !== false,
             noiseSuppression: settings.noiseSuppression !== false,
             autoGainControl: settings.autoGainControl === true,
@@ -309,23 +311,33 @@ export const mediaSettingsMethods = {
     },
 
     normalizeParticipantAudioVolume(value) {
-        return this.normalizeOutputVolume(value);
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue)) return DEFAULT_OUTPUT_VOLUME;
+        return Math.min(1, Math.max(0, numberValue));
     },
 
     normalizeParticipantAudioSettings(value) {
-        const normalized = {
+        return {
             muted: Boolean(value?.muted),
             volume: this.normalizeParticipantAudioVolume(value?.volume)
         };
-        if (!normalized.muted && Math.abs(normalized.volume - 1) < 0.001) {
-            return { muted: false, volume: 1 };
-        }
-        return normalized;
     },
 
     hasParticipantAudioOverrides(settings) {
+        if (!settings || typeof settings !== 'object') return false;
+        const hasVolumeOverride = Object.prototype.hasOwnProperty.call(settings, 'volume');
         const normalized = this.normalizeParticipantAudioSettings(settings);
-        return normalized.muted || Math.abs(normalized.volume - 1) >= 0.001;
+        return normalized.muted || hasVolumeOverride;
+    },
+
+    hasParticipantAudioOverrideForParticipant(participantId) {
+        const id = String(participantId || '').trim();
+        return Boolean(
+            id
+            && this.state.participantAudioSettings
+            && typeof this.state.participantAudioSettings === 'object'
+            && Object.prototype.hasOwnProperty.call(this.state.participantAudioSettings, id)
+        );
     },
 
     getParticipantAudioSettingsMeetingId() {
@@ -349,7 +361,7 @@ export const mediaSettingsMethods = {
                 const id = String(participantId || '').trim();
                 if (!id) continue;
                 const normalized = this.normalizeParticipantAudioSettings(value);
-                if (!this.hasParticipantAudioOverrides(normalized)) continue;
+                if (!this.hasParticipantAudioOverrides(value)) continue;
                 next[id] = normalized;
             }
             this.state.participantAudioSettings = next;
@@ -371,7 +383,7 @@ export const mediaSettingsMethods = {
                 const id = String(participantId || '').trim();
                 if (!id) continue;
                 const normalized = this.normalizeParticipantAudioSettings(value);
-                if (!this.hasParticipantAudioOverrides(normalized)) continue;
+                if (!this.hasParticipantAudioOverrides(value)) continue;
                 nextMeetingSettings[id] = normalized;
             }
             if (Object.keys(nextMeetingSettings).length) {
@@ -403,7 +415,9 @@ export const mediaSettingsMethods = {
         this.state.participantAudioSettings = {
             ...(this.state.participantAudioSettings || {})
         };
-        if (this.hasParticipantAudioOverrides(normalized)) {
+        if (settings?.reset === true) {
+            delete this.state.participantAudioSettings[id];
+        } else if (this.hasParticipantAudioOverrides(settings)) {
             this.state.participantAudioSettings[id] = normalized;
         } else {
             delete this.state.participantAudioSettings[id];
@@ -419,7 +433,7 @@ export const mediaSettingsMethods = {
         const settings = this.getParticipantAudioSettings(participantId);
         return {
             canConfigureAudio: !isLocal && Boolean(participantId),
-            hasCustomAudioSettings: !isLocal && this.hasParticipantAudioOverrides(settings),
+            hasCustomAudioSettings: !isLocal && this.hasParticipantAudioOverrideForParticipant(participantId),
             isAudioMutedLocally: !isLocal && Boolean(settings.muted)
         };
     },
@@ -528,14 +542,71 @@ export const mediaSettingsMethods = {
             .trim();
     },
 
+    normalizeMediaDeviceId(value) {
+        const id = String(value || '').trim();
+        const normalizedId = id.toLowerCase();
+        if (normalizedId === 'default' || normalizedId === 'communications') return '';
+        return id;
+    },
+
     isDefaultDevice(device) {
         const id = String(device?.deviceId || '').toLowerCase();
         const label = String(device?.label || '').toLowerCase();
         return id === 'default' || id === 'communications' || /\b(default|communications)\b/.test(label);
     },
 
+    getMediaDeviceDedupeKey(device, index) {
+        const kind = String(device?.kind || '').trim();
+        const groupId = String(device?.groupId || '').trim();
+        const label = this.normalizeDeviceLabel(device?.label);
+        if (groupId && label) return `${kind}:group:${groupId}:label:${label}`;
+        const id = String(device?.deviceId || '').trim();
+        if (id) return `${kind}:id:${id}`;
+        return `${kind}:index:${index}`;
+    },
+
+    normalizeMediaDeviceList(devices) {
+        const normalized = [];
+        const seen = new Set();
+        for (const [index, device] of (Array.isArray(devices) ? devices : []).entries()) {
+            if (!device || this.isDefaultDevice(device)) continue;
+            if (this.isVirtualDevice(device)) continue;
+            const key = this.getMediaDeviceDedupeKey(device, index);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            normalized.push(device);
+        }
+        return normalized;
+    },
+
+    isVirtualDevice(device) {
+        const label = String(device.label || '').toLowerCase();
+        const virtualPatterns = [
+            /\bvirtual\b/i,
+            /\bmicrosoft teams audio\b/i,
+            /\bmovavi\b/i,
+            /\bobs\b.*\bvirtual\b/i,
+            /\bvoicemeeter\b/i,
+            /\bvb-audio\b/i,
+            /\bcable output\b/i,
+            /\bblackhole\b/i,
+            /\bsoundflower\b/i,
+            /\bloopback\b/i
+        ];
+        return virtualPatterns.some((pattern) => pattern.test(label));
+    },
+
+    normalizeEnumeratedMediaDevices(devices) {
+        const safeDevices = Array.isArray(devices) ? devices : [];
+        return {
+            audioInput: this.normalizeMediaDeviceList(safeDevices.filter((device) => device.kind === 'audioinput')),
+            videoInput: this.normalizeMediaDeviceList(safeDevices.filter((device) => device.kind === 'videoinput')),
+            audioOutput: this.normalizeMediaDeviceList(safeDevices.filter((device) => device.kind === 'audiooutput'))
+        };
+    },
+
     findSelectedDevice(devices, selectedId) {
-        const id = String(selectedId || '').trim();
+        const id = this.normalizeMediaDeviceId(selectedId);
         if (!id) return null;
         return (Array.isArray(devices) ? devices : []).find((device) => device.deviceId === id) || null;
     },
@@ -727,11 +798,7 @@ export const mediaSettingsMethods = {
                 }
             }
             const devices = await navigator.mediaDevices.enumerateDevices();
-            this.mediaDevices = {
-                audioInput: devices.filter((d) => d.kind === 'audioinput'),
-                videoInput: devices.filter((d) => d.kind === 'videoinput'),
-                audioOutput: devices.filter((d) => d.kind === 'audiooutput')
-            };
+            this.mediaDevices = this.normalizeEnumeratedMediaDevices(devices);
             this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
                 this.getCurrentMediaSettingsForPanel(),
                 { testMicrophone: requestAudioPermission }
@@ -757,14 +824,22 @@ export const mediaSettingsMethods = {
     renderMediaDeviceOptions(selectElement, devices, selectedId, emptyLabel) {
         if (!selectElement) return;
         const safeDevices = Array.isArray(devices) ? devices : [];
-        const options = ['<option value="">Default</option>'];
+        const options = ['<option value="">System default</option>'];
         for (const device of safeDevices) {
             const id = escapeHtml(String(device.deviceId || '').trim());
-            const label = escapeHtml(String(device.label || `${emptyLabel} ${safeDevices.indexOf(device) + 1}`));
+            const label = escapeHtml(this.getMediaDeviceDisplayLabel(device, emptyLabel, safeDevices.indexOf(device)));
             options.push(`<option value="${id}">${label}</option>`);
         }
         selectElement.innerHTML = options.join('');
         selectElement.value = String(selectedId || '');
+    },
+
+    getMediaDeviceDisplayLabel(device, fallbackType, index) {
+        const label = String(device.label || '').trim();
+        if (label) return label;
+        const kind = String(device.kind || '').replace('input', '').replace('output', '').trim();
+        const deviceIndex = index + 1;
+        return `${fallbackType} ${deviceIndex} — allow microphone access to see device names`;
     },
 
     setSettingsTab(target) {
@@ -916,6 +991,12 @@ export const mediaSettingsMethods = {
         window.addEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
         window.addEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
         window.addEventListener('webmeet:settings-modal-closed', this.handleSettingsModalClosedEvent);
+        if (!this.state.microphonePermissionRequested) {
+            this.state.microphonePermissionRequested = true;
+            void this.refreshMediaDevices({ requestPermission: true, showToast: false });
+        } else {
+            void this.refreshMediaDevices({ requestPermission: false, showToast: false });
+        }
         Promise.resolve(globalThis.assistOS?.UI?.showModal?.('webmeet-settings-modal')).catch(() => {
             this.state.mediaSettingsPanelVisible = false;
             this.clearMediaSettingsDraft();
@@ -1190,7 +1271,7 @@ export const mediaSettingsMethods = {
         if (!result) return;
         const resultParticipantId = String(result.participantId || participantId).trim();
         if (result.reset === true) {
-            this.setParticipantAudioSettings(resultParticipantId, { muted: false, volume: 1 });
+            this.setParticipantAudioSettings(resultParticipantId, { reset: true });
         } else {
             this.setParticipantAudioSettings(resultParticipantId, {
                 muted: result.muted,

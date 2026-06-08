@@ -340,6 +340,7 @@
 .webmeet-sidebar {
     display: flex;
     flex-direction: column;
+    overflow: hidden;
     background: var(--menu-backgroud);
     gap: 0;
     border-right: 1px solid var(--border-strong);
@@ -419,6 +420,11 @@
 }
 
 .webmeet-sidebar .webmeet-panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
     background: var(--surface);
     padding: 12px;
     border: none;
@@ -961,9 +967,18 @@
     right: 0;
     bottom: calc(100% + 8px);
     z-index: 12;
-    min-width: 160px;
-    display: grid;
-    gap: 4px;
+    display: flex;
+    overflow: visible;
+}
+
+.webmeet-avatar-menu-main {
+    min-width: 220px;
+    max-width: 280px;
+    max-height: 70vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     padding: 6px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -971,51 +986,105 @@
     box-shadow: 0 12px 28px color-mix(in srgb, var(--bg) 34%, transparent);
 }
 
-.webmeet-avatar-preset-item {
+.webmeet-avatar-menu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.webmeet-avatar-menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+
+.webmeet-avatar-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
     border: 0;
     border-radius: 6px;
-    padding: 7px 9px;
+    padding: 6px 8px;
     background: transparent;
     color: var(--text);
-    text-align: left;
     font: inherit;
     font-size: 0.8rem;
     cursor: pointer;
+    gap: 8px;
 }
 
-.webmeet-avatar-preset-item:hover,
-.webmeet-avatar-preset-item.is-active {
+.webmeet-avatar-menu-item:hover,
+.webmeet-avatar-menu-item.is-active {
     background: var(--option-hover);
 }
 
-.webmeet-avatar-submenu {
-    position: relative;
+.webmeet-avatar-menu-item.is-active {
+    font-weight: 600;
 }
 
-.webmeet-avatar-submenu-trigger::after {
-    content: "›";
-    float: right;
+.webmeet-avatar-menu-label {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.webmeet-avatar-menu-preview {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+}
+
+.webmeet-avatar-menu-preview axi-face {
+    width: 24px;
+    height: 24px;
+}
+
+.webmeet-avatar-menu-arrow {
+    flex-shrink: 0;
     color: var(--text-soft);
+    font-size: 1rem;
+    transition: transform 0.15s ease;
+}
+
+.webmeet-avatar-submenu-trigger.is-open .webmeet-avatar-menu-arrow {
+    transform: rotate(90deg);
 }
 
 .webmeet-avatar-submenu-menu {
     position: absolute;
-    left: 100%;
-    bottom: 0;
-    min-width: 150px;
-    display: none;
-    gap: 4px;
+    left: calc(100% + 4px);
+    bottom: 25px;
+    min-width: 220px;
+    max-width: 280px;
+    max-height: 50vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     padding: 6px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface);
     box-shadow: 0 12px 28px color-mix(in srgb, var(--bg) 34%, transparent);
+    z-index: 100;
 }
 
-.webmeet-avatar-submenu:hover .webmeet-avatar-submenu-menu,
-.webmeet-avatar-submenu:focus-within .webmeet-avatar-submenu-menu {
-    display: grid;
+.webmeet-avatar-submenu-group-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-soft);
+    padding: 4px 8px 2px;
 }
 
 .webmeet-media-settings-button.active {
@@ -1178,45 +1247,43 @@
 }
 
 .webmeet-avatar-settings-layout {
-    display: flex;
-    flex-direction: column;
+    display: grid;
     gap: 14px;
+    min-width: 0;
 }
 
 .webmeet-avatar-preview {
-    width: 100px;
-    height: 100px;
+    width: 128px;
+    height: 128px;
     display: grid;
     place-items: center;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface);
     overflow: hidden;
-    margin: 0 auto;
+    margin: 0;
 }
 
 .webmeet-avatar-preview axi-face {
-    width: 72px;
-    height: 72px;
-}
-
-.webmeet-avatar-preview-letter {
-    color: var(--text-soft);
-    font-size: 1.6rem;
-    font-weight: 700;
+    width: 92px;
+    height: 92px;
 }
 
 .webmeet-avatar-settings-fields {
     min-width: 0;
     display: grid;
-    gap: 14px;
-    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) 144px;
     align-items: start;
 }
-.preview-section{
+
+.preview-section {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding-top: 2px;
 }
 .webmeet-avatar-status {
     color: var(--text-soft);
@@ -1233,6 +1300,10 @@
 @media (max-width: 860px) {
     .webmeet-avatar-settings-fields {
         grid-template-columns: 1fr;
+    }
+
+    .preview-section {
+        align-items: flex-start;
     }
 }
 
@@ -1667,6 +1738,14 @@
 
 .webmeet-scroll-list {
     overflow: auto;
+    padding-right: 4px;
+}
+
+#webmeetMeetingList {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding-right: 4px;
 }
 

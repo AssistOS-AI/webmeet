@@ -1,3 +1,5 @@
+const DEFAULT_PARTICIPANT_VOLUME = 0.8;
+
 export class WebmeetParticipantAudioModal {
     constructor(element, invalidate) {
         this.element = element;
@@ -34,7 +36,7 @@ export class WebmeetParticipantAudioModal {
 
     normalizeVolume(value) {
         const numberValue = Number(value);
-        if (!Number.isFinite(numberValue)) return 1;
+        if (!Number.isFinite(numberValue)) return DEFAULT_PARTICIPANT_VOLUME;
         return Math.min(1, Math.max(0, numberValue));
     }
 
@@ -84,7 +86,7 @@ export class WebmeetParticipantAudioModal {
     resetSettings() {
         this.dispatchPreview({
             participantId: this.participantId,
-            volume: 1,
+            volume: DEFAULT_PARTICIPANT_VOLUME,
             muted: false
         });
         assistOS.UI.closeModal(this.element, {

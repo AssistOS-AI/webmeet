@@ -16,16 +16,10 @@ import {
 import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 import {
     AVATAR_SOURCE_MODES,
-    deriveAvatarSourceMode,
-    normalizeAvatarForSourceMode
+    deriveAvatarSourceMode
 } from '../services/avatar-settings-model.js';
 
 const runTool = runWebMeetTool;
-const AVATAR_SOURCE_LABELS = Object.freeze({
-    [AVATAR_SOURCE_MODES.GENERATED]: 'Generated',
-    [AVATAR_SOURCE_MODES.PACK]: 'AxiFace pack',
-    [AVATAR_SOURCE_MODES.SVG]: 'SVG source'
-});
 
 export const meetingActionMethods = {
     async createMeeting() {
@@ -351,6 +345,7 @@ export const meetingActionMethods = {
         this.setCurrentWebMeetAvatarOverride({ config });
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.state.avatarQuickMenuVisible = false;
+        this.state.avatarSubmenuVisible = false;
         const published = await this.publishCurrentParticipantAvatar({ force: true });
         this.renderAvatarControls?.();
         this.renderMeetingSummary();
@@ -383,6 +378,7 @@ export const meetingActionMethods = {
         this.setCurrentWebMeetAvatarOverride({ config });
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.state.avatarQuickMenuVisible = false;
+        this.state.avatarSubmenuVisible = false;
         const published = await this.publishCurrentParticipantAvatar({ force: true });
         this.renderAvatarControls?.();
         this.renderMeetingSummary();
@@ -420,6 +416,7 @@ export const meetingActionMethods = {
         this.setCurrentWebMeetAvatarOverride({ config });
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.state.avatarQuickMenuVisible = false;
+        this.state.avatarSubmenuVisible = false;
         const published = await this.publishCurrentParticipantAvatar({ force: true });
         this.renderAvatarControls?.();
         this.renderMeetingSummary();
@@ -437,6 +434,7 @@ export const meetingActionMethods = {
         this.clearCurrentWebMeetAvatarOverride();
         this.state.webMeetAvatarOverrideDraft = null;
         this.state.avatarQuickMenuVisible = false;
+        this.state.avatarSubmenuVisible = false;
         const published = await this.publishCurrentParticipantAvatar({ force: true });
         this.renderAvatarControls?.();
         this.renderMeetingSummary();
@@ -449,63 +447,15 @@ export const meetingActionMethods = {
 
     toggleAvatarQuickMenu() {
         this.state.avatarQuickMenuVisible = !this.state.avatarQuickMenuVisible;
+        if (!this.state.avatarQuickMenuVisible) {
+            this.state.avatarSubmenuVisible = false;
+        }
         this.renderAvatarControls?.();
     },
 
-    async applyWebMeetAvatarSourceMode(target) {
-        const source = target?.target || target;
-        const sourceModeValue = source?.dataset?.avatarSourceMode || source?.closest?.('[data-avatar-source-mode]')?.dataset?.avatarSourceMode || source;
-        const sourceMode = Object.values(AVATAR_SOURCE_MODES).includes(String(sourceModeValue || '').trim())
-            ? String(sourceModeValue || '').trim()
-            : '';
-        if (!sourceMode) return;
-        if (sourceMode === AVATAR_SOURCE_MODES.PACK && (!Array.isArray(this.state.axiFacePacks) || this.state.axiFacePacks.length === 0)) {
-            try {
-                this.state.axiFacePacks = await loadAxiFacePacks();
-            } catch (_) {
-                // Keep the current draft; the shared normalizer will still preserve source mode.
-            }
-        }
-        let profileAvatar = null;
-        try {
-            profileAvatar = await getCurrentProfileAvatar({ force: true });
-        } catch (_) {
-            profileAvatar = null;
-        }
-        const currentOverride = this.loadCurrentWebMeetAvatarOverride();
-        this.state.webMeetAvatarOverride = currentOverride;
-        const fallbackId = `profile:${this.getCurrentAvatarOverrideUserId() || this.state.session?.participantIdentity || 'current-user'}`;
-        const baseConfig = buildWebMeetAvatarOverrideConfig({
-            profileAvatar,
-            override: this.state.webMeetAvatarOverrideDraft || currentOverride,
-            userId: this.getCurrentAvatarOverrideUserId(),
-            participantId: this.state.session?.participantIdentity || '',
-            patch: { sourceMode }
-        });
-        const config = normalizeAvatarConfig(
-            normalizeAvatarForSourceMode(baseConfig, sourceMode, { packs: this.state.axiFacePacks }),
-            fallbackId
-        );
-        if (sourceMode === AVATAR_SOURCE_MODES.SVG && !String(config.src || '').trim()) {
-            this.setError('Set an SVG source in the avatar form before switching quick source to SVG.');
-            return;
-        }
-        if (sourceMode === AVATAR_SOURCE_MODES.PACK && !String(config.packSrc || '').trim()) {
-            this.setError('No AxiFace pack is available yet. Reload pack metadata and try again.');
-            return;
-        }
-        this.setCurrentWebMeetAvatarOverride({ config });
-        this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
-        this.state.avatarQuickMenuVisible = false;
-        const published = await this.publishCurrentParticipantAvatar({ force: true });
+    toggleAvatarSubmenu() {
+        this.state.avatarSubmenuVisible = !this.state.avatarSubmenuVisible;
         this.renderAvatarControls?.();
-        this.renderMeetingSummary();
-        this.renderParticipantLayout?.();
-        this.renderMeetingList?.();
-        const label = AVATAR_SOURCE_LABELS[sourceMode] || deriveAvatarSourceMode(config);
-        this.setError(published
-            ? `WebMeet avatar source set to ${label} and published.`
-            : `WebMeet avatar source saved as ${label}. Join a room to publish it.`);
     },
 
     handleWebMeetAvatarSettingsChange(event = null) {
@@ -532,16 +482,13 @@ export const meetingActionMethods = {
             || currentOverride?.config
             || this.state.session?.participant?.profileAvatar?.config
             || {};
-        const presetId = String(this.avatarPresetSelect?.value || '').trim();
-        const presetPatch = presetId ? getWebMeetAvatarPreset(presetId).patch : {};
         const fallbackId = `profile:${this.getCurrentAvatarOverrideUserId() || this.state.session?.participantIdentity || 'current-user'}`;
         const formConfig = this.avatarSettingsForm?.webSkelPresenter?.getConfig?.() || currentConfig;
         this.state.webMeetAvatarOverrideDraft = {
             config: normalizeAvatarConfig({
                 ...formConfig,
                 agentId: currentConfig.agentId || formConfig.agentId || fallbackId,
-                seed: formConfig.seed || currentConfig.seed || currentConfig.agentId || fallbackId,
-                ...presetPatch
+                seed: formConfig.seed || currentConfig.seed || currentConfig.agentId || fallbackId
             }, fallbackId)
         };
         this.renderAvatarControls?.();

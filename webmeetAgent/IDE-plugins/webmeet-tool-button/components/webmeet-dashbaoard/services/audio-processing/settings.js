@@ -1,6 +1,7 @@
 export const VOICE_PROCESSING_MODES = Object.freeze(['auto', 'custom', 'enhanced', 'standard', 'off']);
 export const HUM_FILTER_MODES = Object.freeze(['off', '50', '60']);
 export const DEFAULT_VOICE_PROCESSING_MODE = 'auto';
+export const DEFAULT_MICROPHONE_GAIN = 0.8;
 export const DEFAULT_OUTPUT_VOLUME = 0.8;
 
 export function normalizeVoiceProcessingMode(value) {
@@ -15,7 +16,7 @@ export function normalizeHumFilter(value) {
 
 export function normalizeMicrophoneGain(value) {
     const gain = Number(value);
-    if (!Number.isFinite(gain)) return 1;
+    if (!Number.isFinite(gain)) return DEFAULT_MICROPHONE_GAIN;
     return Math.min(2, Math.max(0, gain));
 }
 

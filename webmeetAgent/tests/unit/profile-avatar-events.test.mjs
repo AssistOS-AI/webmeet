@@ -23,6 +23,7 @@ import {
     updateMeetingParticipantAvatar
 } from '../../lib/webmeetStore.mjs';
 import { meetingActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/meeting-action-methods.js';
+import { dashboardRenderMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-render-methods.js';
 import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-session-methods.js';
 import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
@@ -1292,7 +1293,8 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
         'utf8'
     );
 
-    assert.match(html, /id="webmeetAvatarPresetSelect"/);
+    assert.doesNotMatch(html, /id="webmeetAvatarPresetSelect"/);
+    assert.doesNotMatch(html, /State preset/);
     assert.doesNotMatch(html, /id="webmeetAvatarOverrideEnabled"/);
     assert.match(html, /id="webmeetSettingsTabMedia"/);
     assert.match(html, /id="webmeetSettingsTabAvatar"/);
@@ -1310,6 +1312,8 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.match(css, /\.webmeet-settings-section\[hidden\][\s\S]*display: none !important/);
     assert.match(css, /\.webmeet-settings-tabs[\s\S]*border-bottom: 1px solid var\(--border\)/);
     assert.match(css, /\.webmeet-media-settings \.modal-body[\s\S]*overflow: hidden/);
+    assert.match(css, /\.webmeet-avatar-settings-fields[\s\S]*grid-template-columns: minmax\(0, 1fr\) 144px/);
+    assert.match(css, /\.preview-section[\s\S]*align-items: center/);
     assert.doesNotMatch(html, /webmeet-settings-close-button/);
     assert.doesNotMatch(html, /class="gray-button" data-local-action="closeMediaSettings"/);
     assert.match(html, /id="webmeetAvatarSettingsForm"/);
@@ -1340,7 +1344,11 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.match(renderSource, /loadAxiFacePacks/);
     assert.match(renderSource, /getLoadedAxiFaceGeneratedFaceStyles/);
     assert.match(renderSource, /formatAvatarOptionLabel/);
-    assert.match(renderSource, /hiddenFields: \['seed'\]/);
+    assert.match(renderSource, /hiddenFields: \[[\s\S]*'seed'[\s\S]*'assetMode'[\s\S]*'mode'[\s\S]*'thoughtMode'[\s\S]*'thought'[\s\S]*'animated'[\s\S]*'listen'[\s\S]*'complexity'[\s\S]*'src'[\s\S]*'theme'[\s\S]*\]/);
+    assert.doesNotMatch(renderSource, /hiddenFields: \[[\s\S]*'palette'[\s\S]*\]/);
+    assert.match(renderSource, /sourceModes: \[[\s\S]*AVATAR_SOURCE_MODES\.GENERATED[\s\S]*AVATAR_SOURCE_MODES\.PACK[\s\S]*\]/);
+    assert.doesNotMatch(renderSource, />SVG source<\/button>/);
+    assert.doesNotMatch(renderSource, /webmeet-avatar-preview-letter/);
     assert.doesNotMatch(renderSource, /AVATAR_STYLE_LABELS/);
     assert.doesNotMatch(renderSource, /resetWebMeetAvatarOverride">Profile avatar/);
 });
@@ -1387,6 +1395,41 @@ test("Apply avatar closes the WebMeet settings panel after saving", async () => 
     assert.deepEqual(publishedOptions, { force: true });
     assert.equal(closeCalls, 1);
     assert.equal(context.lastError, 'WebMeet avatar override applied and published.');
+});
+
+test("WebMeet avatar settings preview renders a generated avatar without saved profile settings", async () => {
+    const context = {
+        state: {
+            webMeetAvatarOverride: null,
+            webMeetAvatarOverrideDraft: undefined,
+            session: {
+                participantIdentity: 'participant-local',
+                participant: {}
+            },
+            axiFaceGeneratedFaceStyles: ['robot-soft'],
+            axiFaceGeneratedFacePalettes: ['default'],
+            axiFacePacks: [{ id: 'robot-soft', manifestSrc: '/axi-face/packs/robot-soft/manifest.json' }]
+        },
+        avatarSettingsForm: {
+            webSkelPresenter: {
+                setData(data) {
+                    this.lastData = data;
+                }
+            }
+        },
+        avatarPreview: { innerHTML: '' },
+        loadCurrentWebMeetAvatarOverride() {
+            return null;
+        },
+        getCurrentAvatarOverrideUserId() {
+            return 'local:admin';
+        }
+    };
+
+    dashboardRenderMethods.renderAvatarControls.call(context);
+
+    assert.match(context.avatarPreview.innerHTML, /<axi-face /);
+    assert.doesNotMatch(context.avatarPreview.innerHTML, /webmeet-avatar-preview-letter/);
 });
 
 test("Apply pack switches the quick menu selection to the chosen AxiFace pack", async () => {
