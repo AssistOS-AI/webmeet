@@ -29,7 +29,7 @@ The manifest does not declare a WebMeet product HTTP API. Browser-facing WebMeet
 
 Direct container ports are implementation details. Ploinky core owns public-protected endpoint handling and whitelisting for Explorer, WebMeet plugin assets, shared UI components, and avatar assets. WebMeet must not add router-level guest asset bypasses or generated pages.
 
-Explorer users and public-protected room visitors call MCP tools through the Explorer host and generic Ploinky MCP route. Tool groups include room listing/creation/join/leave, room events, participant avatar updates, room rename/archive, chat, AI agents, and resources. MCP tool invocations must be signed by router-minted invocation JWTs, except for JSON-RPC metadata methods such as initialize, tool listing, resource listing, cancellation notifications, and ping.
+Explorer users and public-protected room visitors call MCP tools through the Explorer host and generic Ploinky MCP route. Tool groups include room listing/creation/join/leave, room events, participant avatar updates, room rename/archive, chat, AI agents, and resources. MCP tool invocations must be authorized by router-minted Router Request JWTs, except for JSON-RPC metadata methods such as initialize, tool listing, resource listing, cancellation notifications, and ping.
 
 The browser intentionally talks to two systems:
 
