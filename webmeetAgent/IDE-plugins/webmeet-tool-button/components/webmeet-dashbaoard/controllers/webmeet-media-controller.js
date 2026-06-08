@@ -55,6 +55,7 @@ export class WebmeetMediaController {
         };
         this.inFlight = false;
         this.activeMicrophoneCapture = null;
+        this.deferredMicrophoneProcessingTimer = null;
         this.backgroundProcessor = null;
         this.backgroundProcessorTrack = null;
         this.backgroundSyncPromise = null;
@@ -62,6 +63,7 @@ export class WebmeetMediaController {
 
     reset() {
         this.inFlight = false;
+        this.clearDeferredMicrophoneProcessing();
         this.stopProcessedMicrophoneCapture();
         void this.clearBackgroundEffect();
     }
@@ -328,17 +330,33 @@ export class WebmeetMediaController {
         this.activeMicrophoneCapture = capture;
     }
 
+    clearDeferredMicrophoneProcessing() {
+        if (!this.deferredMicrophoneProcessingTimer) return;
+        clearTimeout(this.deferredMicrophoneProcessingTimer);
+        this.deferredMicrophoneProcessingTimer = null;
+    }
+
+    scheduleDeferredMicrophoneProcessing(room) {
+        this.clearDeferredMicrophoneProcessing();
+        if (!room?.localParticipant || !isEnhancedVoiceProcessingSupported()) return;
+        this.deferredMicrophoneProcessingTimer = setTimeout(() => {
+            this.deferredMicrophoneProcessingTimer = null;
+            if (!room?.localParticipant || !this.isLocalSourceEnabled('microphone')) return;
+            this.runExclusiveToggle(async () => {
+                if (!this.isLocalSourceEnabled('microphone')) return;
+                try {
+                    await this.enableProcessedMicrophone(room, { ...this.settings, voiceProcessingMode: 'auto' });
+                    await this.waitForLocalSourceState('microphone', true);
+                } catch (_) {
+                    this.onError('Automatic enhanced processing failed. Keeping standard microphone audio.');
+                }
+            });
+        }, 800);
+    }
+
     async enableMicrophone(room) {
         const mode = normalizeVoiceProcessingMode(this.settings.voiceProcessingMode);
         if (mode === 'auto') {
-            if (isEnhancedVoiceProcessingSupported()) {
-                try {
-                    await this.enableProcessedMicrophone(room, { ...this.settings, voiceProcessingMode: 'auto' });
-                    return;
-                } catch (_) {
-                    this.onError('Automatic enhanced processing failed. Using standard microphone processing.');
-                }
-            }
             await this.enableMicrophoneWithMode(room, 'standard', {
                 echoCancellation: true,
                 noiseSuppression: true,
@@ -346,8 +364,10 @@ export class WebmeetMediaController {
                 microphoneGain: 1,
                 humFilter: 'off'
             });
+            this.scheduleDeferredMicrophoneProcessing(room);
             return;
         }
+        this.clearDeferredMicrophoneProcessing();
         if (mode === 'enhanced' && !isEnhancedVoiceProcessingSupported()) {
             this.replaceUnsupportedVoiceProcessingMode('standard', 'enhanced-unsupported');
             this.onError('Enhanced voice processing is unavailable in this browser. Using standard microphone processing.');
@@ -383,9 +403,60 @@ export class WebmeetMediaController {
     }
 
     async disableMicrophone(room) {
+        this.clearDeferredMicrophoneProcessing();
         this.hardStopMicrophoneTracks();
         await this.stopProcessedMicrophoneCapture();
         await room.localParticipant.setMicrophoneEnabled(false);
+    }
+
+    setLocalMicrophoneMuted(muted) {
+        const tracks = this.getLocalMicrophoneTracks();
+        for (const track of tracks) {
+            if (!track) continue;
+            try {
+                if (muted && typeof track.mute === 'function') {
+                    track.mute();
+                    continue;
+                }
+                if (!muted && typeof track.unmute === 'function') {
+                    track.unmute();
+                    continue;
+                }
+            } catch (_) {
+                // fall through to direct MediaStreamTrack enabled toggle
+            }
+            try {
+                if (track.mediaStreamTrack) {
+                    track.mediaStreamTrack.enabled = !muted;
+                }
+            } catch (_) {
+                // ignore best-effort mute errors
+            }
+        }
+        const sourceTrack = this.activeMicrophoneCapture?.sourceStream?.getAudioTracks?.()?.[0] || null;
+        if (sourceTrack) {
+            try {
+                sourceTrack.enabled = !muted;
+            } catch (_) {
+                // ignore best-effort source mute errors
+            }
+        }
+        return tracks.length > 0 || Boolean(sourceTrack);
+    }
+
+    async muteMicrophone(room) {
+        this.clearDeferredMicrophoneProcessing();
+        const mutedExistingTrack = this.setLocalMicrophoneMuted(true);
+        if (!mutedExistingTrack) {
+            await room.localParticipant.setMicrophoneEnabled(false);
+        }
+    }
+
+    async unmuteMicrophone(room) {
+        const unmutedExistingTrack = this.setLocalMicrophoneMuted(false);
+        if (!unmutedExistingTrack) {
+            await this.enableMicrophone(room);
+        }
     }
 
     async restartMicrophone() {
@@ -422,7 +493,8 @@ export class WebmeetMediaController {
         for (const track of tracks) {
             const mediaStreamTrack = track?.mediaStreamTrack || null;
             const readyState = String(mediaStreamTrack?.readyState || '').toLowerCase();
-            if (readyState === 'live') {
+            const muted = track?.isMuted === true || mediaStreamTrack?.enabled === false;
+            if (readyState === 'live' && !muted) {
                 return true;
             }
         }
@@ -559,7 +631,14 @@ export class WebmeetMediaController {
                 allowLocalCustomFallback: true,
                 activeMicrophoneTrack: this.activeMicrophoneCapture?.track || null
             });
-            if ((sameSource || sameCustomMic || (type === 'camera' && sameKind && !publication.source)) && !publication.isMuted) {
+            const mediaStreamTrack = publication.track?.mediaStreamTrack || null;
+            const localTrackMuted = publication.track?.isMuted === true
+                || (mediaStreamTrack && mediaStreamTrack.enabled === false);
+            if (
+                (sameSource || sameCustomMic || (type === 'camera' && sameKind && !publication.source))
+                && !publication.isMuted
+                && !localTrackMuted
+            ) {
                 return true;
             }
         }
@@ -629,13 +708,9 @@ export class WebmeetMediaController {
         await this.runExclusiveToggle(async () => {
             const enable = !this.isLocalSourceEnabled('microphone');
             if (enable) {
-                await this.enableMicrophone(room);
+                await this.unmuteMicrophone(room);
             } else {
-                await this.disableMicrophone(room);
-                const hardStopped = await this.waitForMicrophoneHardStopped();
-                if (!hardStopped) {
-                    throw new Error('Microphone capture did not stop completely. Check browser permissions/device.');
-                }
+                await this.muteMicrophone(room);
             }
             await this.waitForLocalSourceState('microphone', enable);
         });

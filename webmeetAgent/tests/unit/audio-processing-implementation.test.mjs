@@ -65,6 +65,11 @@ test('automatic voice processing falls back without overwriting the automatic pr
     assert.ok(factorySource.indexOf('currentNode = connectIfPresent(currentNode, gainNode)') < factorySource.indexOf('createDynamicsCompressor'));
     assert.match(controllerSource, /if \(mode === 'auto'\)/);
     assert.match(controllerSource, /await this\.enableMicrophoneWithMode\(room, 'standard'/);
+    assert.ok(
+        controllerSource.indexOf("await this.enableMicrophoneWithMode(room, 'standard'") < controllerSource.indexOf('this.scheduleDeferredMicrophoneProcessing(room)'),
+        'auto mode should publish standard microphone audio before deferred processing'
+    );
+    assert.match(controllerSource, /scheduleDeferredMicrophoneProcessing\(room\)/);
     assert.match(controllerSource, /microphoneGain: 1/);
     assert.match(controllerSource, /humFilter: 'off'/);
     assert.doesNotMatch(controllerSource, /replaceUnsupportedVoiceProcessingMode\('standard', 'auto/);
