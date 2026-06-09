@@ -2738,4 +2738,7 @@
     .webmeet-video-all:not(.has-focus) webmeet-participant-card {
         min-height: 188px;
     }
+    webmeet-dashbaoard .webmeet-avatar-quick-menu{
+        bottom: calc(100% + 12px);
+    }
 }

@@ -1,3 +1,24 @@
+import {
+    ASSISTANT_MODES,
+    SCENARIO_OPTIONS,
+    MEETING_NOTES_SECTIONS,
+    BLACKBOARD_VISIBILITY_OPTIONS,
+    DOCUMENT_PURPOSE_OPTIONS,
+    DOCUMENT_TONE_OPTIONS,
+    BOT_ROLES,
+    DEFAULT_ROBO_TEAM_SETTINGS,
+    normalizeRoboTeamSettings,
+    isRoboTeamActive
+} from './robo-team-settings-model.js';
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+}
+
 export class WebmeetRoomSettingsModal {
     constructor(element, invalidate) {
         this.element = element;
@@ -5,14 +26,27 @@ export class WebmeetRoomSettingsModal {
         this.roomId = this.readData('roomId', 'room-id');
         this.roomTitle = this.readData('roomTitle', 'room-title') || 'Room';
         this.roomLink = this.readData('roomLink', 'room-link');
+        this.activeTab = 'general';
+        this.roboTeamSettings = normalizeRoboTeamSettings(this.readData('roboTeamSettings', 'robo-team-settings'));
+        this.dialogState = { isFullscreen: false, previous: null };
         this.result = null;
         this.invalidate();
     }
 
     readData(...names) {
         for (const name of names) {
-            const value = String(this.element.getAttribute(`data-${name}`) || '').trim();
-            if (value) return value;
+            const raw = this.element.getAttribute(`data-${name}`);
+            if (raw === null) continue;
+            const value = String(raw).trim();
+            if (!value) continue;
+            if (name === 'roboTeamSettings' || name === 'robo-team-settings') {
+                try {
+                    return JSON.parse(value);
+                } catch (_) {
+                    return null;
+                }
+            }
+            return value;
         }
         return '';
     }
@@ -25,11 +59,173 @@ export class WebmeetRoomSettingsModal {
         this.titleInput = this.element.querySelector('[data-role="roomTitleInput"]');
         this.copyButton = this.element.querySelector('[data-role="copyLinkButton"]');
         this.roomLinkText = this.element.querySelector('[data-role="roomLinkText"]');
+        this.roboTeamContent = this.element.querySelector('[data-role="roboTeamContent"]');
+        this.fullscreenButton = this.element.querySelector('.webmeet-room-settings-window-action-button');
         if (this.titleInput) {
             this.titleInput.value = this.roomTitle;
         }
         if (this.roomLinkText) {
             this.roomLinkText.textContent = this.roomLink;
+        }
+        if (this.fullscreenButton) {
+            this.fullscreenButton.addEventListener('click', () => this.toggleFullscreen());
+        }
+        this.renderRoboTeamContent();
+        this.bindRoboTeamToggleVisibility();
+        this.updateTabVisibility();
+        this.ensureResizable();
+    }
+
+    getDialogElement() {
+        return this.element?.closest?.('dialog') || null;
+    }
+
+    ensureDialogPositioning() {
+        const dialog = this.getDialogElement();
+        if (!dialog || dialog.dataset.webmeetRoomSettingsPositioned === 'true') return dialog;
+        const rect = dialog.getBoundingClientRect();
+        dialog.style.left = `${rect.left}px`;
+        dialog.style.top = `${rect.top}px`;
+        dialog.classList.add('webmeet-room-settings-positioned');
+        dialog.dataset.webmeetRoomSettingsPositioned = 'true';
+        dialog.dataset.webmeetRoomSettingsUserSized = 'false';
+        return dialog;
+    }
+
+    startResize(event, direction) {
+        const dialog = this.ensureDialogPositioning();
+        if (!dialog || dialog.classList.contains('is-fullscreen')) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const startRect = dialog.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const minWidth = 560;
+        const minHeight = 480;
+
+        const onMove = (moveEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+            let left = startRect.left;
+            let top = startRect.top;
+            let width = startRect.width;
+            let height = startRect.height;
+
+            if (direction.includes('e')) width = startRect.width + dx;
+            if (direction.includes('s')) height = startRect.height + dy;
+            if (direction.includes('w')) {
+                width = startRect.width - dx;
+                left = startRect.left + dx;
+            }
+            if (direction.includes('n')) {
+                height = startRect.height - dy;
+                top = startRect.top + dy;
+            }
+
+            width = Math.max(minWidth, width);
+            height = Math.max(minHeight, height);
+            if (direction.includes('w') && width === minWidth) left = startRect.right - minWidth;
+            if (direction.includes('n') && height === minHeight) top = startRect.bottom - minHeight;
+
+            dialog.style.left = `${left}px`;
+            dialog.style.top = `${top}px`;
+            dialog.style.width = `${width}px`;
+            dialog.style.height = `${height}px`;
+            dialog.dataset.webmeetRoomSettingsUserSized = 'true';
+        };
+
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove, true);
+            window.removeEventListener('pointerup', onUp, true);
+        };
+        window.addEventListener('pointermove', onMove, true);
+        window.addEventListener('pointerup', onUp, true);
+    }
+
+    ensureResizable() {
+        const dialog = this.getDialogElement();
+        if (!dialog || dialog.dataset.webmeetRoomSettingsResizable === 'true') return;
+        for (const direction of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+            const handle = document.createElement('div');
+            handle.className = `webmeet-room-settings-resize-handle ${direction}`;
+            handle.addEventListener('pointerdown', (event) => this.startResize(event, direction));
+            this.element.querySelector('.webmeet-room-settings-modal')?.appendChild(handle);
+        }
+        dialog.dataset.webmeetRoomSettingsResizable = 'true';
+    }
+
+    toggleFullscreen() {
+        const dialog = this.ensureDialogPositioning();
+        if (!dialog) return;
+        const shouldEnter = !dialog.classList.contains('is-fullscreen');
+        if (shouldEnter) {
+            const rect = dialog.getBoundingClientRect();
+            this.dialogState.previous = {
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                userSized: dialog.dataset.webmeetRoomSettingsUserSized === 'true'
+            };
+            dialog.classList.add('is-fullscreen');
+            this.dialogState.isFullscreen = true;
+            return;
+        }
+        dialog.classList.remove('is-fullscreen');
+        const previous = this.dialogState.previous;
+        if (previous) {
+            dialog.style.left = `${previous.left}px`;
+            dialog.style.top = `${previous.top}px`;
+            if (previous.userSized) {
+                dialog.style.width = `${previous.width}px`;
+                dialog.style.height = `${previous.height}px`;
+            } else {
+                dialog.style.removeProperty('width');
+                dialog.style.removeProperty('height');
+            }
+        }
+        this.dialogState.isFullscreen = false;
+    }
+
+    bindRoboTeamToggleVisibility() {
+        if (!this.roboTeamContent) return;
+        this.roboTeamContent.addEventListener('change', (event) => {
+            const target = event.target;
+            if (!target?.matches?.('[data-robo-toggle]')) return;
+            const toggleKey = String(target.dataset?.roboToggle || '').trim();
+            const sectionKey = toggleKey.replace('.enabled', '');
+            if (toggleKey.endsWith('.enabled')) {
+                const section = this.roboTeamContent.querySelector(`[data-robo-section="${sectionKey}"]`);
+                const fields = section?.querySelector('.webmeet-robo-fields');
+                if (fields) fields.hidden = !target.checked;
+            }
+            if (toggleKey === 'moderation.speakingTimeLimitEnabled') {
+                const conditional = this.roboTeamContent.querySelector('[data-robo-conditional="moderation.speakingTimeLimitEnabled"]');
+                if (conditional) conditional.hidden = !target.checked;
+            }
+        });
+    }
+
+    setRoomSettingsTab(target) {
+        const source = target?.target || target;
+        const tabElement = source?.closest?.('[data-room-settings-tab]') || source;
+        const tab = String(tabElement?.dataset?.roomSettingsTab || '').trim();
+        if (!['general', 'lifecycle', 'roboteam'].includes(tab)) return;
+        this.activeTab = tab;
+        this.updateTabVisibility();
+    }
+
+    updateTabVisibility() {
+        for (const button of this.element.querySelectorAll('[data-room-settings-tab]')) {
+            const tab = String(button.dataset?.roomSettingsTab || '').trim();
+            const isActive = tab === this.activeTab;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        }
+        for (const panel of this.element.querySelectorAll('[data-room-settings-panel]')) {
+            const panelTab = String(panel.dataset?.roomSettingsPanel || '').trim();
+            panel.hidden = panelTab !== this.activeTab;
         }
     }
 
@@ -74,11 +270,356 @@ export class WebmeetRoomSettingsModal {
         const name = String(this.titleInput?.value || '').trim();
         if (!name) {
             this.showError('Room name is required.');
+            this.activeTab = 'general';
+            this.updateTabVisibility();
             return;
         }
+        const roboTeam = this.collectRoboTeamSettings();
         assistOS.UI.closeModal(this.element, {
             roomId: this.roomId,
-            name
+            name,
+            roboTeam: {
+                active: isRoboTeamActive(roboTeam),
+                assistant: roboTeam.assistant,
+                meetingNotes: roboTeam.meetingNotes,
+                blackboard: roboTeam.blackboard,
+                documentBuilder: roboTeam.documentBuilder,
+                moderation: roboTeam.moderation,
+                bots: roboTeam.bots,
+                adaptation: roboTeam.adaptation
+            }
         });
+    }
+
+    collectRoboTeamSettings() {
+        const settings = normalizeRoboTeamSettings(this.roboTeamSettings);
+        const get = (selector) => this.roboTeamContent?.querySelector(selector);
+        const getAll = (selector) => Array.from(this.roboTeamContent?.querySelectorAll(selector) || []);
+
+        const assistantName = get('[data-robo-field="assistant.name"]');
+        if (assistantName) settings.assistant.name = String(assistantName.value || '').trim();
+
+        const assistantMode = get('[data-robo-field="assistant.mode"]');
+        if (assistantMode) settings.assistant.mode = String(assistantMode.value || '').trim();
+
+        const assistantInstructions = get('[data-robo-field="assistant.instructions"]');
+        if (assistantInstructions) settings.assistant.instructions = String(assistantInstructions.value || '').trim();
+
+        const assistantScenario = get('[data-robo-field="assistant.scenarioOrObjective"]');
+        if (assistantScenario) settings.assistant.scenarioOrObjective = String(assistantScenario.value || '').trim();
+
+        for (const section of ['meetingNotes', 'blackboard', 'documentBuilder', 'moderation', 'bots', 'adaptation']) {
+            const enabledToggle = get(`[data-robo-toggle="${section}.enabled"]`);
+            if (enabledToggle) settings[section].enabled = enabledToggle.checked;
+        }
+
+        settings.meetingNotes.sections = getAll('[data-robo-check="meetingNotes.sections"]')
+            .filter((el) => el.checked)
+            .map((el) => String(el.value || '').trim())
+            .filter(Boolean);
+
+        const notesVisible = get('[data-robo-toggle="meetingNotes.visibleDuringMeeting"]');
+        if (notesVisible) settings.meetingNotes.visibleDuringMeeting = notesVisible.checked;
+        const notesReview = get('[data-robo-toggle="meetingNotes.reviewEnabled"]');
+        if (notesReview) settings.meetingNotes.reviewEnabled = notesReview.checked;
+        const notesExport = get('[data-robo-toggle="meetingNotes.exportEnabled"]');
+        if (notesExport) settings.meetingNotes.exportEnabled = notesExport.checked;
+
+        const bbVisibility = get('[data-robo-field="blackboard.visibility"]');
+        if (bbVisibility) settings.blackboard.visibility = String(bbVisibility.value || '').trim();
+        const bbAutoUpdate = get('[data-robo-toggle="blackboard.autoUpdateFromConversation"]');
+        if (bbAutoUpdate) settings.blackboard.autoUpdateFromConversation = bbAutoUpdate.checked;
+        const bbParticipantRequests = get('[data-robo-toggle="blackboard.participantRequestsEnabled"]');
+        if (bbParticipantRequests) settings.blackboard.participantRequestsEnabled = bbParticipantRequests.checked;
+
+        const docPurpose = get('[data-robo-field="documentBuilder.purpose"]');
+        if (docPurpose) settings.documentBuilder.purpose = String(docPurpose.value || '').trim();
+        const docStructure = get('[data-robo-field="documentBuilder.structureInstructions"]');
+        if (docStructure) settings.documentBuilder.structureInstructions = String(docStructure.value || '').trim();
+        const docTone = get('[data-robo-field="documentBuilder.toneInstructions"]');
+        if (docTone) settings.documentBuilder.toneInstructions = String(docTone.value || '').trim();
+        const docCorrections = get('[data-robo-toggle="documentBuilder.participantCorrectionsEnabled"]');
+        if (docCorrections) settings.documentBuilder.participantCorrectionsEnabled = docCorrections.checked;
+
+        const modRules = get('[data-robo-field="moderation.rules"]');
+        if (modRules) settings.moderation.rules = String(modRules.value || '').trim();
+        const modSpeakingOrder = get('[data-robo-toggle="moderation.speakingOrderEnabled"]');
+        if (modSpeakingOrder) settings.moderation.speakingOrderEnabled = modSpeakingOrder.checked;
+        const modTimeLimit = get('[data-robo-toggle="moderation.speakingTimeLimitEnabled"]');
+        if (modTimeLimit) settings.moderation.speakingTimeLimitEnabled = modTimeLimit.checked;
+        const modTimeLimitMinutes = get('[data-robo-field="moderation.speakingTimeLimitMinutes"]');
+        if (modTimeLimitMinutes) settings.moderation.speakingTimeLimitMinutes = Number(modTimeLimitMinutes.value) || 5;
+        const modMicControl = get('[data-robo-toggle="moderation.microphoneControlAllowed"]');
+        if (modMicControl) settings.moderation.microphoneControlAllowed = modMicControl.checked;
+
+        settings.bots.allowedRoles = getAll('[data-robo-check="bots.allowedRoles"]')
+            .filter((el) => el.checked)
+            .map((el) => String(el.value || '').trim())
+            .filter(Boolean);
+
+        const botInstructions = get('[data-robo-field="bots.roleInstructions"]');
+        if (botInstructions) settings.bots.roleInstructions = String(botInstructions.value || '').trim();
+        const botPersonality = get('[data-robo-field="bots.personalityAndObjectives"]');
+        if (botPersonality) settings.bots.personalityAndObjectives = String(botPersonality.value || '').trim();
+
+        const adaptParticipantRequests = get('[data-robo-toggle="adaptation.participantRequestsEnabled"]');
+        if (adaptParticipantRequests) settings.adaptation.participantRequestsEnabled = adaptParticipantRequests.checked;
+        const adaptSilence = get('[data-robo-toggle="adaptation.silenceAsAcceptanceForMinorChanges"]');
+        if (adaptSilence) settings.adaptation.silenceAsAcceptanceForMinorChanges = adaptSilence.checked;
+
+        return settings;
+    }
+
+    renderRoboTeamContent() {
+        if (!this.roboTeamContent) return;
+        const s = normalizeRoboTeamSettings(this.roboTeamSettings);
+        this.roboTeamContent.innerHTML = [
+            this.renderAssistantSection(s.assistant),
+            this.renderFeatureSection({
+                key: 'meetingNotes',
+                title: 'Meeting Notes',
+                description: 'Generate structured notes from conversations.',
+                enabled: s.meetingNotes.enabled,
+                content: this.renderMeetingNotesFields(s.meetingNotes)
+            }),
+            this.renderFeatureSection({
+                key: 'blackboard',
+                title: 'Blackboard',
+                description: 'Visual representations of the discussion.',
+                enabled: s.blackboard.enabled,
+                content: this.renderBlackboardFields(s.blackboard)
+            }),
+            this.renderFeatureSection({
+                key: 'documentBuilder',
+                title: 'Document Builder',
+                description: 'Generate or update working documents from conversations.',
+                enabled: s.documentBuilder.enabled,
+                content: this.renderDocumentBuilderFields(s.documentBuilder)
+            }),
+            this.renderFeatureSection({
+                key: 'moderation',
+                title: 'Moderation',
+                description: 'AI assistance for room moderation.',
+                enabled: s.moderation.enabled,
+                content: this.renderModerationFields(s.moderation)
+            }),
+            this.renderFeatureSection({
+                key: 'bots',
+                title: 'Bots',
+                description: 'AI bots with specific roles in the room.',
+                enabled: s.bots.enabled,
+                content: this.renderBotsFields(s.bots)
+            }),
+            this.renderFeatureSection({
+                key: 'adaptation',
+                title: 'Adaptation & Consensus',
+                description: 'Allow the assistant to adapt based on conversation and chat.',
+                enabled: s.adaptation.enabled,
+                content: this.renderAdaptationFields(s.adaptation)
+            })
+        ].join('');
+    }
+
+    renderAssistantSection(assistant) {
+        return `
+            <div class="webmeet-robo-section">
+                <h3 class="webmeet-robo-section-title">Assistant</h3>
+                <p class="webmeet-robo-section-description">Common settings for the room's main Assistant.</p>
+                <div class="webmeet-robo-fields">
+                    <label class="webmeet-room-settings-field">
+                        <span>Name</span>
+                        <input type="text" data-robo-field="assistant.name" value="${escapeHtml(assistant.name)}" placeholder="Assistant name" autocomplete="off">
+                    </label>
+                    <label class="webmeet-room-settings-field">
+                        <span>Mode</span>
+                        <select data-robo-field="assistant.mode" class="form-input">
+                            ${ASSISTANT_MODES.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === assistant.mode ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+                        </select>
+                    </label>
+                    <label class="webmeet-room-settings-field">
+                        <span>Instructions</span>
+                        <textarea data-robo-field="assistant.instructions" rows="3" placeholder="Describe the assistant's purpose, tone, and limits">${escapeHtml(assistant.instructions)}</textarea>
+                    </label>
+                    <label class="webmeet-room-settings-field">
+                        <span>Scenario / Objective</span>
+                        <select data-robo-field="assistant.scenarioOrObjective" class="form-input">
+                            ${SCENARIO_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === assistant.scenarioOrObjective ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+                        </select>
+                    </label>
+                </div>
+            </div>
+        `;
+    }
+
+    renderFeatureSection({ key, title, description, enabled, content }) {
+        return `
+            <div class="webmeet-robo-section" data-robo-section="${escapeHtml(key)}">
+                <div class="webmeet-robo-section-header">
+                    <div class="webmeet-robo-section-header-text">
+                        <h3 class="webmeet-robo-section-title">${escapeHtml(title)}</h3>
+                        <p class="webmeet-robo-section-description">${escapeHtml(description)}</p>
+                    </div>
+                    <label class="webmeet-robo-toggle-label">
+                        <input type="checkbox" data-robo-toggle="${escapeHtml(key)}.enabled"${enabled ? ' checked' : ''}>
+                        <span>Enable</span>
+                    </label>
+                </div>
+                <div class="webmeet-robo-fields"${enabled ? '' : ' hidden'}>
+                    ${content}
+                </div>
+            </div>
+        `;
+    }
+
+    renderMeetingNotesFields(notes) {
+        return `
+            <div class="webmeet-robo-field-group">
+                <span class="webmeet-robo-field-group-label">Sections to track</span>
+                <div class="webmeet-robo-checklist">
+                    ${MEETING_NOTES_SECTIONS.map((opt) => `
+                        <label class="webmeet-robo-check-item">
+                            <input type="checkbox" data-robo-check="meetingNotes.sections" value="${escapeHtml(opt.value)}"${notes.sections.includes(opt.value) ? ' checked' : ''}>
+                            <span>${escapeHtml(opt.label)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="meetingNotes.visibleDuringMeeting"${notes.visibleDuringMeeting ? ' checked' : ''}>
+                <span>Visible during meeting</span>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="meetingNotes.reviewEnabled"${notes.reviewEnabled ? ' checked' : ''}>
+                <span>Allow review before finalizing</span>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="meetingNotes.exportEnabled"${notes.exportEnabled ? ' checked' : ''}>
+                <span>Allow export at end of meeting</span>
+            </label>
+        `;
+    }
+
+    renderBlackboardFields(bb) {
+        return `
+            <label class="webmeet-room-settings-field">
+                <span>Visibility</span>
+                <select data-robo-field="blackboard.visibility" class="form-input">
+                    ${BLACKBOARD_VISIBILITY_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === bb.visibility ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+                </select>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="blackboard.autoUpdateFromConversation"${bb.autoUpdateFromConversation ? ' checked' : ''}>
+                <span>Auto-update from conversation</span>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="blackboard.participantRequestsEnabled"${bb.participantRequestsEnabled ? ' checked' : ''}>
+                <span>Allow participant requests</span>
+            </label>
+        `;
+    }
+
+    renderDocumentBuilderFields(doc) {
+        return `
+            <label class="webmeet-room-settings-field">
+                <span>Purpose</span>
+                <select data-robo-field="documentBuilder.purpose" class="form-input">
+                    ${DOCUMENT_PURPOSE_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === doc.purpose ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+                </select>
+            </label>
+            <label class="webmeet-room-settings-field">
+                <span>Structure instructions</span>
+                <textarea data-robo-field="documentBuilder.structureInstructions" rows="3" placeholder="Describe sections, order, detail level">${escapeHtml(doc.structureInstructions)}</textarea>
+            </label>
+            <label class="webmeet-room-settings-field">
+                <span>Tone</span>
+                <select data-robo-field="documentBuilder.toneInstructions" class="form-input">
+                    ${DOCUMENT_TONE_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === doc.toneInstructions ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+                </select>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="documentBuilder.participantCorrectionsEnabled"${doc.participantCorrectionsEnabled ? ' checked' : ''}>
+                <span>Allow participant corrections</span>
+            </label>
+            <label class="webmeet-robo-toggle-row is-locked">
+                <input type="checkbox" checked disabled>
+                <span>Require approval before export <span class="webmeet-robo-locked-badge">Locked on</span></span>
+            </label>
+        `;
+    }
+
+    renderModerationFields(mod) {
+        return `
+            <label class="webmeet-room-settings-field">
+                <span>Rules</span>
+                <textarea data-robo-field="moderation.rules" rows="3" placeholder="Participation rules, behavior, intervention triggers">${escapeHtml(mod.rules)}</textarea>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="moderation.speakingOrderEnabled"${mod.speakingOrderEnabled ? ' checked' : ''}>
+                <span>Manage speaking order</span>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="moderation.speakingTimeLimitEnabled"${mod.speakingTimeLimitEnabled ? ' checked' : ''}>
+                <span>Speaking time limit</span>
+            </label>
+            <div class="webmeet-robo-inline-field" data-robo-conditional="moderation.speakingTimeLimitEnabled"${mod.speakingTimeLimitEnabled ? '' : ' hidden'}>
+                <label class="webmeet-room-settings-field">
+                    <span>Time limit (minutes)</span>
+                    <input type="number" data-robo-field="moderation.speakingTimeLimitMinutes" value="${mod.speakingTimeLimitMinutes}" min="1" max="60">
+                </label>
+            </div>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="moderation.microphoneControlAllowed"${mod.microphoneControlAllowed ? ' checked' : ''}>
+                <span>Allow microphone control</span>
+            </label>
+            <label class="webmeet-robo-toggle-row is-locked">
+                <input type="checkbox" checked disabled>
+                <span>Require approval for sensitive actions <span class="webmeet-robo-locked-badge">Locked on</span></span>
+            </label>
+        `;
+    }
+
+    renderBotsFields(bots) {
+        return `
+            <div class="webmeet-robo-field-group">
+                <span class="webmeet-robo-field-group-label">Allowed roles</span>
+                <div class="webmeet-robo-checklist">
+                    ${BOT_ROLES.map((opt) => `
+                        <label class="webmeet-robo-check-item">
+                            <input type="checkbox" data-robo-check="bots.allowedRoles" value="${escapeHtml(opt.value)}"${bots.allowedRoles.includes(opt.value) ? ' checked' : ''}>
+                            <span>${escapeHtml(opt.label)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <label class="webmeet-room-settings-field">
+                <span>Role instructions</span>
+                <textarea data-robo-field="bots.roleInstructions" rows="3" placeholder="What roles should do and how to interact">${escapeHtml(bots.roleInstructions)}</textarea>
+            </label>
+            <label class="webmeet-room-settings-field">
+                <span>Personality & objectives</span>
+                <textarea data-robo-field="bots.personalityAndObjectives" rows="3" placeholder="Personality, objectives, and limits">${escapeHtml(bots.personalityAndObjectives)}</textarea>
+            </label>
+            <label class="webmeet-robo-toggle-row is-locked">
+                <input type="checkbox" checked disabled>
+                <span>Require organizer approval <span class="webmeet-robo-locked-badge">Locked on</span></span>
+            </label>
+        `;
+    }
+
+    renderAdaptationFields(adapt) {
+        return `
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="adaptation.participantRequestsEnabled"${adapt.participantRequestsEnabled ? ' checked' : ''}>
+                <span>Allow participant requests</span>
+            </label>
+            <label class="webmeet-robo-toggle-row">
+                <input type="checkbox" data-robo-toggle="adaptation.silenceAsAcceptanceForMinorChanges"${adapt.silenceAsAcceptanceForMinorChanges ? ' checked' : ''}>
+                <span>Treat silence as acceptance for minor changes</span>
+            </label>
+            <label class="webmeet-robo-toggle-row is-locked">
+                <input type="checkbox" checked disabled>
+                <span>Require explicit approval for sensitive actions <span class="webmeet-robo-locked-badge">Locked on</span></span>
+            </label>
+        `;
     }
 }

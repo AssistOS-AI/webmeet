@@ -97,10 +97,12 @@ export const meetingActionMethods = {
             this.setError('Archived rooms cannot be modified.');
             return;
         }
+        const roboTeamSettings = this.loadRoboTeamSettings(meeting.id);
         const result = await assistOS.UI.showModal('webmeet-room-settings-modal', {
             roomId: meeting.id,
             roomTitle: meeting.title || meeting.name || 'Room',
-            roomLink: this.buildRoomLink(meeting.id)
+            roomLink: this.buildRoomLink(meeting.id),
+            roboTeamSettings
         }, true);
         if (!result) return;
 
@@ -128,8 +130,35 @@ export const meetingActionMethods = {
                 }
             }
         }
+
+        if (result.roboTeam) {
+            this.saveRoboTeamSettings(meeting.id, result.roboTeam);
+        }
+
         await this.loadMeetings();
         this.renderAll();
+    },
+
+    loadRoboTeamSettings(roomId) {
+        const id = String(roomId || '').trim();
+        if (!id) return null;
+        try {
+            const raw = String(window?.localStorage?.getItem(`webmeet.roboTeam.${id}`) || '').trim();
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (_) {
+            return null;
+        }
+    },
+
+    saveRoboTeamSettings(roomId, settings) {
+        const id = String(roomId || '').trim();
+        if (!id || !settings) return;
+        try {
+            window?.localStorage?.setItem(`webmeet.roboTeam.${id}`, JSON.stringify(settings));
+        } catch (_) {
+            // Best effort persistence
+        }
     },
 
     getMeetingFromActionTarget(target) {
