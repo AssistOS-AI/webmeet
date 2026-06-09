@@ -1993,7 +1993,7 @@
     background: var(--backlog-status-approved-glow);
     padding: 5px;
     border-radius: 5px;
-    width: calc(100% - 5px);
+    width: calc(100% - 11px);
     cursor: pointer;
 }
 
@@ -2100,8 +2100,8 @@
     transition: opacity 0.15s ease;
     position: absolute;
     flex-direction: column;
-    top: 5px;
-    right: -10px;
+    top: 0px;
+    right: 0px;
 }
 
 .webmeet-list-item:hover .webmeet-room-actions,

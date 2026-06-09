@@ -59,9 +59,9 @@ export const BOT_ROLES = Object.freeze([
 
 export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     assistant: {
-        name: '',
+        name: 'Assistant',
         mode: 'meeting-assistant',
-        instructions: '',
+        instructions: 'Help participants follow the room objective, keep the discussion clear, and summarize important points.',
         scenarioOrObjective: 'meeting'
     },
     meetingNotes: {
@@ -80,14 +80,14 @@ export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     documentBuilder: {
         enabled: false,
         purpose: 'specification',
-        structureInstructions: '',
+        structureInstructions: 'Create a clear document with sections, decisions, open questions, and next actions.',
         toneInstructions: 'technical',
         participantCorrectionsEnabled: false,
         exportRequiresApproval: true
     },
     moderation: {
         enabled: false,
-        rules: '',
+        rules: 'Keep the conversation focused, respectful, and on topic.',
         speakingOrderEnabled: false,
         speakingTimeLimitEnabled: false,
         speakingTimeLimitMinutes: 5,
@@ -96,9 +96,9 @@ export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     },
     bots: {
         enabled: false,
-        allowedRoles: [],
-        roleInstructions: '',
-        personalityAndObjectives: '',
+        allowedRoles: ['expert'],
+        roleInstructions: 'Use the selected roles to support the room objective without interrupting the main discussion.',
+        personalityAndObjectives: 'Be helpful, concise, and aligned with the room objective.',
         organizerApprovalRequired: true
     },
     adaptation: {
@@ -116,6 +116,11 @@ export function normalizeRoboTeamSettings(settings) {
     for (const key of Object.keys(defaults)) {
         const section = input[key] && typeof input[key] === 'object' ? input[key] : {};
         result[key] = { ...defaults[key], ...section };
+    }
+    for (const key of ['name', 'mode', 'instructions', 'scenarioOrObjective']) {
+        if (!String(result.assistant[key] || '').trim()) {
+            result.assistant[key] = defaults.assistant[key];
+        }
     }
     return result;
 }

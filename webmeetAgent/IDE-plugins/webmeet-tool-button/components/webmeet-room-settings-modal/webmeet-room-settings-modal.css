@@ -1,5 +1,5 @@
 dialog.modal.webmeet-room-settings-modal-dialog {
-    width: min(640px, 94vw);
+    width: min(815px, 94vw);
     height: min(720px, 90vh);
     min-width: 480px;
     min-height: 420px;
@@ -258,6 +258,45 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
     background: color-mix(in srgb, var(--danger, #b91c1c) 10%, transparent);
 }
 
+.webmeet-robo-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    padding-bottom: 10px;
+}
+
+.webmeet-robo-tab {
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--text, #111827);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    min-height: 34px;
+    padding: 7px 10px;
+}
+
+.webmeet-robo-tab:hover {
+    background: var(--surface-soft, #f3f4f6);
+}
+
+.webmeet-robo-tab.is-active {
+    background: var(--accent, #2563eb);
+    border-color: var(--accent, #2563eb);
+    color: #fff;
+}
+
+.webmeet-robo-tab-panels {
+    min-width: 0;
+}
+
+.webmeet-robo-tab-panel[hidden] {
+    display: none !important;
+}
+
 .webmeet-robo-section {
     display: flex;
     flex-direction: column;
@@ -266,10 +305,6 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
     border: 1px solid var(--border, #e5e7eb);
     border-radius: 8px;
     background: var(--surface, #fff);
-}
-
-.webmeet-robo-section + .webmeet-robo-section {
-    margin-top: 4px;
 }
 
 .webmeet-robo-section-header {
@@ -324,6 +359,15 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
 
 .webmeet-robo-fields[hidden] {
     display: none !important;
+}
+
+.webmeet-robo-required {
+    color: var(--danger, #b91c1c);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-left: 3px;
+    vertical-align: middle;
 }
 
 .webmeet-robo-toggle-row {

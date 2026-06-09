@@ -19,6 +19,16 @@ function escapeHtml(value) {
         .replaceAll('"', '&quot;');
 }
 
+const ROBO_TEAM_TABS = Object.freeze([
+    { key: 'generalSettings', label: 'General settings' },
+    { key: 'meetingNotes', label: 'Meeting Notes' },
+    { key: 'blackboard', label: 'Blackboard' },
+    { key: 'documentBuilder', label: 'Document Builder' },
+    { key: 'moderation', label: 'Moderation' },
+    { key: 'bots', label: 'Bots' },
+    { key: 'adaptation', label: 'Adaptation' }
+]);
+
 export class WebmeetRoomSettingsModal {
     constructor(element, invalidate) {
         this.element = element;
@@ -27,6 +37,7 @@ export class WebmeetRoomSettingsModal {
         this.roomTitle = this.readData('roomTitle', 'room-title') || 'Room';
         this.roomLink = this.readData('roomLink', 'room-link');
         this.activeTab = 'general';
+        this.activeRoboTeamTab = 'generalSettings';
         this.roboTeamSettings = normalizeRoboTeamSettings(this.readData('roboTeamSettings', 'robo-team-settings'));
         this.dialogState = { isFullscreen: false, previous: null };
         this.result = null;
@@ -194,12 +205,6 @@ export class WebmeetRoomSettingsModal {
             const target = event.target;
             if (!target?.matches?.('[data-robo-toggle]')) return;
             const toggleKey = String(target.dataset?.roboToggle || '').trim();
-            const sectionKey = toggleKey.replace('.enabled', '');
-            if (toggleKey.endsWith('.enabled')) {
-                const section = this.roboTeamContent.querySelector(`[data-robo-section="${sectionKey}"]`);
-                const fields = section?.querySelector('.webmeet-robo-fields');
-                if (fields) fields.hidden = !target.checked;
-            }
             if (toggleKey === 'moderation.speakingTimeLimitEnabled') {
                 const conditional = this.roboTeamContent.querySelector('[data-robo-conditional="moderation.speakingTimeLimitEnabled"]');
                 if (conditional) conditional.hidden = !target.checked;
@@ -226,6 +231,29 @@ export class WebmeetRoomSettingsModal {
         for (const panel of this.element.querySelectorAll('[data-room-settings-panel]')) {
             const panelTab = String(panel.dataset?.roomSettingsPanel || '').trim();
             panel.hidden = panelTab !== this.activeTab;
+        }
+    }
+
+    setRoboTeamTab(target) {
+        const source = target?.target || target;
+        const tabElement = source?.closest?.('[data-robo-team-tab]') || source;
+        const tab = String(tabElement?.dataset?.roboTeamTab || '').trim();
+        if (!ROBO_TEAM_TABS.some((entry) => entry.key === tab)) return;
+        this.activeRoboTeamTab = tab;
+        this.updateRoboTeamTabVisibility();
+    }
+
+    updateRoboTeamTabVisibility() {
+        if (!this.roboTeamContent) return;
+        for (const button of this.roboTeamContent.querySelectorAll('[data-robo-team-tab]')) {
+            const tab = String(button.dataset?.roboTeamTab || '').trim();
+            const isActive = tab === this.activeRoboTeamTab;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        }
+        for (const panel of this.roboTeamContent.querySelectorAll('[data-robo-team-panel]')) {
+            const panelTab = String(panel.dataset?.roboTeamPanel || '').trim();
+            panel.hidden = panelTab !== this.activeRoboTeamTab;
         }
     }
 
@@ -275,6 +303,9 @@ export class WebmeetRoomSettingsModal {
             return;
         }
         const roboTeam = this.collectRoboTeamSettings();
+        if (!this.validateRoboTeamSettings(roboTeam)) {
+            return;
+        }
         assistOS.UI.closeModal(this.element, {
             roomId: this.roomId,
             name,
@@ -370,79 +401,145 @@ export class WebmeetRoomSettingsModal {
         return settings;
     }
 
+    validateRoboTeamSettings(settings) {
+        const invalid = [];
+        const requireText = (value, label, tab) => {
+            if (!String(value || '').trim()) invalid.push({ label, tab });
+        };
+        const requireArray = (value, label, tab) => {
+            if (!Array.isArray(value) || value.length === 0) invalid.push({ label, tab });
+        };
+
+        requireText(settings.assistant.name, 'Assistant name', 'generalSettings');
+        requireText(settings.assistant.mode, 'Assistant mode', 'generalSettings');
+        requireText(settings.assistant.instructions, 'Assistant instructions', 'generalSettings');
+        requireText(settings.assistant.scenarioOrObjective, 'Scenario / Objective', 'generalSettings');
+
+        if (settings.meetingNotes.enabled) {
+            requireArray(settings.meetingNotes.sections, 'Meeting Notes sections to track', 'meetingNotes');
+        }
+        if (settings.blackboard.enabled) {
+            requireText(settings.blackboard.visibility, 'Blackboard visibility', 'blackboard');
+        }
+        if (settings.documentBuilder.enabled) {
+            requireText(settings.documentBuilder.purpose, 'Document Builder purpose', 'documentBuilder');
+            requireText(settings.documentBuilder.structureInstructions, 'Document Builder structure instructions', 'documentBuilder');
+            requireText(settings.documentBuilder.toneInstructions, 'Document Builder tone', 'documentBuilder');
+        }
+        if (settings.moderation.enabled) {
+            requireText(settings.moderation.rules, 'Moderation rules', 'moderation');
+            if (settings.moderation.speakingTimeLimitEnabled && !Number.isFinite(Number(settings.moderation.speakingTimeLimitMinutes))) {
+                invalid.push({ label: 'Moderation time limit', tab: 'moderation' });
+            }
+        }
+        if (settings.bots.enabled) {
+            requireArray(settings.bots.allowedRoles, 'Bot allowed roles', 'bots');
+            requireText(settings.bots.roleInstructions, 'Bot role instructions', 'bots');
+            requireText(settings.bots.personalityAndObjectives, 'Bot personality & objectives', 'bots');
+        }
+
+        if (invalid.length === 0) return true;
+        this.activeTab = 'roboteam';
+        this.activeRoboTeamTab = invalid[0].tab;
+        this.updateTabVisibility();
+        this.updateRoboTeamTabVisibility();
+        this.showError(`${invalid[0].label} is required.`);
+        return false;
+    }
+
     renderRoboTeamContent() {
         if (!this.roboTeamContent) return;
         const s = normalizeRoboTeamSettings(this.roboTeamSettings);
-        this.roboTeamContent.innerHTML = [
-            this.renderAssistantSection(s.assistant),
-            this.renderFeatureSection({
-                key: 'meetingNotes',
-                title: 'Meeting Notes',
-                description: 'Generate structured notes from conversations.',
-                enabled: s.meetingNotes.enabled,
-                content: this.renderMeetingNotesFields(s.meetingNotes)
-            }),
-            this.renderFeatureSection({
-                key: 'blackboard',
-                title: 'Blackboard',
-                description: 'Visual representations of the discussion.',
-                enabled: s.blackboard.enabled,
-                content: this.renderBlackboardFields(s.blackboard)
-            }),
-            this.renderFeatureSection({
-                key: 'documentBuilder',
-                title: 'Document Builder',
-                description: 'Generate or update working documents from conversations.',
-                enabled: s.documentBuilder.enabled,
-                content: this.renderDocumentBuilderFields(s.documentBuilder)
-            }),
-            this.renderFeatureSection({
-                key: 'moderation',
-                title: 'Moderation',
-                description: 'AI assistance for room moderation.',
-                enabled: s.moderation.enabled,
-                content: this.renderModerationFields(s.moderation)
-            }),
-            this.renderFeatureSection({
-                key: 'bots',
-                title: 'Bots',
-                description: 'AI bots with specific roles in the room.',
-                enabled: s.bots.enabled,
-                content: this.renderBotsFields(s.bots)
-            }),
-            this.renderFeatureSection({
-                key: 'adaptation',
-                title: 'Adaptation & Consensus',
-                description: 'Allow the assistant to adapt based on conversation and chat.',
-                enabled: s.adaptation.enabled,
-                content: this.renderAdaptationFields(s.adaptation)
-            })
-        ].join('');
+        this.roboTeamContent.innerHTML = `
+            <div class="webmeet-robo-tabs" role="tablist" aria-label="Robo Team sections">
+                ${ROBO_TEAM_TABS.map((tab) => `
+                    <button type="button" class="webmeet-robo-tab${tab.key === this.activeRoboTeamTab ? ' is-active' : ''}"
+                            data-local-action="setRoboTeamTab" data-robo-team-tab="${escapeHtml(tab.key)}"
+                            role="tab" aria-selected="${tab.key === this.activeRoboTeamTab ? 'true' : 'false'}">
+                        ${escapeHtml(tab.label)}
+                    </button>
+                `).join('')}
+            </div>
+            <div class="webmeet-robo-tab-panels">
+                ${this.renderRoboPanel('generalSettings', this.renderAssistantSection(s.assistant))}
+                ${this.renderRoboPanel('meetingNotes', this.renderFeatureSection({
+                    key: 'meetingNotes',
+                    title: 'Meeting Notes',
+                    description: 'Generate structured notes from conversations.',
+                    enabled: s.meetingNotes.enabled,
+                    content: this.renderMeetingNotesFields(s.meetingNotes)
+                }))}
+                ${this.renderRoboPanel('blackboard', this.renderFeatureSection({
+                    key: 'blackboard',
+                    title: 'Blackboard',
+                    description: 'Visual representations of the discussion.',
+                    enabled: s.blackboard.enabled,
+                    content: this.renderBlackboardFields(s.blackboard)
+                }))}
+                ${this.renderRoboPanel('documentBuilder', this.renderFeatureSection({
+                    key: 'documentBuilder',
+                    title: 'Document Builder',
+                    description: 'Generate or update working documents from conversations.',
+                    enabled: s.documentBuilder.enabled,
+                    content: this.renderDocumentBuilderFields(s.documentBuilder)
+                }))}
+                ${this.renderRoboPanel('moderation', this.renderFeatureSection({
+                    key: 'moderation',
+                    title: 'Moderation',
+                    description: 'AI assistance for room moderation.',
+                    enabled: s.moderation.enabled,
+                    content: this.renderModerationFields(s.moderation)
+                }))}
+                ${this.renderRoboPanel('bots', this.renderFeatureSection({
+                    key: 'bots',
+                    title: 'Bots',
+                    description: 'AI bots with specific roles in the room.',
+                    enabled: s.bots.enabled,
+                    content: this.renderBotsFields(s.bots)
+                }))}
+                ${this.renderRoboPanel('adaptation', this.renderFeatureSection({
+                    key: 'adaptation',
+                    title: 'Adaptation & Consensus',
+                    description: 'Allow the assistant to adapt based on conversation and chat.',
+                    enabled: s.adaptation.enabled,
+                    content: this.renderAdaptationFields(s.adaptation)
+                }))}
+            </div>
+        `;
+        this.updateRoboTeamTabVisibility();
+    }
+
+    renderRoboPanel(key, content) {
+        return `
+            <section class="webmeet-robo-tab-panel" data-robo-team-panel="${escapeHtml(key)}"${key === this.activeRoboTeamTab ? '' : ' hidden'}>
+                ${content}
+            </section>
+        `;
     }
 
     renderAssistantSection(assistant) {
         return `
-            <div class="webmeet-robo-section">
-                <h3 class="webmeet-robo-section-title">Assistant</h3>
+            <div class="webmeet-robo-section" data-robo-section="generalSettings">
+                <h3 class="webmeet-robo-section-title">General settings</h3>
                 <p class="webmeet-robo-section-description">Common settings for the room's main Assistant.</p>
                 <div class="webmeet-robo-fields">
                     <label class="webmeet-room-settings-field">
-                        <span>Name</span>
-                        <input type="text" data-robo-field="assistant.name" value="${escapeHtml(assistant.name)}" placeholder="Assistant name" autocomplete="off">
+                        <span>Name <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                        <input type="text" data-robo-field="assistant.name" value="${escapeHtml(assistant.name)}" placeholder="Assistant name" autocomplete="off" required>
                     </label>
                     <label class="webmeet-room-settings-field">
-                        <span>Mode</span>
-                        <select data-robo-field="assistant.mode" class="form-input">
+                        <span>Mode <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                        <select data-robo-field="assistant.mode" class="form-input" required>
                             ${ASSISTANT_MODES.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === assistant.mode ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
                         </select>
                     </label>
                     <label class="webmeet-room-settings-field">
-                        <span>Instructions</span>
-                        <textarea data-robo-field="assistant.instructions" rows="3" placeholder="Describe the assistant's purpose, tone, and limits">${escapeHtml(assistant.instructions)}</textarea>
+                        <span>Instructions <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                        <textarea data-robo-field="assistant.instructions" rows="3" placeholder="Describe the assistant's purpose, tone, and limits" required>${escapeHtml(assistant.instructions)}</textarea>
                     </label>
                     <label class="webmeet-room-settings-field">
-                        <span>Scenario / Objective</span>
-                        <select data-robo-field="assistant.scenarioOrObjective" class="form-input">
+                        <span>Scenario / Objective <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                        <select data-robo-field="assistant.scenarioOrObjective" class="form-input" required>
                             ${SCENARIO_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === assistant.scenarioOrObjective ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
                         </select>
                     </label>
@@ -464,7 +561,7 @@ export class WebmeetRoomSettingsModal {
                         <span>Enable</span>
                     </label>
                 </div>
-                <div class="webmeet-robo-fields"${enabled ? '' : ' hidden'}>
+                <div class="webmeet-robo-fields">
                     ${content}
                 </div>
             </div>
@@ -474,7 +571,7 @@ export class WebmeetRoomSettingsModal {
     renderMeetingNotesFields(notes) {
         return `
             <div class="webmeet-robo-field-group">
-                <span class="webmeet-robo-field-group-label">Sections to track</span>
+                <span class="webmeet-robo-field-group-label">Sections to track <span class="webmeet-robo-required" aria-label="required">*</span></span>
                 <div class="webmeet-robo-checklist">
                     ${MEETING_NOTES_SECTIONS.map((opt) => `
                         <label class="webmeet-robo-check-item">
@@ -502,8 +599,8 @@ export class WebmeetRoomSettingsModal {
     renderBlackboardFields(bb) {
         return `
             <label class="webmeet-room-settings-field">
-                <span>Visibility</span>
-                <select data-robo-field="blackboard.visibility" class="form-input">
+                <span>Visibility <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <select data-robo-field="blackboard.visibility" class="form-input" required>
                     ${BLACKBOARD_VISIBILITY_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === bb.visibility ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
                 </select>
             </label>
@@ -521,18 +618,18 @@ export class WebmeetRoomSettingsModal {
     renderDocumentBuilderFields(doc) {
         return `
             <label class="webmeet-room-settings-field">
-                <span>Purpose</span>
-                <select data-robo-field="documentBuilder.purpose" class="form-input">
+                <span>Purpose <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <select data-robo-field="documentBuilder.purpose" class="form-input" required>
                     ${DOCUMENT_PURPOSE_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === doc.purpose ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
                 </select>
             </label>
             <label class="webmeet-room-settings-field">
-                <span>Structure instructions</span>
-                <textarea data-robo-field="documentBuilder.structureInstructions" rows="3" placeholder="Describe sections, order, detail level">${escapeHtml(doc.structureInstructions)}</textarea>
+                <span>Structure instructions <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <textarea data-robo-field="documentBuilder.structureInstructions" rows="3" placeholder="Describe sections, order, detail level" required>${escapeHtml(doc.structureInstructions)}</textarea>
             </label>
             <label class="webmeet-room-settings-field">
-                <span>Tone</span>
-                <select data-robo-field="documentBuilder.toneInstructions" class="form-input">
+                <span>Tone <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <select data-robo-field="documentBuilder.toneInstructions" class="form-input" required>
                     ${DOCUMENT_TONE_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === doc.toneInstructions ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
                 </select>
             </label>
@@ -550,8 +647,8 @@ export class WebmeetRoomSettingsModal {
     renderModerationFields(mod) {
         return `
             <label class="webmeet-room-settings-field">
-                <span>Rules</span>
-                <textarea data-robo-field="moderation.rules" rows="3" placeholder="Participation rules, behavior, intervention triggers">${escapeHtml(mod.rules)}</textarea>
+                <span>Rules <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <textarea data-robo-field="moderation.rules" rows="3" placeholder="Participation rules, behavior, intervention triggers" required>${escapeHtml(mod.rules)}</textarea>
             </label>
             <label class="webmeet-robo-toggle-row">
                 <input type="checkbox" data-robo-toggle="moderation.speakingOrderEnabled"${mod.speakingOrderEnabled ? ' checked' : ''}>
@@ -563,8 +660,8 @@ export class WebmeetRoomSettingsModal {
             </label>
             <div class="webmeet-robo-inline-field" data-robo-conditional="moderation.speakingTimeLimitEnabled"${mod.speakingTimeLimitEnabled ? '' : ' hidden'}>
                 <label class="webmeet-room-settings-field">
-                    <span>Time limit (minutes)</span>
-                    <input type="number" data-robo-field="moderation.speakingTimeLimitMinutes" value="${mod.speakingTimeLimitMinutes}" min="1" max="60">
+                    <span>Time limit (minutes) <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                    <input type="number" data-robo-field="moderation.speakingTimeLimitMinutes" value="${mod.speakingTimeLimitMinutes}" min="1" max="60" required>
                 </label>
             </div>
             <label class="webmeet-robo-toggle-row">
@@ -581,7 +678,7 @@ export class WebmeetRoomSettingsModal {
     renderBotsFields(bots) {
         return `
             <div class="webmeet-robo-field-group">
-                <span class="webmeet-robo-field-group-label">Allowed roles</span>
+                <span class="webmeet-robo-field-group-label">Allowed roles <span class="webmeet-robo-required" aria-label="required">*</span></span>
                 <div class="webmeet-robo-checklist">
                     ${BOT_ROLES.map((opt) => `
                         <label class="webmeet-robo-check-item">
@@ -592,12 +689,12 @@ export class WebmeetRoomSettingsModal {
                 </div>
             </div>
             <label class="webmeet-room-settings-field">
-                <span>Role instructions</span>
-                <textarea data-robo-field="bots.roleInstructions" rows="3" placeholder="What roles should do and how to interact">${escapeHtml(bots.roleInstructions)}</textarea>
+                <span>Role instructions <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <textarea data-robo-field="bots.roleInstructions" rows="3" placeholder="What roles should do and how to interact" required>${escapeHtml(bots.roleInstructions)}</textarea>
             </label>
             <label class="webmeet-room-settings-field">
-                <span>Personality & objectives</span>
-                <textarea data-robo-field="bots.personalityAndObjectives" rows="3" placeholder="Personality, objectives, and limits">${escapeHtml(bots.personalityAndObjectives)}</textarea>
+                <span>Personality & objectives <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <textarea data-robo-field="bots.personalityAndObjectives" rows="3" placeholder="Personality, objectives, and limits" required>${escapeHtml(bots.personalityAndObjectives)}</textarea>
             </label>
             <label class="webmeet-robo-toggle-row is-locked">
                 <input type="checkbox" checked disabled>
