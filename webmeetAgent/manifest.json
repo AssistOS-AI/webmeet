@@ -32,7 +32,6 @@
                     "required": false,
                     "generatedSecret": true
                 },
-                "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
                 {
@@ -138,7 +137,6 @@
                     "required": false,
                     "generatedSecret": true
                 },
-                "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
                 {
@@ -243,7 +241,6 @@
                     "required": true,
                     "generatedSecret": true
                 },
-                "SOUL_GATEWAY_API_KEY",
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
                 {
