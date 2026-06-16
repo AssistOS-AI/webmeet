@@ -292,6 +292,55 @@
         "resourceId": { "type": "string", "optional": false }
       },
       "env": { "TOOL_NAME": "webmeet_resource_remove" }
+    },
+    {
+      "name": "webmeet_blackboard_get",
+      "title": "WebMeet Get Blackboard",
+      "description": "Read the filtered blackboard state for a room participant.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_blackboard_get" }
+    },
+    {
+      "name": "webmeet_blackboard_apply",
+      "title": "WebMeet Apply Blackboard Change",
+      "description": "Persist one final blackboard change and emit the canonical update data.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true },
+        "change": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_blackboard_apply" }
+    },
+    {
+      "name": "webmeet_blackboard_undo",
+      "title": "WebMeet Undo Blackboard Change",
+      "description": "Undo the last authorized final blackboard change.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_blackboard_undo" }
+    },
+    {
+      "name": "webmeet_blackboard_redo",
+      "title": "WebMeet Redo Blackboard Change",
+      "description": "Redo the last authorized undone blackboard change.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_blackboard_redo" }
     }
   ]
 }

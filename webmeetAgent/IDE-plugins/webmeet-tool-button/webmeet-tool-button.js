@@ -85,11 +85,24 @@ export class WebMeetToolButton {
         });
     }
 
+    getWebMeetAgentName() {
+        return String(
+            this.hostContext?.pluginAgent
+            || this.hostContext?.agent
+            || this.element.getAttribute('data-plugin-agent')
+            || 'webmeetAgent'
+        ).trim() || 'webmeetAgent';
+    }
+
+    buildRoomLoaderUrl() {
+        const agentName = this.getWebMeetAgentName();
+        return new URL(`/${encodeURIComponent(agentName)}/roomLoader.html`, window.location.origin);
+    }
+
     openDashboard = async (event) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        const targetUrl = new URL(window.location.href);
-        targetUrl.hash = 'webmeet-dashboard';
+        const targetUrl = this.buildRoomLoaderUrl();
         window.open(targetUrl.toString(), '_blank', 'noopener');
         this.scheduleInitialTabLoaderCleanup();
     };

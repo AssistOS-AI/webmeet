@@ -12,7 +12,15 @@ export class WebMeetDashboard {
         }
         await Promise.all([
             ensureComponentRegistered('webmeet-dashbaoard'),
-            ensureComponentRegistered('webmeet-participant-card')
+            ensureComponentRegistered('webmeet-participant-card'),
+            ensureComponentRegistered('webmeet-blackboard-toolbar'),
+            ensureComponentRegistered('webmeet-blackboard-widget-editor'),
+            ensureComponentRegistered('webmeet-blackboard-results-panel'),
+            ensureComponentRegistered('webmeet-blackboard-panel'),
+            ensureComponentRegistered('webmeet-settings-modal'),
+            ensureComponentRegistered('webmeet-room-settings-modal'),
+            ensureComponentRegistered('webmeet-participant-audio-modal'),
+            ensureComponentRegistered('create-room-modal')
         ]);
     }
 

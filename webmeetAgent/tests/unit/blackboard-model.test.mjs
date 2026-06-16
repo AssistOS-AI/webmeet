@@ -33,6 +33,25 @@ import {
 } from '../../lib/blackboard/protocol.mjs';
 import { BlackboardNetworkAdapter } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/blackboard/blackboard-network-adapter.js';
 
+const BLACKBOARD_PANEL_MODULES = [
+    'webmeet-blackboard-panel.js',
+    'webmeet-blackboard-actions.js',
+    'webmeet-blackboard-geometry.js',
+    'webmeet-blackboard-interactions.js',
+    'webmeet-blackboard-rendering.js'
+];
+
+async function readBlackboardPanelSource() {
+    const panelDir = path.resolve(
+        import.meta.dirname,
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components/webmeet-blackboard-panel'
+    );
+    const sources = await Promise.all(
+        BLACKBOARD_PANEL_MODULES.map((fileName) => fs.readFile(path.join(panelDir, fileName), 'utf8'))
+    );
+    return sources.join('\n');
+}
+
 test('blackboard applies final create, patch and delete operations', () => {
     const blackboard = new Blackboard({ roomId: 'room_1' });
     blackboard.applyFinalChange({
@@ -243,10 +262,7 @@ test('blackboard UI editing does not use browser prompt dialogs', async () => {
         import.meta.dirname,
         '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components'
     );
-    const source = await fs.readFile(
-        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const source = await readBlackboardPanelSource();
     const toolbarSource = await fs.readFile(
         path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.js'),
         'utf8'
@@ -273,10 +289,7 @@ test('blackboard UI editing does not use browser prompt dialogs', async () => {
 });
 
 test('RoboTeam card widgets persist inline edits into the canonical text property', async () => {
-    const source = await fs.readFile(
-        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components/webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const source = await readBlackboardPanelSource();
     const editableTextMethod = source.slice(
         source.indexOf('    getEditableWidgetText(widget)'),
         source.indexOf('\n    startInlineTextEdit(widget)', source.indexOf('    getEditableWidgetText(widget)'))
@@ -294,10 +307,7 @@ test('RoboTeam card widgets persist inline edits into the canonical text propert
 });
 
 test('blackboard realtime widget updates refresh the rendered panel', async () => {
-    const panelSource = await fs.readFile(
-        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components/webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const panelSource = await readBlackboardPanelSource();
     const controllerSource = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/blackboard-methods.js'),
         'utf8'
@@ -404,10 +414,7 @@ test('blackboard opens as the focused item inside the participant video layout',
 });
 
 test('blackboard widgets support final resize changes for shape line card and text', async () => {
-    const source = await fs.readFile(
-        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components/webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const source = await readBlackboardPanelSource();
     const css = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components/webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
         'utf8'
@@ -428,10 +435,7 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
         import.meta.dirname,
         '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components'
     );
-    const panelSource = await fs.readFile(
-        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const panelSource = await readBlackboardPanelSource();
     const panelCss = await fs.readFile(
         path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
         'utf8'
@@ -484,10 +488,7 @@ test('blackboard toolbar updates persisted board background metadata', async () 
         import.meta.dirname,
         '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components'
     );
-    const panelSource = await fs.readFile(
-        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const panelSource = await readBlackboardPanelSource();
     const toolbarSource = await fs.readFile(
         path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.js'),
         'utf8'
@@ -554,10 +555,7 @@ test('blackboard panel is a static WebSkel child driven through DOM events', asy
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/blackboard-methods.js'),
         'utf8'
     );
-    const panelSource = await fs.readFile(
-        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/components/webmeet-blackboard-panel/webmeet-blackboard-panel.js'),
-        'utf8'
-    );
+    const panelSource = await readBlackboardPanelSource();
     const parentSource = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.js'),
         'utf8'

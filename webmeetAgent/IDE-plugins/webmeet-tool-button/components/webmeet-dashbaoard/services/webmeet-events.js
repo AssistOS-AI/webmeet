@@ -26,7 +26,9 @@ export const WEBMEET_EVENT_TYPES = Object.freeze({
     AGENT_DISPATCHED: 'agent.dispatched',
     AGENT_DETACHED: 'agent.detached',
     RESOURCE_CREATED: 'resource.created',
-    RESOURCE_REMOVED: 'resource.removed'
+    RESOURCE_REMOVED: 'resource.removed',
+    BLACKBOARD_UPDATED: 'blackboard.updated',
+    BLACKBOARD_VISIBILITY_CHANGED: 'blackboard.visibility_changed'
 });
 
 const EVENT_DEFINITIONS = Object.freeze({
@@ -104,6 +106,16 @@ const EVENT_DEFINITIONS = Object.freeze({
         persistent: true,
         workspacePersistent: false,
         required: ['meetingId', 'resourceId']
+    },
+    [WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED]: {
+        persistent: true,
+        workspacePersistent: false,
+        required: ['meetingId', 'blackboardVersion', 'changeType']
+    },
+    [WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED]: {
+        persistent: false,
+        workspacePersistent: false,
+        required: ['meetingId', 'participantId', 'visible']
     }
 });
 

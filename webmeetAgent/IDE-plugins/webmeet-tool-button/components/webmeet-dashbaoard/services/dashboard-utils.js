@@ -165,7 +165,16 @@ export function syncBrowserRoomUrl(roomId, options = {}) {
     if (typeof window === 'undefined' || !window.history || !window.location) {
         return false;
     }
-    const targetPath = `/explorer/index.html?roomId=${encodeURIComponent(id)}#webmeet-dashboard`;
+    const currentPathname = String(window.location.pathname || '');
+    const isStandaloneRoomLoader = currentPathname.endsWith('/roomLoader.html');
+    const targetUrl = isStandaloneRoomLoader
+        ? new URL(currentPathname, window.location.origin)
+        : new URL('/explorer/index.html', window.location.origin);
+    targetUrl.searchParams.set('roomId', id);
+    if (!isStandaloneRoomLoader) {
+        targetUrl.hash = 'webmeet-dashboard';
+    }
+    const targetPath = `${targetUrl.pathname}${targetUrl.search || ''}${targetUrl.hash || ''}`;
     const currentPath = `${window.location.pathname || ''}${window.location.search || ''}${window.location.hash || ''}`;
     if (currentPath === targetPath) {
         return false;

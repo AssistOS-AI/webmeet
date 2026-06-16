@@ -14,6 +14,8 @@ function getParticipantId(dashboard) {
     return String(
         dashboard.state.session?.participantIdentity
         || dashboard.state.session?.participant?.id
+        || dashboard.state.session?.participant?.identity
+        || dashboard.room?.localParticipant?.identity
         || ''
     ).trim();
 }
@@ -124,10 +126,7 @@ export const blackboardMethods = {
             presenterId: visible ? presenterId : '',
             presenterName: visible ? (presenterName || this.getBlackboardPresenterName(presenterId)) : ''
         };
-        if (visible) {
-            if (!this.blackboardPanelReady) {
-                return;
-            }
+        if (visible && this.blackboardPanelReady) {
             await this.connectBlackboardPanel();
         }
         this.renderBlackboardSurface();
@@ -211,6 +210,8 @@ export const blackboardMethods = {
         if (this.blackboardSurface.parentElement !== this.videoGridAll) {
             this.videoGridAll.prepend(this.blackboardSurface);
         }
+        this.blackboardSurface.classList.remove('webmeet-hidden');
+        this.blackboardSurface.classList.add('is-focused');
         this.videoGridEmpty?.classList.add('webmeet-hidden');
         this.videoGridAll.classList.remove('webmeet-hidden');
         this.videoGridAll.classList.add('has-focus');

@@ -921,6 +921,55 @@
     background: var(--webmeet-video-stage-background);
 }
 
+.webmeet-video-all.has-focus .webmeet-blackboard-surface.is-focused {
+    order: -1;
+    flex: 1 0 100%;
+    width: clamp(240px, calc(100% - 92px), 100%);
+    min-height: 220px;
+    height: 100%;
+}
+
+.webmeet-blackboard-surface {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.webmeet-blackboard-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 38px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-strong);
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.webmeet-blackboard-presenter {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-soft);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.webmeet-blackboard-surface webmeet-blackboard-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: block;
+}
+
 .webmeet-video-empty {
     flex: 1 1 auto;
     min-height: 0;

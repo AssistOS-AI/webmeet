@@ -16,6 +16,7 @@ webmeet-blackboard-panel {
     overflow: hidden;
     border: 1px solid #d6deea;
     background: var(--blackboard-background-color);
+    height: 100%;
 }
 
 .webmeet-blackboard-widget {

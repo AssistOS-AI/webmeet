@@ -1,5 +1,6 @@
 import { isMicrophonePublication } from '../services/microphone-publication.js';
 import { buildWebMeetAvatarSource } from '../services/webmeet-avatar-override.js';
+import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 function getParticipantUserIdFromParticipant(participant = null) {
     return String(
@@ -116,6 +117,20 @@ function isRoboTeamParticipant(owner, participantId = '', view = null) {
         return true;
     }
     return Boolean(findRoboTeamAgent(owner, id, view));
+}
+
+function getActionTarget(input = null) {
+    return input?.target || input?.currentTarget || input;
+}
+
+function getLocalParticipantId(owner) {
+    return String(
+        owner.state.session?.participantIdentity
+        || owner.state.session?.participant?.id
+        || owner.state.session?.participant?.identity
+        || owner.room?.localParticipant?.identity
+        || ''
+    ).trim();
 }
 
 export const participantViewMethods = {
@@ -287,18 +302,15 @@ export const participantViewMethods = {
     },
 
     async focusParticipantCard(target) {
-        const participantId = String(target?.dataset?.participantId || target?.closest?.('[data-participant-id]')?.dataset?.participantId || '').trim();
+        const actionTarget = getActionTarget(target);
+        const participantId = String(actionTarget?.dataset?.participantId || actionTarget?.closest?.('[data-participant-id]')?.dataset?.participantId || '').trim();
         const view = participantId
             ? this.participantLayoutController?.getParticipantView?.(participantId)
             : null;
         const agent = findRoboTeamAgent(this, participantId, view);
         if (isRoboTeamParticipant(this, participantId, view)) {
             const meetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
-            const actorParticipantId = String(
-                this.state.session?.participantIdentity
-                || this.state.session?.participant?.id
-                || ''
-            ).trim();
+            const actorParticipantId = getLocalParticipantId(this);
             if (!meetingId) return;
             if (!actorParticipantId) {
                 this.setError?.('Join a meeting before opening the blackboard.');
@@ -315,7 +327,7 @@ export const participantViewMethods = {
                     presenterName
                 });
                 await this.publishRealtimePayload?.({
-                    type: 'blackboard.visibility_changed',
+                    type: WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED,
                     meetingId,
                     participantId: actorParticipantId,
                     visible: true,
@@ -330,7 +342,7 @@ export const participantViewMethods = {
         if (this.state.blackboard?.visible) {
             this.collapseBlackboardFocus?.();
         }
-        this.participantLayoutController.focusParticipantCard(target);
+        this.participantLayoutController.focusParticipantCard(actionTarget);
     },
 
     setParticipantMicState(participantId, isMicOn) {

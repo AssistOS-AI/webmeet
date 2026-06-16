@@ -36,7 +36,7 @@ export class BlackboardNetworkAdapter {
         const response = await this.runTool('webmeet_blackboard_apply', {
             roomId: this.roomId,
             participantId: this.participantId,
-            change
+            change: JSON.stringify(change || {})
         });
         await this.publishFinalUpdate(response, change?.changeType || 'update');
         return response;
