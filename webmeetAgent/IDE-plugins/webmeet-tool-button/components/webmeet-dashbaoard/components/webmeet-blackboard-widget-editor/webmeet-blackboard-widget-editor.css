@@ -1,0 +1,77 @@
+webmeet-blackboard-widget-editor {
+    position: absolute;
+    top: 52px;
+    right: 12px;
+    z-index: 20;
+    width: min(320px, calc(100% - 24px));
+    font-family: system-ui, sans-serif;
+}
+
+.webmeet-blackboard-widget-editor {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+}
+
+.webmeet-blackboard-editor-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: #172033;
+}
+
+.webmeet-blackboard-editor-field {
+    display: grid;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+}
+
+.webmeet-blackboard-editor-field input,
+.webmeet-blackboard-editor-field textarea,
+.webmeet-blackboard-editor-field select {
+    min-width: 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 7px 8px;
+    font: inherit;
+    font-size: 13px;
+    color: #172033;
+}
+
+.webmeet-blackboard-editor-field textarea {
+    min-height: 68px;
+    resize: vertical;
+}
+
+.webmeet-blackboard-editor-color-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.webmeet-blackboard-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.webmeet-blackboard-editor-actions button {
+    height: 30px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.webmeet-blackboard-editor-save {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+}

@@ -106,7 +106,7 @@ Security boundaries are separate:
 | Boundary | Protection | Limit |
 | --- | --- | --- |
 | Browser to WebMeet tools | Ploinky router auth and secure MCP/HTTP invocation. | Protects application tools, not direct LiveKit media sockets. |
-| Guest invite HTTP service | Scoped `/explorer/index.html?roomId=<roomId>*` guest route plus roomId-scoped guest session. | Does not grant Explorer or generic MCP access. |
+| Guest invite HTTP service | Scoped `/<webmeetAgent>/roomLoader.html?roomId=<roomId>*` guest route plus roomId-scoped guest session. | Does not grant Explorer or generic MCP access. |
 | LiveKit participant access | Room-scoped LiveKit JWT signed by `WEBMEET_LIVEKIT_API_SECRET`. | Token holders can use grants until expiry. |
 | LiveKit API/signaling | Server-side API key/secret, TLS for public signaling. | Signaling port is also an API surface and must not be exposed without controls. |
 | Redis | Loopback or bridge-local runtime service. | Not product data and must not be publicly exposed. |

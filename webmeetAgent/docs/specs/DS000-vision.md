@@ -3,16 +3,16 @@ id: DS000
 title: WebMeet Agent Vision
 status: implemented
 owner: webmeet-team
-summary: Defines webmeetAgent as the WebMeet application control plane and keeps media, AI-worker, STT, and infrastructure responsibilities separate.
+summary: Defines webmeetAgent as the WebMeet application control plane and keeps media, Ploinky room-agent, STT, and infrastructure responsibilities separate.
 ---
 
 # DS000 - WebMeet Agent Vision
 
 ## Introduction
 
-`webmeetAgent` is the Ploinky application agent for WebMeet rooms inside AssistOSExplorer. It owns the application control plane: room records, room-scoped public link access, LiveKit participant token issuance, meeting chat, room resources, AI dispatch metadata, and the Explorer WebMeet plugin.
+`webmeetAgent` is the Ploinky application agent for WebMeet rooms inside AssistOSExplorer. It owns the application control plane: room records, room-scoped public link access, LiveKit participant token issuance, meeting chat, room resources, blackboard state, Ploinky room-agent metadata, and the Explorer WebMeet plugin.
 
-Live audio, video, screen share, Redis coordination, TURN/STUN, production TLS termination, and optional LiveKit AI workers are adjacent WebMeet runtime components. They are not owned by the `webmeetAgent` process.
+Live audio, video, screen share, Redis coordination, TURN/STUN, and production TLS termination are adjacent WebMeet runtime components. They are not owned by the `webmeetAgent` process.
 
 ## Core Content
 
@@ -20,10 +20,10 @@ WebMeet is split into explicit responsibility planes:
 
 | Area | Owner | Contract |
 | --- | --- | --- |
-| WebMeet control plane | `webmeetAgent` | Durable rooms, members, roomId scopes, chat, resources, AI dispatch metadata, and LiveKit participant JWTs. |
+| WebMeet control plane | `webmeetAgent` | Durable rooms, members, roomId scopes, chat, resources, blackboard state, Ploinky room-agent metadata, and LiveKit participant JWTs. |
 | Browser meeting UI | `webmeetAgent/IDE-plugins/webmeet-tool-button` | Explorer dashboard and direct room entry UI, LiveKit browser connection, media controls, chat composer, participant rendering, and browser-scoped media/avatar preferences. |
 | Live media plane | `webmeetInfra/liveKitServerAgent` | LiveKit SFU, WebSocket signaling, WebRTC negotiation, RTP/RTCP forwarding, LiveKit data-channel delivery, Redis, Coturn, and production Nginx/Certbot. |
-| Optional AI worker | `webmeetLivekitAiAgent` | Self-hosted LiveKit Agents worker that accepts explicit dispatch jobs and appears as a real LiveKit `AGENT` participant. |
+| RoboTeam room agent | `webmeetAgent` | Ploinky-managed virtual room agent that appears in WebMeet roster and can update the blackboard through WebMeet tools. |
 
 The central invariant is that WebMeet rooms are discovered, authorized, and persisted by `webmeetAgent`. LiveKit rooms carry the live media session. Redis is infrastructure runtime state for LiveKit; it is not the WebMeet application database.
 
@@ -57,7 +57,7 @@ The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet
 
 `webmeetAgent` must keep its persistent store under the configured WebMeet data directory, normally the `/data` container mount backed by `.ploinky/data/webmeetAgent/data`.
 
-`webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent`, but it must not implicitly launch the optional `webmeetLivekitAiAgent`; stacks that need self-hosted AI participants must enable that worker explicitly. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, start LiveKit Server, or launch sibling Ploinky agents.
+`webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent`, but it must not launch sibling Ploinky agents or external AI workers. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, or start LiveKit Server.
 
 ## Decisions & Questions
 

@@ -30,6 +30,11 @@ export function isAdminAuthInfo(authInfo = null) {
         || normalized.principalId === 'user:local:admin';
 }
 
+export function isGuestAuthInfo(authInfo = null) {
+    const normalized = normalizeAuthInfo(authInfo);
+    return normalized.roles.some((role) => String(role || '').trim().toLowerCase() === 'guest');
+}
+
 function hasAuthenticatedPrincipal(authInfo = null) {
     const normalized = normalizeAuthInfo(authInfo);
     return Boolean(normalized.id || normalized.principalId);
@@ -86,6 +91,9 @@ export function isMeetingRecordOpen(record) {
 export function canViewMeetingRecord(record, authInfo = null) {
     if (!hasAuthenticatedPrincipal(authInfo)) {
         return false;
+    }
+    if (isGuestAuthInfo(authInfo)) {
+        return isMeetingRecordOpen(record) && String(record?.roomType || '').trim() === 'guest';
     }
     if (!isMeetingRecordOpen(record)) {
         return isAdminAuthInfo(authInfo);

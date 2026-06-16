@@ -14,6 +14,22 @@
     "repos": {
         "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
     },
+    "routerAccess": {
+        "httpRoutes": [
+            {
+                "path": "/roomLoader.html",
+                "access": "guest"
+            },
+            {
+                "path": "/static-files/*",
+                "access": "public"
+            },
+            {
+                "path": "/IDE-plugins/webmeet-tool-button/*",
+                "access": "public"
+            }
+        ]
+    },
     "volumes": {
         ".ploinky/data/webmeetAgent/data": "/data"
     },
@@ -115,11 +131,6 @@
                     "name": "WEBMEET_AGENT_NAME",
                     "required": false,
                     "default": "WebMeetAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT_NAME",
-                    "required": false,
-                    "default": "webmeet-agent"
                 }
             ]
         },
@@ -220,11 +231,6 @@
                     "name": "WEBMEET_AGENT_NAME",
                     "required": false,
                     "default": "WebMeetAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT_NAME",
-                    "required": false,
-                    "default": "webmeet-agent"
                 }
             ]
         },
@@ -319,11 +325,6 @@
                     "name": "WEBMEET_AGENT_NAME",
                     "required": false,
                     "default": "WebMeetAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT_NAME",
-                    "required": false,
-                    "default": "webmeet-agent"
                 }
             ]
         }

@@ -3,7 +3,7 @@ id: DS003
 title: Application Runtime And Events
 status: implemented
 owner: webmeet-team
-summary: Defines the WebMeet MCP tools, browser shells, event encoding, chat persistence, resources, AI dispatch metadata, and avatar rendering boundaries.
+summary: Defines the WebMeet MCP tools, browser shells, event encoding, chat persistence, resources, Ploinky room-agent metadata, and avatar rendering boundaries.
 ---
 
 # DS003 - Application Runtime And Events
@@ -24,10 +24,10 @@ The manifest does not declare a WebMeet product HTTP API. Browser-facing WebMeet
 
 | Surface | Owner | Contract |
 | --- | --- | --- |
-| `/explorer/index.html?roomId=<roomId>` | Ploinky core router | Direct room entry. Authenticated users keep their normal identity; unauthenticated visitors receive a public-protected room scope. |
+| `/<webmeetAgent>/roomLoader.html?roomId=<roomId>` | Ploinky core router | Direct room entry. Authenticated users keep their normal identity; unauthenticated visitors receive a public-protected room scope and see only the linked room. |
 | Generic MCP route | Ploinky core router | Router-minted invocation identity and scopes are forwarded to WebMeet MCP tools. |
 
-Direct container ports are implementation details. Ploinky core owns public-protected endpoint handling and whitelisting for Explorer, WebMeet plugin assets, shared UI components, and avatar assets. WebMeet must not add router-level guest asset bypasses or generated pages.
+Direct container ports are implementation details. Ploinky core owns public-protected endpoint handling and whitelisting for WebMeet `roomLoader.html`, WebMeet plugin assets, shared UI components, and avatar assets. WebMeet must not add router-level guest asset bypasses or generated pages.
 
 Explorer users and public-protected room visitors call MCP tools through the Explorer host and generic Ploinky MCP route. Tool groups include room listing/creation/join/leave, room events, participant avatar updates, room rename/archive, chat, AI agents, and resources. MCP tool invocations must be authorized by router-minted Router Request JWTs, except for JSON-RPC metadata methods such as initialize, tool listing, resource listing, cancellation notifications, and ping.
 
@@ -39,7 +39,8 @@ The browser intentionally talks to two systems:
 | Authenticated join and leave | `webmeetAgent` MCP | Authorize entry, update durable membership, and mint a LiveKit token. |
 | Public-protected join, state, leave, chat, avatar | `webmeetAgent` MCP | RoomId-link flow authorized from the router-minted room scope. |
 | Chat writes | `webmeetAgent` | Authoritative persistence in the encrypted meeting payload. |
-| AI attach/detach | `webmeetAgent` | Admin command path that creates/deletes explicit LiveKit dispatches. |
+| Blackboard final changes | `webmeetAgent` MCP | Authoritative final widget/object mutations, filtered room snapshots, undo/redo, and durable event emission. |
+| Room-agent enable/disable/list | `webmeetAgent` MCP | Admin command path and participant-visible metadata for Ploinky-managed room agents persisted in the encrypted room payload. |
 | Mic, camera, screen share, participant attributes, room hints | LiveKit | Live media and best-effort in-room realtime state. |
 
 WebMeet event transport uses one encoded event string:
@@ -52,7 +53,7 @@ The `room` segment is the meeting id for meeting-scoped events and the workspace
 
 `webmeet-events.js` is the sole event contract module for store and browser UI code. It defines `WEBMEET_EVENT_TYPES`, payload validators, event builders/parsers, and persistence flags. Persistent event logs store encoded event strings directly in `.event` files. New callers must not write ad-hoc JSON event objects.
 
-Persistent event types include room creation/rename/archive, participant membership changes, profile avatar updates, persisted chat notifications, AI dispatch metadata, and resource metadata events. Realtime-only event types include LiveKit data-channel chat delivery, live avatar projection, and avatar state requests. Realtime-only event types must not be written to durable meeting or workspace event logs.
+Persistent event types include room creation/rename/archive, participant membership changes, profile avatar updates, persisted chat notifications, Ploinky room-agent metadata, blackboard updates, and resource metadata events. Realtime-only event types include LiveKit data-channel chat delivery, live avatar projection, blackboard visibility, and avatar state requests. Realtime-only event types must not be written to durable meeting or workspace event logs.
 
 Meeting mutation callbacks stage event intents via a `stageEvent(scope, type, data)` closure instead of calling `recordMeetingEvent` directly. Staged events are appended to the event log only after the encrypted payload save succeeds, ensuring the event log never references payload state that was not persisted. Meeting creation writes the meeting record before appending its creation event. Event append failures after a successful save are best-effort and do not roll back the mutation.
 
@@ -62,13 +63,15 @@ New selected-room features should be added to `WebMeetRoom` or its explicit adap
 
 Participant avatars are live rendering projections, not durable room profile state. Local authenticated participants may read their saved AxiFace profile avatar from Explorer's protected avatar settings service, and the current browser may apply a browser-scoped WebMeet avatar override. The dashboard must resolve the active local avatar before connecting LiveKit and before participant cards render: browser-local WebMeet override wins, then saved DPU profile avatar, then an explicit initial-letter fallback. Explorer profile responses with `source.kind="fallback"` or `source.kind="error"` are not saved avatars and must not be projected as generated AxiFace room avatars. Remote participant cards must not read another user's DPU My Space or protected avatar settings. Connected clients render the current LiveKit participant attribute/data-channel projection; unresolved workspace users and guests use only their live projection or deterministic local fallback. Participant cards must receive avatar updates through a dedicated avatar state channel, separate from the general media/card state channel. Media-only participant updates such as microphone publish, mute, unmute, audio subscription, and video track changes must not clear, recalculate, or rerender an already projected avatar; only a new avatar projection, avatar settings change, quick avatar action, participant disconnect, or explicit room UI reset may replace or remove that projected avatar.
 
-WebMeet avatar override settings use the shared `shared/ui/avatar-settings-form` WebSkel component. The dashboard owns browser-local override storage, quick presets, and room projection publishing, while the shared component owns only source-mode rendering and draft normalization. The source modes are `generated`, `pack`, and `svg`; WebMeet must not maintain separate handwritten avatar setting inputs for `generated`, `src`, and `packSrc`. Guest access to the shared component and avatar assets is provided by Ploinky core whitelisting, not by WebMeet-specific asset routes.
+WebMeet avatar override settings use the Explorer-hosted `explorer/ui-shared/avatar-settings-form` WebSkel component. The dashboard owns browser-local override storage, quick presets, and room projection publishing, while the shared component owns only source-mode rendering and draft normalization. The source modes are `generated`, `pack`, and `svg`; WebMeet must not maintain separate handwritten avatar setting inputs for `generated`, `src`, and `packSrc`. Guest access to the shared component and avatar assets is provided by Ploinky core whitelisting on the Explorer route, not by WebMeet-specific asset routes.
 
 Routine meeting-detail refreshes may update durable room data such as chat, resources, and agents, but they must not overwrite the live participant list or recalculate avatars from stale snapshot copies. The browser must not refresh meeting details from the backend when LiveKit reports `connected`; the initial connected-room roster comes from the LiveKit room snapshot and then changes only through LiveKit participant, track, active-speaker, attribute, and data-channel hooks. Workspace event polling is a lobby/workspace concern and must be stopped while the browser is inside an active LiveKit room; it may restart after leaving the room. Workspace roster events for the currently connected room must stay on the LiveKit-backed roster path and must not call the MCP meeting-list/meeting-get refresh path for that room. Existing participants must republish avatar projections when new participants connect, and avatar publish failures must not block joining.
 
 Meeting chat has an authoritative persistence path and a best-effort realtime path. The durable chat write always goes through `webmeetAgent`; the browser or AI worker may then publish a reliable LiveKit data-channel payload of type `chat` so connected clients update quickly. LiveKit does not store WebMeet chat history. The MCP `webmeet_chat_send` schema accepts `authorId` and `authorName` as optional compatibility fields, but authenticated tool execution derives durable chat authorship from router auth and does not trust caller-supplied author fields. Guest chat writes derive `authorId` and `authorName` from the stored participant record, preventing callers from spoofing another participant's identity.
 
-AI dispatch metadata and resource metadata are persisted by `webmeetAgent`. The current WebMeet MCP contract contains no separate meeting-derived content flows beyond chat, room resources, participant presence, and AI dispatch metadata.
+The room blackboard has the same authoritative control-plane rule. Browser UI may keep local selection, viewport, active tool, and drag state, but durable changes go through `webmeet_blackboard_get`, `webmeet_blackboard_apply`, `webmeet_blackboard_undo`, and `webmeet_blackboard_redo`. `webmeet_blackboard_apply` accepts one final change object such as create, update, delete, submit, reorder, lock, unlock, or clear. It does not accept drag or typing preview streams. Drag and text editing are local until release, blur, save, or submit, then the final accepted blackboard or widget state is persisted in the encrypted room payload and announced through the persistent `blackboard.updated` WebMeet event. Connected clients resync the filtered blackboard state after receiving that event. Blackboard visibility uses the realtime-only `blackboard.visibility_changed` event so a participant can present or hide the shared blackboard for everyone like a screen-share surface, without enabling or disabling LiveKit screen-share tracks.
+
+Ploinky room-agent metadata, blackboard state, and resource metadata are persisted by `webmeetAgent`. The current WebMeet MCP contract contains no separate meeting-derived content flows beyond chat, room resources, participant presence, room-agent metadata, and blackboard updates.
 
 ## Decisions & Questions
 
@@ -99,4 +102,4 @@ Older callers may still include `authorId` and `authorName`, and keeping the fie
 
 ## Conclusion
 
-`webmeetAgent` remains a coherent application runtime while API, MCP, browser shells, events, chat, resources, AI dispatch metadata, and avatars all preserve the correct persistence and route boundaries.
+`webmeetAgent` remains a coherent application runtime while API, MCP, browser shells, events, chat, resources, Ploinky room-agent metadata, blackboard state, and avatars all preserve the correct persistence and route boundaries.

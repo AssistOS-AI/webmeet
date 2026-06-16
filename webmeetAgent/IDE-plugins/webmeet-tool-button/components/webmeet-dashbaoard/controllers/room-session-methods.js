@@ -551,6 +551,7 @@ export const roomSessionMethods = {
         this.state.skipConnectedAvatarRepublishOnce = false;
         this.state.activeSpeakerIds = new Set();
         this.state.videoGridFullscreen = false;
+        this.resetBlackboardUiState?.();
         this.state.audioHealth = 'Good';
         this.state.audioNetworkUnstable = false;
         window.clearInterval(this.audioWebRtcStatsTimer);

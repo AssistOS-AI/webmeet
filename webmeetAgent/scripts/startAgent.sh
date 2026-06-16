@@ -50,8 +50,6 @@ for name in \
     WEBMEET_TURN_MAX_PORT \
     WEBMEET_ROOM_PREFIX \
     WEBMEET_AGENT_NAME \
-    WEBMEET_LIVEKIT_AGENT_NAME \
-    WEBMEET_LIVEKIT_AGENT_LOG_LEVEL \
     WEBMEET_DATA_DIR
 do
     export_if_present "$name"
@@ -60,6 +58,4 @@ done
 mkdir -p "${WEBMEET_DATA_DIR:-/data}"
 chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null || true
 
-printf '%s\n' 'LiveKit AI worker is owned by the separate webmeetLivekitAiAgent Ploinky agent.' >/tmp/webmeet-livekit-agent.out
-: >/tmp/webmeet-livekit-agent.err
 exec sh /Agent/server/AgentServer.sh

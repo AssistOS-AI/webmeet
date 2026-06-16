@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url';
 
 import {
     archiveMeeting,
+    applyRoomBlackboardChange,
     attachMeetingAgent,
     appendMeetingChat,
     authorizeResourceDownload,
@@ -10,6 +11,8 @@ import {
     createMeeting,
     createStoreContext,
     detachMeetingAgent,
+    getRoboTeamSettings,
+    getRoomBlackboard,
     getMeeting,
     heartbeatMeetingPresence,
     isAdminAuthInfo,
@@ -25,6 +28,9 @@ import {
     listWorkspaceEvents,
     removeMeetingParticipant,
     removeRoomResource,
+    redoRoomBlackboard,
+    undoRoomBlackboard,
+    updateRoboTeamSettings,
     updateMeetingParticipantRole,
     updateMeetingParticipantAvatar,
     updateMeetingTitle
@@ -47,14 +53,8 @@ async function loadInvocationAuth() {
 const { authInfoFromInvocation } = await loadInvocationAuth();
 
 const TOOL_NAME = String(process.env.TOOL_NAME || '').trim();
-const SUPPORTED_AGENT_TYPES = new Set(['observer', 'assistant_on_mention', 'scribe']);
-const SUPPORTED_AGENT_MODES = new Set(['passive', 'on_mention', 'post_event']);
-
-function assertAdminTool(authInfo) {
-    if (!isAdminAuthInfo(authInfo)) {
-        throw new Error('Access denied: only admin can access room management data.');
-    }
-}
+const SUPPORTED_AGENT_TYPES = new Set(['robo_team']);
+const SUPPORTED_AGENT_MODES = new Set(['blackboard_demo']);
 
 function safeParseJson(text) {
     try {
@@ -117,6 +117,28 @@ function getRequiredString(args, key) {
         throw new Error(`Missing required argument "${key}".`);
     }
     return value;
+}
+
+function getRequiredObject(args, key) {
+    const value = args?.[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value;
+    }
+    if (typeof value === 'string' && value.trim()) {
+        const parsed = safeParseJson(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed;
+        }
+    }
+    throw new Error(`Missing required object argument "${key}".`);
+}
+
+function getRequiredBlackboardChange(args) {
+    const change = getRequiredObject(args, 'change');
+    if (!String(change.changeType || '').trim()) {
+        throw new Error('Missing required blackboard change.changeType.');
+    }
+    return change;
 }
 
 function extractInvocationGrant(envelope) {
@@ -211,7 +233,6 @@ export async function dispatch(toolName, args, context, authInfo) {
     case 'webmeet_room_join_guest':
         {
             const roomId = getRequiredString(args, 'roomId');
-            assertPublicRoomInvocation(authInfo, roomId);
             return await joinGuestMeeting(context, {
                 meetingId: roomId,
                 displayName: getRequiredString(args, 'displayName'),
@@ -276,6 +297,42 @@ export async function dispatch(toolName, args, context, authInfo) {
         return await getMeeting(context, getRequiredString(args, 'roomId'), authInfo, {
             includeParticipants: args?.includeParticipants !== false
         });
+    case 'webmeet_blackboard_get':
+        return await getRoomBlackboard(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            participantId: String(args?.participantId || '').trim(),
+            authInfo
+        });
+    case 'webmeet_blackboard_apply':
+        return await applyRoomBlackboardChange(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            participantId: String(args?.participantId || '').trim(),
+            change: getRequiredBlackboardChange(args),
+            authInfo
+        });
+    case 'webmeet_blackboard_undo':
+        return await undoRoomBlackboard(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            participantId: String(args?.participantId || '').trim(),
+            authInfo
+        });
+    case 'webmeet_blackboard_redo':
+        return await redoRoomBlackboard(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            participantId: String(args?.participantId || '').trim(),
+            authInfo
+        });
+    case 'webmeet_robo_team_get':
+        return await getRoboTeamSettings(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            authInfo
+        });
+    case 'webmeet_robo_team_update':
+        return await updateRoboTeamSettings(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            settings: args?.settings || {},
+            authInfo
+        });
     case 'webmeet_room_rename':
         return await updateMeetingTitle(context, {
             meetingId: getRequiredString(args, 'roomId'),
@@ -310,8 +367,7 @@ export async function dispatch(toolName, args, context, authInfo) {
         return await attachMeetingAgent(context, { meetingId, agentType, mode, authInfo });
     }
     case 'webmeet_agent_list':
-        assertAdminTool(authInfo);
-        return { agents: await listMeetingAgents(context, getRequiredString(args, 'roomId')) };
+        return { agents: await listMeetingAgents(context, getRequiredString(args, 'roomId'), authInfo) };
     case 'webmeet_agent_detach':
         return await detachMeetingAgent(context, {
             meetingId: getRequiredString(args, 'roomId'),

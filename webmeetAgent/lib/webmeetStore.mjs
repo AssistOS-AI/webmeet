@@ -9,17 +9,11 @@ import {
     splitCsvEnv
 } from './store/rtcConfig.mjs';
 import {
-    callLiveKitAgentDispatchApi,
-    getLiveKitAgentDispatch,
-    getLiveKitAgentParticipant,
-    isDeletedLiveKitDispatch,
-    waitForLiveKitAgentDispatch
-} from './runtime/livekitRuntime.mjs';
-import {
     assertAdminAuthInfo,
     assertAuthenticatedAuthInfo,
     canViewMeetingRecord,
     isAdminAuthInfo,
+    isGuestAuthInfo,
     normalizeAuthInfo
 } from './store/accessPolicy.mjs';
 import {
@@ -68,6 +62,24 @@ import {
     archiveRoom as archiveMeetingImpl
 } from './services/roomArchive.mjs';
 import {
+    applyRoomBlackboardChange as applyRoomBlackboardChangeImpl,
+    getRoomBlackboard as getRoomBlackboardImpl,
+    redoRoomBlackboard as redoRoomBlackboardImpl,
+    undoRoomBlackboard as undoRoomBlackboardImpl
+} from './blackboard/service.mjs';
+import {
+    ROBO_TEAM_AGENT_TYPE,
+    ROBO_TEAM_MODE,
+    ensureRoboTeamAgentPayload,
+    getRoboTeamBlackboardVersion,
+    ensureRoboTeamDemoBlackboard,
+    ensureRoboTeamSettingsPayload,
+    getRoboTeamSettings as getRoboTeamSettingsImpl,
+    isRoboTeamEnabled,
+    normalizeRoboTeamSettings,
+    updateRoboTeamSettings as updateRoboTeamSettingsImpl
+} from './roboTeam/service.mjs';
+import {
     WEBMEET_EVENT_TYPES,
 } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
 
@@ -91,9 +103,30 @@ const roomResourceDeps = {
 function isActiveMeetingAgent(agent) {
     const status = String(agent?.status || '').trim().toLowerCase();
     return Boolean(agent)
+        && String(agent.agentType || '').trim() !== ROBO_TEAM_AGENT_TYPE
         && !agent.deletedAt
         && status !== 'detached'
         && status !== 'stopped';
+}
+
+function cloneJson(value) {
+    if (value === undefined || value === null) return value;
+    return JSON.parse(JSON.stringify(value));
+}
+
+function projectMeetingAgentForViewer(agent = {}) {
+    return {
+        id: String(agent.id || '').trim(),
+        participantIdentity: String(agent.participantIdentity || agent.participant?.identity || '').trim(),
+        agentType: String(agent.agentType || '').trim(),
+        mode: String(agent.mode || '').trim(),
+        agentName: String(agent.agentName || agent.participant?.name || '').trim(),
+        runtime: String(agent.runtime || 'ploinky').trim(),
+        status: String(agent.status || '').trim(),
+        createdAt: String(agent.createdAt || '').trim(),
+        updatedAt: String(agent.updatedAt || '').trim(),
+        deletedAt: agent.deletedAt || null
+    };
 }
 
 function hasHumanMeetingMembers(payload) {
@@ -128,33 +161,15 @@ async function markActiveAgentsDetached(context, meetingId, reason) {
     return detachedAgents;
 }
 
-async function deleteLiveKitAgentDispatch(context, record, agent) {
-    const dispatchId = String(agent?.dispatchId || '').trim();
-    if (!dispatchId) return;
-    try {
-        await callLiveKitAgentDispatchApi(context, 'DeleteDispatch', record.roomName, {
-            room: record.roomName,
-            dispatchId
-        });
-    } catch {
-        // Persisted metadata is still detached when LiveKit already removed the dispatch.
-    }
-}
-
 async function detachActiveAgentsWhenRoomHasNoHumans(context, meetingId, reason = 'no_human_participants') {
-    const record = await loadMeetingRecord(context, meetingId);
-    const payload = decryptMeetingPayload(context, record);
+    const payload = decryptMeetingPayload(context, await loadMeetingRecord(context, meetingId));
     if (hasHumanMeetingMembers(payload)) {
         return [];
     }
     if (!Array.isArray(payload.agents) || !payload.agents.some(isActiveMeetingAgent)) {
         return [];
     }
-    const detachedAgents = await markActiveAgentsDetached(context, meetingId, reason);
-    for (const agent of detachedAgents) {
-        await deleteLiveKitAgentDispatch(context, record, agent);
-    }
-    return detachedAgents;
+    return await markActiveAgentsDetached(context, meetingId, reason);
 }
 
 const participantServiceDeps = {
@@ -186,6 +201,30 @@ export async function listMeetingEvents(context, meetingId, { afterId = '' } = {
 
 export async function listWorkspaceEvents(context, workspaceId, { afterId = '' } = {}) {
     return await listWorkspaceEventsImpl(context, workspaceId, { afterId });
+}
+
+export async function getRoomBlackboard(context, { roomId, participantId = '', authInfo = null } = {}) {
+    return await getRoomBlackboardImpl(context, { roomId, participantId, authInfo });
+}
+
+export async function applyRoomBlackboardChange(context, { roomId, change, participantId = '', authInfo = null } = {}) {
+    return await applyRoomBlackboardChangeImpl(context, { roomId, change, participantId, authInfo });
+}
+
+export async function undoRoomBlackboard(context, { roomId, participantId = '', authInfo = null } = {}) {
+    return await undoRoomBlackboardImpl(context, { roomId, participantId, authInfo });
+}
+
+export async function redoRoomBlackboard(context, { roomId, participantId = '', authInfo = null } = {}) {
+    return await redoRoomBlackboardImpl(context, { roomId, participantId, authInfo });
+}
+
+export async function getRoboTeamSettings(context, { roomId, authInfo = null } = {}) {
+    return await getRoboTeamSettingsImpl(context, { roomId, authInfo });
+}
+
+export async function updateRoboTeamSettings(context, { roomId, settings, authInfo = null } = {}) {
+    return await updateRoboTeamSettingsImpl(context, { roomId, settings, authInfo });
 }
 
 export async function recordProfileAvatarUpdated(context, {
@@ -224,7 +263,6 @@ export async function createStoreContext(startDir = '') {
         livekitApiUrl: String(process.env.WEBMEET_LIVEKIT_URL || '').trim(),
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
-        livekitAgentName: String(process.env.WEBMEET_LIVEKIT_AGENT_NAME || 'webmeet-agent').trim() || 'webmeet-agent',
         stunExplicitUrls: process.env.WEBMEET_STUN_URLS !== undefined
             ? String(process.env.WEBMEET_STUN_URLS || '').trim()
             : undefined,
@@ -241,6 +279,9 @@ export async function createStoreContext(startDir = '') {
 
 export async function listMeetings(context, _workspaceId = '', authInfo = null) {
     assertAuthenticatedAuthInfo(authInfo);
+    if (isGuestAuthInfo(authInfo)) {
+        throw new Error('Access denied: sign in to view WebMeet rooms.');
+    }
     const records = await listRoomRecords(context);
     return records.filter((entry) => entry && canViewMeetingRecord(entry, authInfo)).map(buildMeetingView);
 }
@@ -274,6 +315,31 @@ export async function createMeeting(context, { title = '', name = '', roomType =
     const roomName = String(name || title || DEFAULT_ROOM_TITLE).trim() || DEFAULT_ROOM_TITLE;
     const validRoomType = roomType === 'guest' ? 'guest' : 'team';
     const record = await createMeetingRecord(context, roomName, validRoomType);
+    await mutateMeeting(context, record.meetingId, (_record, payload, stageEvent) => {
+        ensureRoboTeamSettingsPayload(payload);
+        const agent = ensureRoboTeamAgentPayload(payload, stageEvent, record.meetingId);
+        const demoCreated = ensureRoboTeamDemoBlackboard(payload, record.meetingId);
+        if (demoCreated) {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+                meetingId: record.meetingId,
+                blackboardVersion: getRoboTeamBlackboardVersion(payload),
+                changeType: 'create',
+                targetType: 'blackboard',
+                targetRef: '',
+                reason: 'robo_team_demo',
+                objectKind: 'blackboard'
+            });
+        }
+        if (agent && isRoboTeamEnabled(payload.roboTeamSettings)) {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
+                meetingId: record.meetingId,
+                agentId: agent.id,
+                agentType: ROBO_TEAM_AGENT_TYPE,
+                mode: ROBO_TEAM_MODE,
+                runtime: 'ploinky'
+            });
+        }
+    });
     const meeting = {
         id: record.roomId || record.meetingId,
         roomId: record.roomId || record.meetingId,
@@ -356,80 +422,73 @@ export async function appendGuestMeetingChat(context, { meetingId, participantId
 export async function attachMeetingAgent(context, { meetingId, agentType, mode, authInfo = null }) {
     await cleanupMeetingPresence(context, meetingId);
     assertAdminAuthInfo(authInfo);
-    const record = await loadMeetingRecord(context, meetingId);
-    const currentPayload = decryptMeetingPayload(context, record);
-    if (!hasHumanMeetingMembers(currentPayload)) {
-        throw new Error('Cannot attach AI agents to an empty room.');
+    if (String(agentType || '').trim() !== ROBO_TEAM_AGENT_TYPE || String(mode || '').trim() !== ROBO_TEAM_MODE) {
+        throw new Error(`Unsupported Ploinky room agent "${agentType}:${mode}".`);
     }
-    const currentAgent = currentPayload.agents.find((entry) => (
-        entry.agentType === agentType && entry.mode === mode && !entry.deletedAt
-    ));
-    const metadata = {
-        roomId: record.roomId || record.meetingId,
-        roomType: record.roomType || 'team',
-        agentType,
-        mode
-    };
-    if (currentAgent) {
-        const currentDispatch = await getLiveKitAgentDispatch(context, record.roomName, currentAgent.dispatchId);
-        const currentParticipant = currentDispatch && !isDeletedLiveKitDispatch(currentDispatch)
-            ? await getLiveKitAgentParticipant(context, record.roomName, metadata)
-            : null;
-        if (currentParticipant) {
-            return {
-                ...currentAgent,
-                dispatch: currentDispatch,
-                participant: currentParticipant,
-                status: 'dispatched'
-            };
-        }
-    }
-    const dispatch = await callLiveKitAgentDispatchApi(context, 'CreateDispatch', record.roomName, {
-        agentName: context.livekitAgentName,
-        room: record.roomName,
-        metadata: JSON.stringify(metadata)
-    });
-    const dispatchId = getAgentDispatchId(dispatch);
-    const confirmation = await waitForLiveKitAgentDispatch(context, record.roomName, dispatchId, metadata);
     let agent = null;
     await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
-        const targetAgent = currentAgent
-            ? payload.agents.find((entry) => entry.id === currentAgent.id)
-            : null;
-        agent = targetAgent || {
-            id: randomId('agent'),
-            meetingId,
-            agentType,
-            mode,
-            createdAt: nowIso()
-        };
-        Object.assign(agent, {
-            agentName: context.livekitAgentName,
-            dispatchId,
-            participantIdentity: confirmation.participant.identity || '',
-            participantSid: confirmation.participant.sid || '',
-            dispatch: confirmation.dispatch,
-            participant: confirmation.participant,
-            status: 'dispatched',
-            updatedAt: nowIso()
-        });
-        if (!targetAgent) {
-            payload.agents.push(agent);
-        }
+        const settings = ensureRoboTeamSettingsPayload(payload);
+        settings.blackboard.enabled = true;
+        settings.blackboard.visibility = 'all-participants';
+        settings.blackboard.autoUpdateFromConversation = true;
+        settings.blackboard.participantRequestsEnabled = true;
+        agent = ensureRoboTeamAgentPayload(payload, stageEvent, meetingId);
+        agent.deletedAt = null;
+        agent.status = 'active';
+        agent.updatedAt = nowIso();
+        ensureRoboTeamDemoBlackboard(payload, meetingId);
         stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
             meetingId,
             agentId: agent.id,
             agentType,
             mode,
-            dispatchId: agent.dispatchId
+            runtime: 'ploinky'
         });
     });
     return agent;
 }
 
-export async function listMeetingAgents(context, meetingId) {
+export async function listMeetingAgents(context, meetingId, authInfo = null) {
     await cleanupMeetingPresence(context, meetingId);
-    return decryptMeetingPayload(context, await loadMeetingRecord(context, meetingId)).agents;
+    const record = await loadMeetingRecord(context, meetingId);
+    if (!canViewMeetingRecord(record, authInfo)) {
+        throw new Error('Meeting not found.');
+    }
+    const payload = decryptMeetingPayload(context, record);
+    const normalizedSettings = normalizeRoboTeamSettings(payload.roboTeamSettings);
+    const settingsChanged = JSON.stringify(payload.roboTeamSettings || null) !== JSON.stringify(normalizedSettings);
+    const hasRoboTeamAgent = Array.isArray(payload.agents)
+        && payload.agents.some((entry) => String(entry?.agentType || '').trim() === ROBO_TEAM_AGENT_TYPE);
+    let agents = [];
+    if (settingsChanged || !hasRoboTeamAgent) {
+        const mutation = await mutateMeeting(context, meetingId, (_record, mutablePayload, stageEvent) => {
+            mutablePayload.roboTeamSettings = normalizeRoboTeamSettings(mutablePayload.roboTeamSettings);
+            const agent = ensureRoboTeamAgentPayload(mutablePayload, stageEvent, meetingId);
+            if (agent && isRoboTeamEnabled(mutablePayload.roboTeamSettings)) {
+                agent.deletedAt = null;
+                agent.status = 'active';
+            }
+            const demoCreated = ensureRoboTeamDemoBlackboard(mutablePayload, meetingId);
+            if (demoCreated) {
+                stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+                    meetingId,
+                    blackboardVersion: getRoboTeamBlackboardVersion(mutablePayload),
+                    changeType: 'create',
+                    targetType: 'blackboard',
+                    targetRef: '',
+                    reason: 'robo_team_demo',
+                    objectKind: 'blackboard'
+                });
+            }
+        });
+        agents = Array.isArray(mutation.payload.agents) ? cloneJson(mutation.payload.agents) : [];
+    } else {
+        agents = Array.isArray(payload.agents) ? cloneJson(payload.agents) : [];
+    }
+    if (isAdminAuthInfo(authInfo)) {
+        return agents;
+    }
+    return agents.map(projectMeetingAgentForViewer);
 }
 
 export async function detachMeetingAgent(context, { meetingId, agentId, authInfo = null }) {
@@ -447,16 +506,6 @@ export async function detachMeetingAgent(context, { meetingId, agentId, authInfo
     if (!currentAgent) {
         throw new Error('Meeting agent not found.');
     }
-    if (currentAgent.dispatchId) {
-        try {
-            await callLiveKitAgentDispatchApi(context, 'DeleteDispatch', record.roomName, {
-                room: record.roomName,
-                dispatchId: currentAgent.dispatchId
-            });
-        } catch {
-            // Persist the detach even if LiveKit already removed the dispatch.
-        }
-    }
     let detachedAgent = null;
     await mutateMeeting(context, meetingId, (_record, payload, stageEvent) => {
         const targetAgent = payload.agents.find((entry) => String(entry?.id || '') === targetAgentId);
@@ -464,8 +513,13 @@ export async function detachMeetingAgent(context, { meetingId, agentId, authInfo
         Object.assign(targetAgent, {
             status: 'detached',
             deletedAt: nowIso(),
-            updatedAt: nowIso()
+            updatedAt: nowIso(),
+            runtime: 'ploinky'
         });
+        if (String(targetAgent.agentType || '') === ROBO_TEAM_AGENT_TYPE) {
+            const settings = ensureRoboTeamSettingsPayload(payload);
+            settings.blackboard.enabled = false;
+        }
         detachedAgent = { ...targetAgent };
         stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DETACHED, {
             meetingId,

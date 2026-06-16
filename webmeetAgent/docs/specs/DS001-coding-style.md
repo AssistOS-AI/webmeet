@@ -30,9 +30,9 @@ The local source layout is contract-bearing:
 
 Documentation, specifications, and comments must be written in English. Any source change that affects behavior, interfaces, architecture, security boundaries, route shape, storage, runtime configuration, or validation must update the relevant DS files and the local HTML documentation in the same change set.
 
-`webmeetAgent` must avoid dependency creep in the base meeting service. There is intentionally no `webmeetAgent/package.json` for the optional LiveKit AI worker dependency tree. Native LiveKit Agents dependencies belong to `webmeetLivekitAiAgent/package.json`, and `webmeetAgent/scripts/startAgent.sh` must not run npm install or import `@livekit/agents`.
+`webmeetAgent` must avoid dependency creep in the base meeting service. There is intentionally no `webmeetAgent/package.json` for external AI worker dependencies, and `webmeetAgent/scripts/startAgent.sh` must not run npm install or import `@livekit/agents`.
 
-All request-time LLM inference must go through `achillesAgentLib` helpers, not direct provider HTTP. Optional AI participant logic belongs to `webmeetLivekitAiAgent`; meeting chat must not introduce inline provider dispatch.
+All request-time LLM inference must go through `achillesAgentLib` helpers, not direct provider HTTP. Meeting chat must not introduce inline provider dispatch.
 
 Runtime paths must be derived from `PLOINKY_WORKSPACE_ROOT`, `WORKSPACE_ROOT`, `PLOINKY_CWD`, `ASSISTOS_FS_ROOT`, the configured WebMeet data directory, the agent root, or declared volumes. Source must not hardcode workstation-specific absolute paths or expose host paths in browser responses.
 
@@ -49,12 +49,12 @@ Auth, guest-route, LiveKit token, or runtime topology changes also require a Plo
 ### Question #1: Why keep `DS001-coding-style.md` local when AssistOSExplorer already defines coding conventions?
 
 Response:
-The parent conventions define the shared Explorer baseline. `webmeetAgent` adds local constraints around optional LiveKit worker dependencies, room-scoped public entry, browser-vendored media assets, and validation commands. Future edits from this directory need those rules without searching across the workspace.
+The parent conventions define the shared Explorer baseline. `webmeetAgent` adds local constraints around room-scoped public entry, browser-vendored media assets, Ploinky room-agent behavior, and validation commands. Future edits from this directory need those rules without searching across the workspace.
 
 ### Question #2: Why is dependency ownership part of coding style?
 
 Response:
-Dependency placement changes startup behavior. Putting the LiveKit Agents worker dependency tree into `webmeetAgent` would make normal rooms and guest invites depend on optional native AI-worker setup. The source-layout rule prevents a local implementation detail from becoming a runtime availability regression.
+Dependency placement changes startup behavior. WebMeet room agents are modeled inside `webmeetAgent` as Ploinky-managed room metadata and tool behavior; LiveKit remains the media/runtime transport, not an AI worker runtime. The source-layout rule prevents a local implementation detail from becoming a runtime availability regression.
 
 ## Conclusion
 

@@ -16,7 +16,7 @@ WebMeet chat is a room conversation surface. It must not dispatch provider-looki
 
 `webmeet_chat_send` must persist the user's chat message and return the appended chat record. Text such as `@open-interpreter list primes` is ordinary meeting chat. It must not call a research relay, create a task, or dispatch a provider.
 
-The durable chat write is authoritative and goes through `webmeetAgent`. A connected browser or LiveKit AI worker may publish a LiveKit reliable data-channel payload after persistence so other connected clients update quickly, but that payload is a realtime hint. LiveKit does not store WebMeet chat history.
+The durable chat write is authoritative and goes through `webmeetAgent`. A connected browser may publish a LiveKit reliable data-channel payload after persistence so other connected clients update quickly, but that payload is a realtime hint. LiveKit does not store WebMeet chat history.
 
 Authenticated MCP chat submissions should derive the normal user author identity from invocation auth when available instead of trusting caller-supplied `authorId` and `authorName` fields. Public-protected guest MCP chat derives guest authorship from the room-scoped invocation context and stored participant record.
 
@@ -26,7 +26,7 @@ Future meeting-to-agent behavior must be an explicit Copilot bridge or WebMeet m
 
 The WebMeet IDE chat composer may expose a Ploinky-style `@` autocomplete for generic file/workspace references only. The menu must not expose an `Agents` group or provider suggestion such as `@open-interpreter`. File and folder suggestions may query the Explorer host's `search_files` tool through the WebMeet side of the plugin. Sent messages may render known `@file:` references in bold; arbitrary `@word` tokens remain plain chat text.
 
-LiveKit AI agents have a separate lifecycle. An assistant agent may answer an explicit mention after it is attached as a real LiveKit participant, but that behavior is owned by the worker dispatch contract in DS005 and does not make provider tags in normal chat a routing mechanism.
+Ploinky room agents have a separate lifecycle. RoboTeam may use WebMeet tools and room context, but provider-looking tags in normal chat are still ordinary meeting text and not a routing mechanism.
 
 ## Decisions & Questions
 
@@ -35,10 +35,10 @@ LiveKit AI agents have a separate lifecycle. An assistant agent may answer an ex
 Response:
 Meeting chat should not depend on optional provider agents or expose provider-routing semantics to every room participant. Semantic provider routing belongs to explicit Copilot or meeting-agent workflows where authorization, lifecycle, and user expectations are clear.
 
-### Question #2: Why not use LiveKit AI dispatch for arbitrary provider tags?
+### Question #2: Why not route arbitrary provider tags to room agents?
 
 Response:
-LiveKit AI dispatch represents real realtime meeting participants with room lifecycle and presence. Provider tasks such as "use a code interpreter" are request/response jobs selected by a different routing system. Treating every `@word` as a LiveKit dispatch would blur these contracts.
+Room agents have room lifecycle, persisted settings, and visible participant behavior. Provider tasks such as "use a code interpreter" are request/response jobs selected by a different routing system. Treating every `@word` as a room-agent command would blur these contracts.
 
 ### Question #3: Why keep a WebMeet-owned autocomplete adapter?
 

@@ -64,37 +64,6 @@ function normalizeLiveKitHttpUrl(value) {
     return raw;
 }
 
-export async function callLiveKitAgentDispatchApi(context, methodName, roomName, body) {
-    const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
-    if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
-        throw new Error('LiveKit agent dispatch is not configured.');
-    }
-    const token = createLiveKitRoomAdminToken(context, roomName);
-    if (!token) {
-        throw new Error('LiveKit admin token could not be created.');
-    }
-    const response = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/${methodName}`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body || {})
-    });
-    const text = await response.text();
-    let parsed = null;
-    try {
-        parsed = text ? JSON.parse(text) : null;
-    } catch {
-        parsed = null;
-    }
-    if (!response.ok) {
-        const detail = parsed?.msg || parsed?.message || text || `${response.status} ${response.statusText}`;
-        throw new Error(`LiveKit agent dispatch failed: ${detail}`);
-    }
-    return parsed || {};
-}
-
 async function callLiveKitRoomApi(context, methodName, roomName, body) {
     const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
     if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
@@ -140,16 +109,6 @@ export async function closeLiveKitRoom(context, roomName, { strict = false } = {
     }
 }
 
-function getAgentDispatches(response) {
-    const dispatches = response?.agentDispatches || response?.agent_dispatches || [];
-    return Array.isArray(dispatches) ? dispatches : [];
-}
-
-export function isDeletedLiveKitDispatch(dispatch) {
-    const deletedAt = dispatch?.state?.deletedAt || dispatch?.state?.deleted_at || '0';
-    return String(deletedAt || '0') !== '0';
-}
-
 export function getParticipantAttributes(participant) {
     return participant?.attributes && typeof participant.attributes === 'object' ? participant.attributes : {};
 }
@@ -165,22 +124,6 @@ export function parseLiveKitProfileAvatar(attributes = {}) {
     } catch {
         return null;
     }
-}
-
-function isMatchingLiveKitAgentParticipant(context, metadata, participant) {
-    const attributes = getParticipantAttributes(participant);
-    return String(participant?.kind || '').toUpperCase() === 'AGENT'
-        && String(attributes.webmeetAgent || '').toLowerCase() === 'true'
-        && String(attributes.webmeetAgentName || '') === String(context.livekitAgentName || '')
-        && String(attributes.webmeetMeetingId || '') === String(metadata.meetingId || '')
-        && String(attributes.webmeetAgentType || '') === String(metadata.agentType || '')
-        && String(attributes.webmeetAgentMode || '') === String(metadata.mode || '');
-}
-
-export async function getLiveKitAgentParticipant(context, roomName, metadata) {
-    const response = await callLiveKitRoomApi(context, 'ListParticipants', roomName, { room: roomName });
-    const participants = Array.isArray(response.participants) ? response.participants : [];
-    return participants.find((participant) => isMatchingLiveKitAgentParticipant(context, metadata, participant)) || null;
 }
 
 export function getLiveKitParticipantIdentity(participant) {
@@ -200,50 +143,4 @@ export async function listLiveKitRoomParticipants(context, roomName) {
     }
     const response = await callLiveKitRoomApi(context, 'ListParticipants', roomName, { room: roomName });
     return Array.isArray(response.participants) ? response.participants : [];
-}
-
-export async function waitForLiveKitAgentDispatch(context, roomName, dispatchId, metadata) {
-    if (!dispatchId) {
-        throw new Error('LiveKit dispatch response did not include a dispatch id.');
-    }
-    const deadline = Date.now() + 10_000;
-    let latest = null;
-    let participant = null;
-    while (Date.now() < deadline) {
-        const response = await callLiveKitAgentDispatchApi(context, 'ListDispatch', roomName, {
-            room: roomName,
-            dispatchId
-        });
-        const dispatches = getAgentDispatches(response);
-        latest = dispatches[0] || latest;
-        participant = await getLiveKitAgentParticipant(context, roomName, metadata);
-        if (latest && !isDeletedLiveKitDispatch(latest) && participant) {
-            return {
-                dispatch: latest,
-                participant
-            };
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    try {
-        await callLiveKitAgentDispatchApi(context, 'DeleteDispatch', roomName, {
-            room: roomName,
-            dispatchId
-        });
-    } catch {
-        // Keep the original dispatch failure as the user-facing error.
-    }
-    throw new Error('LiveKit agent runtime did not accept the dispatch.');
-}
-
-export async function getLiveKitAgentDispatch(context, roomName, dispatchId) {
-    if (!dispatchId) {
-        return null;
-    }
-    const response = await callLiveKitAgentDispatchApi(context, 'ListDispatch', roomName, {
-        room: roomName,
-        dispatchId
-    });
-    const dispatches = getAgentDispatches(response);
-    return dispatches[0] || null;
 }

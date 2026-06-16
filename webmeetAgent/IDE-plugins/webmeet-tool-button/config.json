@@ -41,6 +41,26 @@
         {
             "component": "webmeet-participant-card",
             "presenter": "WebMeetParticipantCard"
+        },
+        {
+            "component": "webmeet-blackboard-panel",
+            "presenter": "WebMeetBlackboardPanel",
+            "path": "components/webmeet-dashbaoard/components/webmeet-blackboard-panel/webmeet-blackboard-panel"
+        },
+        {
+            "component": "webmeet-blackboard-toolbar",
+            "presenter": "WebMeetBlackboardToolbar",
+            "path": "components/webmeet-dashbaoard/components/webmeet-blackboard-toolbar/webmeet-blackboard-toolbar"
+        },
+        {
+            "component": "webmeet-blackboard-widget-editor",
+            "presenter": "WebMeetBlackboardWidgetEditor",
+            "path": "components/webmeet-dashbaoard/components/webmeet-blackboard-widget-editor/webmeet-blackboard-widget-editor"
+        },
+        {
+            "component": "webmeet-blackboard-results-panel",
+            "presenter": "WebMeetBlackboardResultsPanel",
+            "path": "components/webmeet-dashbaoard/components/webmeet-blackboard-results-panel/webmeet-blackboard-results-panel"
         }
     ]
 }

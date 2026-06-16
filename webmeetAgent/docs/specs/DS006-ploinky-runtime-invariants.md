@@ -24,9 +24,9 @@ Ploinky-owned generated secrets are resolved by the launcher before agent code r
 
 The compact `x-ploinky-auth-info` header is not a secure grant by itself. WebMeet domain authorization must use router-minted invocation identity, roles, and scopes. Caller-supplied copies of identity headers must not become authoritative input.
 
-WebMeet must not expose its own internal HTTP API port as a product surface. The browser UI calls WebMeet through the generic Ploinky MCP route. Direct room links are Explorer URLs that carry `roomId`; they are not backed by a WebMeet-specific router bridge or generated server page.
+WebMeet must not expose its own internal HTTP API port as a product surface. The browser UI calls WebMeet through the generic Ploinky MCP route. Direct room links use the agent-owned static loader `/<webmeetAgent>/roomLoader.html?roomId=<roomId>` and whitelisted static assets; they are not backed by a WebMeet-specific router bridge or generated server page.
 
-Guest access must remain scoped to a single room. Public room access is exposed through `/explorer/index.html?roomId=<roomId>`. Ploinky core owns public-protected routing, anonymous token/session handling, and UI/assets whitelisting; WebMeet receives the verified invocation context and authorizes room operations against the room scope.
+Guest access must remain scoped to a single room. Public room access is exposed through `/<webmeetAgent>/roomLoader.html?roomId=<roomId>`. Ploinky core owns public-protected routing, anonymous token/session handling, and UI/assets whitelisting; WebMeet receives the verified invocation context and authorizes room operations against the room scope.
 
 Ploinky route authentication identifies the caller, but `webmeetAgent` still owns domain authorization. Sensitive actions must check verified user identity, roles, scopes, room id, participant id, workspace path, and local policy before reading or mutating state. Admin-only actions include room creation, rename, archive, AI attach/detach, and other management surfaces.
 
@@ -43,11 +43,11 @@ Agent-local contract:
 - Manifest: `manifest.json`.
 - Role: Meeting application agent for workspace team rooms and invite-scoped public meetings.
 - Authentication: Workspace room operations require authenticated route/MCP context. Public room entry requires a Ploinky public-protected invocation scoped to the target room.
-- HTTP service surface: WebMeet does not publish a product HTTP service surface. Browser calls use the generic Ploinky MCP route, and direct room entry uses Explorer plus whitelisted plugin/assets routing owned by Ploinky core.
+- HTTP service surface: WebMeet does not publish a product HTTP service surface. Browser calls use the generic Ploinky MCP route, and direct room entry uses the whitelisted `roomLoader.html` plus plugin/assets routing owned by Ploinky core.
 - Persistent state: Room data lives under `/data`; LiveKit secrets stay server-side.
 - Volumes: `.ploinky/data/webmeetAgent/data:/data`.
-- Dependencies: Base startup uses Ploinky's shared prepared dependency cache. Optional native LiveKit worker dependencies belong to `webmeetLivekitAiAgent`.
-- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` is an agent-scoped generated secret. LiveKit API key/secret, TURN password, and `router/MCP invocation identity` are workspace-scoped generated secrets because they are still consumed by sibling agents (`liveKitServerAgent`, `webmeetLivekitAiAgent`). These shared raw credentials remain a migration pressure: the target is for `liveKitServerAgent` to own raw LiveKit and TURN credentials and expose owner-mediated operations, and for `router/MCP invocation identity` to be replaced by router/secure-wire identity.
+- Dependencies: Base startup uses Ploinky's shared prepared dependency cache. WebMeet must not add native external AI worker dependencies.
+- Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` is an agent-scoped generated secret. LiveKit API key/secret, TURN password, and `router/MCP invocation identity` are workspace-scoped generated secrets because they are still consumed by the LiveKit media infrastructure agent. These shared raw credentials remain a migration pressure: the target is for `liveKitServerAgent` to own raw LiveKit and TURN credentials and expose owner-mediated operations, and for `router/MCP invocation identity` to be replaced by router/secure-wire identity.
 - Documentation: `docs/index.html` and `docs/specs/matrix.md`.
 - Validation: Run proxy/plugin syntax checks and a Ploinky guest invite smoke test for auth or route changes.
 

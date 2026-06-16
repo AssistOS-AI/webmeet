@@ -1,0 +1,55 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+const ADMIN_AUTH = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
+const USER_AUTH = { user: { id: 'local:user', username: 'user', roles: ['user'] } };
+const GUEST_AUTH = { user: { id: 'guest:test', username: 'guest', roles: ['guest'] } };
+
+test('WebMeet room list is dashboard-only and guest join is public-room-only', async () => {
+    const previousDataDir = process.env.WEBMEET_DATA_DIR;
+    const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-auth-contract-'));
+    try {
+        process.env.WEBMEET_DATA_DIR = root;
+        process.env.PLOINKY_WEBMEET_MASTER_KEY = '0123456789abcdef0123456789abcdef';
+        const {
+            createMeeting,
+            createStoreContext,
+            joinGuestMeeting,
+            listMeetings
+        } = await import('../../lib/webmeetStore.mjs');
+        const context = await createStoreContext(root);
+        const teamRoom = await createMeeting(context, { title: 'Team room', roomType: 'team', authInfo: ADMIN_AUTH });
+        const publicRoom = await createMeeting(context, { title: 'Public room', roomType: 'guest', authInfo: ADMIN_AUTH });
+
+        const userRooms = await listMeetings(context, '', USER_AUTH);
+        assert.deepEqual(userRooms.map((entry) => entry.id).sort(), [publicRoom.id, teamRoom.id].sort());
+
+        await assert.rejects(
+            () => listMeetings(context, '', GUEST_AUTH),
+            /sign in to view WebMeet rooms/
+        );
+        await assert.rejects(
+            () => joinGuestMeeting(context, { meetingId: teamRoom.id, displayName: 'Guest' }),
+            /does not support guest access/
+        );
+        const joined = await joinGuestMeeting(context, { meetingId: publicRoom.id, displayName: 'Guest' });
+        assert.equal(joined.meeting.id, publicRoom.id);
+        assert.equal(joined.participant.guest, true);
+    } finally {
+        if (previousDataDir === undefined) {
+            delete process.env.WEBMEET_DATA_DIR;
+        } else {
+            process.env.WEBMEET_DATA_DIR = previousDataDir;
+        }
+        if (previousMasterKey === undefined) {
+            delete process.env.PLOINKY_WEBMEET_MASTER_KEY;
+        } else {
+            process.env.PLOINKY_WEBMEET_MASTER_KEY = previousMasterKey;
+        }
+        await fs.rm(root, { recursive: true, force: true }).catch(() => {});
+    }
+});

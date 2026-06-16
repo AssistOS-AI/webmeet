@@ -60,9 +60,9 @@ export const meetingActionMethods = {
 
     buildRoomLink(meetingId) {
         const roomId = String(meetingId || '').trim();
-        const url = new URL('/explorer/index.html', window.location.origin);
+        const agentName = String(globalThis.__WEBMEET_AGENT_NAME__ || 'webmeetAgent').trim() || 'webmeetAgent';
+        const url = new URL(`/${encodeURIComponent(agentName)}/roomLoader.html`, window.location.origin);
         url.searchParams.set('roomId', roomId);
-        url.hash = 'webmeet-dashboard';
         return url.toString();
     },
 
@@ -97,7 +97,7 @@ export const meetingActionMethods = {
             this.setError('Archived rooms cannot be modified.');
             return;
         }
-        const roboTeamSettings = this.loadRoboTeamSettings(meeting.id);
+        const roboTeamSettings = await this.loadRoboTeamSettings(meeting.id);
         const result = await assistOS.UI.showModal('webmeet-room-settings-modal', {
             roomId: meeting.id,
             roomTitle: meeting.title || meeting.name || 'Room',
@@ -132,16 +132,22 @@ export const meetingActionMethods = {
         }
 
         if (result.roboTeam) {
-            this.saveRoboTeamSettings(meeting.id, result.roboTeam);
+            await this.saveRoboTeamSettings(meeting.id, result.roboTeam);
         }
 
         await this.loadMeetings();
         this.renderAll();
     },
 
-    loadRoboTeamSettings(roomId) {
+    async loadRoboTeamSettings(roomId) {
         const id = String(roomId || '').trim();
         if (!id) return null;
+        try {
+            const result = await runTool('webmeet_robo_team_get', { roomId: id });
+            if (result?.settings) return result.settings;
+        } catch (_) {
+            // Fall back to legacy browser settings only when server settings are unavailable.
+        }
         try {
             const raw = String(window?.localStorage?.getItem(`webmeet.roboTeam.${id}`) || '').trim();
             if (!raw) return null;
@@ -151,13 +157,14 @@ export const meetingActionMethods = {
         }
     },
 
-    saveRoboTeamSettings(roomId, settings) {
+    async saveRoboTeamSettings(roomId, settings) {
         const id = String(roomId || '').trim();
         if (!id || !settings) return;
+        await runTool('webmeet_robo_team_update', { roomId: id, settings });
         try {
-            window?.localStorage?.setItem(`webmeet.roboTeam.${id}`, JSON.stringify(settings));
+            window?.localStorage?.removeItem(`webmeet.roboTeam.${id}`);
         } catch (_) {
-            // Best effort persistence
+            // Best effort cleanup for legacy browser persistence.
         }
     },
 
@@ -654,15 +661,19 @@ export const meetingActionMethods = {
     },
 
     async attachObserver() {
-        await this.attachAgent('observer', 'passive');
+        await this.attachRoboTeam();
     },
 
     async attachAssistant() {
-        await this.attachAgent('assistant_on_mention', 'on_mention');
+        await this.attachRoboTeam();
     },
 
     async attachScribe() {
-        await this.attachAgent('scribe', 'post_event');
+        await this.attachRoboTeam();
+    },
+
+    async attachRoboTeam() {
+        await this.attachAgent('robo_team', 'blackboard_demo');
     },
 
     async attachAgent(agentType, mode) {
@@ -672,7 +683,7 @@ export const meetingActionMethods = {
         }
         const meeting = this.selectedMeeting;
         if (!meeting) {
-            this.setError('Select a meeting before attaching AI agents.');
+            this.setError('Select a meeting before enabling room agents.');
             return;
         }
         try {
@@ -690,7 +701,7 @@ export const meetingActionMethods = {
                     mode
                 });
             } catch (_) {
-                // Persisted dispatch already succeeded; realtime delivery is best effort.
+                // Persisted agent state already succeeded; realtime delivery is best effort.
             }
             this.renderAll();
         } catch (error) {
@@ -717,12 +728,12 @@ export const meetingActionMethods = {
         }
         const meeting = this.selectedMeeting;
         if (!meeting) {
-            this.setError('Select a meeting before disabling AI agents.');
+            this.setError('Select a meeting before disabling room agents.');
             return;
         }
         const id = String(agentId || '').trim();
         if (!id) {
-            this.setError('AI agent unavailable.');
+            this.setError('Room agent unavailable.');
             return;
         }
         try {

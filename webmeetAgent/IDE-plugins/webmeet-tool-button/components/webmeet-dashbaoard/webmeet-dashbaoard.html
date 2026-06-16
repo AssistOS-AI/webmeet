@@ -639,6 +639,20 @@
                                         <line x1="12" y1="17" x2="12" y2="21"></line>
                                     </svg>
                                 </button>
+                               <!-- <button type="button" class="webmeet-icon-button webmeet-blackboard-button"
+                                        data-local-action="toggleBlackboard"
+                                        id="webmeetBlackboardButton" title="Show Blackboard"
+                                        aria-label="Show Blackboard" aria-pressed="false">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <rect x="3" y="4" width="18" height="14" rx="2"></rect>
+                                        <path d="M8 21h8"></path>
+                                        <path d="M12 18v3"></path>
+                                        <path d="M8 9h8"></path>
+                                        <path d="M8 13h5"></path>
+                                    </svg>
+                                </button>-->
                                 <div class="webmeet-avatar-quick-action">
                                     <button type="button" class="webmeet-icon-button webmeet-avatar-quick-button"
                                             data-local-action="toggleAvatarQuickMenu" id="webmeetAvatarQuickButton"
@@ -696,6 +710,15 @@
                                 </button>
                             </div>
                         </div>
+                        <section id="webmeetBlackboardSurface"
+                                 class="webmeet-blackboard-surface webmeet-hidden"
+                                 aria-label="Shared blackboard">
+                            <div class="webmeet-blackboard-header">
+                                <span>Blackboard</span>
+                                <span id="webmeetBlackboardPresenter" class="webmeet-blackboard-presenter"></span>
+                            </div>
+                            <webmeet-blackboard-panel data-presenter="webmeet-blackboard-panel"></webmeet-blackboard-panel>
+                        </section>
                     </div>
                 </div>
                 <div

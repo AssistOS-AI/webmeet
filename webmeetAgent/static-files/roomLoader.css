@@ -1,0 +1,124 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  background: #f6f7fb;
+  color: #182033;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f6f7fb;
+}
+
+#page_content {
+  min-height: 100vh;
+}
+
+.spinner {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(246, 247, 251, 0.96);
+}
+
+.spinner::backdrop {
+  background: rgba(246, 247, 251, 0.96);
+}
+
+.spinner-container {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.spinner-shell {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+}
+
+.spinner-orbit {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  animation: webmeet-spin 0.9s linear infinite;
+}
+
+.spinner-orbit span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #2563eb;
+}
+
+.spinner-orbit span:nth-child(2) {
+  inset: 7px;
+  border-top-color: #14b8a6;
+  animation-direction: reverse;
+}
+
+.spinner-orbit span:nth-child(3) {
+  inset: 14px;
+  border-top-color: #f97316;
+}
+
+.webmeet-access-denied {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.webmeet-access-panel {
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 1px solid #d7dce8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(24, 32, 51, 0.12);
+}
+
+.webmeet-access-panel h1 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.webmeet-access-panel p {
+  margin: 0 0 18px;
+  color: #536079;
+  line-height: 1.5;
+}
+
+.webmeet-login-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+@keyframes webmeet-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

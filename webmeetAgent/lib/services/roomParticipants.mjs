@@ -32,6 +32,13 @@ import {
 import {
     WEBMEET_EVENT_TYPES
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+import {
+    ensureRoboTeamAgentPayload,
+    ensureRoboTeamDemoBlackboard,
+    ensureRoboTeamSettingsPayload,
+    getRoboTeamBlackboardVersion,
+    projectRoboTeamParticipant
+} from '../roboTeam/service.mjs';
 
 function nowIso() {
     return new Date().toISOString();
@@ -195,21 +202,36 @@ function syncPayloadMembersToLiveKitParticipants(context, record, payload, parti
     return nextParticipants;
 }
 
-export function projectStoredRoomParticipants(payload) {
+export function projectStoredRoomParticipants(payload, meetingId = '') {
     const members = Array.isArray(payload?.members) ? payload.members : [];
-    return members
+    const participants = members
         .map((member) => ({
             ...member,
             id: String(member?.id || '').trim(),
+            identity: String(member?.identity || member?.id || '').trim(),
             displayName: String(member?.displayName || member?.id || 'Participant').trim() || 'Participant'
         }))
         .filter((member) => member.id);
+    const roboTeam = projectRoboTeamParticipant(payload, meetingId);
+    if (roboTeam && !participants.some((entry) => String(entry?.id || '').trim() === roboTeam.id)) {
+        participants.push(roboTeam);
+    }
+    return participants;
+}
+
+function appendRoboTeamParticipant(payload, participants, meetingId = '') {
+    const nextParticipants = Array.isArray(participants) ? [...participants] : [];
+    const roboTeam = projectRoboTeamParticipant(payload, meetingId);
+    if (roboTeam && !nextParticipants.some((entry) => String(entry?.id || entry?.identity || '').trim() === roboTeam.id)) {
+        nextParticipants.push(roboTeam);
+    }
+    return nextParticipants;
 }
 
 export async function getRealtimeRoomParticipants(context, record, payload, options = {}, deps = {}) {
     const liveParticipants = await listLiveKitRoomParticipants(context, record.roomName);
     if (options.preserveStoredMembersOnEmpty === true && liveParticipants.length === 0) {
-        return projectStoredRoomParticipants(payload);
+        return projectStoredRoomParticipants(payload, record.meetingId);
     }
     let reconciledParticipants = [];
     await mutateRoom(context, record.meetingId, (lockedRecord, lockedPayload, stageEvent) => {
@@ -234,13 +256,30 @@ export async function getRoomDetails(context, meetingId, authInfo = null, option
         throw new Error('Meeting not found.');
     }
     const payload = decryptRoomPayload(context, record);
+    await mutateRoom(context, meetingId, (_record, lockedPayload, stageEvent) => {
+        ensureRoboTeamSettingsPayload(lockedPayload);
+        ensureRoboTeamAgentPayload(lockedPayload, stageEvent, meetingId);
+        const demoCreated = ensureRoboTeamDemoBlackboard(lockedPayload, meetingId);
+        if (demoCreated) {
+            stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+                meetingId,
+                blackboardVersion: getRoboTeamBlackboardVersion(lockedPayload),
+                changeType: 'create',
+                targetType: 'blackboard',
+                targetRef: '',
+                reason: 'robo_team_demo',
+                objectKind: 'blackboard'
+            });
+        }
+    });
+    const normalizedPayload = decryptRoomPayload(context, await loadRoomRecord(context, meetingId));
     const participants = options.includeParticipants === false
-        ? projectStoredRoomParticipants(payload)
-        : await getRealtimeRoomParticipants(context, record, payload, {}, deps);
+        ? projectStoredRoomParticipants(normalizedPayload, meetingId)
+        : appendRoboTeamParticipant(normalizedPayload, await getRealtimeRoomParticipants(context, record, normalizedPayload, {}, deps), meetingId);
     return {
         meeting: buildRoomView(record),
         participants,
-        agents: payload.agents
+        agents: normalizedPayload.agents
     };
 }
 

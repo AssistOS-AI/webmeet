@@ -7,6 +7,7 @@ import { mediaSettingsMethods } from './controllers/media-settings-methods.js';
 import { participantViewMethods } from './controllers/participant-view-methods.js';
 import { roomSessionMethods } from './controllers/room-session-methods.js';
 import { meetingActionMethods } from './controllers/meeting-action-methods.js';
+import { blackboardMethods } from './controllers/blackboard-methods.js';
 import { dashboardRenderMethods } from './controllers/dashboard-render-methods.js';
 import { dashboardChromeMethods } from './controllers/dashboard-chrome-methods.js';
 import { dashboardDataMethods } from './controllers/dashboard-data-methods.js';
@@ -38,11 +39,7 @@ import { normalizeCurrentActor } from './services/dashboard-utils.js';
 let avatarSettingsFormRegistrationPromise = null;
 
 function getSharedAvatarSettingsComponentBaseUrl() {
-    const publicBase = String(window.__WEBMEET_PUBLIC_API_URL || '').replace(/\/+$/g, '');
-    if (publicBase) {
-        return `${publicBase}/assets/shared/ui/avatar-settings-form/avatar-settings-form`;
-    }
-    return '/workspace-files/.ploinky/repos/AchillesIDE/shared/ui/avatar-settings-form/avatar-settings-form';
+    return '/explorer/ui-shared/avatar-settings-form/avatar-settings-form';
 }
 
 async function fetchComponentText(url, description) {
@@ -158,9 +155,15 @@ export class WebMeetDashbaoard {
             activeSpeakerIds: new Set(),
             chatSidebarVisible: true,
             activeMobilePanel: 'room',
-            videoGridFullscreen: false
+            videoGridFullscreen: false,
+            blackboard: {
+                visible: false,
+                presenterId: '',
+                presenterName: ''
+            }
         };
         this.room = null;
+        this.blackboardPanelReady = false;
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
         this.audioWebRtcStatsTimer = null;
@@ -171,6 +174,10 @@ export class WebMeetDashbaoard {
         this.handleSettingsModalReadyEvent = (event) => this.mountMediaSettingsModal(event);
         this.handleSettingsModalActionEvent = (event) => this.handleMediaSettingsModalAction(event);
         this.handleSettingsModalClosedEvent = (event) => this.handleMediaSettingsModalClosed(event);
+        this.handleBlackboardPanelReadyEvent = (event) => {
+            void this.handleBlackboardPanelReady?.(event);
+        };
+        this.element.addEventListener('webmeet-blackboard-panel-ready', this.handleBlackboardPanelReadyEvent);
         this.lastAudioMetricsDiagnosticAt = 0;
         this.roomNotificationSoundService = createRoomNotificationSoundService({
             isEnabled: () => this.state.mediaSettings?.roomNotificationSounds !== false
@@ -307,9 +314,7 @@ export class WebMeetDashbaoard {
             onMultiplierChange: (mediaElement) => this.applyOutputVolumePreviewToElement(mediaElement)
         });
 
-        // Initialize new modular components
         this._initComponents();
-
         this.invalidate();
     }
 
@@ -330,11 +335,12 @@ export class WebMeetDashbaoard {
 
     }
 
-    beforeRender() {}
+    async beforeRender() {
+        await ensureAvatarSettingsFormRegistered();
+    }
 
     async afterRender() {
         this.cacheElements();
-        await ensureAvatarSettingsFormRegistered();
         this.roomNotificationSoundService?.bindUnlockEvents?.(this.element);
         this.registerActions();
         this.registerChatSidebarResizer();
@@ -346,7 +352,9 @@ export class WebMeetDashbaoard {
         this.avatarSettingsForm?.addEventListener('avatar-settings-change', (event) => this.handleWebMeetAvatarSettingsChange(event));
         this.renderMediaSettingsPanel();
         void this.refreshMediaDevices({ requestPermission: false, showToast: false });
-        await this.bootstrap();
+        void this.bootstrap().catch((error) => {
+            this.setError?.(error instanceof Error ? error.message : String(error));
+        });
     }
 
     registerActions() {
@@ -380,6 +388,7 @@ export class WebMeetDashbaoard {
                 'openParticipantAudioSettings',
                 'focusParticipantCard',
                 'sendChat',
+                'attachRoboTeam',
                 'attachObserver',
                 'attachAssistant',
                 'attachScribe',
@@ -466,6 +475,10 @@ export class WebMeetDashbaoard {
         this.deafenButton = this.element.querySelector('#webmeetDeafenButton');
         this.cameraButton = this.element.querySelector('#webmeetCameraButton');
         this.screenShareButton = this.element.querySelector('#webmeetScreenShareButton');
+        this.blackboardButton = this.element.querySelector('#webmeetBlackboardButton');
+        this.blackboardSurface = this.element.querySelector('#webmeetBlackboardSurface');
+        this.blackboardPresenter = this.element.querySelector('#webmeetBlackboardPresenter');
+        this.blackboardPanel = this.element.querySelector('webmeet-blackboard-panel');
         this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
         this.dashboardRoot = this.element.querySelector('.webmeet-dashbaoard');
         this.chatSidebar = this.element.querySelector('#webmeetChatSidebar');
@@ -539,6 +552,7 @@ export class WebMeetDashbaoard {
     }
 
     afterUnload() {
+        this.element.removeEventListener('webmeet-blackboard-panel-ready', this.handleBlackboardPanelReadyEvent);
         this.element.removeEventListener('click', this.handleClick);
         this.chatInput?.removeEventListener?.('keydown', this.handleChatInputKeydown);
         this.chatComponent?.destroyChatAutocomplete?.();
@@ -552,6 +566,7 @@ export class WebMeetDashbaoard {
         window.removeEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
         window.removeEventListener('webmeet:settings-modal-closed', this.handleSettingsModalClosedEvent);
         this.restoreMediaSettingsPanel();
+        this.resetBlackboardUiState?.();
         this.remoteAudioNormalizer?.stopAll?.();
         this.participantLayoutController?.dispose?.();
         this.roomNotificationSoundService?.teardown?.();
@@ -597,6 +612,7 @@ Object.assign(
     participantViewMethods,
     roomSessionMethods,
     meetingActionMethods,
+    blackboardMethods,
     dashboardRenderMethods,
     mediaSettingsMethods
 );

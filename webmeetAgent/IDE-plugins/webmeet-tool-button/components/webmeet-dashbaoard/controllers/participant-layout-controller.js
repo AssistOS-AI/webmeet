@@ -24,7 +24,6 @@ export class ParticipantLayoutController {
         this.getParticipantAvatarUserId = typeof options.getParticipantAvatarUserId === 'function'
             ? options.getParticipantAvatarUserId
             : ((participant) => (participant?.kind === 'local' ? 'me' : ''));
-
         this.videoGrid = null;
         this.videoGridAll = null;
         this.videoGridEmpty = null;
