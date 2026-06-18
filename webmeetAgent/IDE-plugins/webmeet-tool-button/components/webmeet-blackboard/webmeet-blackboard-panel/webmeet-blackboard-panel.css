@@ -15,7 +15,7 @@ webmeet-blackboard-panel {
     min-height: inherit;
     overflow: hidden;
     border: 1px solid var(--bb-board-border, #d6deea);
-    background-color: var(--bb-board-bg, var(--blackboard-background-color));
+    background-color: var(--bb-board-bg);
     height: 100%;
 }
 

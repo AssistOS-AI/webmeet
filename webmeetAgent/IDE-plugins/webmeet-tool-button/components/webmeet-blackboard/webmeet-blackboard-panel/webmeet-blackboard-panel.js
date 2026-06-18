@@ -28,7 +28,6 @@ export class WebMeetBlackboardPanel {
         this.handleConnectEvent = (event) => this.connect(event.detail || {});
         this.handleUpdateEvent = (event) => this.applyBlackboardUpdate(event.detail || {});
         this.handleDisconnectEvent = () => this.cleanup();
-        this.handleToolbarToolEvent = (event) => this.setActiveTool(event.detail?.tool);
         this.handleToolbarAddWidgetEvent = (event) => {
             void this.addWidget(event.detail?.type);
         };
@@ -42,12 +41,6 @@ export class WebMeetBlackboardPanel {
             if (event.detail?.action === 'clear') void this.clearBlackboard();
             if (event.detail?.action === 'undo') void this.undo();
             if (event.detail?.action === 'redo') void this.redo();
-        };
-        this.handleToolbarTextStyleEvent = (event) => {
-            void this.setTextWidgetStyle(event.detail || {});
-        };
-        this.handleToolbarBackgroundEvent = (event) => {
-            void this.setBlackboardBackground(event.detail?.background);
         };
         this.handleToolbarThemeEvent = (event) => {
             void this.setBlackboardTheme(event.detail?.themeId);
@@ -114,19 +107,13 @@ export class WebMeetBlackboardPanel {
     }
 
     bindToolbar() {
-        this.toolbar?.removeEventListener('blackboard-tool', this.handleToolbarToolEvent);
         this.toolbar?.removeEventListener('blackboard-add-widget', this.handleToolbarAddWidgetEvent);
         this.toolbar?.removeEventListener('blackboard-image-upload', this.handleToolbarImageUploadEvent);
         this.toolbar?.removeEventListener('blackboard-action', this.handleToolbarActionEvent);
-        this.toolbar?.removeEventListener('blackboard-text-style', this.handleToolbarTextStyleEvent);
-        this.toolbar?.removeEventListener('blackboard-background', this.handleToolbarBackgroundEvent);
         this.toolbar?.removeEventListener('blackboard-theme', this.handleToolbarThemeEvent);
-        this.toolbar?.addEventListener('blackboard-tool', this.handleToolbarToolEvent);
         this.toolbar?.addEventListener('blackboard-add-widget', this.handleToolbarAddWidgetEvent);
         this.toolbar?.addEventListener('blackboard-image-upload', this.handleToolbarImageUploadEvent);
         this.toolbar?.addEventListener('blackboard-action', this.handleToolbarActionEvent);
-        this.toolbar?.addEventListener('blackboard-text-style', this.handleToolbarTextStyleEvent);
-        this.toolbar?.addEventListener('blackboard-background', this.handleToolbarBackgroundEvent);
         this.toolbar?.addEventListener('blackboard-theme', this.handleToolbarThemeEvent);
     }
 

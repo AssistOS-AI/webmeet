@@ -231,20 +231,6 @@
     margin: 0 2px;
 }
 
-.webmeet-blackboard-color-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 32px;
-    padding: 0 8px;
-    border: 1px solid var(--border-strong, #cbd5e1);
-    border-radius: 6px;
-    background: var(--surface-soft, #f8fafc);
-    color: var(--text, #172033);
-    font-size: 12px;
-    font-weight: 700;
-}
-
 .webmeet-blackboard-theme-trigger {
     gap: 6px;
     min-width: 76px;
@@ -271,33 +257,6 @@
     font-size: 14px;
     font-weight: 800;
     line-height: 1;
-}
-
-.webmeet-blackboard-color-control input {
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    cursor: pointer;
-}
-
-.webmeet-blackboard-text-toolbar {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 7px;
-}
-
-.webmeet-blackboard-sub-toolbar[hidden],
-.webmeet-blackboard-text-toolbar[hidden],
-.webmeet-blackboard-text-separator[hidden] {
-    display: none;
-}
-
-.webmeet-blackboard-text-style-control {
-    display: inline-flex;
-    align-items: center;
 }
 
 .webmeet-blackboard-select,
@@ -327,9 +286,4 @@
     padding: 0;
     border-color: transparent;
     background: transparent;
-}
-
-.webmeet-blackboard-text-style-toggle {
-    min-width: 30px;
-    padding: 0 8px;
 }

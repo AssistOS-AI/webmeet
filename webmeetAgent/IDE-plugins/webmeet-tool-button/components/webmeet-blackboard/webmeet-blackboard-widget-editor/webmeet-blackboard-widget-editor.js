@@ -1,6 +1,8 @@
+import { TEXT_DEFAULT_STYLE, TEXT_FONT_FAMILIES, TEXT_MIN_FONT_SIZE, TEXT_MAX_FONT_SIZE } from '../webmeet-blackboard-panel/webmeet-blackboard-text-style.js';
+
 const TEXT_WIDGET_TYPES = new Set(['text', 'card', 'input']);
 const CHOICE_WIDGET_TYPES = new Set(['quiz', 'vote']);
-const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'quiz', 'vote', 'input', 'embed']);
+const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'quiz', 'vote', 'input', 'embed', 'image']);
 const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'quiz', 'vote', 'input', 'embed']);
 
 function readWidgetFromElement(element) {
@@ -17,6 +19,16 @@ function clampStrokeWidth(value, fallback = 1) {
     const strokeWidth = Number.parseInt(String(value ?? ''), 10);
     if (!Number.isFinite(strokeWidth)) return fallback;
     return Math.max(0, Math.min(24, strokeWidth));
+}
+
+function clampFontSize(value, fallback = TEXT_DEFAULT_STYLE.fontSize) {
+    const fontSize = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isFinite(fontSize)) return fallback;
+    return Math.max(TEXT_MIN_FONT_SIZE, Math.min(TEXT_MAX_FONT_SIZE, fontSize));
+}
+
+function isHexColor(value) {
+    return /^#[0-9a-f]{6}$/i.test(String(value || '').trim());
 }
 
 export class WebMeetBlackboardWidgetEditor {
@@ -43,6 +55,12 @@ export class WebMeetBlackboardWidgetEditor {
         this.textSection = this.element.querySelector('[data-role="textSection"]');
         this.textLabel = this.element.querySelector('[data-role="textLabel"]');
         this.textInput = this.element.querySelector('[data-role="text"]');
+        this.typographySection = this.element.querySelector('[data-role="typographySection"]');
+        this.fontFamilyInput = this.element.querySelector('[data-role="fontFamily"]');
+        this.fontSizeInput = this.element.querySelector('[data-role="fontSize"]');
+        this.textStyleColorInput = this.element.querySelector('[data-role="textStyleColor"]');
+        this.fontBoldInput = this.element.querySelector('[data-role="fontBold"]');
+        this.fontItalicInput = this.element.querySelector('[data-role="fontItalic"]');
         this.choiceSection = this.element.querySelector('[data-role="choiceSection"]');
         this.optionsInput = this.element.querySelector('[data-role="options"]');
         this.resultsVisibilityInput = this.element.querySelector('[data-role="resultsVisibility"]');
@@ -51,6 +69,7 @@ export class WebMeetBlackboardWidgetEditor {
         this.surfaceSection = this.element.querySelector('[data-role="surfaceSection"]');
         this.fillField = this.element.querySelector('[data-role="fillField"]');
         this.fillInput = this.element.querySelector('[data-role="fill"]');
+        this.fillTransparentInput = this.element.querySelector('[data-role="fillTransparent"]');
         this.strokeLabel = this.element.querySelector('[data-role="strokeLabel"]');
         this.strokeInput = this.element.querySelector('[data-role="stroke"]');
         this.strokeWidthLabel = this.element.querySelector('[data-role="strokeWidthLabel"]');
@@ -61,6 +80,7 @@ export class WebMeetBlackboardWidgetEditor {
     }
 
     bindEvents() {
+        this.fillTransparentInput?.addEventListener('change', () => this.syncFillControlState());
         this.form?.addEventListener('submit', (event) => {
             event.preventDefault();
             if (!this.widget?.id) return;
@@ -72,6 +92,11 @@ export class WebMeetBlackboardWidgetEditor {
         });
     }
 
+    syncFillControlState() {
+        if (!this.fillInput || !this.fillTransparentInput) return;
+        this.fillInput.disabled = Boolean(this.fillTransparentInput.checked);
+    }
+
     closeModal() {
         globalThis.assistOS?.UI?.closeModal?.(this.element, this.result);
     }
@@ -81,6 +106,7 @@ export class WebMeetBlackboardWidgetEditor {
             if (this.title) this.title.textContent = 'Widget settings';
             if (this.subtitle) this.subtitle.textContent = 'Widget unavailable';
             if (this.textSection) this.textSection.hidden = true;
+            if (this.typographySection) this.typographySection.hidden = true;
             if (this.choiceSection) this.choiceSection.hidden = true;
             if (this.lineSection) this.lineSection.hidden = true;
             if (this.surfaceSection) this.surfaceSection.hidden = true;
@@ -95,7 +121,8 @@ export class WebMeetBlackboardWidgetEditor {
         const isLine = type === 'line';
         const isSurface = SURFACE_WIDGET_TYPES.has(type) || isLine;
         const hasText = TEXT_WIDGET_TYPES.has(type) || isChoice;
-        const hasTextColor = TEXT_COLOR_WIDGET_TYPES.has(type);
+        const hasTypography = type === 'text';
+        const hasTextColor = TEXT_COLOR_WIDGET_TYPES.has(type) && !hasTypography;
 
         if (this.title) this.title.textContent = 'Widget settings';
         if (this.subtitle) this.subtitle.textContent = type;
@@ -103,6 +130,19 @@ export class WebMeetBlackboardWidgetEditor {
         if (this.textSection) this.textSection.hidden = !hasText;
         if (this.textInput) this.textInput.value = this.getWidgetText(widget);
         if (this.textLabel) this.textLabel.textContent = isChoice ? 'Question' : 'Text';
+        if (this.typographySection) this.typographySection.hidden = !hasTypography;
+        if (hasTypography) {
+            const fontFamily = TEXT_FONT_FAMILIES.includes(String(style.fontFamily || '').trim())
+                ? String(style.fontFamily || '').trim()
+                : TEXT_DEFAULT_STYLE.fontFamily;
+            if (this.fontFamilyInput) this.fontFamilyInput.value = fontFamily;
+            if (this.fontSizeInput) this.fontSizeInput.value = String(clampFontSize(style.fontSize));
+            if (this.textStyleColorInput) {
+                this.textStyleColorInput.value = isHexColor(style.textColor) ? String(style.textColor).toLowerCase() : TEXT_DEFAULT_STYLE.textColor;
+            }
+            if (this.fontBoldInput) this.fontBoldInput.checked = String(style.fontWeight || '').trim() === 'bold' || String(style.fontWeight || '') === '700';
+            if (this.fontItalicInput) this.fontItalicInput.checked = String(style.fontStyle || '').trim() === 'italic';
+        }
 
         if (this.choiceSection) this.choiceSection.hidden = !isChoice;
         if (this.optionsInput) this.optionsInput.value = Array.isArray(props.options) ? props.options.join(', ') : '';
@@ -115,7 +155,10 @@ export class WebMeetBlackboardWidgetEditor {
 
         if (this.surfaceSection) this.surfaceSection.hidden = !isSurface;
         if (this.fillField) this.fillField.hidden = isLine;
-        if (this.fillInput) this.fillInput.value = style.fill || '#ffffff';
+        const isTransparentFill = String(style.fill || '').trim() === 'transparent';
+        if (this.fillInput) this.fillInput.value = isTransparentFill ? '#ffffff' : (style.fill || '#ffffff');
+        if (this.fillTransparentInput) this.fillTransparentInput.checked = isTransparentFill;
+        this.syncFillControlState();
         if (this.strokeLabel) this.strokeLabel.textContent = isLine ? 'Line color' : 'Border';
         if (this.strokeWidthLabel) this.strokeWidthLabel.textContent = isLine ? 'Line width' : 'Border width';
         if (this.strokeInput) this.strokeInput.value = style.stroke || '#334155';
@@ -167,12 +210,23 @@ export class WebMeetBlackboardWidgetEditor {
         if (SURFACE_WIDGET_TYPES.has(type) || type === 'line') {
             const style = { ...(widget.properties?.style || {}) };
             if (type !== 'line') {
-                style.fill = String(this.fillInput?.value || style.fill || '#ffffff');
+                style.fill = this.fillTransparentInput?.checked
+                    ? 'transparent'
+                    : String(this.fillInput?.value || style.fill || '#ffffff');
             }
             style.stroke = String(this.strokeInput?.value || style.stroke || '#334155');
             style.strokeWidth = clampStrokeWidth(this.strokeWidthInput?.value, style.strokeWidth ?? (type === 'line' ? 3 : 2));
             if (TEXT_COLOR_WIDGET_TYPES.has(type)) {
-                style.textColor = String(this.textColorInput?.value || style.textColor || '#172033');
+                style.textColor = type === 'text'
+                    ? String(this.textStyleColorInput?.value || style.textColor || TEXT_DEFAULT_STYLE.textColor)
+                    : String(this.textColorInput?.value || style.textColor || '#172033');
+            }
+            if (type === 'text') {
+                const fontFamily = String(this.fontFamilyInput?.value || '').trim();
+                style.fontFamily = TEXT_FONT_FAMILIES.includes(fontFamily) ? fontFamily : TEXT_DEFAULT_STYLE.fontFamily;
+                style.fontSize = clampFontSize(this.fontSizeInput?.value);
+                style.fontWeight = this.fontBoldInput?.checked ? '700' : '400';
+                style.fontStyle = this.fontItalicInput?.checked ? 'italic' : 'normal';
             }
             patch.properties.style = style;
         }

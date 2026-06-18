@@ -1,26 +1,13 @@
 import { getBlackboardThemeOptions, resolveBlackboardThemeId } from '../webmeet-blackboard-theme-presets.js';
 
-const TEXT_DEFAULT_STYLE = {
-    fontFamily: 'Arial',
-    fontSize: 20,
-    fontWeight: '400',
-    fontStyle: 'normal',
-    textColor: '#172033'
-};
-const TEXT_FONT_FAMILIES = ['Arial', 'Times New Roman', 'Georgia', 'Verdana', 'Courier New', 'Trebuchet MS'];
-
 export class WebMeetBlackboardToolbar {
     constructor(element, invalidate) {
         this.element = element;
         this.invalidate = invalidate;
-        this.activeTool = 'select';
         this.busy = false;
-        this.background = { color: '#ffffff' };
         this.themeId = resolveBlackboardThemeId();
         this.themeOptions = getBlackboardThemeOptions();
         this.openMenu = '';
-        this.selectedWidgetType = '';
-        this.selectedTextWidget = null;
         this.menuSelections = {
             shape: { icon: 'rectangle', value: 'shape:rectangle' },
             line: { icon: 'line', value: 'line' },
@@ -40,26 +27,13 @@ export class WebMeetBlackboardToolbar {
         this.renderState();
     }
 
-    setState({ activeTool = 'select', busy = false, background, themeId, selectedWidgetType = '', selectedTextWidget } = {}) {
-        this.activeTool = activeTool;
+    setState({ busy = false, themeId } = {}) {
         this.busy = busy;
         if (themeId) {
             this.themeId = resolveBlackboardThemeId({ theme: { id: themeId } });
         }
-        this.selectedWidgetType = String(selectedWidgetType || '').trim();
         if (this.busy) {
             this.openMenu = '';
-        }
-        if (selectedTextWidget && selectedTextWidget.id && selectedTextWidget.style) {
-            this.selectedTextWidget = {
-                id: String(selectedTextWidget.id || ''),
-                style: { ...TEXT_DEFAULT_STYLE, ...selectedTextWidget.style }
-            };
-        } else {
-            this.selectedTextWidget = null;
-        }
-        if (background) {
-            this.background = { ...this.background, ...background };
         }
         this.renderState();
     }
@@ -76,13 +50,6 @@ export class WebMeetBlackboardToolbar {
     afterUnload() {
         document.removeEventListener('pointerdown', this.handleDocumentPointerDown);
         document.removeEventListener('keydown', this.handleDocumentKeydown);
-    }
-
-    setTool(_target, tool = 'select') {
-        const normalizedTool = String(tool || 'select').trim() || 'select';
-        if (_target?.disabled) return;
-        this.closeMenu();
-        this.emit('blackboard-tool', { tool: normalizedTool });
     }
 
     addWidget(_target, type = 'shape') {
@@ -115,30 +82,6 @@ export class WebMeetBlackboardToolbar {
         this.emit('blackboard-theme', { themeId: normalizedThemeId });
     }
 
-    runTextStyleAction(_target, action = '') {
-        const normalizedAction = String(action || '').trim().toLowerCase();
-        if (!normalizedAction || _target?.disabled || !this.selectedTextWidget?.id) return;
-        const current = this.selectedTextWidget.style || {};
-        const updatedStyle = { ...current };
-        if (normalizedAction === 'bold') {
-            const isBold = String(current.fontWeight || '').trim() === 'bold' || String(current.fontWeight || '') === '700';
-            updatedStyle.fontWeight = isBold ? '400' : 'bold';
-        } else if (normalizedAction === 'italic') {
-            const isItalic = String(current.fontStyle || '').trim() === 'italic';
-            updatedStyle.fontStyle = isItalic ? 'normal' : 'italic';
-        } else {
-            return;
-        }
-        this.emit('blackboard-text-style', {
-            targetRef: this.selectedTextWidget.id,
-            style: {
-                fontWeight: updatedStyle.fontWeight,
-                fontStyle: updatedStyle.fontStyle
-            }
-        });
-        this.renderState();
-    }
-
     toggleMenu(_target, menu = '') {
         const normalizedMenu = String(menu || '').trim();
         if (!normalizedMenu || _target?.disabled || this.busy) return;
@@ -164,17 +107,6 @@ export class WebMeetBlackboardToolbar {
     }
 
     handleToolbarChange(event) {
-        const backgroundColor = event.target?.closest?.('[data-background-color]');
-        if (backgroundColor && this.element.contains(backgroundColor)) {
-            this.closeMenu();
-            this.emit('blackboard-background', { background: { color: backgroundColor.value } });
-            return;
-        }
-        const textStyleControl = event.target?.closest?.('[data-text-style]');
-        if (textStyleControl && this.element.contains(textStyleControl)) {
-            this.emitTextStylePatch(textStyleControl);
-            return;
-        }
         const imageInput = event.target?.closest?.('[data-image-upload-input]');
         if (imageInput && this.element.contains(imageInput)) {
             const file = imageInput.files?.[0] || null;
@@ -184,33 +116,6 @@ export class WebMeetBlackboardToolbar {
                 this.emit('blackboard-image-upload', { file });
             }
         }
-    }
-
-    emitTextStylePatch(control) {
-        if (!control || this.busy || !this.selectedTextWidget?.id) return;
-        const property = String(control.getAttribute('data-text-style') || '').trim();
-        if (!property || !this.element?.contains(control)) return;
-        const rawValue = String(control.value ?? '').trim();
-        if (!rawValue) return;
-        const patch = {};
-        if (property === 'fontSize') {
-            const size = Number.parseInt(rawValue, 10);
-            if (!Number.isFinite(size) || size < 1) return;
-            patch.fontSize = size;
-        } else if (property === 'textColor') {
-            if (/^#[0-9a-f]{6}$/i.test(rawValue)) {
-                patch.textColor = rawValue.toLowerCase();
-            } else {
-                return;
-            }
-        } else {
-            patch[property] = rawValue;
-        }
-        if (!Object.keys(patch).length) return;
-        this.emit('blackboard-text-style', {
-            targetRef: this.selectedTextWidget.id,
-            style: patch
-        });
     }
 
     rememberMenuSelection(target, type) {
@@ -226,48 +131,6 @@ export class WebMeetBlackboardToolbar {
     renderState() {
         for (const button of this.element.querySelectorAll('button')) {
             button.disabled = Boolean(this.busy);
-        }
-        const textToolbar = this.element.querySelector('[data-text-toolbar]');
-        const textToolbarSeparator = this.element.querySelector('[data-text-toolbar-separator]');
-        const isText = this.selectedWidgetType === 'text' && Boolean(this.selectedTextWidget?.id);
-        if (textToolbar) {
-            textToolbar.hidden = !isText;
-        }
-        if (textToolbarSeparator) {
-            textToolbarSeparator.hidden = !isText;
-        }
-        if (isText) {
-            const style = this.selectedTextWidget.style || {};
-            const fontFamily = String(style.fontFamily || TEXT_DEFAULT_STYLE.fontFamily).trim();
-            const textColor = String(style.textColor || TEXT_DEFAULT_STYLE.textColor).trim();
-            const fontSize = Number.isFinite(Number(style.fontSize)) ? Number(style.fontSize) : Number(TEXT_DEFAULT_STYLE.fontSize);
-            const fontWeight = String(style.fontWeight || TEXT_DEFAULT_STYLE.fontWeight).trim();
-            const fontStyle = String(style.fontStyle || TEXT_DEFAULT_STYLE.fontStyle).trim();
-            const fontFamilyControl = this.element.querySelector('[data-text-style="fontFamily"]');
-            const fontSizeControl = this.element.querySelector('[data-text-style="fontSize"]');
-            const textColorControl = this.element.querySelector('[data-text-style="textColor"]');
-            const boldButton = this.element.querySelector('[data-local-action="runTextStyleAction bold"]');
-            const italicButton = this.element.querySelector('[data-local-action="runTextStyleAction italic"]');
-
-            if (fontFamilyControl && TEXT_FONT_FAMILIES.includes(fontFamily)) {
-                fontFamilyControl.value = fontFamily;
-            }
-            if (fontSizeControl) {
-                fontSizeControl.value = String(fontSize);
-            }
-            if (textColorControl) {
-                textColorControl.value = /^#[0-9a-f]{6}$/i.test(textColor) ? textColor : TEXT_DEFAULT_STYLE.textColor;
-            }
-            if (boldButton) {
-                boldButton.classList.toggle('is-active', fontWeight === 'bold' || fontWeight === '700');
-            }
-            if (italicButton) {
-                italicButton.classList.toggle('is-active', fontStyle === 'italic');
-            }
-        }
-        for (const button of this.element.querySelectorAll('[data-local-action^="setTool "]')) {
-            const [, tool = ''] = String(button.getAttribute('data-local-action') || '').trim().split(/\s+/);
-            button.classList.toggle('is-active', tool === this.activeTool);
         }
         for (const menu of this.element.querySelectorAll('[data-menu]')) {
             const menuName = String(menu.dataset.menu || '').trim();
@@ -289,10 +152,6 @@ export class WebMeetBlackboardToolbar {
             const group = String(item.dataset.menuGroup || '').trim();
             const selectedValue = this.menuSelections[group]?.value || '';
             item.classList.toggle('is-selected', item.dataset.menuValue === selectedValue);
-        }
-        const backgroundColor = this.element.querySelector('[data-background-color]');
-        if (backgroundColor && backgroundColor.value !== this.background.color) {
-            backgroundColor.value = this.background.color || '#ffffff';
         }
         const themeMenu = this.element.querySelector('[data-theme-menu]');
         if (themeMenu) {

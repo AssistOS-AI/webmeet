@@ -13,21 +13,10 @@ export const blackboardActionMethods = {
         });
     },
 
-    setActiveTool(tool) {
-        this.activeTool = String(tool || 'select').trim() || 'select';
-        this.updateToolbarState();
-    },
-
     updateToolbarState() {
-        const selectedWidget = this.getWidgetById(this.selection);
-        const selectedTextWidget = this.getSelectedTextWidgetState();
         this.toolbar?.setState?.({
-            activeTool: this.activeTool,
             busy: this.busy,
-            background: this.getBlackboardBackground(),
-            themeId: this.getBlackboardTheme().id,
-            selectedWidgetType: String(selectedWidget?.type || '').trim(),
-            selectedTextWidget
+            themeId: this.getBlackboardTheme().id
         });
     },
 
@@ -77,56 +66,16 @@ export const blackboardActionMethods = {
         };
     },
 
-    getSelectedTextWidgetState() {
-        const selectedWidget = this.getWidgetById(this.selection);
-        if (!selectedWidget || selectedWidget.type !== 'text') return null;
-        const style = this.normalizeTextStyle(selectedWidget.properties?.style || {});
-        const themeTextDefaults = this.getBlackboardTheme().defaults?.text || {};
-        if (!selectedWidget.properties?.style?.textColor && themeTextDefaults.textColor) {
-            style.textColor = themeTextDefaults.textColor;
-        }
-        return {
-            id: String(selectedWidget.id || ''),
-            style
-        };
-    },
-
-    async setTextWidgetStyle(detail = {}) {
-        await this.flushInlineTextEdit();
-        const targetRef = String(detail?.targetRef || '').trim();
-        if (!targetRef || this.busy) return;
-        const selectedWidget = this.getWidgetById(targetRef);
-        if (!selectedWidget || selectedWidget.type !== 'text') return;
-        const style = this.normalizeTextStyle(detail?.style || {}, false);
-        if (!Object.keys(style || {}).length) return;
-        await this.runFinalChange({
-            changeType: 'update',
-            targetType: 'widget',
-            targetRef,
-            reason: 'textStyle',
-            patch: { properties: { style } }
-        });
-    },
-
     getBlackboardBackground() {
         const theme = this.getBlackboardTheme();
-        const background = this.blackboard?.metadata?.background || {};
-        const color = this.normalizeColor(background.color) || theme.tokens.boardBackground;
-        const gridColor = this.normalizeColor(background.gridColor) || theme.tokens.boardGridColor;
         return {
-            color,
-            gridColor,
-            gridSize: Number(background.gridSize || 24) || 24
+            color: theme.tokens.boardBackground,
+            gridColor: theme.tokens.boardGridColor
         };
     },
 
     getBlackboardTheme() {
         return resolveBlackboardTheme(this.blackboard?.metadata || {});
-    },
-
-    normalizeColor(value) {
-        const color = String(value || '').trim();
-        return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
     },
 
     applyBoardBackground() {
@@ -137,9 +86,6 @@ export const blackboardActionMethods = {
         this.applyBoardThemeTokens(theme);
         this.board.style.setProperty('--bb-board-bg', background.color);
         this.board.style.setProperty('--bb-grid-color', background.gridColor);
-        this.board.style.setProperty('--blackboard-background-color', background.color);
-        this.board.style.setProperty('--blackboard-grid-color', background.gridColor);
-        this.board.style.setProperty('--blackboard-grid-size', `${background.gridSize}px`);
     },
 
     applyBoardThemeTokens(theme) {
@@ -168,25 +114,6 @@ export const blackboardActionMethods = {
                 this.board.style.setProperty(property, String(value));
             }
         }
-    },
-
-    async setBlackboardBackground(background = {}) {
-        await this.flushInlineTextEdit();
-        const color = this.normalizeColor(background.color);
-        if (!color) return;
-        await this.runFinalChange({
-            changeType: 'update',
-            targetType: 'blackboard',
-            reason: 'background',
-            patch: {
-                metadata: {
-                    background: {
-                        ...this.getBlackboardBackground(),
-                        color
-                    }
-                }
-            }
-        });
     },
 
     async setBlackboardTheme(themeId) {

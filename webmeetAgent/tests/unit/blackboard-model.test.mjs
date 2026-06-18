@@ -431,7 +431,7 @@ test('blackboard inline text editing survives render refresh and flushes before 
     assert.match(startInlineTextEditMethod, /void this\.finishInlineTextEdit\(true\)/);
     assert.match(flushInlineTextEditMethod, /await this\.finishInlineTextEdit\(true\)/);
     assert.match(flushInlineTextEditMethod, /await this\.inlineEditCommitPromise/);
-    assert.match(source, /async setTextWidgetStyle\(detail = \{\}\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
+    assert.doesNotMatch(source, /async setTextWidgetStyle\(detail = \{\}\)/);
     assert.match(source, /async undo\(\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
     assert.match(source, /async redo\(\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
 });
@@ -543,14 +543,14 @@ test('blackboard opens as the focused item inside the participant video layout',
     assert.match(dashboardCss, /width: clamp\(240px, calc\(100% - 92px\), 100%\)/);
 });
 
-test('blackboard widgets support final resize changes for shape line card and text', async () => {
+test('blackboard widgets support final resize changes for shape line card text and image', async () => {
     const source = await readBlackboardPanelSource();
     const css = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
         'utf8'
     );
 
-    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text'\]\.includes/);
+    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image'\]\.includes/);
     assert.match(source, /renderResizeHandles\(node, widget\)/);
     assert.match(source, /data-resize-handle/);
     assert.match(source, /reason: 'resize'/);
@@ -640,12 +640,26 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(editorHtml, /data-role="strokeWidth"/);
     assert.match(editorHtml, /data-role="textColor"/);
     assert.match(editorHtml, /data-role="textSection"/);
+    assert.match(editorHtml, /data-role="typographySection"/);
+    assert.match(editorHtml, /data-role="fontFamily"/);
+    assert.match(editorHtml, /data-role="fontSize"/);
+    assert.match(editorHtml, /data-role="textStyleColor"/);
+    assert.match(editorHtml, /data-role="fontBold"/);
+    assert.match(editorHtml, /data-role="fontItalic"/);
     assert.match(editorHtml, /data-role="choiceSection"/);
     assert.match(editorHtml, /data-role="surfaceSection"/);
+    assert.doesNotMatch(toolbarHtml, /webmeet-blackboard-text-toolbar/);
+    assert.doesNotMatch(toolbarHtml, /data-text-style/);
     assert.doesNotMatch(editorHtml, /data-role="lineAngle"/);
     assert.doesNotMatch(editorSource, /patch\.properties\.shapeKind/);
     assert.match(editorSource, /SURFACE_WIDGET_TYPES/);
     assert.match(editorSource, /TEXT_COLOR_WIDGET_TYPES/);
+    assert.match(editorSource, /style\.fontFamily/);
+    assert.match(editorSource, /style\.fontSize/);
+    assert.match(editorSource, /style\.fontWeight/);
+    assert.match(editorSource, /style\.fontStyle/);
+    assert.match(editorHtml, /data-role="fillTransparent"/);
+    assert.match(editorSource, /style\.fill = this\.fillTransparentInput\?\.checked[\s\S]*\? 'transparent'/);
     assert.match(editorSource, /patch\.properties\.line/);
     assert.match(editorSource, /strokeWidth/);
     assert.match(panelCss, /border: var\(--stroke-width/);
@@ -653,7 +667,7 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.doesNotMatch(editorSource, /lineAngleInput/);
 });
 
-test('blackboard toolbar updates persisted board background metadata', async () => {
+test('blackboard toolbar uses themes instead of manual board background controls', async () => {
     const componentDir = path.resolve(
         import.meta.dirname,
         '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard'
@@ -672,23 +686,23 @@ test('blackboard toolbar updates persisted board background metadata', async () 
         'utf8'
     );
 
-    assert.match(toolbarHtml, /data-background-color/);
-    assert.match(toolbarSource, /blackboard-background/);
-    assert.match(toolbarHtml, /data-local-action="setTool select"/);
-    assert.match(toolbarHtml, /data-local-action="runToolbarAction delete"/);
+    assert.doesNotMatch(toolbarHtml, /data-background-color/);
+    assert.doesNotMatch(toolbarSource, /blackboard-background/);
+    assert.doesNotMatch(toolbarHtml, /data-local-action="setTool select"/);
+    assert.doesNotMatch(toolbarHtml, /data-local-action="runToolbarAction delete"/);
     assert.doesNotMatch(toolbarHtml, /data-action=/);
-    assert.match(toolbarSource, /setTool\(_target, tool = 'select'\)/);
+    assert.doesNotMatch(toolbarSource, /setTool\(_target, tool = 'select'\)/);
     assert.match(toolbarSource, /addWidget\(_target, type = 'shape'\)/);
     assert.match(toolbarSource, /runToolbarAction\(_target, action = ''\)/);
     assert.match(toolbarSource, /constructor\(element, invalidate\)/);
     assert.doesNotMatch(toolbarSource, /registerAction/);
     assert.doesNotMatch(toolbarSource, /addEventListener\('click'/);
     assert.doesNotMatch(toolbarSource, /handleToolbarClick/);
-    assert.match(panelSource, /setBlackboardBackground\(background = \{\}\)/);
+    assert.doesNotMatch(panelSource, /setBlackboardBackground\(background = \{\}\)/);
     assert.match(panelSource, /targetType: 'blackboard'/);
-    assert.match(panelSource, /metadata: \{[\s\S]*background:/);
+    assert.doesNotMatch(panelSource, /metadata: \{[\s\S]*background:/);
     assert.match(panelSource, /applyBoardBackground\(\)/);
-    assert.match(panelCss, /--blackboard-background-color/);
+    assert.doesNotMatch(panelCss, /--blackboard-background-color/);
 });
 
 test('blackboard exposes Leadership theme extracted from the provided palette', () => {

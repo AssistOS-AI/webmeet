@@ -117,9 +117,7 @@ export const blackboardRenderingMethods = {
     canResizeWidget(widget) {
         if (!widget || widget.locked) return false;
         const widgetType = String(widget.type || 'shape').trim() || 'shape';
-        const resizableTypes = ['shape', 'line', 'card', 'text'];
-        const resizableTypesWithImages = ['shape', 'line', 'card', 'text', 'image'];
-        return resizableTypesWithImages.includes(widgetType) || resizableTypes.includes(widgetType);
+        return ['shape', 'line', 'card', 'text', 'image'].includes(widgetType);
     },
 
     renderResizeHandles(node, widget) {

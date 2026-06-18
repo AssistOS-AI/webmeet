@@ -15,6 +15,41 @@
             </label>
         </section>
 
+        <section class="webmeet-blackboard-editor-section webmeet-blackboard-typography-section" data-role="typographySection" hidden>
+            <label class="webmeet-blackboard-editor-field">
+                <span>Font</span>
+                <select name="fontFamily" data-role="fontFamily">
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Trebuchet MS">Trebuchet MS</option>
+                </select>
+            </label>
+            <label class="webmeet-blackboard-editor-field">
+                <span>Size</span>
+                <input name="fontSize" type="number" min="8" max="200" step="1" data-role="fontSize">
+            </label>
+            <label class="webmeet-blackboard-editor-field">
+                <span>Text color</span>
+                <input name="textStyleColor" type="color" data-role="textStyleColor">
+            </label>
+            <label class="webmeet-blackboard-editor-field webmeet-blackboard-text-toggle-field">
+                <span>Style</span>
+                <span class="webmeet-blackboard-text-toggle-row">
+                    <label class="webmeet-blackboard-text-toggle">
+                        <input name="fontBold" type="checkbox" data-role="fontBold">
+                        <span>Bold</span>
+                    </label>
+                    <label class="webmeet-blackboard-text-toggle">
+                        <input name="fontItalic" type="checkbox" data-role="fontItalic">
+                        <span>Italic</span>
+                    </label>
+                </span>
+            </label>
+        </section>
+
         <section class="webmeet-blackboard-editor-section" data-role="choiceSection" hidden>
             <label class="webmeet-blackboard-editor-field">
                 <span>Options</span>
@@ -48,7 +83,13 @@
         <section class="webmeet-blackboard-editor-section" data-role="surfaceSection" hidden>
             <label class="webmeet-blackboard-editor-field" data-role="fillField">
                 <span>Background</span>
-                <input name="fill" type="color" data-role="fill">
+                <span class="webmeet-blackboard-fill-control">
+                    <input name="fill" type="color" data-role="fill">
+                    <label class="webmeet-blackboard-transparent-control">
+                        <input name="fillTransparent" type="checkbox" data-role="fillTransparent">
+                        <span>Transparent</span>
+                    </label>
+                </span>
             </label>
             <label class="webmeet-blackboard-editor-field">
                 <span data-role="strokeLabel">Border</span>

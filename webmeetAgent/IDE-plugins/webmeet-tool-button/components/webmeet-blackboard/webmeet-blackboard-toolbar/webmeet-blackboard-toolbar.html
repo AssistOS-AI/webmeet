@@ -1,7 +1,4 @@
 <div class="webmeet-blackboard-toolbar" part="toolbar">
-    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="setTool select" title="Select" aria-label="Select">↖</button>
-    <span class="webmeet-blackboard-separator" aria-hidden="true"></span>
-
     <div class="webmeet-blackboard-tool-menu" data-menu="shape">
         <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-menu-trigger" data-local-action="toggleMenu shape" title="Shapes" aria-label="Shapes" aria-haspopup="menu" aria-expanded="false">
             <span class="webmeet-blackboard-tool-icon" data-menu-icon="shape" data-icon-key="rectangle"></span>
@@ -35,7 +32,6 @@
         <span class="webmeet-blackboard-tool-icon" data-icon-key="image"></span>
     </button>
     <input type="file" accept="image/*" data-image-upload-input hidden>
-    <span class="webmeet-blackboard-separator webmeet-blackboard-text-separator" data-text-toolbar-separator aria-hidden="true" hidden></span>
     <div class="webmeet-blackboard-tool-menu" data-menu="insert">
         <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-menu-trigger" data-local-action="toggleMenu insert" title="Interactive widgets" aria-label="Interactive widgets" aria-haspopup="menu" aria-expanded="false">
             <span class="webmeet-blackboard-tool-icon" data-menu-icon="insert" data-icon-key="quiz"></span>
@@ -49,9 +45,6 @@
     </div>
 
     <span class="webmeet-blackboard-separator" aria-hidden="true"></span>
-    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="runToolbarAction delete" title="Delete selected" aria-label="Delete selected">
-        <span class="webmeet-blackboard-tool-icon" data-icon-key="delete"></span>
-    </button>
     <button type="button" class="webmeet-blackboard-tool-button" data-local-action="runToolbarAction clear" title="Clear blackboard" aria-label="Clear blackboard">
         <span class="webmeet-blackboard-tool-icon" data-icon-key="clear"></span>
     </button>
@@ -69,27 +62,4 @@
         </button>
         <div class="webmeet-blackboard-menu-dropdown webmeet-blackboard-theme-dropdown" data-menu-panel="theme" role="menu" data-theme-menu></div>
     </div>
-    <label class="webmeet-blackboard-color-control" title="Blackboard background" aria-label="Blackboard background">
-        <span>BG</span>
-        <input type="color" value="#ffffff" data-background-color>
-    </label>
-</div>
-<div class="webmeet-blackboard-text-toolbar webmeet-blackboard-sub-toolbar" data-sub-toolbar="text" data-text-toolbar hidden>
-    <label class="webmeet-blackboard-text-style-control" title="Font family">
-        <select class="webmeet-blackboard-select" data-text-style="fontFamily" aria-label="Font family">
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Verdana">Verdana</option>
-            <option value="Courier New">Courier New</option>
-        </select>
-    </label>
-    <label class="webmeet-blackboard-text-style-control" title="Font size">
-        <input type="number" class="webmeet-blackboard-input" min="12" max="200" step="1" data-text-style="fontSize" aria-label="Font size">
-    </label>
-    <label class="webmeet-blackboard-text-style-control" title="Text color">
-        <input type="color" class="webmeet-blackboard-input" data-text-style="textColor" aria-label="Text color">
-    </label>
-    <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-text-style-toggle" data-local-action="runTextStyleAction bold" title="Bold" aria-label="Bold">B</button>
-    <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-text-style-toggle" data-local-action="runTextStyleAction italic" title="Italic" aria-label="Italic">I</button>
 </div>
