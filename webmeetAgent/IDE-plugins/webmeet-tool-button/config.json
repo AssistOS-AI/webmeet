@@ -52,6 +52,7 @@
         {
             "component": "webmeet-blackboard-widget-editor",
             "presenter": "WebMeetBlackboardWidgetEditor",
+            "type": "modal",
             "path": "components/webmeet-blackboard/webmeet-blackboard-widget-editor/webmeet-blackboard-widget-editor"
         },
         {

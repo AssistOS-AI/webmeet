@@ -41,9 +41,11 @@ export const blackboardRenderingMethods = {
         node.style.setProperty('--widget-counter-rotation', `${-rotation}deg`);
         const themeDefaults = this.getBlackboardTheme().defaults || {};
         const typeDefaults = themeDefaults[widget.type] || themeDefaults.shape || {};
+        const textDefaults = themeDefaults.text || {};
         node.style.setProperty('--fill', style.fill || typeDefaults.fill || 'var(--bb-widget-bg)');
         node.style.setProperty('--stroke', style.stroke || typeDefaults.stroke || 'var(--bb-widget-border)');
-        if (style.strokeWidth) node.style.setProperty('--stroke-width', String(style.strokeWidth));
+        node.style.setProperty('--stroke-width', String(Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? 1) || 0));
+        node.style.setProperty('--text-color', style.textColor || textDefaults.textColor || 'var(--bb-widget-text)');
         this.renderWidgetContent(node, widget);
         this.renderResizeHandles(node, widget);
         this.renderContextMenu(node, widget);
@@ -51,6 +53,7 @@ export const blackboardRenderingMethods = {
         node.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
+            this.selection = widget.id;
             void this.editWidget(widget);
         });
         return node;
@@ -66,6 +69,15 @@ export const blackboardRenderingMethods = {
         const moveHandle = this.createContextButton('move', 'Move widget', 'Move', 'move');
         moveHandle.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
         menu.append(moveHandle);
+
+        const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
+        settingsButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.selection = widget.id;
+            void this.editWidget(widget);
+        });
+        menu.append(settingsButton);
 
         if (this.canRotateWidget(widget)) {
             const rotateHandle = this.createContextButton('rotate', 'Rotate widget', 'Rotate', 'rotate');

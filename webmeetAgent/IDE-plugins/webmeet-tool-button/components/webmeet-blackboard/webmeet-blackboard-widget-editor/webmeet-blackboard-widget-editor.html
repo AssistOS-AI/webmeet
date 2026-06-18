@@ -1,55 +1,72 @@
 <form class="webmeet-blackboard-widget-editor" data-role="form">
-    <div class="webmeet-blackboard-editor-title" data-role="title">Edit widget</div>
-    <label class="webmeet-blackboard-editor-field">
-        <span>Text</span>
-        <textarea name="text" data-role="text"></textarea>
-    </label>
-    <label class="webmeet-blackboard-editor-field" data-role="optionsField" hidden>
-        <span>Options</span>
-        <input name="options" data-role="options" autocomplete="off">
-    </label>
-    <label class="webmeet-blackboard-editor-field" data-role="resultsVisibilityField" hidden>
-        <span>Results</span>
-        <select name="resultsVisibility" data-role="resultsVisibility">
-            <option value="hidden">hidden</option>
-            <option value="afterSubmit">afterSubmit</option>
-            <option value="afterVote">afterVote</option>
-            <option value="afterClose">afterClose</option>
-            <option value="moderatorsOnly">moderatorsOnly</option>
-            <option value="public">public</option>
-        </select>
-    </label>
-    <label class="webmeet-blackboard-editor-field" data-role="shapeKindField" hidden>
-        <span>Shape</span>
-        <select name="shapeKind" data-role="shapeKind">
-            <option value="rectangle">Rectangle</option>
-            <option value="rounded">Rounded</option>
-            <option value="ellipse">Ellipse</option>
-            <option value="diamond">Diamond</option>
-            <option value="triangle">Triangle</option>
-        </select>
-    </label>
-    <label class="webmeet-blackboard-editor-field" data-role="lineMarkerField" hidden>
-        <span>Arrow</span>
-        <select name="lineMarker" data-role="lineMarker">
-            <option value="none">None</option>
-            <option value="end">End</option>
-            <option value="start">Start</option>
-            <option value="both">Both</option>
-        </select>
-    </label>
-    <div class="webmeet-blackboard-editor-color-row" data-role="styleFields" hidden>
-        <label class="webmeet-blackboard-editor-field">
-            <span>Fill</span>
-            <input name="fill" type="color" data-role="fill">
-        </label>
-        <label class="webmeet-blackboard-editor-field">
-            <span>Stroke</span>
-            <input name="stroke" type="color" data-role="stroke">
-        </label>
+    <div class="modal-header">
+        <div class="modal-header-left">
+            <div class="modal-title" data-role="title">Widget settings</div>
+            <div class="modal-subtitle" data-role="subtitle"></div>
+        </div>
+        <button type="button" class="close" data-local-action="closeModal" aria-label="Close"></button>
     </div>
-    <div class="webmeet-blackboard-editor-actions">
-        <button type="button" data-role="cancel">Cancel</button>
-        <button type="submit" class="webmeet-blackboard-editor-save">Save</button>
+
+    <div class="modal-body webmeet-blackboard-editor-body">
+        <section class="webmeet-blackboard-editor-section" data-role="textSection" hidden>
+            <label class="webmeet-blackboard-editor-field">
+                <span data-role="textLabel">Text</span>
+                <textarea name="text" data-role="text"></textarea>
+            </label>
+        </section>
+
+        <section class="webmeet-blackboard-editor-section" data-role="choiceSection" hidden>
+            <label class="webmeet-blackboard-editor-field">
+                <span>Options</span>
+                <input name="options" data-role="options" autocomplete="off">
+            </label>
+            <label class="webmeet-blackboard-editor-field">
+                <span>Results</span>
+                <select name="resultsVisibility" data-role="resultsVisibility">
+                    <option value="hidden">Hidden</option>
+                    <option value="afterSubmit">After submit</option>
+                    <option value="afterVote">After vote</option>
+                    <option value="afterClose">After close</option>
+                    <option value="moderatorsOnly">Moderators only</option>
+                    <option value="public">Public</option>
+                </select>
+            </label>
+        </section>
+
+        <section class="webmeet-blackboard-editor-section" data-role="lineSection" hidden>
+            <label class="webmeet-blackboard-editor-field">
+                <span>Arrow</span>
+                <select name="lineMarker" data-role="lineMarker">
+                    <option value="none">None</option>
+                    <option value="end">End</option>
+                    <option value="start">Start</option>
+                    <option value="both">Both</option>
+                </select>
+            </label>
+        </section>
+
+        <section class="webmeet-blackboard-editor-section" data-role="surfaceSection" hidden>
+            <label class="webmeet-blackboard-editor-field" data-role="fillField">
+                <span>Background</span>
+                <input name="fill" type="color" data-role="fill">
+            </label>
+            <label class="webmeet-blackboard-editor-field">
+                <span data-role="strokeLabel">Border</span>
+                <input name="stroke" type="color" data-role="stroke">
+            </label>
+            <label class="webmeet-blackboard-editor-field">
+                <span data-role="strokeWidthLabel">Border width</span>
+                <input name="strokeWidth" type="number" min="0" max="24" step="1" data-role="strokeWidth">
+            </label>
+            <label class="webmeet-blackboard-editor-field" data-role="textColorField" hidden>
+                <span>Text color</span>
+                <input name="textColor" type="color" data-role="textColor">
+            </label>
+        </section>
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="gray-button" data-local-action="closeModal">Cancel</button>
+        <button type="submit" class="general-button">Save</button>
     </div>
 </form>

@@ -148,9 +148,9 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-widget.image {
     overflow: hidden;
     padding: 8px;
-    border: 1px solid var(--bb-widget-border, #cbd5e1);
-    background: var(--bb-widget-bg, #ffffff);
-    color: var(--bb-widget-text, #172033);
+    border: var(--stroke-width, 1px) solid var(--stroke, var(--bb-widget-border, #cbd5e1));
+    background: var(--fill, var(--bb-widget-bg, #ffffff));
+    color: var(--text-color, var(--bb-widget-text, #172033));
 }
 
 .webmeet-blackboard-widget[aria-selected="true"] {
@@ -282,6 +282,11 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-context-icon.rotate {
     -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/rotate.svg');
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/rotate.svg');
+}
+
+.webmeet-blackboard-context-icon.settings {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/settings.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/settings.svg');
 }
 
 .webmeet-blackboard-context-icon.delete {

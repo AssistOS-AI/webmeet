@@ -50,7 +50,7 @@ const blackboardThemePresets = [
         defaults: {
             shape: {fill: '#f9fafb', stroke: '#38bdf8', strokeWidth: 2},
             line: {stroke: '#38bdf8', strokeWidth: 3},
-            text: {fill: '#f9fafb', stroke: '#38bdf8', textColor: '#111827'}
+            text: {fill: '#f9fafb', stroke: '#38bdf8', textColor: '#075985'}
         }
     },
     {
@@ -76,7 +76,7 @@ const blackboardThemePresets = [
         defaults: {
             shape: {fill: '#ffffff', stroke: '#7c6f57', strokeWidth: 2},
             line: {stroke: '#7c6f57', strokeWidth: 3},
-            text: {fill: '#ffffff', stroke: '#b8a47f', textColor: '#1f2937'}
+            text: {fill: '#ffffff', stroke: '#b8a47f', textColor: '#5f4b24'}
         }
     },
     {
@@ -102,7 +102,33 @@ const blackboardThemePresets = [
         defaults: {
             shape: {fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2},
             line: {stroke: '#16a34a', strokeWidth: 3},
-            text: {fill: '#ffffff', stroke: '#16a34a', textColor: '#052e16'}
+            text: {fill: '#ffffff', stroke: '#16a34a', textColor: '#166534'}
+        }
+    },
+    {
+        id: 'leadership',
+        label: 'Leadership',
+        tokens: {
+            panelBackground: '#e2dedd',
+            boardBackground: '#f4f2f1',
+            boardGridColor: '#d8d6d5',
+            boardBorder: '#a8aaaa',
+            widgetSurface: '#ffffff',
+            widgetText: '#1f2328',
+            widgetBorder: '#5d9cac',
+            selectionColor: '#6276b7',
+            selectionShadow: 'rgba(98, 118, 183, 0.26)',
+            resizeHandleSurface: '#f4f2f1',
+            inlineEditBackground: 'rgba(124, 194, 204, 0.16)',
+            contextButtonSurface: '#ffffff',
+            contextButtonHoverSurface: '#e8f5f5',
+            contextButtonText: '#1f2328',
+            danger: '#b91c1c'
+        },
+        defaults: {
+            shape: {fill: '#ffffff', stroke: '#5d9cac', strokeWidth: 2},
+            line: {stroke: '#6276b7', strokeWidth: 3},
+            text: {fill: '#ffffff', stroke: '#91c9c8', textColor: '#315f86'}
         }
     },
     {

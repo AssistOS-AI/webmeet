@@ -80,9 +80,14 @@ export const blackboardActionMethods = {
     getSelectedTextWidgetState() {
         const selectedWidget = this.getWidgetById(this.selection);
         if (!selectedWidget || selectedWidget.type !== 'text') return null;
+        const style = this.normalizeTextStyle(selectedWidget.properties?.style || {});
+        const themeTextDefaults = this.getBlackboardTheme().defaults?.text || {};
+        if (!selectedWidget.properties?.style?.textColor && themeTextDefaults.textColor) {
+            style.textColor = themeTextDefaults.textColor;
+        }
         return {
             id: String(selectedWidget.id || ''),
-            style: this.normalizeTextStyle(selectedWidget.properties?.style || {})
+            style
         };
     },
 
@@ -195,7 +200,8 @@ export const blackboardActionMethods = {
             patch: {
                 metadata: {
                     theme: { id: theme.id }
-                }
+                },
+                resetThemeStyles: true
             }
         });
     },
@@ -357,10 +363,6 @@ export const blackboardActionMethods = {
     createWidget(type) {
         const rawType = String(type || 'shape').trim();
         const [normalizedType, variant] = rawType.split(':');
-        const themeDefaults = this.getBlackboardTheme().defaults || {};
-        const shapeDefaults = themeDefaults.shape || {};
-        const lineDefaults = themeDefaults.line || {};
-        const textDefaults = themeDefaults.text || {};
         const offset = (this.widgetCreateOffset % 8) * 18;
         this.widgetCreateOffset += 1;
         const baseGeometry = {x: 72 + offset, y: 64 + offset, width: 180, height: 96};
@@ -370,21 +372,14 @@ export const blackboardActionMethods = {
             type: normalizedType,
             properties: {
                 geometry: baseGeometry,
-                style: {
-                    fill: shapeDefaults.fill || '#ffffff',
-                    stroke: shapeDefaults.stroke || '#334155',
-                    strokeWidth: shapeDefaults.strokeWidth || 2
-                }
+                style: {}
             },
             visibility: {mode: 'all'},
             locked: false
         };
         if (normalizedType === 'line') {
             widget.properties.geometry = {x: 72 + offset, y: 96 + offset, width: 220, height: 80};
-            widget.properties.style = {
-                stroke: lineDefaults.stroke || '#334155',
-                strokeWidth: lineDefaults.strokeWidth || 3
-            };
+            widget.properties.style = {};
             const angle = 340;
             widget.properties.line = {
                 angle,
@@ -395,12 +390,10 @@ export const blackboardActionMethods = {
             widget.properties.label = '';
         } else if (normalizedType === 'text') {
             widget.properties.style = {
-                ...widget.properties.style,
-                ...TEXT_DEFAULT_STYLE,
-                fill: textDefaults.fill || widget.properties.style.fill,
-                stroke: textDefaults.stroke || widget.properties.style.stroke,
+                fontFamily: TEXT_DEFAULT_STYLE.fontFamily,
                 fontSize: TEXT_DEFAULT_STYLE.fontSize,
-                textColor: textDefaults.textColor || TEXT_DEFAULT_STYLE.textColor
+                fontWeight: TEXT_DEFAULT_STYLE.fontWeight,
+                fontStyle: TEXT_DEFAULT_STYLE.fontStyle
             };
             widget.properties.text = 'Text';
         } else if (normalizedType === 'quiz') {
@@ -432,9 +425,7 @@ export const blackboardActionMethods = {
         } else if (normalizedType === 'image') {
             widget.properties.geometry = {x: 72 + offset, y: 64 + offset, width: 320, height: 220};
             widget.properties.style = {
-                fill: 'transparent',
-                stroke: shapeDefaults.stroke || '#334155',
-                strokeWidth: 1
+                fill: 'transparent'
             };
             widget.properties.source = null;
             widget.properties.alt = 'Image';
@@ -543,11 +534,18 @@ export const blackboardActionMethods = {
 
     async editWidget(widget) {
         if (!widget || widget.locked) return;
-        if (widget.type === 'text' || widget.type === 'card') {
-            this.startInlineTextEdit(widget);
-            return;
-        }
-        this.editor?.open?.(widget);
+        if (!globalThis.assistOS?.UI?.showModal) return;
+        const result = await globalThis.assistOS.UI.showModal('webmeet-blackboard-widget-editor', {
+            widgetJson: JSON.stringify(widget)
+        }, true);
+        if (!result?.patch || !widget.id) return;
+        await this.runFinalChange({
+            changeType: 'update',
+            targetType: 'widget',
+            targetRef: widget.id,
+            reason: 'settings',
+            patch: result.patch
+        });
     },
 
     getEditableWidgetProperty() {

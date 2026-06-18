@@ -52,7 +52,6 @@ export class WebMeetBlackboardPanel {
         this.handleToolbarThemeEvent = (event) => {
             void this.setBlackboardTheme(event.detail?.themeId);
         };
-        this.handleEditorSaveEvent = (event) => this.saveEditorPatch(event);
         this.handlePanelKeydownEvent = (event) => this.handlePanelKeydown(event);
         this.handleDocumentKeydownEvent = (event) => this.handlePanelKeydown(event);
         this.handleBoardPointerDown = (event) => this.handleBoardPointerDownCapture(event);
@@ -90,7 +89,6 @@ export class WebMeetBlackboardPanel {
     cacheElements() {
         this.board = this.element.querySelector('[data-role="board"]');
         this.toolbar = this.element.querySelector('webmeet-blackboard-toolbar');
-        this.editor = this.element.querySelector('webmeet-blackboard-widget-editor');
         this.resultsPanel = this.element.querySelector('webmeet-blackboard-results-panel');
     }
 
@@ -130,8 +128,6 @@ export class WebMeetBlackboardPanel {
         this.toolbar?.addEventListener('blackboard-text-style', this.handleToolbarTextStyleEvent);
         this.toolbar?.addEventListener('blackboard-background', this.handleToolbarBackgroundEvent);
         this.toolbar?.addEventListener('blackboard-theme', this.handleToolbarThemeEvent);
-        this.editor?.removeEventListener('blackboard-editor-save', this.handleEditorSaveEvent);
-        this.editor?.addEventListener('blackboard-editor-save', this.handleEditorSaveEvent);
     }
 
     connect({adapter, blackboard} = {}) {
@@ -166,6 +162,10 @@ export class WebMeetBlackboardPanel {
             this.applyWidgetObject(detail.widget);
             return;
         }
+        if (detail?.object && !detail.object.id && (Array.isArray(detail.object.widgets) || detail.object.metadata)) {
+            this.applyBlackboard(detail.object);
+            return;
+        }
         if (detail?.object?.id) {
             this.applyWidgetObject(detail.object);
         }
@@ -187,18 +187,6 @@ export class WebMeetBlackboardPanel {
         }
         this.blackboard = {...(this.blackboard || {}), widgets};
         this.renderWidgets();
-    }
-
-    saveEditorPatch(event) {
-        const targetRef = String(event.detail?.widgetId || '').trim();
-        if (!targetRef || !event.detail?.patch) return;
-        void this.runFinalChange({
-            changeType: 'update',
-            targetType: 'widget',
-            targetRef,
-            reason: 'edit',
-            patch: event.detail.patch
-        });
     }
 
     handlePanelKeydown(event) {

@@ -296,15 +296,29 @@ export class WebMeetBlackboardToolbar {
         }
         const themeMenu = this.element.querySelector('[data-theme-menu]');
         if (themeMenu) {
-            themeMenu.innerHTML = this.themeOptions.map((option) => {
+            const fragment = document.createDocumentFragment();
+            for (const option of this.themeOptions) {
                 const selected = option.id === this.themeId;
-                return `
-                    <button type="button" class="webmeet-blackboard-menu-item webmeet-blackboard-theme-item ${selected ? 'is-selected' : ''}" data-local-action="selectTheme ${option.id}" role="menuitemradio" aria-checked="${selected ? 'true' : 'false'}" ${this.busy ? 'disabled' : ''}>
-                        <span class="webmeet-blackboard-theme-check" aria-hidden="true">${selected ? '✓' : ''}</span>
-                        <span>${option.label}</span>
-                    </button>
-                `;
-            }).join('');
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `webmeet-blackboard-menu-item webmeet-blackboard-theme-item${selected ? ' is-selected' : ''}`;
+                button.dataset.localAction = `selectTheme ${option.id}`;
+                button.setAttribute('role', 'menuitemradio');
+                button.setAttribute('aria-checked', selected ? 'true' : 'false');
+                button.disabled = Boolean(this.busy);
+
+                const check = document.createElement('span');
+                check.className = 'webmeet-blackboard-theme-check';
+                check.setAttribute('aria-hidden', 'true');
+                check.textContent = selected ? '✓' : '';
+
+                const label = document.createElement('span');
+                label.textContent = option.label;
+
+                button.append(check, label);
+                fragment.append(button);
+            }
+            themeMenu.replaceChildren(fragment);
         }
     }
 

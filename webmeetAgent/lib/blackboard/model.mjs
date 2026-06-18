@@ -81,6 +81,37 @@ export function mergePlainObject(target, patch) {
     return output;
 }
 
+function resetThemeStyleProperties(properties = {}, widgetType = '') {
+    if (!isPlainObject(properties?.style)) {
+        return false;
+    }
+    const nextStyle = cloneJson(properties.style);
+    const keysByType = {
+        shape: ['fill', 'stroke', 'strokeWidth'],
+        line: ['stroke', 'strokeWidth'],
+        text: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        card: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        quiz: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        vote: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        input: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        embed: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        image: ['stroke', 'strokeWidth']
+    };
+    const keys = keysByType[String(widgetType || '').trim()] || ['fill', 'stroke', 'strokeWidth', 'textColor'];
+    let changed = false;
+    for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(nextStyle, key)) {
+            delete nextStyle[key];
+            changed = true;
+        }
+    }
+    if (!changed) {
+        return false;
+    }
+    properties.style = nextStyle;
+    return true;
+}
+
 function normalizeWidgetType(type) {
     const normalized = String(type || '').trim();
     if (!BLACKBOARD_WIDGET_TYPES.includes(normalized)) {
@@ -468,6 +499,11 @@ export class Blackboard {
         const before = this.serializePrivileged();
         if (patch.metadata !== undefined) {
             this.metadata = mergePlainObject(this.metadata, patch.metadata);
+        }
+        if (patch.resetThemeStyles === true) {
+            for (const widget of this.widgets.values()) {
+                resetThemeStyleProperties(widget.properties, widget.type);
+            }
         }
         this.bumpVersion(options.blackboardVersion);
         if (options.record !== false) {

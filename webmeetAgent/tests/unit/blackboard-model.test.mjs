@@ -32,6 +32,10 @@ import {
     parseBlackboardProtocolMessage
 } from '../../lib/blackboard/protocol.mjs';
 import { BlackboardNetworkAdapter } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/blackboard/blackboard-network-adapter.js';
+import {
+    getBlackboardTheme,
+    getBlackboardThemeOptions
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-theme-presets.js';
 
 const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-panel.js',
@@ -106,6 +110,59 @@ test('blackboard applies final background changes to board metadata', () => {
         gridSize: 20
     });
     assert.equal(blackboard.version, 1);
+});
+
+test('blackboard theme changes reset widget theme style fields', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'shape_1',
+        type: 'shape',
+        properties: {
+            style: { fill: '#ffffff', stroke: '#334155', strokeWidth: 2 }
+        }
+    }), { record: false });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'line_1',
+        type: 'line',
+        properties: {
+            style: { stroke: '#334155', strokeWidth: 3 }
+        }
+    }), { record: false });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'text_1',
+        type: 'text',
+        properties: {
+            style: {
+                fill: '#ffffff',
+                stroke: '#cbd5e1',
+                textColor: '#172033',
+                fontFamily: 'Georgia',
+                fontSize: 24,
+                fontWeight: '700',
+                fontStyle: 'italic'
+            }
+        }
+    }), { record: false });
+
+    blackboard.applyFinalChange({
+        changeType: 'update',
+        targetType: 'blackboard',
+        reason: 'theme',
+        patch: {
+            metadata: { theme: { id: 'leadership' } },
+            resetThemeStyles: true
+        }
+    });
+
+    assert.deepEqual(blackboard.metadata.theme, { id: 'leadership' });
+    assert.deepEqual(blackboard.getWidget('shape_1').properties.style, {});
+    assert.deepEqual(blackboard.getWidget('line_1').properties.style, {});
+    assert.deepEqual(blackboard.getWidget('text_1').properties.style, {
+        fontFamily: 'Georgia',
+        fontSize: 24,
+        fontWeight: '700',
+        fontStyle: 'italic'
+    });
 });
 
 test('blackboard filters participant data for normal participants and exposes it to moderators', () => {
@@ -257,6 +314,48 @@ test('blackboard network adapter deduplicates and applies final protocol objects
     assert.equal(received[0].object.properties.text, 'Done');
 });
 
+test('blackboard theme updates are broadcast as full blackboard updates for other participants', async () => {
+    const received = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        participantId: 'participant_2',
+        runTool: async () => {
+            throw new Error('Theme broadcast should not require resync.');
+        }
+    });
+    adapter.subscribe((payload) => received.push(payload));
+
+    const blackboardMessage = encodeBlackboardProtocolMessage({
+        from: 'user:participant_1',
+        to: 'ALL',
+        payload: {
+            kind: 'blackboard',
+            roomId: 'room_1',
+            messageId: 'bb_theme_1',
+            version: 8,
+            visibility: { mode: 'all' },
+            object: {
+                roomId: 'room_1',
+                version: 8,
+                metadata: { theme: { id: 'leadership' } },
+                widgets: []
+            }
+        }
+    });
+    const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+        meetingId: 'room_1',
+        blackboardVersion: 8,
+        changeType: 'update',
+        targetType: 'blackboard',
+        objectKind: 'blackboard',
+        blackboardMessage
+    });
+
+    assert.equal(await adapter.handleEncodedEvent(encodedEvent), 'applied');
+    assert.equal(received[0].kind, 'blackboard');
+    assert.equal(received[0].object.metadata.theme.id, 'leadership');
+});
+
 test('blackboard UI editing does not use browser prompt dialogs', async () => {
     const componentDir = path.resolve(
         import.meta.dirname,
@@ -280,12 +379,17 @@ test('blackboard UI editing does not use browser prompt dialogs', async () => {
     assert.match(source, /widget\.type === 'text' \|\| widget\.type === 'card'/);
     assert.match(source, /addEventListener\('focusin'/);
     assert.match(source, /addEventListener\('blur'/);
+    assert.match(source, /addEventListener\('dblclick'/);
+    assert.match(source, /createContextButton\('settings', 'Widget settings'/);
+    assert.match(source, /void this\.editWidget\(widget\)/);
+    assert.match(source, /showModal\('webmeet-blackboard-widget-editor'/);
     assert.match(source, /getEditableWidgetProperty/);
     assert.match(source, /\[property\]: nextText/);
     assert.match(source, /return 'text'/);
     assert.doesNotMatch(source, /widget\?\.type === 'card' \? 'label' : 'text'/);
     assert.match(source, /webmeet-blackboard-toolbar/);
-    assert.match(editorSource, /blackboard-editor-save/);
+    assert.match(editorSource, /closeModal\(\)/);
+    assert.doesNotMatch(editorSource, /blackboard-editor-save/);
 });
 
 test('RoboTeam card widgets persist inline edits into the canonical text property', async () => {
@@ -531,11 +635,21 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /movingEndpoint: handle === 'line-start' \? 'start' : 'end'/);
     assert.match(panelCss, /\.webmeet-blackboard-line-svg/);
     assert.match(panelCss, /\.webmeet-blackboard-resize-handle\.line-endpoint/);
-    assert.match(editorHtml, /data-role="shapeKind"/);
+    assert.doesNotMatch(editorHtml, /data-role="shapeKind"/);
     assert.match(editorHtml, /data-role="lineMarker"/);
+    assert.match(editorHtml, /data-role="strokeWidth"/);
+    assert.match(editorHtml, /data-role="textColor"/);
+    assert.match(editorHtml, /data-role="textSection"/);
+    assert.match(editorHtml, /data-role="choiceSection"/);
+    assert.match(editorHtml, /data-role="surfaceSection"/);
     assert.doesNotMatch(editorHtml, /data-role="lineAngle"/);
-    assert.match(editorSource, /patch\.properties\.shapeKind/);
+    assert.doesNotMatch(editorSource, /patch\.properties\.shapeKind/);
+    assert.match(editorSource, /SURFACE_WIDGET_TYPES/);
+    assert.match(editorSource, /TEXT_COLOR_WIDGET_TYPES/);
     assert.match(editorSource, /patch\.properties\.line/);
+    assert.match(editorSource, /strokeWidth/);
+    assert.match(panelCss, /border: var\(--stroke-width/);
+    assert.match(panelCss, /background: var\(--fill/);
     assert.doesNotMatch(editorSource, /lineAngleInput/);
 });
 
@@ -577,6 +691,36 @@ test('blackboard toolbar updates persisted board background metadata', async () 
     assert.match(panelCss, /--blackboard-background-color/);
 });
 
+test('blackboard exposes Leadership theme extracted from the provided palette', () => {
+    const options = getBlackboardThemeOptions();
+    const theme = getBlackboardTheme('leadership');
+
+    assert.ok(options.some((option) => option.id === 'leadership' && option.label === 'Leadership'));
+    assert.equal(theme.tokens.boardBackground, '#f4f2f1');
+    assert.equal(theme.tokens.panelBackground, '#e2dedd');
+    assert.equal(theme.tokens.boardGridColor, '#d8d6d5');
+    assert.equal(theme.tokens.widgetBorder, '#5d9cac');
+    assert.equal(theme.tokens.selectionColor, '#6276b7');
+    assert.equal(theme.defaults.shape.stroke, '#5d9cac');
+    assert.equal(theme.defaults.line.stroke, '#6276b7');
+    assert.equal(theme.defaults.text.stroke, '#91c9c8');
+    assert.equal(theme.defaults.text.textColor, '#315f86');
+});
+
+test('blackboard widgets rely on theme defaults until a style is explicitly set', async () => {
+    const source = await readBlackboardPanelSource();
+
+    assert.match(source, /properties: \{\s*geometry: baseGeometry,\s*style: \{\}\s*\}/);
+    assert.doesNotMatch(source, /fill: shapeDefaults\.fill/);
+    assert.doesNotMatch(source, /stroke: shapeDefaults\.stroke/);
+    assert.doesNotMatch(source, /stroke: lineDefaults\.stroke/);
+    assert.doesNotMatch(source, /textColor: textDefaults\.textColor/);
+    assert.match(source, /style\.fill \|\| typeDefaults\.fill/);
+    assert.match(source, /style\.stroke \|\| typeDefaults\.stroke/);
+    assert.match(source, /normalized\.textColor \|\| textDefaults\.textColor/);
+    assert.match(source, /resetThemeStyles: true/);
+});
+
 test('blackboard components are declared in WebMeet registries', async () => {
     const config = JSON.parse(await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/config.json'),
@@ -604,6 +748,8 @@ test('blackboard components are declared in WebMeet registries', async () => {
             await fs.access(assetPath);
         }
     }
+    const widgetEditor = (config.dependencies || []).find((entry) => entry.component === 'webmeet-blackboard-widget-editor');
+    assert.equal(widgetEditor?.type, 'modal');
 });
 
 test('blackboard panel is a static WebSkel child driven through DOM events', async () => {
@@ -632,15 +778,12 @@ test('blackboard panel is a static WebSkel child driven through DOM events', asy
     assert.doesNotMatch(source, /ensureBlackboardComponentsRegistered/);
     assert.doesNotMatch(source, /requestAnimationFrame/);
     assert.doesNotMatch(source, /\.configure\(/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-blackboard-toolbar'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-blackboard-widget-editor'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-blackboard-results-panel'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-blackboard-panel'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-settings-modal'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-room-settings-modal'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('webmeet-participant-audio-modal'\)/);
-    assert.match(parentSource, /ensureComponentRegistered\('create-room-modal'\)/);
-    assert.match(dashboardSource, /async beforeRender\(\)[\s\S]*ensureAvatarSettingsFormRegistered/);
+    assert.doesNotMatch(parentSource, /ensureComponentRegistered\('webmeet-blackboard-toolbar'\)/);
+    assert.doesNotMatch(parentSource, /ensureComponentRegistered\('webmeet-blackboard-widget-editor'\)/);
+    assert.doesNotMatch(parentSource, /ensureComponentRegistered\('webmeet-blackboard-results-panel'\)/);
+    assert.doesNotMatch(parentSource, /ensureComponentRegistered\('webmeet-blackboard-panel'\)/);
+    assert.match(dashboardSource, /void ensureAvatarSettingsFormRegistered\(\)/);
+    assert.match(dashboardSource, /async beforeRender\(\)[\s\S]*prepareInitialRouteState/);
     assert.doesNotMatch(dashboardSource, /await this\.bootstrap\(\)/);
     assert.match(source, /webmeet-blackboard-connect/);
     assert.match(source, /webmeet-blackboard-update/);
