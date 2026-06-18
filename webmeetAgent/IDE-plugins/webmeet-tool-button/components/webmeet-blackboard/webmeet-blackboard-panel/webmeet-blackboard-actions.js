@@ -536,7 +536,7 @@ export const blackboardActionMethods = {
         if (!widget || widget.locked) return;
         if (!globalThis.assistOS?.UI?.showModal) return;
         const result = await globalThis.assistOS.UI.showModal('webmeet-blackboard-widget-editor', {
-            widgetJson: JSON.stringify(widget)
+            'widget-json': encodeURIComponent(JSON.stringify(widget))
         }, true);
         if (!result?.patch || !widget.id) return;
         await this.runFinalChange({

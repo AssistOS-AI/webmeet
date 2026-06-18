@@ -4,14 +4,10 @@ const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'quiz', 'vote', '
 const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'quiz', 'vote', 'input', 'embed']);
 
 function readWidgetFromElement(element) {
-    const raw = String(
-        element?.getAttribute('data-widget-json')
-        || element?.getAttribute('data-widgetJson')
-        || ''
-    ).trim();
+    const raw = String(element?.getAttribute('data-widget-json') || '').trim();
     if (!raw) return null;
     try {
-        return JSON.parse(raw);
+        return JSON.parse(decodeURIComponent(raw));
     } catch (_) {
         return null;
     }
@@ -61,6 +57,7 @@ export class WebMeetBlackboardWidgetEditor {
         this.strokeWidthInput = this.element.querySelector('[data-role="strokeWidth"]');
         this.textColorField = this.element.querySelector('[data-role="textColorField"]');
         this.textColorInput = this.element.querySelector('[data-role="textColor"]');
+        this.saveButton = this.element.querySelector('[type="submit"]');
     }
 
     bindEvents() {
@@ -79,7 +76,18 @@ export class WebMeetBlackboardWidgetEditor {
         globalThis.assistOS?.UI?.closeModal?.(this.element, this.result);
     }
 
-    populateForm(widget = {}) {
+    populateForm(widget = null) {
+        if (!widget?.id) {
+            if (this.title) this.title.textContent = 'Widget settings';
+            if (this.subtitle) this.subtitle.textContent = 'Widget unavailable';
+            if (this.textSection) this.textSection.hidden = true;
+            if (this.choiceSection) this.choiceSection.hidden = true;
+            if (this.lineSection) this.lineSection.hidden = true;
+            if (this.surfaceSection) this.surfaceSection.hidden = true;
+            if (this.saveButton) this.saveButton.disabled = true;
+            return;
+        }
+        if (this.saveButton) this.saveButton.disabled = false;
         const type = String(widget?.type || 'widget').trim() || 'widget';
         const props = widget?.properties || {};
         const style = props.style || {};
@@ -117,9 +125,9 @@ export class WebMeetBlackboardWidgetEditor {
     }
 
     getWidgetText(widget = {}) {
-        const props = widget.properties || {};
-        if (widget.type === 'quiz' || widget.type === 'vote') return props.prompt || props.question || '';
-        if (widget.type === 'input') return props.label || '';
+        const props = widget?.properties || {};
+        if (widget?.type === 'quiz' || widget?.type === 'vote') return props.prompt || props.question || '';
+        if (widget?.type === 'input') return props.label || '';
         return props.text || props.label || '';
     }
 
