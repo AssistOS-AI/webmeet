@@ -11,7 +11,7 @@ import {
 
 import {
     buildRtcConfigForSession,
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/rtc-config.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/rtc-config.js';
 
 function countIceUrls(config) {
     if (!config?.iceServers) return 0;

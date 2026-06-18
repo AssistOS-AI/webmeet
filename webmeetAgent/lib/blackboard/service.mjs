@@ -10,7 +10,7 @@ import {
     loadRoomRecord,
     mutateRoom
 } from '../store/roomRecords.mjs';
-import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { Blackboard, cloneJson } from './model.mjs';
 import { buildBlackboardProtocolPayload } from './protocol.mjs';
 import {

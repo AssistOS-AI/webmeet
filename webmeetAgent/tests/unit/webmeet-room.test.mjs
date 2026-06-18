@@ -5,13 +5,13 @@ import {
     AuthenticatedWebMeetRoomApi,
     GuestWebMeetRoomApi,
     createWebMeetRoomApi
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-api.js';
-import { WebMeetRoom } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js';
-import { buildWebMeetAvatarSource } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-avatar-override.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-api.js';
+import { WebMeetRoom } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room.js';
+import { buildWebMeetAvatarSource } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-avatar-override.js';
 import {
     WEBMEET_EVENT_TYPES,
     buildWebMeetEvent
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 function createRoomOptions(overrides = {}) {
     return {

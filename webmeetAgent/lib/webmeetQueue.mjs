@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { getWorkspacePaths } from './workspacePaths.mjs';
-import { getWebMeetEventCreatedAt, getWebMeetEventId } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+import { getWebMeetEventCreatedAt, getWebMeetEventId } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 function nowIso() {
     return new Date().toISOString();

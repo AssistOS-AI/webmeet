@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ChatComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/service-components/chat-component.js';
+import { ChatComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/service-components/chat-component.js';
 
 function makeComponent(overrides = {}) {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };

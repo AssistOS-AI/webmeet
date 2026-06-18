@@ -1,7 +1,7 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 function nowIso() {
     return new Date().toISOString();

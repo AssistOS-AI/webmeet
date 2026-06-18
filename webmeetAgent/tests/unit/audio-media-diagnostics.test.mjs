@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
     summarizeAudioMetrics,
     summarizeAudioWebRtcStats
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/media-diagnostics.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/media-diagnostics.js';
 
 test('audio diagnostics expose only rounded aggregate metrics', () => {
     assert.deepEqual(summarizeAudioMetrics({

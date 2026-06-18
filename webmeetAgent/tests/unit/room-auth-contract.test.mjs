@@ -53,3 +53,68 @@ test('WebMeet room list is dashboard-only and guest join is public-room-only', a
         await fs.rm(root, { recursive: true, force: true }).catch(() => {});
     }
 });
+
+test('public room scoped invocation can publish guest participant avatar through the shared avatar tool', async () => {
+    const previousDataDir = process.env.WEBMEET_DATA_DIR;
+    const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-avatar-auth-contract-'));
+    try {
+        process.env.WEBMEET_DATA_DIR = root;
+        process.env.PLOINKY_WEBMEET_MASTER_KEY = '0123456789abcdef0123456789abcdef';
+        const {
+            createMeeting,
+            createStoreContext,
+            joinGuestMeeting
+        } = await import('../../lib/webmeetStore.mjs');
+        const { dispatch } = await import('../../tools/webmeet_tool.mjs');
+        const context = await createStoreContext(root);
+        const publicRoom = await createMeeting(context, {
+            title: 'Public avatar room',
+            roomType: 'guest',
+            authInfo: ADMIN_AUTH
+        });
+        const joined = await joinGuestMeeting(context, {
+            meetingId: publicRoom.id,
+            displayName: 'Guest Avatar',
+            participantId: 'guest-avatar-participant'
+        });
+        context.invocation = {
+            iss: 'ploinky-router',
+            sub: 'user:guest:test',
+            aud: 'agent:AchillesIDE/webmeetAgent',
+            tool: 'webmeet_participant_avatar_update',
+            hasUserClaims: false
+        };
+
+        const updated = await dispatch('webmeet_participant_avatar_update', {
+            roomId: publicRoom.id,
+            participantId: joined.participantIdentity,
+            avatar: {
+                enabled: true,
+                fallbackLetter: 'G',
+                config: {
+                    generated: true,
+                    emotion: 'happy',
+                    seed: 'guest-avatar-participant'
+                }
+            }
+        }, context, null);
+
+        assert.equal(updated.ok, true);
+        assert.equal(updated.participantId, joined.participantIdentity);
+        assert.equal(updated.profileAvatar.enabled, true);
+        assert.equal(updated.profileAvatar.config.emotion, 'happy');
+    } finally {
+        if (previousDataDir === undefined) {
+            delete process.env.WEBMEET_DATA_DIR;
+        } else {
+            process.env.WEBMEET_DATA_DIR = previousDataDir;
+        }
+        if (previousMasterKey === undefined) {
+            delete process.env.PLOINKY_WEBMEET_MASTER_KEY;
+        } else {
+            process.env.PLOINKY_WEBMEET_MASTER_KEY = previousMasterKey;
+        }
+        await fs.rm(root, { recursive: true, force: true }).catch(() => {});
+    }
+});

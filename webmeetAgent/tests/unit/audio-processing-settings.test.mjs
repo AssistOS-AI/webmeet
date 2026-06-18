@@ -8,7 +8,7 @@ import {
     normalizeMicrophoneGain,
     normalizeVoiceProcessingMode,
     usesAudioGraph
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/settings.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/audio-processing/settings.js';
 
 test('voice processing mode normalization defaults to auto', () => {
     assert.equal(DEFAULT_VOICE_PROCESSING_MODE, 'auto');

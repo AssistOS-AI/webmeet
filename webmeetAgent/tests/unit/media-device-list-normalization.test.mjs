@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mediaSettingsMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/media-settings-methods.js';
+import { mediaSettingsMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/media-settings-methods.js';
 
 function createHarness() {
     return { ...mediaSettingsMethods };

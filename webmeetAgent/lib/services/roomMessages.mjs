@@ -14,7 +14,7 @@ import {
 } from './roomParticipants.mjs';
 import {
     WEBMEET_EVENT_TYPES
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 function nowIso() {
     return new Date().toISOString();
@@ -36,8 +36,7 @@ export async function listRoomChat(context, meetingId, authInfo = null, deps = {
     if (!canViewMeetingRecord(record, authInfo)) {
         throw new Error('Meeting not found.');
     }
-    await getDeps(deps).cleanupRoomPresence(context, meetingId);
-    return decryptRoomPayload(context, await loadRoomRecord(context, meetingId)).chatMessages;
+    return decryptRoomPayload(context, record).chatMessages;
 }
 
 export async function appendRoomChat(context, {

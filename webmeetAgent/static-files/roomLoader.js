@@ -1,7 +1,7 @@
 import WebSkel from '/web-libs/webskel/webskel.mjs';
-import { createAgentClient } from '/MCPBrowserClient.js';
 
 const ROOM_ID_PATTERN = /^room_[0-9a-fA-F-]{36}$/;
+const MCP_PROTOCOL_VERSION = '2025-06-18';
 const COMPONENT_ROOT = new URL('../IDE-plugins/webmeet-tool-button/', import.meta.url);
 const PLUGIN_CONFIG_URL = new URL('config.json', COMPONENT_ROOT);
 
@@ -23,6 +23,27 @@ function closeInitialLoader() {
   const loader = document.querySelector('#before_webskel_loader');
   try { loader?.close?.(); } catch (_) {}
   loader?.remove?.();
+}
+
+function closeStartupLoaders() {
+  closeInitialLoader();
+  for (const loader of document.querySelectorAll('dialog.spinner.spinner-default-style')) {
+    try { loader.close?.(); } catch (_) {}
+    loader.remove();
+  }
+}
+
+function waitForDashboardReady() {
+  if (window.__WEBMEET_DASHBOARD_READY__ === true) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const onReady = () => {
+      window.removeEventListener('webmeet-dashboard-ready', onReady);
+      resolve();
+    };
+    window.addEventListener('webmeet-dashboard-ready', onReady, { once: true });
+  });
 }
 
 function showAccessDenied(message = '') {
@@ -77,6 +98,97 @@ function parseToolResult(result = {}) {
   return { text, blocks, raw: result };
 }
 
+function createJsonRpcAgentClient(agentId) {
+  const endpoint = `/${encodeURIComponent(agentId)}/mcp`;
+  let sessionId = '';
+  let protocolVersion = MCP_PROTOCOL_VERSION;
+  let connected = false;
+  let connectPromise = null;
+  let messageId = 0;
+
+  async function send(method, params = {}, { notification = false } = {}) {
+    const headers = new Headers();
+    headers.set('content-type', 'application/json');
+    headers.set('accept', 'application/json');
+    if (sessionId) headers.set('mcp-session-id', sessionId);
+    if (protocolVersion) headers.set('mcp-protocol-version', protocolVersion);
+
+    const payload = {
+      jsonrpc: '2.0',
+      method,
+      params
+    };
+    if (!notification) {
+      messageId += 1;
+      payload.id = String(messageId);
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      credentials: 'include',
+      cache: 'no-store'
+    });
+
+    const receivedSession = response.headers.get('mcp-session-id');
+    if (receivedSession) sessionId = receivedSession;
+    const receivedProtocol = response.headers.get('mcp-protocol-version');
+    if (receivedProtocol) protocolVersion = receivedProtocol;
+
+    if (notification && (response.status === 202 || response.status === 204)) {
+      return {};
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`MCP request failed: HTTP ${response.status}${text ? ` - ${text}` : ''}`);
+    }
+    if (response.status === 204) {
+      return {};
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!notification && data?.error) {
+      throw new Error(data.error.message || 'MCP request failed');
+    }
+    return data?.result || {};
+  }
+
+  async function connect() {
+    if (connected) return;
+    if (connectPromise) {
+      await connectPromise;
+      return;
+    }
+    connectPromise = (async () => {
+      await send('initialize', {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: {
+          name: 'webmeet-room-loader',
+          version: '1.0.0'
+        }
+      });
+      await send('notifications/initialized', {}, { notification: true });
+      connected = true;
+    })();
+    try {
+      await connectPromise;
+    } finally {
+      connectPromise = null;
+    }
+  }
+
+  return {
+    async callTool(name, args = {}) {
+      await connect();
+      return await send('tools/call', {
+        name,
+        arguments: args
+      });
+    }
+  };
+}
+
 function createMcpServices() {
   const clients = new Map();
   return {
@@ -84,7 +196,7 @@ function createMcpServices() {
       const key = String(agentId || '').trim();
       if (!key) throw new Error('Agent id is required.');
       if (!clients.has(key)) {
-        clients.set(key, createAgentClient(`/${encodeURIComponent(key)}/mcp`));
+        clients.set(key, createJsonRpcAgentClient(key));
       }
       return clients.get(key);
     },
@@ -210,14 +322,17 @@ async function start() {
     return null;
   };
 
-  await registerComponent(webSkel, componentDefinitions[0]);
-  closeInitialLoader();
-  await webSkel.changeToDynamicPage('webmeet-dashboard', 'webmeet-dashboard', null, true);
+  const pageComponentDefinitions = componentDefinitions.filter((definition) => definition.type !== 'modals');
+  await Promise.all(pageComponentDefinitions.map((definition) => registerComponent(webSkel, definition)));
+/*  const dashboardReady = waitForDashboardReady();
+  await dashboardReady;*/
+  closeStartupLoaders();
+  webSkel.changeToDynamicPage('webmeet-dashboard', 'webmeet-dashboard', null, true);
 }
 
 start().catch((error) => {
   console.error('[WebMeet] Initialization failed:', error);
-  closeInitialLoader();
+  closeStartupLoaders();
   const message = error instanceof Error ? error.message : String(error);
   if (window.__WEBMEET_GUEST_ENTRY__) {
     showAccessDenied('This public room link is invalid, expired, archived, or not available to guests.');

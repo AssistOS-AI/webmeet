@@ -99,6 +99,20 @@ function isStaleRoomLock(info, staleTtlMs) {
     return true;
 }
 
+function formatLockOwner(lockInfo) {
+    if (!lockInfo?.exists) {
+        return 'no current owner';
+    }
+    const ageSeconds = Math.max(0, Math.round(Number(lockInfo.ageMs || 0) / 1000));
+    if (!lockInfo.readableOwner || !lockInfo.owner) {
+        return `unreadable owner, age ${ageSeconds}s`;
+    }
+    const pid = Number.isInteger(Number(lockInfo.owner.pid)) ? String(lockInfo.owner.pid) : 'unknown';
+    const hostname = String(lockInfo.owner.hostname || 'unknown').trim() || 'unknown';
+    const startedAt = String(lockInfo.owner.startedAt || '').trim();
+    return `owner pid ${pid} on ${hostname}, age ${ageSeconds}s${startedAt ? `, startedAt ${startedAt}` : ''}`;
+}
+
 async function acquireRoomLock(context, roomId, options = {}) {
     const lockPath = path.join(context.meetingLocksDir, `${roomId}.lock`);
     const token = crypto.randomUUID();
@@ -143,7 +157,7 @@ async function acquireRoomLock(context, roomId, options = {}) {
             }
 
             if (Date.now() >= deadline) {
-                throw new Error(`Timed out acquiring meeting lock for ${roomId}.`);
+                throw new Error(`Timed out acquiring meeting lock for ${roomId} after ${timeoutMs}ms (${formatLockOwner(lockInfo)}).`);
             }
 
             const jitter = LOCK_RETRY_BASE_MS + Math.random() * (LOCK_RETRY_MAX_MS - LOCK_RETRY_BASE_MS);

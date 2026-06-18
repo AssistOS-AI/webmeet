@@ -1,7 +1,12 @@
 export const WEBMEET_AGENT_NAME = 'webmeetAgent';
 
-function getWebMeetAgentName() {
-    return String(globalThis.__WEBMEET_AGENT_NAME__ || WEBMEET_AGENT_NAME).trim() || WEBMEET_AGENT_NAME;
+export class WebMeetToolError extends Error {
+    constructor(code, message, data = null) {
+        super(message);
+        this.name = 'WebMeetToolError';
+        this.code = code;
+        this.data = data;
+    }
 }
 
 function normalizeArgs(toolName, args = {}) {
@@ -26,23 +31,71 @@ function normalizeResult(result = {}) {
     return result;
 }
 
+function parseJsonObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value;
+    }
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const text = value.trim();
+    if (!text) {
+        return null;
+    }
+    try {
+        const parsed = JSON.parse(text);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function unwrapMcpToolResult(value) {
+    const parsed = parseJsonObject(value);
+    const result = parsed?.result && typeof parsed.result === 'object' ? parsed.result : parsed;
+    const content = Array.isArray(result?.content) ? result.content : [];
+    const textEntry = content.find((entry) => entry?.type === 'text' && typeof entry.text === 'string');
+    return parseJsonObject(textEntry?.text) || result || {};
+}
+
+function extractToolText(payload) {
+    if (!payload) return '';
+    if (typeof payload === 'string') return payload;
+    const blocks = Array.isArray(payload.content) ? payload.content : null;
+    if (blocks) {
+        const textBlock = blocks.find((block) => block?.type === 'text' && typeof block.text === 'string');
+        if (textBlock?.text) return textBlock.text;
+    }
+    if (typeof payload.text === 'string') return payload.text;
+    return '';
+}
+
+function ensureSuccess(payload) {
+    if (payload && typeof payload === 'object' && payload.isError === true) {
+        const text = extractToolText(payload).trim();
+        throw new WebMeetToolError('tool_error', text || 'Tool execution failed', { payload });
+    }
+    const text = extractToolText(payload);
+    if (typeof text === 'string' && text.trim().startsWith('Error:')) {
+        throw new WebMeetToolError('tool_error', text.trim().replace(/^Error:\s*/i, ''), { payload });
+    }
+    const parsed = unwrapMcpToolResult(payload);
+    if (parsed && typeof parsed === 'object' && parsed.ok === false) {
+        throw new WebMeetToolError('tool_error', parsed.error || 'Tool execution failed', parsed);
+    }
+}
+
+function getWebMeetClient() {
+    const client = window.webSkel?.appServices?.getClient?.(WEBMEET_AGENT_NAME);
+    if (!client || typeof client.callTool !== 'function') {
+        throw new WebMeetToolError('client_unavailable', `Agent client not available: ${WEBMEET_AGENT_NAME}`);
+    }
+    return client;
+}
+
 export async function runWebMeetTool(name, args = {}) {
     const toolName = String(name || '').trim();
-    const appServices = globalThis.assistOS?.appServices || globalThis.assistOS?.services || null;
-    if (!appServices || typeof appServices.callTool !== 'function') {
-        throw new Error('WebMeet MCP client is not available.');
-    }
-    const result = await appServices.callTool(getWebMeetAgentName(), toolName, normalizeArgs(toolName, args));
-    if (result?.json && typeof result.json === 'object') {
-        return normalizeResult(result.json);
-    }
-    if (typeof result?.text === 'string' && result.text.trim()) {
-        try {
-            const parsed = JSON.parse(result.text);
-            return normalizeResult(parsed && typeof parsed === 'object' ? parsed : {});
-        } catch (_) {
-            return normalizeResult({ text: result.text });
-        }
-    }
-    return normalizeResult(result && typeof result === 'object' ? result : {});
+    const raw = await getWebMeetClient().callTool(toolName, normalizeArgs(toolName, args));
+    ensureSuccess(raw);
+    return normalizeResult(unwrapMcpToolResult(raw));
 }

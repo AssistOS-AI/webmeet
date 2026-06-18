@@ -14,6 +14,7 @@ import {
     canViewMeetingRecord,
     isAdminAuthInfo,
     isGuestAuthInfo,
+    isMeetingRecordOpen,
     normalizeAuthInfo
 } from './store/accessPolicy.mjs';
 import {
@@ -81,7 +82,7 @@ import {
 } from './roboTeam/service.mjs';
 import {
     WEBMEET_EVENT_TYPES,
-} from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+} from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 const DEFAULT_ROOM_TITLE = 'General';
 
@@ -193,6 +194,14 @@ const archiveServiceDeps = {
 
 export async function getMeeting(context, meetingId, authInfo = null, options = {}) {
     return await getMeetingImpl(context, meetingId, authInfo, options, participantServiceDeps);
+}
+
+export async function getPublicGuestMeeting(context, meetingId) {
+    const record = await loadMeetingRecord(context, meetingId);
+    if (!isMeetingRecordOpen(record) || String(record?.roomType || '').trim() !== 'guest') {
+        throw new Error('Public room not found.');
+    }
+    return buildMeetingView(record);
 }
 
 export async function listMeetingEvents(context, meetingId, { afterId = '' } = {}) {

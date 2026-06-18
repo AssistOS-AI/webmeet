@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { RemoteAudioNormalizer } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/remote-audio-normalizer.js';
+import { RemoteAudioNormalizer } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/audio-processing/remote-audio-normalizer.js';
 
 test('remote audio normalization adjusts quiet playback, respects manual overrides, and cleans up', async () => {
     const originalAudioContext = globalThis.AudioContext;

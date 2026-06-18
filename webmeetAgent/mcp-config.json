@@ -34,6 +34,17 @@
       "env": { "TOOL_NAME": "webmeet_room_get" }
     },
     {
+      "name": "webmeet_room_public_get",
+      "title": "WebMeet Get Public Room",
+      "description": "Get minimal metadata for an active public guest room.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_public_get" }
+    },
+    {
       "name": "webmeet_room_join",
       "title": "WebMeet Join Room",
       "description": "Join a room as an authenticated user and receive a LiveKit token.",

@@ -43,15 +43,15 @@ The primary implementation map is:
 | Workspace/data paths | `lib/workspacePaths.mjs` |
 | Payload encryption | `lib/webmeetCrypto.mjs` |
 | Event append files | `lib/webmeetQueue.mjs` |
-| WebMeet plugin API client | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-api-client.js` |
-| Browser LiveKit connection | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-livekit.js` |
-| Room orchestration and lifecycle | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room.js` |
-| Room event normalization and typed UI events | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-events.js` |
-| Serializable room state model | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/room/webmeet-room-state.js` |
-| Room session and LiveKit event handling | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/room-session-methods.js` |
-| Browser media controls | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/webmeet-media-controller.js` |
-| Chat UI behavior | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/service-components/chat-component.js` |
-| Guest room entry behavior | `IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/dashboard-session-methods.js` |
+| WebMeet plugin API client | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-api-client.js` |
+| Browser LiveKit connection | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-livekit.js` |
+| Room orchestration and lifecycle | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room.js` |
+| Room event normalization and typed UI events | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-events.js` |
+| Serializable room state model | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-state.js` |
+| Room session and LiveKit event handling | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/room-session-methods.js` |
+| Browser media controls | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/webmeet-media-controller.js` |
+| Chat UI behavior | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/service-components/chat-component.js` |
+| Guest room entry behavior | `IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-session-methods.js` |
 
 The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet-tool-button`. Any older router-level `/webmeet` surface must not be treated as the current product entry point unless a future specification reintroduces it.
 

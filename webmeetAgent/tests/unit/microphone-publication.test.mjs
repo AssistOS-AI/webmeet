@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
     isAudioPublication,
     isMicrophonePublication
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/microphone-publication.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/microphone-publication.js';
 
 const Track = {
     Kind: {

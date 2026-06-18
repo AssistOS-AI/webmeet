@@ -87,6 +87,22 @@ test('RoboTeam settings persist and RoboTeam is projected as a room participant'
     });
 });
 
+test('RoboTeam room details reads do not rewrite normalized rooms', async () => {
+    await withStore(async (context) => {
+        const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
+        const meeting = await createMeeting(context, { name: 'RoboTeam read only details', authInfo });
+        const beforeRecord = await loadRoomRecord(context, meeting.roomId);
+        const beforePayload = decryptRoomPayload(context, beforeRecord);
+
+        await getMeeting(context, meeting.roomId, authInfo, { includeParticipants: false });
+
+        const afterRecord = await loadRoomRecord(context, meeting.roomId);
+        const afterPayload = decryptRoomPayload(context, afterRecord);
+        assert.equal(afterRecord.updatedAt, beforeRecord.updatedAt);
+        assert.deepEqual(afterPayload, beforePayload);
+    });
+});
+
 test('RoboTeam agent list hides full settings from non-admin viewers', async () => {
     await withStore(async (context) => {
         const adminAuth = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };

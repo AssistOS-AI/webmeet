@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createExplorerSearchAdapter } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/chat-autocomplete/explorer-search-adapter.js';
+import { createExplorerSearchAdapter } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/chat-autocomplete/explorer-search-adapter.js';
 
 test('Explorer search adapter requests raw search_files payloads without the global loader', async () => {
     const calls = [];

@@ -8,7 +8,7 @@ import {
     mutateRoom
 } from '../store/roomRecords.mjs';
 import { Blackboard } from '../blackboard/model.mjs';
-import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 export const ROBO_TEAM_AGENT_TYPE = 'robo_team';
 export const ROBO_TEAM_MODE = 'blackboard_demo';
@@ -73,6 +73,18 @@ function nowIso() {
 function cloneJson(value) {
     if (value === undefined || value === null) return value;
     return JSON.parse(JSON.stringify(value));
+}
+
+function stringifyStableJson(value) {
+    if (Array.isArray(value)) {
+        return `[${value.map((entry) => stringifyStableJson(entry)).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map((key) => (
+            `${JSON.stringify(key)}:${stringifyStableJson(value[key])}`
+        )).join(',')}}`;
+    }
+    return JSON.stringify(value);
 }
 
 function isPlainObject(value) {
@@ -178,6 +190,13 @@ export function ensureRoboTeamAgentPayload(payload, stageEvent = null, meetingId
         || null;
     const nextAgent = buildRoboTeamAgent(settings, existing || {}, meetingId);
     if (existing) {
+        const nextAgentWithExistingTimestamp = {
+            ...nextAgent,
+            updatedAt: existing.updatedAt
+        };
+        if (stringifyStableJson(existing) === stringifyStableJson(nextAgentWithExistingTimestamp)) {
+            return existing;
+        }
         Object.assign(existing, nextAgent);
     } else {
         payload.agents.push(nextAgent);

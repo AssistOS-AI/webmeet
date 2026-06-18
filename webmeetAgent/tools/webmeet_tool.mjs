@@ -14,6 +14,7 @@ import {
     getRoboTeamSettings,
     getRoomBlackboard,
     getMeeting,
+    getPublicGuestMeeting,
     heartbeatMeetingPresence,
     isAdminAuthInfo,
     joinGuestMeeting,
@@ -31,6 +32,7 @@ import {
     redoRoomBlackboard,
     undoRoomBlackboard,
     updateRoboTeamSettings,
+    updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantRole,
     updateMeetingParticipantAvatar,
     updateMeetingTitle
@@ -199,6 +201,22 @@ function isPublicRoomInvocation(authInfo, roomId) {
     }
 }
 
+function isGuestInvocation(context = null) {
+    const directInvocation = context?.invocation && typeof context.invocation === 'object'
+        ? context.invocation
+        : null;
+    const invocation = directInvocation || extractInvocationGrant(context?.envelope || {});
+    const subject = String(invocation?.sub || '').trim();
+    return subject.startsWith('user:guest:') && invocation?.hasUserClaims === false;
+}
+
+function isGuestAuthInfo(authInfo = null) {
+    const user = authInfo?.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo;
+    const userId = String(user?.id || '').trim();
+    const subject = String(authInfo?.invocation?.subject || '').trim();
+    return userId.startsWith('guest:') || subject.startsWith('user:guest:');
+}
+
 export async function dispatch(toolName, args, context, authInfo) {
     switch (toolName) {
     case 'webmeet_room_list':
@@ -287,16 +305,29 @@ export async function dispatch(toolName, args, context, authInfo) {
             };
         }
     case 'webmeet_participant_avatar_update':
-        return await updateMeetingParticipantAvatar(context, {
-            meetingId: getRequiredString(args, 'roomId'),
-            participantId: getRequiredString(args, 'participantId'),
-            avatar: args?.avatar || null,
-            authInfo
-        });
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            const participantId = getRequiredString(args, 'participantId');
+            if (!authInfo || isGuestAuthInfo(authInfo) || isPublicRoomInvocation(authInfo, roomId) || isGuestInvocation(context)) {
+                return await updateGuestMeetingParticipantAvatar(context, {
+                    meetingId: roomId,
+                    participantId,
+                    avatar: args?.avatar || null
+                });
+            }
+            return await updateMeetingParticipantAvatar(context, {
+                meetingId: roomId,
+                participantId,
+                avatar: args?.avatar || null,
+                authInfo
+            });
+        }
     case 'webmeet_room_get':
         return await getMeeting(context, getRequiredString(args, 'roomId'), authInfo, {
             includeParticipants: args?.includeParticipants !== false
         });
+    case 'webmeet_room_public_get':
+        return await getPublicGuestMeeting(context, getRequiredString(args, 'roomId'));
     case 'webmeet_blackboard_get':
         return await getRoomBlackboard(context, {
             roomId: getRequiredString(args, 'roomId'),

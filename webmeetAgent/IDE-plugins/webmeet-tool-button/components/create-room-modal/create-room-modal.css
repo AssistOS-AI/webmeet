@@ -1,60 +1,9 @@
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border, #e5e7eb);
-}
-
-.modal-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text, #111827);
-}
-
-.modal-body {
-    padding: 20px;
-}
-
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 16px 20px;
-    border-top: 1px solid var(--border, #e5e7eb);
-}
-
 .form-group {
     margin-bottom: 20px;
 }
 
 .form-group:last-child {
     margin-bottom: 0;
-}
-
-.form-label {
-    display: block;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-soft, #374151);
-    margin-bottom: 8px;
-}
-
-.form-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--border, #d1d5db);
-    border-radius: 6px;
-    font-size: 14px;
-    color: var(--text, #111827);
-    background-color: var(--surface, #ffffff);
-    box-sizing: border-box;
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: var(--accent, #60A5FA);
-    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 96, 165, 250), 0.1);
 }
 
 .room-type-options {

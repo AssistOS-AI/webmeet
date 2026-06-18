@@ -44,6 +44,23 @@ export function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+function cloneHistorySnapshot(value) {
+    if (Array.isArray(value)) {
+        return value.map((entry) => cloneHistorySnapshot(entry));
+    }
+    if (!isPlainObject(value)) {
+        return cloneJson(value);
+    }
+    const output = {};
+    for (const [key, entryValue] of Object.entries(value)) {
+        if (key === 'history') {
+            continue;
+        }
+        output[key] = cloneHistorySnapshot(entryValue);
+    }
+    return output;
+}
+
 function isPlainObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -297,8 +314,8 @@ export class BlackboardHistory {
     record(operation, beforeObject, afterObject) {
         this.undoStack.push({
             operation: String(operation || '').trim(),
-            beforeObject: cloneJson(beforeObject),
-            afterObject: cloneJson(afterObject),
+            beforeObject: cloneHistorySnapshot(beforeObject),
+            afterObject: cloneHistorySnapshot(afterObject),
             timestamp: nowIso()
         });
         if (this.undoStack.length > this.maxDepth) {
@@ -338,15 +355,35 @@ export class BlackboardHistory {
     serialize() {
         return {
             maxDepth: this.maxDepth,
-            undoStack: cloneJson(this.undoStack),
-            redoStack: cloneJson(this.redoStack)
+            undoStack: this.undoStack.map((entry) => ({
+                ...entry,
+                beforeObject: cloneHistorySnapshot(entry.beforeObject),
+                afterObject: cloneHistorySnapshot(entry.afterObject)
+            })),
+            redoStack: this.redoStack.map((entry) => ({
+                ...entry,
+                beforeObject: cloneHistorySnapshot(entry.beforeObject),
+                afterObject: cloneHistorySnapshot(entry.afterObject)
+            }))
         };
     }
 
     static from(input = {}) {
         const history = new BlackboardHistory({ maxDepth: input.maxDepth });
-        history.undoStack = Array.isArray(input.undoStack) ? cloneJson(input.undoStack) : [];
-        history.redoStack = Array.isArray(input.redoStack) ? cloneJson(input.redoStack) : [];
+        history.undoStack = Array.isArray(input.undoStack)
+            ? input.undoStack.slice(-history.maxDepth).map((entry) => ({
+                ...entry,
+                beforeObject: cloneHistorySnapshot(entry?.beforeObject),
+                afterObject: cloneHistorySnapshot(entry?.afterObject)
+            }))
+            : [];
+        history.redoStack = Array.isArray(input.redoStack)
+            ? input.redoStack.slice(-history.maxDepth).map((entry) => ({
+                ...entry,
+                beforeObject: cloneHistorySnapshot(entry?.beforeObject),
+                afterObject: cloneHistorySnapshot(entry?.afterObject)
+            }))
+            : [];
         return history;
     }
 }

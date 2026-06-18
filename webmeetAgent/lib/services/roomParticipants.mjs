@@ -5,6 +5,9 @@ import {
     buildRtcConfig
 } from '../store/rtcConfig.mjs';
 import {
+    Blackboard
+} from '../blackboard/model.mjs';
+import {
     createLiveKitToken,
     getLiveKitParticipantIdentity,
     getParticipantAttributes,
@@ -31,17 +34,134 @@ import {
 } from '../store/roomRecords.mjs';
 import {
     WEBMEET_EVENT_TYPES
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/webmeet-events.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import {
+    ROBO_TEAM_AGENT_TYPE,
+    ROBO_TEAM_MODE,
+    ROBO_TEAM_PARTICIPANT_ID,
     ensureRoboTeamAgentPayload,
     ensureRoboTeamDemoBlackboard,
     ensureRoboTeamSettingsPayload,
+    getRoboTeamAgentPayload,
     getRoboTeamBlackboardVersion,
+    isRoboTeamEnabled,
+    normalizeRoboTeamSettings,
     projectRoboTeamParticipant
 } from '../roboTeam/service.mjs';
 
 function nowIso() {
     return new Date().toISOString();
+}
+
+function stringifyStableJson(value) {
+    if (Array.isArray(value)) {
+        return `[${value.map((entry) => stringifyStableJson(entry)).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map((key) => (
+            `${JSON.stringify(key)}:${stringifyStableJson(value[key])}`
+        )).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function needsRoboTeamPayloadNormalization(payload, meetingId = '') {
+    const normalizedSettings = normalizeRoboTeamSettings(payload?.roboTeamSettings);
+    if (stringifyStableJson(payload?.roboTeamSettings || null) !== stringifyStableJson(normalizedSettings)) {
+        return true;
+    }
+    if (!Array.isArray(payload?.agents)) {
+        return true;
+    }
+    const agent = getRoboTeamAgentPayload(payload);
+    if (!agent) {
+        return true;
+    }
+    const enabled = isRoboTeamEnabled(normalizedSettings);
+    const expectedStatus = enabled ? 'active' : 'detached';
+    if (String(agent.id || '').trim() !== ROBO_TEAM_PARTICIPANT_ID) return true;
+    if (String(agent.participantIdentity || '').trim() !== ROBO_TEAM_PARTICIPANT_ID) return true;
+    if (String(agent.agentType || '').trim() !== ROBO_TEAM_AGENT_TYPE) return true;
+    if (String(agent.mode || '').trim() !== ROBO_TEAM_MODE) return true;
+    if (String(agent.runtime || '').trim() !== 'ploinky') return true;
+    if (String(agent.status || '').trim() !== expectedStatus) return true;
+    if (enabled && agent.deletedAt) return true;
+    if (!enabled && !agent.deletedAt) return true;
+    const expectedName = String(normalizedSettings.assistant?.name || 'Robo Team').trim() || 'Robo Team';
+    if (String(agent.agentName || '').trim() !== expectedName) return true;
+    if (stringifyStableJson(agent.settings?.blackboard || null) !== stringifyStableJson(normalizedSettings.blackboard || null)) {
+        return true;
+    }
+    if (!agent.blackboard || typeof agent.blackboard !== 'object') {
+        return true;
+    }
+    if (needsBlackboardHistoryCompaction(agent.blackboard)) {
+        return true;
+    }
+    const widgets = Array.isArray(agent.blackboard.widgets) ? agent.blackboard.widgets : [];
+    const shouldCreateDemo = enabled
+        && normalizedSettings.blackboard?.enabled
+        && payload?.roboTeamDemoCreated !== true
+        && widgets.length === 0;
+    if (shouldCreateDemo) {
+        return true;
+    }
+    return false;
+}
+
+function historyEntryContainsNestedHistory(entry = {}) {
+    return Boolean(
+        entry?.beforeObject?.history
+        || entry?.afterObject?.history
+    );
+}
+
+function needsBlackboardHistoryCompaction(blackboard = {}) {
+    const history = blackboard?.history;
+    if (!history || typeof history !== 'object') {
+        return false;
+    }
+    const maxDepth = Number.parseInt(String(history.maxDepth || 5), 10) || 5;
+    const undoStack = Array.isArray(history.undoStack) ? history.undoStack : [];
+    const redoStack = Array.isArray(history.redoStack) ? history.redoStack : [];
+    return undoStack.length > maxDepth
+        || redoStack.length > maxDepth
+        || undoStack.some(historyEntryContainsNestedHistory)
+        || redoStack.some(historyEntryContainsNestedHistory);
+}
+
+function compactRoboTeamBlackboardHistory(payload, meetingId = '') {
+    const agent = getRoboTeamAgentPayload(payload);
+    if (!agent?.blackboard || typeof agent.blackboard !== 'object') {
+        return false;
+    }
+    if (!needsBlackboardHistoryCompaction(agent.blackboard)) {
+        return false;
+    }
+    agent.blackboard = Blackboard.from({
+        ...agent.blackboard,
+        roomId: String(agent.blackboard.roomId || meetingId || '').trim()
+    }).serializePrivileged();
+    return true;
+}
+
+function normalizeRoboTeamPayload(payload, meetingId, stageEvent = null) {
+    ensureRoboTeamSettingsPayload(payload);
+    ensureRoboTeamAgentPayload(payload, stageEvent, meetingId);
+    compactRoboTeamBlackboardHistory(payload, meetingId);
+    const demoCreated = ensureRoboTeamDemoBlackboard(payload, meetingId);
+    if (demoCreated && stageEvent) {
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+            meetingId,
+            blackboardVersion: getRoboTeamBlackboardVersion(payload),
+            changeType: 'create',
+            targetType: 'blackboard',
+            targetRef: '',
+            reason: 'robo_team_demo',
+            objectKind: 'blackboard'
+        });
+    }
+    return payload;
 }
 
 function toTimestamp(value) {
@@ -228,6 +348,33 @@ function appendRoboTeamParticipant(payload, participants, meetingId = '') {
     return nextParticipants;
 }
 
+function projectRoomAgentForDetails(agent = {}) {
+    const blackboard = agent?.blackboard && typeof agent.blackboard === 'object'
+        ? {
+            id: String(agent.blackboard.id || '').trim(),
+            roomId: String(agent.blackboard.roomId || '').trim(),
+            version: Number(agent.blackboard.version || 0),
+            widgetCount: Array.isArray(agent.blackboard.widgets) ? agent.blackboard.widgets.length : 0
+        }
+        : null;
+    return {
+        id: String(agent.id || '').trim(),
+        participantIdentity: String(agent.participantIdentity || agent.participant?.identity || '').trim(),
+        agentType: String(agent.agentType || '').trim(),
+        mode: String(agent.mode || '').trim(),
+        agentName: String(agent.agentName || agent.participant?.name || '').trim(),
+        runtime: String(agent.runtime || 'ploinky').trim(),
+        status: String(agent.status || '').trim(),
+        createdAt: String(agent.createdAt || '').trim(),
+        updatedAt: String(agent.updatedAt || '').trim(),
+        deletedAt: agent.deletedAt || null,
+        settings: agent.settings && typeof agent.settings === 'object'
+            ? { blackboard: agent.settings.blackboard || null }
+            : undefined,
+        ...(blackboard ? { blackboard } : {})
+    };
+}
+
 export async function getRealtimeRoomParticipants(context, record, payload, options = {}, deps = {}) {
     const liveParticipants = await listLiveKitRoomParticipants(context, record.roomName);
     if (options.preserveStoredMembersOnEmpty === true && liveParticipants.length === 0) {
@@ -251,35 +398,28 @@ export async function getRealtimeRoomParticipants(context, record, payload, opti
 }
 
 export async function getRoomDetails(context, meetingId, authInfo = null, options = {}, deps = {}) {
-    const record = await loadRoomRecord(context, meetingId);
+    let record = await loadRoomRecord(context, meetingId);
     if (!canViewMeetingRecord(record, authInfo)) {
         throw new Error('Meeting not found.');
     }
     const payload = decryptRoomPayload(context, record);
-    await mutateRoom(context, meetingId, (_record, lockedPayload, stageEvent) => {
-        ensureRoboTeamSettingsPayload(lockedPayload);
-        ensureRoboTeamAgentPayload(lockedPayload, stageEvent, meetingId);
-        const demoCreated = ensureRoboTeamDemoBlackboard(lockedPayload, meetingId);
-        if (demoCreated) {
-            stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
-                meetingId,
-                blackboardVersion: getRoboTeamBlackboardVersion(lockedPayload),
-                changeType: 'create',
-                targetType: 'blackboard',
-                targetRef: '',
-                reason: 'robo_team_demo',
-                objectKind: 'blackboard'
-            });
-        }
-    });
-    const normalizedPayload = decryptRoomPayload(context, await loadRoomRecord(context, meetingId));
+    let normalizedPayload = payload;
+    if (needsRoboTeamPayloadNormalization(payload, meetingId)) {
+        const mutation = await mutateRoom(context, meetingId, (_record, lockedPayload, stageEvent) => {
+            normalizeRoboTeamPayload(lockedPayload, meetingId, stageEvent);
+        });
+        record = mutation.record;
+        normalizedPayload = mutation.payload;
+    }
     const participants = options.includeParticipants === false
         ? projectStoredRoomParticipants(normalizedPayload, meetingId)
         : appendRoboTeamParticipant(normalizedPayload, await getRealtimeRoomParticipants(context, record, normalizedPayload, {}, deps), meetingId);
     return {
         meeting: buildRoomView(record),
         participants,
-        agents: normalizedPayload.agents
+        agents: Array.isArray(normalizedPayload.agents)
+            ? normalizedPayload.agents.map(projectRoomAgentForDetails)
+            : []
     };
 }
 

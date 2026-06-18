@@ -1,3 +1,783 @@
 <div class="webmeet-dashboard">
-    <webmeet-dashbaoard data-presenter="webmeet-dashbaoard" data-mode="page"></webmeet-dashbaoard>
+    <!--    <div class="modal-header">
+            <div class="modal-header-left">
+                <div id="webmeetActiveRoomTitle" class="modal-title">Select a room</div>
+            </div>
+            <div class="webmeet-modal-window-actions">
+                <button type="button" class="webmeet-mobile-nav-button webmeet-header-rooms-button"
+                        data-mobile-panel="rooms" aria-label="Rooms">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 5h18"></path>
+                        <path d="M3 12h18"></path>
+                        <path d="M3 19h18"></path>
+                    </svg>
+                    <span>Rooms</span>
+                </button>
+            </div>
+        </div>-->
+    <div id="webmeetToastContainer" class="webmeet-toast-container"></div>
+    <div id="webmeetExitOverlay" class="webmeet-room-transition-overlay webmeet-hidden" role="status"
+         aria-live="polite">
+        <span class="webmeet-room-transition-spinner" aria-hidden="true"></span>
+        <span id="webmeetRoomTransitionMessage">Connecting to room...</span>
+    </div>
+    <div id="webmeetMediaSettingsMount"></div>
+    <div id="webmeetMediaSettingsPanel" class="webmeet-media-settings webmeet-hidden">
+        <div class="modal-header">
+            <div class="modal-header-left">
+                <div class="modal-title">WebMeet settings</div>
+            </div>
+            <div class="webmeet-modal-window-actions">
+                <button type="button" class="webmeet-icon-button" id="webmeetSettingsFullscreenButton"
+                        data-local-action="toggleFullscreen"
+                        aria-label="Toggle fullscreen" title="Toggle fullscreen">
+                    <img src="/explorer/assets/icons/fullscreen.svg" alt="" aria-hidden="true">
+                </button>
+                <button type="button" class="close" data-local-action="closeMediaSettings"
+                        aria-label="Close settings" title="Close settings"></button>
+            </div>
+        </div>
+        <div class="modal-body">
+            <div class="webmeet-settings-tabs" role="tablist" aria-label="WebMeet settings">
+                <button type="button" id="webmeetSettingsTabMedia" class="webmeet-settings-tab"
+                        data-local-action="setSettingsTab" data-settings-tab="media"
+                        role="tab" aria-controls="webmeetAudioVideoSettingsTabPanel" aria-selected="true">
+                    Audio &amp; video
+                </button>
+                <button type="button" id="webmeetSettingsTabAvatar" class="webmeet-settings-tab"
+                        data-local-action="setSettingsTab" data-settings-tab="avatar"
+                        role="tab" aria-controls="webmeetAvatarSettingsTabPanel" aria-selected="false">
+                    Avatar
+                </button>
+            </div>
+
+            <section id="webmeetAudioVideoSettingsTabPanel" class="webmeet-settings-section"
+                     aria-labelledby="webmeetSettingsTabMedia webmeetMediaSettingsSectionTitle" role="tabpanel"
+                     data-settings-tab-panel="media">
+                <div class="webmeet-settings-grid">
+                <section class="webmeet-media-settings-group" aria-label="Audio input">
+                    <div class="webmeet-media-settings-group-header">
+                        <span>Input</span>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetAudioInputSelect">Microphone</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Microphone"
+                                        aria-describedby="webmeetSettingHelpMicrophone">i</button>
+                                <span id="webmeetSettingHelpMicrophone" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Choose which microphone WebMeet sends to the room.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetAudioInputSelect" class="form-input"></select>
+                    </div>
+                    <div class="webmeet-media-settings-row webmeet-media-slider-row">
+                        <div class="webmeet-media-slider-label">
+                            <div class="webmeet-setting-label">
+                                <label for="webmeetMicrophoneGain">Microphone volume</label>
+                                <span class="webmeet-setting-help-control">
+                                    <button type="button" class="webmeet-setting-help-button"
+                                            aria-label="About Microphone volume"
+                                            aria-describedby="webmeetSettingHelpMicrophoneVolume">i</button>
+                                    <span id="webmeetSettingHelpMicrophoneVolume" role="tooltip"
+                                          class="webmeet-setting-help-tooltip">Adjusts your mic level before publishing. Higher values can distort audio and increase feedback risk.</span>
+                                </span>
+                            </div>
+                            <span id="webmeetMicrophoneGainValue">100%</span>
+                        </div>
+                        <input id="webmeetMicrophoneGain" type="range" min="0" max="2" step="0.05" value="1">
+                        <div id="webmeetMicrophoneGainWarning" class="webmeet-media-warning webmeet-hidden">
+                            High gain can distort audio.
+                        </div>
+                    </div>
+                </section>
+
+                <section class="webmeet-media-settings-group" aria-label="Audio output">
+                    <div class="webmeet-media-settings-group-header">
+                        <span>Output</span>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetAudioOutputSelect">Speaker</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Speaker"
+                                        aria-describedby="webmeetSettingHelpSpeaker">i</button>
+                                <span id="webmeetSettingHelpSpeaker" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Choose where remote meeting audio plays on this device.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetAudioOutputSelect" class="form-input"></select>
+                    </div>
+                    <div class="webmeet-media-settings-row webmeet-media-slider-row">
+                        <div class="webmeet-media-slider-label">
+                            <div class="webmeet-setting-label">
+                                <label for="webmeetOutputVolume">Speaker volume</label>
+                                <span class="webmeet-setting-help-control">
+                                    <button type="button" class="webmeet-setting-help-button"
+                                            aria-label="About Speaker volume"
+                                            aria-describedby="webmeetSettingHelpSpeakerVolume">i</button>
+                                    <span id="webmeetSettingHelpSpeakerVolume" role="tooltip"
+                                          class="webmeet-setting-help-tooltip">Controls remote playback volume in this browser. Lowering it helps reduce speaker bleed into your microphone.</span>
+                                </span>
+                            </div>
+                            <span id="webmeetOutputVolumeValue">80%</span>
+                        </div>
+                        <input id="webmeetOutputVolume" type="range" min="0" max="1" step="0.05" value="0.8">
+                    </div>
+                    <div class="webmeet-media-settings-flags">
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetRoomNotificationSounds">
+                                <span>Join and leave sounds</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About join and leave sounds"
+                                        aria-describedby="webmeetSettingHelpRoomNotificationSounds">i</button>
+                                <span id="webmeetSettingHelpRoomNotificationSounds" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Plays a short local sound when another participant enters or leaves after you interact with WebMeet.</span>
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="webmeet-media-settings-group" aria-label="Video">
+                    <div class="webmeet-media-settings-group-header">
+                        <span>Video</span>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetVideoInputSelect">Camera</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Camera"
+                                        aria-describedby="webmeetSettingHelpCamera">i</button>
+                                <span id="webmeetSettingHelpCamera" role="tooltip" class="webmeet-setting-help-tooltip">Choose which camera WebMeet publishes to the room.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetVideoInputSelect" class="form-input"></select>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetCameraQualitySelect">Camera quality</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Camera quality"
+                                        aria-describedby="webmeetSettingHelpCameraQuality">i</button>
+                                <span id="webmeetSettingHelpCameraQuality" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Sets the camera resolution and frame rate tradeoff. Lower quality uses less bandwidth and CPU.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetCameraQualitySelect" class="form-input">
+                            <option value="h360">360p / 24fps</option>
+                            <option value="h540">540p / 30fps</option>
+                            <option value="h720">720p / 30fps</option>
+                            <option value="h1080">1080p / 30fps</option>
+                        </select>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetScreenShareQualitySelect">Screen share quality</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Screen share quality"
+                                        aria-describedby="webmeetSettingHelpScreenShareQuality">i</button>
+                                <span id="webmeetSettingHelpScreenShareQuality" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Sets the shared screen resolution and frame rate. Higher quality needs more bandwidth and device power.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetScreenShareQualitySelect" class="form-input">
+                            <option value="h720fps15">720p / 15fps</option>
+                            <option value="h720fps30">720p / 30fps</option>
+                            <option value="h1080fps15">1080p / 15fps</option>
+                            <option value="h1080fps30">1080p / 30fps</option>
+                        </select>
+                    </div>
+                </section>
+
+                <section class="webmeet-media-settings-group"
+                         aria-label="Audio processing">
+                    <div class="webmeet-media-settings-group-header">
+                        <span>Audio processing</span>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetVoiceProcessingMode">Voice processing</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Voice processing"
+                                        aria-describedby="webmeetSettingHelpVoiceProcessing">i</button>
+                                <span id="webmeetSettingHelpVoiceProcessing" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Chooses how WebMeet cleans up your mic audio. Adjusting gain, hum filter, echo cancellation, noise suppression, or AGC switches Automatic to Custom.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetVoiceProcessingMode" class="form-input">
+                            <option value="auto">Automatic, recommended</option>
+                            <option value="custom">Custom manual controls</option>
+                            <option value="standard">Standard browser processing</option>
+                            <option value="enhanced">Enhanced local denoise</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetHumFilter">Hum filter</label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button" aria-label="About Hum filter"
+                                        aria-describedby="webmeetSettingHelpHumFilter">i</button>
+                                <span id="webmeetSettingHelpHumFilter" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Reduces steady electrical hum at 50 Hz or 60 Hz when your setup picks it up.</span>
+                            </span>
+                        </div>
+                        <select id="webmeetHumFilter" class="form-input">
+                            <option value="off">Off</option>
+                            <option value="50">50 Hz</option>
+                            <option value="60">60 Hz</option>
+                        </select>
+                    </div>
+                    <div class="webmeet-media-settings-flags">
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAudioEchoCancellation">
+                                <span>Echo cancellation</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Echo cancellation"
+                                        aria-describedby="webmeetSettingHelpEchoCancellation">i</button>
+                                <span id="webmeetSettingHelpEchoCancellation" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Tries to stop meeting audio from your speakers feeding back into your microphone.</span>
+                            </span>
+                        </div>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAudioNoiseSuppression">
+                                <span>Noise suppression</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Noise suppression"
+                                        aria-describedby="webmeetSettingHelpNoiseSuppression">i</button>
+                                <span id="webmeetSettingHelpNoiseSuppression" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Reduces steady background sounds such as fans, HVAC, and light room noise.</span>
+                            </span>
+                        </div>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAudioAutoGainControl">
+                                <span>Auto gain control</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Auto gain control"
+                                        aria-describedby="webmeetSettingHelpAutoGainControl">i</button>
+                                <span id="webmeetSettingHelpAutoGainControl" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Automatically raises or lowers mic level. It can help quiet voices, but may also lift room noise.</span>
+                            </span>
+                        </div>
+                        <div class="webmeet-media-flag-item">
+                            <label class="webmeet-media-flag">
+                                <input type="checkbox" id="webmeetAutomaticParticipantVolume">
+                                <span>Automatic participant volume</span>
+                            </label>
+                            <span class="webmeet-setting-help-control">
+                                <button type="button" class="webmeet-setting-help-button"
+                                        aria-label="About Automatic participant volume"
+                                        aria-describedby="webmeetSettingHelpAutomaticParticipantVolume">i</button>
+                                <span id="webmeetSettingHelpAutomaticParticipantVolume" role="tooltip"
+                                      class="webmeet-setting-help-tooltip">Gradually balances remote voices in this browser. Manual participant volume settings take priority.</span>
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="webmeet-settings-section" aria-labelledby="webmeetBackgroundSettingsSectionTitle">
+                    <div class="webmeet-settings-grid webmeet-settings-grid-background">
+                        <section class="webmeet-media-settings-group webmeet-media-settings-group-wide"
+                                 aria-label="Background privacy">
+                            <div class="webmeet-media-settings-group-header">
+                                <span>Camera background</span>
+                            </div>
+                            <div class="webmeet-media-settings-row">
+                                <div class="webmeet-setting-label">
+                                    <label for="webmeetBackgroundEffectSelect">Effect</label>
+                                    <span class="webmeet-setting-help-control">
+                                        <button type="button" class="webmeet-setting-help-button"
+                                                aria-label="About Background effect"
+                                                aria-describedby="webmeetSettingHelpBackgroundEffect">i</button>
+                                        <span id="webmeetSettingHelpBackgroundEffect" role="tooltip"
+                                              class="webmeet-setting-help-tooltip">Choose no effect, background blur, or a virtual image behind you.</span>
+                                    </span>
+                                </div>
+                                <select id="webmeetBackgroundEffectSelect" class="form-input">
+                                    <option value="none">No effect</option>
+                                    <option value="blur">Blur background</option>
+                                    <option value="image">Virtual background image</option>
+                                </select>
+                            </div>
+                            <div id="webmeetBackgroundBlurRow"
+                                 class="webmeet-media-settings-row webmeet-media-slider-row webmeet-hidden">
+                                <div class="webmeet-media-slider-label">
+                                    <div class="webmeet-setting-label">
+                                        <label for="webmeetBackgroundBlurRadius">Blur strength</label>
+                                        <span class="webmeet-setting-help-control">
+                                            <button type="button" class="webmeet-setting-help-button"
+                                                    aria-label="About Blur strength"
+                                                    aria-describedby="webmeetSettingHelpBlurStrength">i</button>
+                                            <span id="webmeetSettingHelpBlurStrength" role="tooltip"
+                                                  class="webmeet-setting-help-tooltip">Controls how strongly WebMeet blurs the area behind you.</span>
+                                        </span>
+                                    </div>
+                                    <span id="webmeetBackgroundBlurValue">12px</span>
+                                </div>
+                                <input id="webmeetBackgroundBlurRadius" type="range" min="4" max="24" step="1"
+                                       value="12">
+                            </div>
+                            <div id="webmeetBackgroundImageRow" class="webmeet-media-settings-row webmeet-hidden">
+                                <div class="webmeet-setting-label">
+                                    <label for="webmeetBackgroundImageInput">Background image</label>
+                                    <span class="webmeet-setting-help-control">
+                                        <button type="button" class="webmeet-setting-help-button"
+                                                aria-label="About Background image"
+                                                aria-describedby="webmeetSettingHelpBackgroundImage">i</button>
+                                        <span id="webmeetSettingHelpBackgroundImage" role="tooltip"
+                                              class="webmeet-setting-help-tooltip">Upload a picture to replace your background on this device in future WebMeet rooms.</span>
+                                    </span>
+                                </div>
+                                <input id="webmeetBackgroundImageInput" class="form-input" type="file" accept="image/*">
+                                <div id="webmeetBackgroundImagePreview"
+                                     class="webmeet-background-preview webmeet-hidden">
+                                    <img id="webmeetBackgroundImagePreviewImage" alt="">
+                                    <div class="webmeet-background-preview-meta">
+                                        <span id="webmeetBackgroundImageName">No image selected</span>
+                                        <button type="button" id="webmeetBackgroundImageRemoveButton"
+                                                class="general-button subtle-button webmeet-hidden">
+                                            Remove image
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="webmeetBackgroundImageWarning" class="webmeet-media-warning webmeet-hidden">
+                                    Select an image before applying a virtual background.
+                                </div>
+                            </div>
+                            <p class="webmeet-settings-help">
+                                Background effects run in your browser and the selected privacy preference is reused
+                                across
+                                WebMeet rooms on this device.
+                            </p>
+                        </section>
+                    </div>
+                </section>
+                </div>
+                <div id="webmeetMediaDeviceWarnings" class="webmeet-media-device-warnings webmeet-hidden"
+                     aria-live="polite"></div>
+            </section>
+
+            <section id="webmeetAvatarSettingsTabPanel" class="webmeet-settings-section"
+                     aria-labelledby="webmeetSettingsTabAvatar webmeetAvatarSettingsSectionTitle" role="tabpanel"
+                     data-settings-tab-panel="avatar" hidden>
+                <div class="webmeet-settings-grid webmeet-settings-grid-avatar">
+                    <section class="webmeet-media-settings-group webmeet-media-settings-group-wide"
+                             aria-label="WebMeet avatar">
+                        <div class="webmeet-avatar-settings-layout">
+                            <div class="webmeet-avatar-settings-fields">
+                                <avatar-settings-form id="webmeetAvatarSettingsForm"
+                                                      data-presenter="avatar-settings-form"></avatar-settings-form>
+                                <div class="preview-section">
+                                    <div class="webmeet-avatar-preview" id="webmeetAvatarPreview" aria-hidden="true"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </section>
+        </div>
+        <div class="modal-footer modal-actions">
+            <div id="webmeetMediaSettingsActions" class="webmeet-media-settings-actions">
+                <button type="button" class="gray-button" data-local-action="refreshMediaDevices">
+                    Refresh devices
+                </button>
+                <button type="button" class="general-button webmeet-apply-media-settings-button"
+                        id="webmeetApplyMediaSettingsButton" data-local-action="applyMediaSettings">
+                    <span class="webmeet-button-label">Apply</span>
+                </button>
+            </div>
+            <div id="webmeetAvatarSettingsActions" class="webmeet-media-settings-actions webmeet-hidden">
+                <button type="button" class="gray-button"
+                        data-local-action="resetWebMeetAvatarOverride">
+                    Reset to profile
+                </button>
+                <button type="button" class="general-button" data-local-action="applyWebMeetAvatarSettings">
+                    Apply avatar
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="webmeet-dashboard-layout">
+        <section class="webmeet-sidebar">
+            <div class="webmeet-panel">
+                <div class="webmeet-panel-header">
+                    <span>Rooms</span>
+                    <div class="webmeet-panel-actions">
+                        <button type="button" class="webmeet-create-room-button" id="webmeetCreateRoomButton"
+                                data-local-action="createMeeting" title="Create room" aria-label="Create room">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 5v14"></path>
+                                <path d="M5 12h14"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="webmeetMeetingList" class="webmeet-list"></div>
+            </div>
+        </section>
+        <section class="webmeet-main">
+            <!-- Hidden elements for JS (accessible but not visible) -->
+            <div class="webmeet-js-elements">
+                <span id="webmeetJoinStatus">Not joined</span>
+                <span id="webmeetLifecycle">Active</span>
+                <span id="webmeetRoomConnectionState">Disconnected</span>
+                <div id="webmeetRoomCategoryList"></div>
+            </div>
+
+            <!-- Welcome screen (shown when not joined to a meeting) -->
+            <div id="webmeetWelcomeScreen" class="webmeet-welcome-screen">
+                <div class="webmeet-welcome-content">
+                    <div class="webmeet-welcome-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                    <h2 class="webmeet-welcome-title">Welcome to WebMeet</h2>
+                    <p class="webmeet-welcome-text">Select a room from the sidebar, then join to start
+                        collaborating.</p>
+                    <div class="webmeet-welcome-features">
+                        <div class="webmeet-welcome-feature">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <span>Audio & Video calls</span>
+                        </div>
+                        <div class="webmeet-welcome-feature">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            <span>Real-time chat</span>
+                        </div>
+                    </div>
+                    <div class="webmeet-welcome-status">
+                        <span id="webmeetWelcomeStatus" class="webmeet-status-badge">Select a room to begin</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="webmeetGuestEntry" class="webmeet-guest-entry webmeet-hidden">
+                <form id="webmeetGuestEntryForm" class="webmeet-guest-entry-form">
+                    <div class="webmeet-guest-entry-icon" aria-hidden="true">
+                        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 11.5 19.5 14 18 12.5"></path>
+                            <path d="M19.5 14v-4.5"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="webmeet-guest-entry-title">Join public room</h2>
+                        <p class="webmeet-guest-entry-copy">Enter the name that other participants will see.</p>
+                    </div>
+                    <label class="webmeet-guest-entry-label" for="webmeetGuestEntryName">Your name</label>
+                    <input id="webmeetGuestEntryName" class="webmeet-guest-entry-input" type="text"
+                           autocomplete="name" maxlength="80" required>
+                    <button id="webmeetGuestEntrySubmit" type="submit" class="general-button webmeet-guest-entry-submit">
+                        Join
+                    </button>
+                    <div id="webmeetGuestEntryStatus" class="webmeet-guest-entry-status" role="status"
+                         aria-live="polite"></div>
+                </form>
+            </div>
+
+            <!-- Meeting controls bar (hidden by default, shown when meeting selected) -->
+            <div class="webmeet-meeting-bar webmeet-hidden">
+                <div class="webmeet-meeting-info">
+                    <span id="webmeetMeetingTitle" class="webmeet-meeting-name">None</span>
+                    <span id="webmeetMeetingMeta" class="webmeet-meeting-meta"></span>
+                </div>
+                <div class="webmeet-meeting-actions">
+                    <button type="button" class="webmeet-icon-button webmeet-meeting-chat-toggle"
+                            id="webmeetToggleChatButton" data-local-action="toggleChatSidebar" title="Hide chat"
+                            aria-label="Hide chat">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <nav class="webmeet-mobile-nav" aria-label="WebMeet navigation">
+                <button type="button" class="webmeet-mobile-nav-button is-active" data-mobile-panel="room"
+                        aria-label="Room">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="2" y="7" width="14" height="10" rx="2" ry="2"></rect>
+                        <polygon points="16 10 22 7 22 17 16 14"></polygon>
+                    </svg>
+                    <span>Room</span>
+                </button>
+                <button type="button" class="webmeet-mobile-nav-button" data-mobile-panel="chat" aria-label="Chat">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span>Chat</span>
+                </button>
+                <button type="button" class="webmeet-mobile-nav-button" data-mobile-panel="info" aria-label="Info">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    <span>Info</span>
+                </button>
+                <button type="button" class="webmeet-mobile-nav-button" data-mobile-panel="settings"
+                        aria-label="Settings">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15a1.65 1.65 0 0 0-1.51-1H3.4a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 5 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.44 3.3l.06.06A1.65 1.65 0 0 0 9.32 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19 8a1.65 1.65 0 0 0 1.51 1h.09a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19 15z"></path>
+                    </svg>
+                    <span>Settings</span>
+                </button>
+            </nav>
+
+            <!-- Main content area -->
+            <div class="webmeet-main-content">
+                <!-- Live room only -->
+                <div class="webmeet-chat-area">
+                    <div class="webmeet-live-content">
+                        <div id="webmeetVideoGrid" class="webmeet-video-grid">
+                            <div id="webmeetVideoEmpty" class="webmeet-video-empty">Join a meeting to attach media
+                                tracks.
+                            </div>
+                            <div id="webmeetVideoAll" class="webmeet-video-all webmeet-hidden"></div>
+                            <div id="webmeetVideoThumbnails" class="webmeet-video-thumbnails webmeet-hidden"></div>
+                        </div>
+                        <div class="webmeet-media-controls">
+                            <div class="webmeet-media-toggles">
+                                <button type="button" class="webmeet-icon-button" data-local-action="toggleMicrophone"
+                                        id="webmeetMicButton" title="Toggle Microphone - Audio: Good"
+                                        aria-label="Toggle Microphone - Audio: Good">
+                                    <!-- Mic ON icon -->
+                                    <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                                    </svg>
+                                    <!-- Mic OFF icon (muted) -->
+                                    <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                        <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.18"></path>
+                                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+                                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                                    </svg>
+                                    <span id="webmeetAudioHealthIndicator"
+                                          class="webmeet-audio-health-indicator"
+                                          data-health="good"
+                                          aria-hidden="true"></span>
+                                </button>
+                                <button type="button" class="webmeet-icon-button webmeet-deafen-button"
+                                        data-local-action="toggleDeafen" id="webmeetDeafenButton" title="Deafen"
+                                        aria-label="Deafen">
+                                    <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M3 14v-2a9 9 0 0 1 18 0v2"></path>
+                                        <path d="M5 14h3v7H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2z"></path>
+                                        <path d="M16 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-3v-7z"></path>
+                                    </svg>
+                                    <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                        <path d="M3 14v-2a9 9 0 0 1 11.5-8.64"></path>
+                                        <path d="M5 14h3v7H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2z"></path>
+                                        <path d="M16 14h3a2 2 0 0 1 2 2v3"></path>
+                                    </svg>
+                                </button>
+                                <button type="button" class="webmeet-icon-button" data-local-action="toggleCamera"
+                                        id="webmeetCameraButton" title="Toggle Camera">
+                                    <!-- Cam ON icon -->
+                                    <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <rect x="2" y="7" width="14" height="10" rx="2" ry="2"></rect>
+                                        <polygon points="16 10 22 7 22 17 16 14"></polygon>
+                                    </svg>
+                                    <!-- Cam OFF icon (crossed) -->
+                                    <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                        <rect x="2" y="7" width="14" height="10" rx="2" ry="2"></rect>
+                                        <polygon points="16 10 22 7 22 17 16 14"></polygon>
+                                    </svg>
+                                </button>
+                                <button type="button" class="webmeet-icon-button" data-local-action="toggleScreenShare"
+                                        id="webmeetScreenShareButton" title="Toggle Screen Share">
+                                    <!-- Screen ON icon -->
+                                    <svg class="icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                                    </svg>
+                                    <!-- Screen OFF icon -->
+                                    <svg class="icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                                    </svg>
+                                </button>
+                               <!-- <button type="button" class="webmeet-icon-button webmeet-blackboard-button"
+                                        data-local-action="toggleBlackboard"
+                                        id="webmeetBlackboardButton" title="Show Blackboard"
+                                        aria-label="Show Blackboard" aria-pressed="false">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <rect x="3" y="4" width="18" height="14" rx="2"></rect>
+                                        <path d="M8 21h8"></path>
+                                        <path d="M12 18v3"></path>
+                                        <path d="M8 9h8"></path>
+                                        <path d="M8 13h5"></path>
+                                    </svg>
+                                </button>-->
+                                <div class="webmeet-avatar-quick-action">
+                                    <button type="button" class="webmeet-icon-button webmeet-avatar-quick-button"
+                                            data-local-action="toggleAvatarQuickMenu" id="webmeetAvatarQuickButton"
+                                            title="Avatar state" aria-label="Avatar state" aria-expanded="false">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                             stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+                                             stroke-linejoin="round" aria-hidden="true">
+                                            <circle cx="12" cy="8" r="4"></circle>
+                                            <path d="M4 21a8 8 0 0 1 16 0"></path>
+                                        </svg>
+                                    </button>
+                                    <div id="webmeetAvatarQuickMenu"
+                                         class="webmeet-avatar-quick-menu webmeet-hidden"></div>
+                                </div>
+                            </div>
+                            <button type="button" class="webmeet-icon-button webmeet-leave-button"
+                                    data-local-action="leaveMeeting" id="webmeetLeaveButton"
+                                    title="Leave room" aria-label="Leave room">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"
+                                     style="transform: rotate(135deg); margin-bottom: -2px;">
+                                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"></path>
+                                </svg>
+                            </button>
+                            <div class="webmeet-inline-actions">
+                                <button type="button" class="webmeet-icon-button webmeet-media-settings-button"
+                                        data-local-action="toggleMediaSettings" id="webmeetMediaSettingsButton"
+                                        title="Settings" aria-label="Settings">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"
+                                         aria-hidden="true">
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15a1.65 1.65 0 0 0-1.51-1H3.4a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 5 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.44 3.3l.06.06A1.65 1.65 0 0 0 9.32 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19 8a1.65 1.65 0 0 0 1.51 1h.09a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19 15z"></path>
+                                    </svg>
+                                </button>
+                                <button type="button" class="webmeet-icon-button webmeet-video-grid-fullscreen-button"
+                                        data-local-action="toggleVideoGridFullscreen"
+                                        id="webmeetVideoGridFullscreenButton" title="Video fullscreen"
+                                        aria-label="Video fullscreen">
+                                    <svg class="icon-enter" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <polyline points="15 3 21 3 21 9"></polyline>
+                                        <polyline points="9 21 3 21 3 15"></polyline>
+                                        <line x1="21" y1="3" x2="14" y2="10"></line>
+                                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                                    </svg>
+                                    <svg class="icon-exit" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <polyline points="9 3 3 3 3 9"></polyline>
+                                        <polyline points="15 21 21 21 21 15"></polyline>
+                                        <line x1="3" y1="3" x2="10" y2="10"></line>
+                                        <line x1="21" y1="21" x2="14" y2="14"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <section id="webmeetBlackboardSurface"
+                                 class="webmeet-blackboard-surface webmeet-hidden"
+                                 aria-label="Shared blackboard">
+                            <div class="webmeet-blackboard-header">
+                                <span>Blackboard</span>
+                                <span id="webmeetBlackboardPresenter" class="webmeet-blackboard-presenter"></span>
+                            </div>
+                            <webmeet-blackboard-panel data-presenter="webmeet-blackboard-panel"></webmeet-blackboard-panel>
+                        </section>
+                    </div>
+                </div>
+                <div
+                        class="webmeet-chat-resizer"
+                        id="webmeetChatResizer"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize chat panel"
+                ></div>
+
+                <!-- Chat sidebar (right sidebar) -->
+                <div class="webmeet-member-list" id="webmeetChatSidebar">
+                    <div class="webmeet-panel-header">
+                        <span>Chat</span>
+                    </div>
+                    <div id="webmeetChatList" class="webmeet-scroll-list"></div>
+                    <div class="webmeet-compose">
+                        <textarea id="webmeetChatInput" class="form-input" rows="2"
+                                  placeholder="Type a message..."></textarea>
+                        <button type="button" class="general-button" data-local-action="sendChat" title="Send message"
+                                aria-label="Send message">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 2 11 13"></path>
+                                <path d="m22 2-7 20-4-9-9-4z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debug panel (hidden) -->
+            <div class="webmeet-session-panel webmeet-hidden">
+                <label class="form-label" for="webmeetJoinPayload">Join payload</label>
+                <textarea id="webmeetJoinPayload" class="form-input webmeet-code" rows="5" readonly></textarea>
+            </div>
+
+            <div id="webmeetTaskList" class="webmeet-hidden"></div>
+            <div id="webmeetDecisionList" class="webmeet-hidden"></div>
+        </section>
+    </div>
 </div>

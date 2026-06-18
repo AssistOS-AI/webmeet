@@ -6,23 +6,23 @@ import path from 'node:path';
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const audioProcessingPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/microphone-track-factory.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/audio-processing/microphone-track-factory.js'
 );
 const rnnoiseWorkletPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/rnnoise-worklet.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/audio-processing/rnnoise-worklet.js'
 );
 const mediaControllerPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/webmeet-media-controller.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/webmeet-media-controller.js'
 );
 const dashboardPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.js'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.js'
 );
 const dashboardHtmlPath = path.join(
     repoRoot,
-    'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/webmeet-dashbaoard.html'
+    'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.html'
 );
 
 test('RNNoise initialization timeout disposes the worklet node', async () => {
@@ -80,7 +80,7 @@ test('manual audio controls switch automatic voice processing to custom instead 
     const dashboardTemplate = await fs.readFile(dashboardHtmlPath, 'utf8');
     const mediaSettingsSource = await fs.readFile(path.join(
         repoRoot,
-        'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/media-settings-methods.js'
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/media-settings-methods.js'
     ), 'utf8');
 
     assert.match(dashboardTemplate, /<option value="custom">Custom manual controls<\/option>/);
@@ -93,7 +93,7 @@ test('manual audio controls switch automatic voice processing to custom instead 
 test('dashboard defaults microphone and output volume to eighty percent', async () => {
     const settingsSource = await fs.readFile(path.join(
         repoRoot,
-        'IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/settings.js'
+        'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/audio-processing/settings.js'
     ), 'utf8');
     const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
     const dashboardSource = await fs.readFile(dashboardPath, 'utf8');

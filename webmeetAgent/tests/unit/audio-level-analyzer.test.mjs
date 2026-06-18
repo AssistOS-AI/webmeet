@@ -7,7 +7,7 @@ import {
     classifyAudioHealth,
     createAudioLevelMonitor,
     detectHumFrequency
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/audio-processing/audio-level-analyzer.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/audio-processing/audio-level-analyzer.js';
 
 function samples(amplitude, length = 1000) {
     return Float32Array.from({ length }, (_, index) => (index % 2 ? amplitude : -amplitude));

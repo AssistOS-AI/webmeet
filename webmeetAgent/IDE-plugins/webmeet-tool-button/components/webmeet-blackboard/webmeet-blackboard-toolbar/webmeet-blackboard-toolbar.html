@@ -1,0 +1,95 @@
+<div class="webmeet-blackboard-toolbar" part="toolbar">
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="setTool select" title="Select" aria-label="Select">↖</button>
+    <span class="webmeet-blackboard-separator" aria-hidden="true"></span>
+
+    <div class="webmeet-blackboard-tool-menu" data-menu="shape">
+        <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-menu-trigger" data-local-action="toggleMenu shape" title="Shapes" aria-label="Shapes" aria-haspopup="menu" aria-expanded="false">
+            <span class="webmeet-blackboard-tool-icon" data-menu-icon="shape" data-icon-key="rectangle"></span>
+            <span class="webmeet-blackboard-tool-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="webmeet-blackboard-menu-dropdown" data-menu-panel="shape" role="menu">
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget shape:rectangle" data-menu-group="shape" data-menu-value="shape:rectangle" data-menu-icon-value="rectangle" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="rectangle"></span><span>Rectangle</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget shape:rounded" data-menu-group="shape" data-menu-value="shape:rounded" data-menu-icon-value="rounded" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="rounded"></span><span>Rounded</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget shape:ellipse" data-menu-group="shape" data-menu-value="shape:ellipse" data-menu-icon-value="ellipse" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="ellipse"></span><span>Ellipse</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget shape:diamond" data-menu-group="shape" data-menu-value="shape:diamond" data-menu-icon-value="diamond" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="diamond"></span><span>Diamond</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget shape:triangle" data-menu-group="shape" data-menu-value="shape:triangle" data-menu-icon-value="triangle" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="triangle"></span><span>Triangle</span></button>
+        </div>
+    </div>
+
+    <div class="webmeet-blackboard-tool-menu" data-menu="line">
+        <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-menu-trigger" data-local-action="toggleMenu line" title="Lines" aria-label="Lines" aria-haspopup="menu" aria-expanded="false">
+            <span class="webmeet-blackboard-tool-icon" data-menu-icon="line" data-icon-key="line"></span>
+            <span class="webmeet-blackboard-tool-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="webmeet-blackboard-menu-dropdown" data-menu-panel="line" role="menu">
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget line" data-menu-group="line" data-menu-value="line" data-menu-icon-value="line" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="line"></span><span>Line</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget line:arrow-end" data-menu-group="line" data-menu-value="line:arrow-end" data-menu-icon-value="arrow-end" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="arrow-end"></span><span>Arrow</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget line:arrow-both" data-menu-group="line" data-menu-value="line:arrow-both" data-menu-icon-value="arrow-both" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="arrow-both"></span><span>Double arrow</span></button>
+        </div>
+    </div>
+
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="addWidget text" title="Text box" aria-label="Text box">
+        <span class="webmeet-blackboard-tool-icon" data-icon-key="text"></span>
+    </button>
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="uploadImageWidget" title="Image" aria-label="Image">
+        <span class="webmeet-blackboard-tool-icon" data-icon-key="image"></span>
+    </button>
+    <input type="file" accept="image/*" data-image-upload-input hidden>
+    <span class="webmeet-blackboard-separator webmeet-blackboard-text-separator" data-text-toolbar-separator aria-hidden="true" hidden></span>
+    <div class="webmeet-blackboard-tool-menu" data-menu="insert">
+        <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-menu-trigger" data-local-action="toggleMenu insert" title="Interactive widgets" aria-label="Interactive widgets" aria-haspopup="menu" aria-expanded="false">
+            <span class="webmeet-blackboard-tool-icon" data-menu-icon="insert" data-icon-key="quiz"></span>
+            <span class="webmeet-blackboard-tool-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="webmeet-blackboard-menu-dropdown" data-menu-panel="insert" role="menu">
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget quiz" data-menu-group="insert" data-menu-value="quiz" data-menu-icon-value="quiz" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="quiz"></span><span>Quiz</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget vote" data-menu-group="insert" data-menu-value="vote" data-menu-icon-value="vote" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="vote"></span><span>Vote</span></button>
+            <button type="button" class="webmeet-blackboard-menu-item" data-local-action="addWidget input" data-menu-group="insert" data-menu-value="input" data-menu-icon-value="input" role="menuitem"><span class="webmeet-blackboard-menu-item-icon" data-icon-key="input"></span><span>Input</span></button>
+        </div>
+    </div>
+
+    <span class="webmeet-blackboard-separator" aria-hidden="true"></span>
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="runToolbarAction delete" title="Delete selected" aria-label="Delete selected">
+        <span class="webmeet-blackboard-tool-icon" data-icon-key="delete"></span>
+    </button>
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="runToolbarAction clear" title="Clear blackboard" aria-label="Clear blackboard">
+        <span class="webmeet-blackboard-tool-icon" data-icon-key="clear"></span>
+    </button>
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="runToolbarAction undo" title="Undo" aria-label="Undo">
+        <span class="webmeet-blackboard-tool-icon" data-icon-key="undo"></span>
+    </button>
+    <button type="button" class="webmeet-blackboard-tool-button" data-local-action="runToolbarAction redo" title="Redo" aria-label="Redo">
+        <span class="webmeet-blackboard-tool-icon" data-icon-key="redo"></span>
+    </button>
+    <span class="webmeet-blackboard-separator" aria-hidden="true"></span>
+    <div class="webmeet-blackboard-tool-menu webmeet-blackboard-theme-menu" data-menu="theme">
+        <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-theme-trigger" data-local-action="toggleMenu theme" title="Blackboard theme" aria-label="Blackboard theme" aria-haspopup="menu" aria-expanded="false">
+            <span class="webmeet-blackboard-theme-trigger-label">Theme</span>
+            <span class="webmeet-blackboard-tool-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="webmeet-blackboard-menu-dropdown webmeet-blackboard-theme-dropdown" data-menu-panel="theme" role="menu" data-theme-menu></div>
+    </div>
+    <label class="webmeet-blackboard-color-control" title="Blackboard background" aria-label="Blackboard background">
+        <span>BG</span>
+        <input type="color" value="#ffffff" data-background-color>
+    </label>
+</div>
+<div class="webmeet-blackboard-text-toolbar webmeet-blackboard-sub-toolbar" data-sub-toolbar="text" data-text-toolbar hidden>
+    <label class="webmeet-blackboard-text-style-control" title="Font family">
+        <select class="webmeet-blackboard-select" data-text-style="fontFamily" aria-label="Font family">
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Verdana">Verdana</option>
+            <option value="Courier New">Courier New</option>
+        </select>
+    </label>
+    <label class="webmeet-blackboard-text-style-control" title="Font size">
+        <input type="number" class="webmeet-blackboard-input" min="12" max="200" step="1" data-text-style="fontSize" aria-label="Font size">
+    </label>
+    <label class="webmeet-blackboard-text-style-control" title="Text color">
+        <input type="color" class="webmeet-blackboard-input" data-text-style="textColor" aria-label="Text color">
+    </label>
+    <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-text-style-toggle" data-local-action="runTextStyleAction bold" title="Bold" aria-label="Bold">B</button>
+    <button type="button" class="webmeet-blackboard-tool-button webmeet-blackboard-text-style-toggle" data-local-action="runTextStyleAction italic" title="Italic" aria-label="Italic">I</button>
+</div>

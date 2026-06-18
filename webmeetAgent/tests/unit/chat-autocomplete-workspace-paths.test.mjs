@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
     applyWorkspacePathSelection,
     createWorkspacePathsProvider
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/services/chat-autocomplete/workspace-paths-provider.js';
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/chat-autocomplete/workspace-paths-provider.js';
 
 function makeTriggerInfo(value) {
     const idx = value.lastIndexOf('@');

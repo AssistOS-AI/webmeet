@@ -1,7 +1,91 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { participantViewMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashbaoard/controllers/participant-view-methods.js';
+import { participantViewMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/participant-view-methods.js';
+
+test('syncParticipantsFromRoom keeps active RoboTeam agent in connected room roster', () => {
+    const appliedViews = new Map();
+    const roboTeamAgent = {
+        id: 'agent_robo_team',
+        participantIdentity: 'agent_robo_team',
+        agentType: 'robo_team',
+        mode: 'blackboard_demo',
+        agentName: 'Robo Team',
+        runtime: 'ploinky',
+        status: 'active'
+    };
+    const context = {
+        state: {
+            session: {
+                meeting: { id: 'meeting-1' },
+                participantIdentity: 'participant-local',
+                participant: {
+                    displayName: 'Local User'
+                }
+            },
+            selectedMeetingId: 'meeting-1',
+            participants: [],
+            agents: [roboTeamAgent],
+            meetingParticipantsById: {}
+        },
+        selectedMeeting: { id: 'meeting-1' },
+        getAgentForParticipant(participant) {
+            const identity = String(participant?.identity || '').trim();
+            return identity === 'agent_robo_team' ? roboTeamAgent : null;
+        },
+        upsertParticipantView(participant) {
+            const id = String(participant?.identity || '').trim();
+            appliedViews.set(id, {
+                id,
+                name: participant?.name || participant?.displayName || '',
+                kind: participant?.kind || ''
+            });
+            return {
+                id,
+                micOn: false
+            };
+        },
+        applyParticipantViewState() {},
+        isParticipantMicOn() {
+            return false;
+        },
+        participantLayoutController: {
+            getParticipantIds() {
+                return Array.from(appliedViews.keys());
+            },
+            getParticipantView(id) {
+                return { micOn: false, id };
+            }
+        },
+        removeParticipantView(participantId) {
+            appliedViews.delete(participantId);
+        },
+        renderMeetingList() {},
+        renderParticipantLayout() {},
+        syncLocalMediaStateFromRoom() {},
+        renderFeedLists() {}
+    };
+    const room = {
+        localParticipant: {
+            identity: 'participant-local',
+            name: 'Local User',
+            attributes: {
+                webmeetUserId: 'local:self'
+            }
+        },
+        remoteParticipants: new Map()
+    };
+
+    participantViewMethods.syncParticipantsFromRoom.call(context, room, null);
+
+    assert.deepEqual(
+        context.state.participants.map((entry) => entry.id),
+        ['participant-local', 'agent_robo_team']
+    );
+    assert.equal(context.state.participants[1].kind, 'agent');
+    assert.equal(appliedViews.get('agent_robo_team')?.name, 'Robo Team');
+    assert.equal(context.state.meetingParticipantsById['meeting-1'][1].isAgent, true);
+});
 
 test('syncParticipantsFromRoom does not reuse stored remote avatars for connected-room cards', () => {
     const appliedViews = new Map();
