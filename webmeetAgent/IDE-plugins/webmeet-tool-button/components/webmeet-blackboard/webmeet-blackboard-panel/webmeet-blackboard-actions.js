@@ -57,8 +57,14 @@ export const blackboardActionMethods = {
     updateToolbarState() {
         this.toolbar?.setState?.({
             busy: this.busy,
-            themeId: this.getBlackboardTheme().id
+            themeId: this.getBlackboardTheme().id,
+            pendingWidgetType: this.pendingWidgetType
         });
+    },
+
+    setPendingWidgetType(type = '') {
+        this.pendingWidgetType = String(type || '').trim();
+        this.updateToolbarState();
     },
 
     getWidgetById(targetRef) {
@@ -191,9 +197,9 @@ export const blackboardActionMethods = {
         }
     },
 
-    async addWidget(type) {
+    async addWidget(type, position = null) {
         await this.flushInlineTextEdit();
-        const widget = this.createWidget(type);
+        const widget = this.createWidget(type, position);
         const response = await this.runFinalChange({
             changeType: 'create',
             targetType: 'widget',
@@ -328,7 +334,7 @@ export const blackboardActionMethods = {
         });
     },
 
-    createWidget(type) {
+    createWidget(type, position = null) {
         const rawType = String(type || 'shape').trim();
         const [normalizedType, variant] = rawType.split(':');
         const offset = (this.widgetCreateOffset % 8) * 18;
@@ -405,7 +411,92 @@ export const blackboardActionMethods = {
             }
             widget.properties.label = '';
         }
+        this.applyWidgetPlacement(widget, position);
         return widget;
+    },
+
+    applyWidgetPlacement(widget, placement = null) {
+        if (placement?.kind === 'draw') {
+            this.positionWidgetFromDrawPlacement(widget, placement);
+            return;
+        }
+        this.positionWidgetAtBoardPoint(widget, placement);
+    },
+
+    positionWidgetAtBoardPoint(widget, position = null) {
+        if (!widget?.properties?.geometry || !position) return;
+        const geometry = widget.properties.geometry;
+        const width = Math.max(1, Number(geometry.width || 1) || 1);
+        const height = Math.max(1, Number(geometry.height || 1) || 1);
+        const x = Number(position.x);
+        const y = Number(position.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        widget.properties.geometry = {
+            ...geometry,
+            x: Math.max(0, Math.round(x - width / 2)),
+            y: Math.max(0, Math.round(y - height / 2))
+        };
+    },
+
+    positionWidgetFromDrawPlacement(widget, placement = null) {
+        if (!widget?.properties?.geometry || !placement) return;
+        if (widget.type === 'line') {
+            this.positionLineWidgetFromDrawPlacement(widget, placement);
+            return;
+        }
+        if (widget.type !== 'shape') return;
+        const geometry = widget.properties.geometry;
+        const x = Number(placement.x);
+        const y = Number(placement.y);
+        const width = Math.max(16, Number(placement.width || 0) || 0);
+        const height = Math.max(16, Number(placement.height || 0) || 0);
+        if (![x, y, width, height].every(Number.isFinite)) return;
+        widget.properties.geometry = {
+            ...geometry,
+            x: Math.round(Math.max(0, x)),
+            y: Math.round(Math.max(0, y)),
+            width: Math.round(width),
+            height: Math.round(height)
+        };
+    },
+
+    positionLineWidgetFromDrawPlacement(widget, placement = null) {
+        const x1 = Number(placement?.x1);
+        const y1 = Number(placement?.y1);
+        const x2 = Number(placement?.x2);
+        const y2 = Number(placement?.y2);
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+        const minSize = 12;
+        let x = Math.min(x1, x2);
+        let y = Math.min(y1, y2);
+        let width = Math.abs(x2 - x1);
+        let height = Math.abs(y2 - y1);
+        if (width < minSize) {
+            x -= (minSize - width) / 2;
+            width = minSize;
+        }
+        if (height < minSize) {
+            y -= (minSize - height) / 2;
+            height = minSize;
+        }
+        const line = {
+            x1: x1 - x,
+            y1: y1 - y,
+            x2: x2 - x,
+            y2: y2 - y,
+            angle: this.normalizeLineAngle(Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI)
+        };
+        widget.properties.geometry = {
+            ...(widget.properties.geometry || {}),
+            x: Math.round(Math.max(0, x)),
+            y: Math.round(Math.max(0, y)),
+            width: Math.round(width),
+            height: Math.round(height)
+        };
+        widget.properties.line = {
+            ...(widget.properties.line || {}),
+            ...line
+        };
     },
 
     createWidgetId(type) {

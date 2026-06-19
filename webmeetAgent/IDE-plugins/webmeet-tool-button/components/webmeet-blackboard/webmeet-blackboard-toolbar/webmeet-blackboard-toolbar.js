@@ -8,6 +8,7 @@ export class WebMeetBlackboardToolbar {
         this.themeId = resolveBlackboardThemeId();
         this.themeOptions = getBlackboardThemeOptions();
         this.openMenu = '';
+        this.pendingWidgetType = '';
         this.menuSelections = {
             shape: { icon: 'rectangle', value: 'shape:rectangle' },
             line: { icon: 'line', value: 'line' },
@@ -27,10 +28,13 @@ export class WebMeetBlackboardToolbar {
         this.renderState();
     }
 
-    setState({ busy = false, themeId } = {}) {
+    setState({ busy = false, themeId, pendingWidgetType } = {}) {
         this.busy = busy;
         if (themeId) {
             this.themeId = resolveBlackboardThemeId({ theme: { id: themeId } });
+        }
+        if (pendingWidgetType !== undefined) {
+            this.pendingWidgetType = String(pendingWidgetType || '').trim();
         }
         if (this.busy) {
             this.openMenu = '';
@@ -56,8 +60,10 @@ export class WebMeetBlackboardToolbar {
         const normalizedType = String(type || 'shape').trim() || 'shape';
         if (_target?.disabled) return;
         this.rememberMenuSelection(_target, normalizedType);
+        this.pendingWidgetType = normalizedType;
         this.closeMenu();
         this.emit('blackboard-add-widget', { type: normalizedType });
+        this.renderState();
     }
 
     uploadImageWidget(_target) {
@@ -139,8 +145,14 @@ export class WebMeetBlackboardToolbar {
             const trigger = menu.querySelector('.webmeet-blackboard-menu-trigger');
             if (trigger) {
                 trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-                trigger.classList.toggle('is-active', isOpen);
+                const selectedInMenu = this.menuSelections[menuName]?.value === this.pendingWidgetType;
+                trigger.classList.toggle('is-active', isOpen || selectedInMenu);
             }
+        }
+        for (const button of this.element.querySelectorAll('[data-local-action^="addWidget"]')) {
+            const action = String(button.dataset.localAction || '').trim();
+            const [, type = ''] = action.split(/\s+/, 2);
+            button.classList.toggle('is-active', Boolean(type && type === this.pendingWidgetType));
         }
         for (const [group, selection] of Object.entries(this.menuSelections)) {
             const icon = this.element.querySelector(`[data-menu-icon="${group}"]`);

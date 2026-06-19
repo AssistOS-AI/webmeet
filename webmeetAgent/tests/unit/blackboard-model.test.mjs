@@ -845,6 +845,232 @@ test('blackboard panel addWidget uses connected adapter', async () => {
     assert.equal(sentChanges[0].widget.properties.shapeKind, 'ellipse');
 });
 
+test('blackboard selected toolbar widget is created at board click position', async () => {
+    const { WebMeetBlackboardPanel } = await import(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.js')
+    );
+    const previousElement = globalThis.Element;
+    const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+    class MockElement {
+        contains() { return true; }
+        closest() { return null; }
+    }
+    globalThis.Element = MockElement;
+    globalThis.requestAnimationFrame = (callback) => {
+        callback();
+        return 1;
+    };
+    const sentChanges = [];
+    const board = new MockElement();
+    board.style = { setProperty() {} };
+    board.replaceChildren = () => {};
+    board.addEventListener = () => {};
+    board.removeEventListener = () => {};
+    board.setPointerCapture = () => {};
+    board.getBoundingClientRect = () => ({ left: 30, top: 50, width: 640, height: 480 });
+    const toolbarState = [];
+    const element = {
+        querySelector(selector) {
+            if (selector === '[data-role="board"]') return board;
+            if (selector === 'webmeet-blackboard-toolbar') {
+                return {
+                    setState(state) {
+                        toolbarState.push(state);
+                    },
+                    addEventListener() {},
+                    removeEventListener() {}
+                };
+            }
+            return null;
+        },
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent() { return true; }
+    };
+    const panel = new WebMeetBlackboardPanel(element, () => {});
+    panel.renderWidgets = () => {};
+    panel.connect({
+        adapter: {
+            subscribe() {
+                return () => {};
+            },
+            async sendChange(change) {
+                sentChanges.push(change);
+                return {
+                    object: change.widget,
+                    blackboard: { roomId: 'room_1', version: 2, widgets: [change.widget] }
+                };
+            }
+        },
+        blackboard: { roomId: 'room_1', version: 1, widgets: [] }
+    });
+    try {
+        panel.afterRender();
+        panel.handleToolbarAddWidgetEvent({ detail: { type: 'shape:ellipse' } });
+
+        panel.handleBoardPointerDownCapture({
+            button: 0,
+            pointerId: 1,
+            target: new MockElement(),
+            clientX: 330,
+            clientY: 250,
+            preventDefault() {},
+            stopPropagation() {}
+        });
+        await panel.finishPendingWidgetDraw({
+            clientX: 330,
+            clientY: 250
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+        if (previousElement === undefined) {
+            delete globalThis.Element;
+        } else {
+            globalThis.Element = previousElement;
+        }
+        if (previousRequestAnimationFrame === undefined) {
+            delete globalThis.requestAnimationFrame;
+        } else {
+            globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+        }
+    }
+    assert.equal(sentChanges.length, 1);
+    assert.equal(sentChanges[0].widget.type, 'shape');
+    assert.equal(sentChanges[0].widget.properties.shapeKind, 'ellipse');
+    assert.deepEqual(sentChanges[0].widget.properties.geometry, {
+        x: 210,
+        y: 152,
+        width: 180,
+        height: 96
+    });
+    assert.equal(panel.pendingWidgetType, '');
+    assert.ok(toolbarState.some((state) => state.pendingWidgetType === 'shape:ellipse'));
+    assert.ok(toolbarState.some((state) => state.pendingWidgetType === ''));
+});
+
+test('blackboard draws selected shape and line widgets from pointer drag', async () => {
+    const { WebMeetBlackboardPanel } = await import(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.js')
+    );
+    const previousElement = globalThis.Element;
+    const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+    class MockElement {
+        contains() { return true; }
+        closest() { return null; }
+    }
+    globalThis.Element = MockElement;
+    globalThis.requestAnimationFrame = (callback) => {
+        callback();
+        return 1;
+    };
+    const sentChanges = [];
+    const board = new MockElement();
+    board.style = { setProperty() {} };
+    board.replaceChildren = () => {};
+    board.addEventListener = () => {};
+    board.removeEventListener = () => {};
+    board.setPointerCapture = () => {};
+    board.getBoundingClientRect = () => ({ left: 10, top: 20, width: 640, height: 480 });
+    const element = {
+        querySelector(selector) {
+            if (selector === '[data-role="board"]') return board;
+            if (selector === 'webmeet-blackboard-toolbar') {
+                return {
+                    setState() {},
+                    addEventListener() {},
+                    removeEventListener() {}
+                };
+            }
+            return null;
+        },
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent() { return true; }
+    };
+    const panel = new WebMeetBlackboardPanel(element, () => {});
+    panel.renderWidgets = () => {};
+    panel.connect({
+        adapter: {
+            subscribe() {
+                return () => {};
+            },
+            async sendChange(change) {
+                sentChanges.push(change);
+                return {
+                    object: change.widget,
+                    blackboard: { roomId: 'room_1', version: 2, widgets: [change.widget] }
+                };
+            }
+        },
+        blackboard: { roomId: 'room_1', version: 1, widgets: [] }
+    });
+    try {
+        panel.afterRender();
+        panel.handleToolbarAddWidgetEvent({ detail: { type: 'shape:rectangle' } });
+        panel.handleBoardPointerDownCapture({
+            button: 0,
+            pointerId: 1,
+            target: new MockElement(),
+            clientX: 110,
+            clientY: 120,
+            preventDefault() {},
+            stopPropagation() {}
+        });
+        await panel.finishPendingWidgetDraw({ clientX: 260, clientY: 220 });
+
+        panel.handleToolbarAddWidgetEvent({ detail: { type: 'line:arrow-end' } });
+        panel.handleBoardPointerDownCapture({
+            button: 0,
+            pointerId: 2,
+            target: new MockElement(),
+            clientX: 300,
+            clientY: 320,
+            preventDefault() {},
+            stopPropagation() {}
+        });
+        await panel.finishPendingWidgetDraw({ clientX: 180, clientY: 260 });
+    } finally {
+        if (previousElement === undefined) {
+            delete globalThis.Element;
+        } else {
+            globalThis.Element = previousElement;
+        }
+        if (previousRequestAnimationFrame === undefined) {
+            delete globalThis.requestAnimationFrame;
+        } else {
+            globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+        }
+    }
+
+    assert.equal(sentChanges.length, 2);
+    assert.deepEqual(sentChanges[0].widget.properties.geometry, {
+        x: 100,
+        y: 100,
+        width: 150,
+        height: 100
+    });
+    assert.equal(sentChanges[1].widget.type, 'line');
+    assert.deepEqual(sentChanges[1].widget.properties.geometry, {
+        x: 170,
+        y: 240,
+        width: 120,
+        height: 60
+    });
+    assert.deepEqual({
+        x1: sentChanges[1].widget.properties.line.x1,
+        y1: sentChanges[1].widget.properties.line.y1,
+        x2: sentChanges[1].widget.properties.line.x2,
+        y2: sentChanges[1].widget.properties.line.y2,
+        markerEnd: sentChanges[1].widget.properties.line.markerEnd
+    }, {
+        x1: 120,
+        y1: 60,
+        x2: 0,
+        y2: 0,
+        markerEnd: 'arrow'
+    });
+});
+
 test('blackboard opens as the focused item inside the participant video layout', async () => {
     const controllerSource = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/blackboard-methods.js'),

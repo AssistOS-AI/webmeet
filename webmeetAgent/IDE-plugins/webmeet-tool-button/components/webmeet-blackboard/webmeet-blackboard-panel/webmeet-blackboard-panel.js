@@ -16,8 +16,10 @@ export class WebMeetBlackboardPanel {
         this.dragState = null;
         this.resizeState = null;
         this.rotateState = null;
+        this.pendingCreateDragState = null;
         this.unsubscribeAdapter = null;
         this.widgetCreateOffset = 0;
+        this.pendingWidgetType = '';
         this.busy = false;
         this.inlineEditWidgetId = '';
         this.inlineEditState = null;
@@ -29,7 +31,7 @@ export class WebMeetBlackboardPanel {
         this.handleUpdateEvent = (event) => this.applyBlackboardUpdate(event.detail || {});
         this.handleDisconnectEvent = () => this.cleanup();
         this.handleToolbarAddWidgetEvent = (event) => {
-            void this.addWidget(event.detail?.type);
+            this.setPendingWidgetType(event.detail?.type);
         };
         this.handleToolbarImageUploadEvent = (event) => {
             void this.addImageWidgetFromFile(event.detail?.file).catch((error) => {
@@ -77,6 +79,9 @@ export class WebMeetBlackboardPanel {
         this.handleLocalRotate = this.handleLocalRotate.bind(this);
         this.finishLocalRotate = this.finishLocalRotate.bind(this);
         this.cancelLocalRotate = this.cancelLocalRotate.bind(this);
+        this.handlePendingWidgetDrawMove = this.handlePendingWidgetDrawMove.bind(this);
+        this.finishPendingWidgetDraw = this.finishPendingWidgetDraw.bind(this);
+        this.cancelPendingWidgetDraw = this.cancelPendingWidgetDraw.bind(this);
     }
 
     cacheElements() {
@@ -208,6 +213,7 @@ export class WebMeetBlackboardPanel {
         if (this.board) {
             this.board.removeEventListener?.('pointerdown', this.handleBoardPointerDown, true);
         }
+        this.cancelPendingWidgetDraw?.();
         this.cleanup();
     }
 

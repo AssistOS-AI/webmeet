@@ -35,6 +35,73 @@ webmeet-blackboard-panel {
     overflow: visible;
 }
 
+.webmeet-blackboard-create-preview {
+    position: absolute;
+    z-index: 4;
+    box-sizing: border-box;
+    pointer-events: none;
+    user-select: none;
+}
+
+.webmeet-blackboard-create-preview.shape {
+    min-width: 1px;
+    min-height: 1px;
+    border: 2px dashed var(--bb-selection, #2563eb);
+    background: color-mix(in srgb, var(--bb-selection, #2563eb) 12%, transparent);
+}
+
+.webmeet-blackboard-create-preview.shape.shape-rounded {
+    border-radius: 10px;
+}
+
+.webmeet-blackboard-create-preview.shape.shape-ellipse {
+    border-radius: 999px;
+}
+
+.webmeet-blackboard-create-preview.shape.shape-diamond {
+    transform: rotate(45deg);
+    transform-origin: center center;
+}
+
+.webmeet-blackboard-create-preview.shape.shape-triangle {
+    border: 0;
+    background: color-mix(in srgb, var(--bb-selection, #2563eb) 14%, transparent);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.webmeet-blackboard-create-preview.shape.shape-triangle::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border: 2px dashed var(--bb-selection, #2563eb);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.webmeet-blackboard-create-preview.line {
+    min-width: 1px;
+    min-height: 1px;
+}
+
+.webmeet-blackboard-create-preview-line-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.webmeet-blackboard-create-preview-line,
+.webmeet-blackboard-create-preview-line-svg marker path {
+    stroke: var(--bb-selection, #2563eb);
+    fill: var(--bb-selection, #2563eb);
+}
+
+.webmeet-blackboard-create-preview-line {
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 7 5;
+    vector-effect: non-scaling-stroke;
+}
+
 .webmeet-blackboard-resize-handle {
     position: absolute;
     z-index: 2;

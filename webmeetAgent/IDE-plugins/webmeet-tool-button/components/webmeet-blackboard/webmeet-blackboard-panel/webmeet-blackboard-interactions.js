@@ -3,6 +3,19 @@ export const blackboardInteractionMethods = {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !this.board.contains(target)) return;
+        if (this.pendingWidgetType) {
+            const type = this.pendingWidgetType;
+            const position = this.getBoardPointFromEvent(event);
+            event.preventDefault();
+            event.stopPropagation();
+            if (this.canDrawPendingWidget(type) && position) {
+                this.beginPendingWidgetDraw(event, type, position);
+            } else {
+                this.setPendingWidgetType('');
+                void this.addWidget(type, position);
+            }
+            return;
+        }
         const widgetNode = target.closest?.('.webmeet-blackboard-widget') || null;
         const nextSelection = String(widgetNode?.dataset?.widgetId || '').trim();
         if (this.selection === nextSelection) return;
@@ -21,6 +34,208 @@ export const blackboardInteractionMethods = {
             }
         }
         this.updateToolbarState();
+    },
+
+    canDrawPendingWidget(type = '') {
+        const normalizedType = String(type || '').trim().split(':')[0];
+        return normalizedType === 'shape' || normalizedType === 'line';
+    },
+
+    beginPendingWidgetDraw(event, type, startPoint) {
+        this.pendingCreateDragState = {
+            type,
+            pointerId: event.pointerId,
+            startPoint,
+            endPoint: startPoint,
+            previewNode: this.createPendingWidgetPreview(type)
+        };
+        if (this.pendingCreateDragState.previewNode) {
+            this.board?.append?.(this.pendingCreateDragState.previewNode);
+            this.updatePendingWidgetPreview(this.pendingCreateDragState, startPoint);
+        }
+        this.board?.setPointerCapture?.(event.pointerId);
+        this.board?.addEventListener?.('pointermove', this.handlePendingWidgetDrawMove);
+        this.board?.addEventListener?.('pointerup', this.finishPendingWidgetDraw);
+        this.board?.addEventListener?.('pointercancel', this.cancelPendingWidgetDraw);
+    },
+
+    handlePendingWidgetDrawMove(event) {
+        if (!this.pendingCreateDragState) return;
+        const point = this.getBoardPointFromEvent(event);
+        if (!point) return;
+        this.pendingCreateDragState.endPoint = point;
+        this.updatePendingWidgetPreview(this.pendingCreateDragState, point);
+    },
+
+    async finishPendingWidgetDraw(event) {
+        if (!this.pendingCreateDragState) return;
+        const state = this.pendingCreateDragState;
+        const endPoint = this.getBoardPointFromEvent(event) || state.endPoint || state.startPoint;
+        this.detachPendingWidgetDrawListeners();
+        this.removePendingWidgetPreview(state);
+        this.pendingCreateDragState = null;
+        this.setPendingWidgetType('');
+        const placement = this.getPendingWidgetPlacement(state.type, state.startPoint, endPoint);
+        await this.addWidget(state.type, placement || state.startPoint);
+    },
+
+    cancelPendingWidgetDraw() {
+        if (!this.pendingCreateDragState) return;
+        this.removePendingWidgetPreview(this.pendingCreateDragState);
+        this.detachPendingWidgetDrawListeners();
+        this.pendingCreateDragState = null;
+        this.setPendingWidgetType('');
+    },
+
+    detachPendingWidgetDrawListeners() {
+        this.board?.removeEventListener?.('pointermove', this.handlePendingWidgetDrawMove);
+        this.board?.removeEventListener?.('pointerup', this.finishPendingWidgetDraw);
+        this.board?.removeEventListener?.('pointercancel', this.cancelPendingWidgetDraw);
+    },
+
+    createPendingWidgetPreview(type = '') {
+        if (typeof document === 'undefined') return null;
+        const rawType = String(type || '').trim();
+        const [normalizedType, variant = ''] = rawType.split(':');
+        const preview = document.createElement('div');
+        preview.className = `webmeet-blackboard-create-preview ${normalizedType}`;
+        if (normalizedType === 'shape') {
+            preview.classList.add(`shape-${variant || 'rectangle'}`);
+        }
+        if (normalizedType === 'line') {
+            preview.classList.add(`line-${variant || 'line'}`);
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'webmeet-blackboard-create-preview-line-svg');
+            svg.setAttribute('preserveAspectRatio', 'none');
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', 'webmeetBlackboardCreatePreviewArrow');
+            marker.setAttribute('viewBox', '0 0 10 10');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '5');
+            marker.setAttribute('markerWidth', '7');
+            marker.setAttribute('markerHeight', '7');
+            marker.setAttribute('orient', 'auto-start-reverse');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+            marker.append(path);
+            defs.append(marker);
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('class', 'webmeet-blackboard-create-preview-line');
+            if (variant === 'arrow-end' || variant === 'arrow-both') {
+                line.setAttribute('marker-end', 'url(#webmeetBlackboardCreatePreviewArrow)');
+            }
+            if (variant === 'arrow-both') {
+                line.setAttribute('marker-start', 'url(#webmeetBlackboardCreatePreviewArrow)');
+            }
+            svg.append(defs, line);
+            preview.append(svg);
+        }
+        return preview;
+    },
+
+    updatePendingWidgetPreview(state, endPoint) {
+        const preview = state?.previewNode;
+        if (!preview) return;
+        const placement = this.getPendingWidgetPlacement(state.type, state.startPoint, endPoint);
+        if (!placement) return;
+        if (placement.kind !== 'draw') {
+            preview.style.left = `${Math.round(placement.x)}px`;
+            preview.style.top = `${Math.round(placement.y)}px`;
+            preview.style.width = '1px';
+            preview.style.height = '1px';
+            return;
+        }
+        const normalizedType = String(state.type || '').trim().split(':')[0];
+        if (normalizedType === 'line') {
+            this.updatePendingLinePreview(preview, placement);
+            return;
+        }
+        preview.style.left = `${Math.round(Math.max(0, placement.x))}px`;
+        preview.style.top = `${Math.round(Math.max(0, placement.y))}px`;
+        preview.style.width = `${Math.max(1, Math.round(placement.width))}px`;
+        preview.style.height = `${Math.max(1, Math.round(placement.height))}px`;
+    },
+
+    updatePendingLinePreview(preview, placement) {
+        const x1 = Number(placement?.x1);
+        const y1 = Number(placement?.y1);
+        const x2 = Number(placement?.x2);
+        const y2 = Number(placement?.y2);
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+        const minSize = 12;
+        let x = Math.min(x1, x2);
+        let y = Math.min(y1, y2);
+        let width = Math.abs(x2 - x1);
+        let height = Math.abs(y2 - y1);
+        if (width < minSize) {
+            x -= (minSize - width) / 2;
+            width = minSize;
+        }
+        if (height < minSize) {
+            y -= (minSize - height) / 2;
+            height = minSize;
+        }
+        preview.style.left = `${Math.round(Math.max(0, x))}px`;
+        preview.style.top = `${Math.round(Math.max(0, y))}px`;
+        preview.style.width = `${Math.round(width)}px`;
+        preview.style.height = `${Math.round(height)}px`;
+        const svg = preview.querySelector?.('.webmeet-blackboard-create-preview-line-svg');
+        const line = svg?.querySelector?.('.webmeet-blackboard-create-preview-line');
+        svg?.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        line?.setAttribute('x1', String(x1 - x));
+        line?.setAttribute('y1', String(y1 - y));
+        line?.setAttribute('x2', String(x2 - x));
+        line?.setAttribute('y2', String(y2 - y));
+    },
+
+    removePendingWidgetPreview(state) {
+        state?.previewNode?.remove?.();
+    },
+
+    getPendingWidgetPlacement(type, startPoint, endPoint) {
+        const startX = Number(startPoint?.x);
+        const startY = Number(startPoint?.y);
+        const endX = Number(endPoint?.x);
+        const endY = Number(endPoint?.y);
+        if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
+        const dx = endX - startX;
+        const dy = endY - startY;
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+            return { x: startX, y: startY };
+        }
+        const normalizedType = String(type || '').trim().split(':')[0];
+        if (normalizedType === 'line') {
+            return {
+                kind: 'draw',
+                x1: startX,
+                y1: startY,
+                x2: endX,
+                y2: endY
+            };
+        }
+        return {
+            kind: 'draw',
+            x: Math.min(startX, endX),
+            y: Math.min(startY, endY),
+            width: Math.abs(dx),
+            height: Math.abs(dy)
+        };
+    },
+
+    getBoardPointFromEvent(event) {
+        const rect = this.board?.getBoundingClientRect?.();
+        if (!rect) return null;
+        const scale = Number(this.viewport?.scale || 1) || 1;
+        const viewportX = Number(this.viewport?.x || 0) || 0;
+        const viewportY = Number(this.viewport?.y || 0) || 0;
+        const x = (Number(event.clientX || 0) - Number(rect.left || 0) - viewportX) / scale;
+        const y = (Number(event.clientY || 0) - Number(rect.top || 0) - viewportY) / scale;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return {
+            x: Math.max(0, x),
+            y: Math.max(0, y)
+        };
     },
 
     beginLocalDrag(event, widget) {
