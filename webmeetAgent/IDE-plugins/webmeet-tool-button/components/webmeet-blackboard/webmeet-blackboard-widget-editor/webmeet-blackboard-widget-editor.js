@@ -1,9 +1,9 @@
 import { TEXT_DEFAULT_STYLE, TEXT_FONT_FAMILIES, TEXT_MIN_FONT_SIZE, TEXT_MAX_FONT_SIZE } from '../webmeet-blackboard-panel/webmeet-blackboard-text-style.js';
 
-const TEXT_WIDGET_TYPES = new Set(['text', 'card', 'input']);
-const CHOICE_WIDGET_TYPES = new Set(['quiz', 'vote']);
-const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'quiz', 'vote', 'input', 'embed', 'image']);
-const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'quiz', 'vote', 'input', 'embed']);
+const TEXT_WIDGET_TYPES = new Set(['text', 'card']);
+const CHOICE_WIDGET_TYPES = new Set(['poll']);
+const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'poll', 'embed', 'image']);
+const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'poll', 'embed']);
 
 function readJsonAttribute(element, attributeName) {
     const raw = String(element?.getAttribute(attributeName) || '').trim();
@@ -33,6 +33,39 @@ function clampFontSize(value, fallback = TEXT_DEFAULT_STYLE.fontSize) {
     const fontSize = Number.parseInt(String(value ?? ''), 10);
     if (!Number.isFinite(fontSize)) return fallback;
     return Math.max(TEXT_MIN_FONT_SIZE, Math.min(TEXT_MAX_FONT_SIZE, fontSize));
+}
+
+function clampRatingMax(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isFinite(parsed)) return 10;
+    return Math.max(1, Math.min(10, parsed));
+}
+
+function clampDurationSeconds(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(86400, parsed));
+}
+
+function getPollQuestions(properties = {}) {
+    return Array.isArray(properties.questions) ? properties.questions : [];
+}
+
+function createPollQuestionId(index) {
+    return `q${index + 1}`;
+}
+
+function createNextPollQuestionId(questions = []) {
+    const used = new Set(questions.map((question) => String(question.id || '').trim()).filter(Boolean));
+    let index = 0;
+    while (used.has(createPollQuestionId(index))) {
+        index += 1;
+    }
+    return createPollQuestionId(index);
+}
+
+function normalizePollQuestionMode(question = {}) {
+    return String(question.pollMode || question.voteMode || 'choice').trim() === 'rating' ? 'rating' : 'choice';
 }
 
 function isHexColor(value) {
@@ -65,6 +98,11 @@ export class WebMeetBlackboardWidgetEditor {
         this.form = this.element.querySelector('[data-role="form"]');
         this.title = this.element.querySelector('[data-role="title"]');
         this.subtitle = this.element.querySelector('[data-role="subtitle"]');
+        this.tabs = Array.from(this.element.querySelectorAll('[data-tab]'));
+        this.contentTab = this.element.querySelector('[data-role="contentTab"]');
+        this.settingsTab = this.element.querySelector('[data-role="settingsTab"]');
+        this.contentPanel = this.element.querySelector('[data-role="contentPanel"]');
+        this.settingsPanel = this.element.querySelector('[data-role="settingsPanel"]');
         this.textSection = this.element.querySelector('[data-role="textSection"]');
         this.textLabel = this.element.querySelector('[data-role="textLabel"]');
         this.textInput = this.element.querySelector('[data-role="text"]');
@@ -75,8 +113,17 @@ export class WebMeetBlackboardWidgetEditor {
         this.fontBoldInput = this.element.querySelector('[data-role="fontBold"]');
         this.fontItalicInput = this.element.querySelector('[data-role="fontItalic"]');
         this.choiceSection = this.element.querySelector('[data-role="choiceSection"]');
-        this.optionsInput = this.element.querySelector('[data-role="options"]');
+        this.questionsField = this.element.querySelector('[data-role="questionsField"]');
+        this.questionsHost = this.element.querySelector('[data-role="questions"]');
+        this.addQuestionButton = this.element.querySelector('[data-role="addQuestion"]');
         this.resultsVisibilityInput = this.element.querySelector('[data-role="resultsVisibility"]');
+        this.pollSettingsSection = this.element.querySelector('[data-role="pollSettingsSection"]');
+        this.allowPollChangeField = this.element.querySelector('[data-role="allowPollChangeField"]');
+        this.allowPollChangeInput = this.element.querySelector('[data-role="allowPollChange"]');
+        this.anonymousField = this.element.querySelector('[data-role="anonymousField"]');
+        this.anonymousInput = this.element.querySelector('[data-role="anonymous"]');
+        this.durationField = this.element.querySelector('[data-role="durationField"]');
+        this.durationInput = this.element.querySelector('[data-role="durationSeconds"]');
         this.lineSection = this.element.querySelector('[data-role="lineSection"]');
         this.lineMarkerInput = this.element.querySelector('[data-role="lineMarker"]');
         this.surfaceSection = this.element.querySelector('[data-role="surfaceSection"]');
@@ -93,7 +140,11 @@ export class WebMeetBlackboardWidgetEditor {
     }
 
     bindEvents() {
+        for (const tab of this.tabs || []) {
+            tab.addEventListener('click', () => this.activateTab(tab.dataset.tab));
+        }
         this.fillTransparentInput?.addEventListener('change', () => this.syncFillControlState());
+        this.addQuestionButton?.addEventListener('click', () => this.addPollQuestion());
         this.form?.addEventListener('submit', (event) => {
             event.preventDefault();
             if (!this.widget?.id) return;
@@ -103,6 +154,175 @@ export class WebMeetBlackboardWidgetEditor {
             };
             this.closeModal();
         });
+    }
+
+    activateTab(tabName = 'content') {
+        const normalized = String(tabName || 'content').trim() === 'settings' ? 'settings' : 'content';
+        const isSettings = normalized === 'settings';
+        this.contentPanel.hidden = isSettings;
+        this.settingsPanel.hidden = !isSettings;
+        for (const tab of this.tabs || []) {
+            const active = String(tab.dataset.tab || '') === normalized;
+            tab.classList.toggle('active', active);
+            tab.classList.toggle('is-active', active);
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        }
+    }
+
+    addPollQuestion() {
+        const questions = this.readPollQuestionsFromForm();
+        questions.push({
+            id: createNextPollQuestionId(questions),
+            prompt: '',
+            pollMode: 'choice',
+            options: ['Yes', 'No'],
+            ratingMax: 10
+        });
+        this.renderPollQuestionInputs(questions);
+        const inputs = Array.from(this.questionsHost?.querySelectorAll?.('[data-role="questionPrompt"]') || []);
+        inputs.at(-1)?.focus?.();
+    }
+
+    removePollQuestion(questionId) {
+        const questions = this.readPollQuestionsFromForm().filter((question) => question.id !== questionId);
+        this.renderPollQuestionInputs(questions.length ? questions : [{
+            id: createPollQuestionId(0),
+            prompt: '',
+            pollMode: 'choice',
+            options: ['Yes', 'No'],
+            ratingMax: 10
+        }]);
+    }
+
+    readPollQuestionsFromForm() {
+        const rows = Array.from(this.questionsHost?.querySelectorAll?.('[data-role="questionRow"]') || []);
+        const questions = [];
+        rows.forEach((row, index) => {
+            const pollModeInput = row.querySelector('[data-role="questionPollMode"]');
+            const optionsInput = row.querySelector('[data-role="questionOptions"]');
+            const promptInput = row.querySelector('[data-role="questionPrompt"]');
+            const ratingMaxInput = row.querySelector('[data-role="questionRatingMax"]');
+            const pollMode = String(pollModeInput?.value || 'choice').trim() === 'rating' ? 'rating' : 'choice';
+            const options = String(optionsInput?.value || '')
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean);
+            questions.push({
+                id: String(row.dataset.questionId || createPollQuestionId(index)).trim() || createPollQuestionId(index),
+                prompt: String(promptInput?.value || '').trim(),
+                pollMode,
+                options,
+                ratingMax: clampRatingMax(ratingMaxInput?.value)
+            });
+        });
+        return questions;
+    }
+
+    syncPollQuestionRow(row) {
+        const mode = String(row?.querySelector?.('[data-role="questionPollMode"]')?.value || 'choice').trim() === 'rating' ? 'rating' : 'choice';
+        const optionsField = row?.querySelector?.('[data-role="questionOptionsField"]');
+        const ratingField = row?.querySelector?.('[data-role="questionRatingMaxField"]');
+        if (optionsField) optionsField.hidden = mode === 'rating';
+        if (ratingField) ratingField.hidden = mode !== 'rating';
+    }
+
+    renderPollQuestionInputs(questions = []) {
+        if (!this.questionsHost) return;
+        const normalizedQuestions = questions.length ? questions : [{
+            id: createPollQuestionId(0),
+            prompt: '',
+            pollMode: 'choice',
+            options: ['Yes', 'No'],
+            ratingMax: 10
+        }];
+        const fragment = document.createDocumentFragment();
+        normalizedQuestions.forEach((question, index) => {
+            const row = document.createElement('div');
+            row.className = 'webmeet-blackboard-poll-question-row';
+            row.dataset.role = 'questionRow';
+            row.dataset.questionId = String(question.id || createPollQuestionId(index)).trim() || createPollQuestionId(index);
+
+            const header = document.createElement('div');
+            header.className = 'webmeet-blackboard-poll-question-row-header';
+            const heading = document.createElement('div');
+            heading.className = 'webmeet-blackboard-poll-question-heading';
+            heading.textContent = `Question ${index + 1}`;
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'gray-button webmeet-blackboard-remove-question-button';
+            removeButton.textContent = 'Remove';
+            removeButton.disabled = normalizedQuestions.length <= 1;
+            removeButton.addEventListener('click', () => this.removePollQuestion(row.dataset.questionId));
+            header.append(heading, removeButton);
+
+            const controls = document.createElement('div');
+            controls.className = 'webmeet-blackboard-poll-question-controls';
+
+            const promptField = document.createElement('label');
+            promptField.className = 'webmeet-form-field webmeet-blackboard-poll-question-field webmeet-blackboard-poll-question-prompt';
+            const promptLabel = document.createElement('span');
+            promptLabel.textContent = 'Prompt';
+            const promptInput = document.createElement('input');
+            promptInput.className = 'form-input';
+            promptInput.type = 'text';
+            promptInput.value = String(question.prompt || '');
+            promptInput.placeholder = `Question ${index + 1}`;
+            promptInput.dataset.role = 'questionPrompt';
+            promptInput.setAttribute('aria-label', `Question ${index + 1}`);
+            promptField.append(promptLabel, promptInput);
+
+            const modeField = document.createElement('label');
+            modeField.className = 'webmeet-form-field webmeet-blackboard-poll-question-field';
+            const modeLabel = document.createElement('span');
+            modeLabel.textContent = 'Type';
+            const modeSelect = document.createElement('select');
+            modeSelect.className = 'form-input';
+            modeSelect.dataset.role = 'questionPollMode';
+            for (const [value, label] of [['choice', 'Choice'], ['rating', 'Rating']]) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                modeSelect.append(option);
+            }
+            modeSelect.value = normalizePollQuestionMode(question);
+            modeSelect.addEventListener('change', () => this.syncPollQuestionRow(row));
+            modeField.append(modeLabel, modeSelect);
+
+            const optionsField = document.createElement('label');
+            optionsField.className = 'webmeet-form-field webmeet-blackboard-poll-question-field webmeet-blackboard-poll-question-options';
+            optionsField.dataset.role = 'questionOptionsField';
+            const optionsLabel = document.createElement('span');
+            optionsLabel.textContent = 'Options';
+            const optionsInput = document.createElement('input');
+            optionsInput.className = 'form-input';
+            optionsInput.type = 'text';
+            optionsInput.value = Array.isArray(question.options) && question.options.length ? question.options.join(', ') : 'Yes, No';
+            optionsInput.dataset.role = 'questionOptions';
+            optionsInput.setAttribute('aria-label', `Options for question ${index + 1}`);
+            optionsField.append(optionsLabel, optionsInput);
+
+            const ratingField = document.createElement('label');
+            ratingField.className = 'webmeet-form-field webmeet-blackboard-poll-question-field';
+            ratingField.dataset.role = 'questionRatingMaxField';
+            const ratingLabel = document.createElement('span');
+            ratingLabel.textContent = 'Rating max';
+            const ratingInput = document.createElement('input');
+            ratingInput.className = 'form-input';
+            ratingInput.type = 'number';
+            ratingInput.min = '1';
+            ratingInput.max = '10';
+            ratingInput.step = '1';
+            ratingInput.value = String(clampRatingMax(question.ratingMax));
+            ratingInput.dataset.role = 'questionRatingMax';
+            ratingInput.setAttribute('aria-label', `Rating max for question ${index + 1}`);
+            ratingField.append(ratingLabel, ratingInput);
+
+            controls.append(promptField, modeField, optionsField, ratingField);
+            row.append(header, controls);
+            this.syncPollQuestionRow(row);
+            fragment.append(row);
+        });
+        this.questionsHost.replaceChildren(fragment);
     }
 
     syncFillControlState() {
@@ -150,8 +370,10 @@ export class WebMeetBlackboardWidgetEditor {
             if (this.textSection) this.textSection.hidden = true;
             if (this.typographySection) this.typographySection.hidden = true;
             if (this.choiceSection) this.choiceSection.hidden = true;
+            if (this.pollSettingsSection) this.pollSettingsSection.hidden = true;
             if (this.lineSection) this.lineSection.hidden = true;
             if (this.surfaceSection) this.surfaceSection.hidden = true;
+            this.activateTab('content');
             if (this.saveButton) this.saveButton.disabled = true;
             return;
         }
@@ -161,6 +383,7 @@ export class WebMeetBlackboardWidgetEditor {
         const style = props.style || {};
         const typeDefaults = this.getTypeDefaults(type);
         const isChoice = CHOICE_WIDGET_TYPES.has(type);
+        const isPoll = type === 'poll';
         const isLine = type === 'line';
         const isSurface = SURFACE_WIDGET_TYPES.has(type) || isLine;
         const hasText = TEXT_WIDGET_TYPES.has(type) || isChoice;
@@ -172,7 +395,7 @@ export class WebMeetBlackboardWidgetEditor {
 
         if (this.textSection) this.textSection.hidden = !hasText;
         if (this.textInput) this.textInput.value = this.getWidgetText(widget);
-        if (this.textLabel) this.textLabel.textContent = isChoice ? 'Question' : 'Text';
+        if (this.textLabel) this.textLabel.textContent = isPoll ? 'Description' : (isChoice ? 'Question' : 'Text');
         if (this.typographySection) this.typographySection.hidden = !hasTypography;
         if (hasTypography) {
             const fontFamily = TEXT_FONT_FAMILIES.includes(String(style.fontFamily || '').trim())
@@ -190,10 +413,28 @@ export class WebMeetBlackboardWidgetEditor {
         }
 
         if (this.choiceSection) this.choiceSection.hidden = !isChoice;
-        if (this.optionsInput) this.optionsInput.value = Array.isArray(props.options) ? props.options.join(', ') : '';
-        if (this.resultsVisibilityInput) {
-            this.resultsVisibilityInput.value = props.resultsVisibility || props.aggregation?.resultsVisibility || 'moderatorsOnly';
+        if (this.questionsField) this.questionsField.hidden = !isPoll;
+        if (this.pollSettingsSection) this.pollSettingsSection.hidden = !isPoll;
+        if (isPoll) {
+            this.renderPollQuestionInputs(getPollQuestions(props).map((question, index) => ({
+                id: String(question.id || createPollQuestionId(index)).trim() || createPollQuestionId(index),
+                prompt: String(question.prompt || '').trim(),
+                pollMode: normalizePollQuestionMode(question),
+                options: Array.isArray(question.options) ? question.options : [],
+                ratingMax: clampRatingMax(question.ratingMax)
+            })));
+        } else if (this.questionsHost) {
+            this.questionsHost.replaceChildren();
         }
+        if (this.resultsVisibilityInput) {
+            this.resultsVisibilityInput.value = props.resultsVisibility || props.aggregation?.resultsVisibility || (isPoll ? 'public' : 'moderatorsOnly');
+        }
+        if (this.allowPollChangeField) this.allowPollChangeField.hidden = !isPoll;
+        if (this.allowPollChangeInput) this.allowPollChangeInput.checked = props.allowPollChange === true;
+        if (this.anonymousField) this.anonymousField.hidden = !isPoll;
+        if (this.anonymousInput) this.anonymousInput.checked = props.anonymous === true;
+        if (this.durationField) this.durationField.hidden = !isPoll;
+        if (this.durationInput) this.durationInput.value = String(clampDurationSeconds(props.durationSeconds));
 
         if (this.lineSection) this.lineSection.hidden = !isLine;
         if (this.lineMarkerInput) this.lineMarkerInput.value = this.getLineMarkerValue(props.line || {});
@@ -210,12 +451,12 @@ export class WebMeetBlackboardWidgetEditor {
         if (this.strokeWidthInput) this.strokeWidthInput.value = String(Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? (isLine ? 3 : 2)) || 0);
         if (this.textColorField) this.textColorField.hidden = !hasTextColor;
         if (this.textColorInput) this.textColorInput.value = style.textColor || typeDefaults.textColor || TEXT_DEFAULT_STYLE.textColor;
+        this.activateTab(hasText || isPoll ? 'content' : 'settings');
     }
 
     getWidgetText(widget = {}) {
         const props = widget?.properties || {};
-        if (widget?.type === 'quiz' || widget?.type === 'vote') return props.prompt || props.question || '';
-        if (widget?.type === 'input') return props.label || '';
+        if (widget?.type === 'poll') return props.description || '';
         return props.text || props.label || '';
     }
 
@@ -233,23 +474,28 @@ export class WebMeetBlackboardWidgetEditor {
         const patch = { properties: {} };
         const text = String(this.textInput?.value || '').trim();
 
-        if (type === 'quiz') {
-            patch.properties.prompt = text;
-        } else if (type === 'vote') {
-            patch.properties.prompt = text;
-            patch.properties.question = text;
-        } else if (type === 'input') {
-            patch.properties.label = text;
+        if (type === 'poll') {
+            patch.properties.description = text;
         } else if (type === 'text' || type === 'card') {
             patch.properties.text = text;
         }
 
         if (CHOICE_WIDGET_TYPES.has(type)) {
-            patch.properties.options = String(this.optionsInput?.value || '')
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter(Boolean);
             patch.properties.resultsVisibility = String(this.resultsVisibilityInput?.value || 'moderatorsOnly').trim();
+            if (type === 'poll') {
+                const questions = this.readPollQuestionsFromForm()
+                    .filter((question) => question.prompt);
+                patch.properties.questions = questions.map((question, index) => ({
+                    id: String(question.id || createPollQuestionId(index)).trim() || createPollQuestionId(index),
+                    prompt: question.prompt,
+                    pollMode: question.pollMode,
+                    options: question.pollMode === 'choice' ? question.options : [],
+                    ratingMax: question.ratingMax
+                }));
+                patch.properties.allowPollChange = this.allowPollChangeInput?.checked === true;
+                patch.properties.anonymous = this.anonymousInput?.checked === true;
+                patch.properties.durationSeconds = clampDurationSeconds(this.durationInput?.value);
+            }
         }
 
         if (SURFACE_WIDGET_TYPES.has(type) || type === 'line') {

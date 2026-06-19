@@ -14,11 +14,25 @@ import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/compo
 import { Blackboard, cloneJson } from './model.mjs';
 import { buildBlackboardProtocolPayload } from './protocol.mjs';
 import {
+    ROBO_TEAM_BLACKBOARD_BOARD_ID,
     ROBO_TEAM_PARTICIPANT_ID,
     ensureRoboTeamAgentPayload,
     ensureRoboTeamBlackboardPayload,
     getRoboTeamAgentPayload
 } from '../roboTeam/service.mjs';
+
+export const DEFAULT_BLACKBOARD_BOARD_ID = ROBO_TEAM_BLACKBOARD_BOARD_ID;
+
+function assertSupportedBoardId(boardId = '') {
+    const normalized = String(boardId || '').trim();
+    if (!normalized) {
+        throw new Error('Missing required blackboard boardId.');
+    }
+    if (normalized !== DEFAULT_BLACKBOARD_BOARD_ID) {
+        throw new Error(`Unsupported blackboard boardId "${normalized}". Participant-owned blackboards are not enabled yet.`);
+    }
+    return normalized;
+}
 
 function getParticipantId(authInfo = null, fallback = '') {
     const normalized = normalizeAuthInfo(authInfo);
@@ -62,7 +76,8 @@ function buildViewerContext(authInfo = null, participantId = '') {
     };
 }
 
-function loadBlackboardFromPayload(payload, roomId) {
+function loadBlackboardFromPayload(payload, roomId, boardId = '') {
+    assertSupportedBoardId(boardId);
     const agent = getRoboTeamAgentPayload(payload) || ensureRoboTeamAgentPayload(payload, null, roomId);
     return Blackboard.from({
         ...ensureRoboTeamBlackboardPayload(agent, roomId),
@@ -70,7 +85,8 @@ function loadBlackboardFromPayload(payload, roomId) {
     });
 }
 
-function saveBlackboardToPayload(payload, roomId, blackboard) {
+function saveBlackboardToPayload(payload, roomId, blackboard, boardId = '') {
+    assertSupportedBoardId(boardId);
     const agent = getRoboTeamAgentPayload(payload) || ensureRoboTeamAgentPayload(payload, null, roomId);
     agent.blackboard = blackboard.serializePrivileged();
     return agent.blackboard;
@@ -133,6 +149,10 @@ function buildBroadcastPayload(roomId, blackboard, object, objectKind) {
         roomId,
         ownerParticipantId: ROBO_TEAM_PARTICIPANT_ID,
         blackboardId: blackboard.id,
+        boardId: blackboard.boardId,
+        boardOwnerType: blackboard.boardOwnerType,
+        boardOwnerId: blackboard.boardOwnerId,
+        boardVisibility: blackboard.boardVisibility,
         version: blackboard.version,
         visibility: publicObject?.visibility || { mode: 'all' },
         object: publicObject
@@ -161,6 +181,10 @@ function buildBlackboardEventData(roomId, blackboard, change, object) {
         : 'widget';
     return {
         meetingId: roomId,
+        boardId: blackboard.boardId,
+        boardOwnerType: blackboard.boardOwnerType,
+        boardOwnerId: blackboard.boardOwnerId,
+        boardVisibility: blackboard.boardVisibility,
         blackboardVersion: blackboard.version,
         changeType: change.changeType,
         targetType: change.targetType,
@@ -170,16 +194,26 @@ function buildBlackboardEventData(roomId, blackboard, change, object) {
     };
 }
 
+function isExpiredPollWidget(widget) {
+    if (widget?.type !== 'poll') return false;
+    if (String(widget.properties?.status || '').trim() === 'closed') return true;
+    const closesAt = String(widget.properties?.closesAt || '').trim();
+    const closesAtTime = Date.parse(closesAt);
+    return Boolean(closesAt && Number.isFinite(closesAtTime) && Date.now() >= closesAtTime);
+}
+
 export async function getRoomBlackboard(context, {
     roomId,
+    boardId = '',
     participantId = '',
     authInfo = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
+    const targetBoardId = assertSupportedBoardId(boardId);
     const record = await loadRoomRecord(context, targetRoomId);
     assertCanAccessBlackboard(record, authInfo);
     const payload = decryptRoomPayload(context, record);
-    const blackboard = loadBlackboardFromPayload(payload, targetRoomId);
+    const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
     return {
         blackboard: blackboard.serialize(buildViewerContext(authInfo, participantId))
     };
@@ -187,24 +221,53 @@ export async function getRoomBlackboard(context, {
 
 export async function applyRoomBlackboardChange(context, {
     roomId,
+    boardId = '',
     change,
     participantId = '',
     authInfo = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
+    const targetBoardId = assertSupportedBoardId(boardId);
     let serializedBlackboard = null;
     let serializedObject = null;
     let broadcast = null;
     let normalizedChange = null;
+    let deferredError = null;
 
     await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
         assertCanMutateBlackboard(record, authInfo);
         normalizedChange = normalizeChange(change, authInfo);
         normalizedChange.participantId = getAuthorizedParticipantId(payload, authInfo, participantId, targetRoomId);
         sanitizeChangeAuthority(normalizedChange, authInfo);
-        const blackboard = loadBlackboardFromPayload(payload, targetRoomId);
-        const result = blackboard.applyFinalChange(normalizedChange);
-        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard);
+        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        if (normalizedChange.changeType === 'submit') {
+            const targetRef = String(normalizedChange.targetRef || '').trim();
+            const targetWidget = blackboard.getWidget(targetRef);
+            if (isExpiredPollWidget(targetWidget)) {
+                const result = blackboard.closePoll(targetRef, {
+                    participantId: normalizedChange.participantId,
+                    canManagePoll: true,
+                    record: false
+                });
+                serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+                serializedObject = result.serializePrivileged();
+                broadcast = buildBroadcastPayload(targetRoomId, blackboard, serializedObject, 'widget');
+                stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, buildBlackboardEventData(
+                    targetRoomId,
+                    blackboard,
+                    { ...normalizedChange, changeType: 'close', reason: 'pollExpired' },
+                    serializedObject
+                ));
+                deferredError = new Error('Poll is closed.');
+                return;
+            }
+        }
+        const result = blackboard.applyFinalChange(normalizedChange, {
+            participantId: normalizedChange.participantId,
+            canManagePoll: isAdminAuthInfo(authInfo),
+            canModerateBlackboard: isAdminAuthInfo(authInfo)
+        });
+        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
         serializedObject = result?.serializePrivileged ? result.serializePrivileged() : blackboard.serializePrivileged();
         const objectKind = normalizedChange.changeType === 'clear' || normalizedChange.targetType === 'blackboard'
             ? 'blackboard'
@@ -217,6 +280,10 @@ export async function applyRoomBlackboardChange(context, {
             serializedObject
         ));
     });
+
+    if (deferredError) {
+        throw deferredError;
+    }
 
     const viewerContext = buildViewerContext(authInfo, normalizedChange?.participantId || participantId);
     return {
@@ -233,27 +300,31 @@ export async function applyRoomBlackboardChange(context, {
 
 export async function undoRoomBlackboard(context, {
     roomId,
+    boardId = '',
     participantId = '',
     authInfo = null
 } = {}) {
-    return await applyHistoryMove(context, { roomId, participantId, authInfo, direction: 'undo' });
+    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, direction: 'undo' });
 }
 
 export async function redoRoomBlackboard(context, {
     roomId,
+    boardId = '',
     participantId = '',
     authInfo = null
 } = {}) {
-    return await applyHistoryMove(context, { roomId, participantId, authInfo, direction: 'redo' });
+    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, direction: 'redo' });
 }
 
 async function applyHistoryMove(context, {
     roomId,
+    boardId = '',
     participantId = '',
     authInfo = null,
     direction
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
+    const targetBoardId = assertSupportedBoardId(boardId);
     let serializedBlackboard = null;
     let changed = false;
     let broadcast = null;
@@ -262,15 +333,19 @@ async function applyHistoryMove(context, {
     await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
         assertCanMutateBlackboard(record, authInfo);
         effectiveParticipantId = getAuthorizedParticipantId(payload, authInfo, participantId, targetRoomId);
-        const blackboard = loadBlackboardFromPayload(payload, targetRoomId);
+        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
         const viewerContext = buildViewerContext(authInfo, effectiveParticipantId);
         const result = direction === 'redo' ? blackboard.redo(viewerContext) : blackboard.undo(viewerContext);
         changed = Boolean(result);
-        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard);
+        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
         broadcast = changed ? buildBroadcastPayload(targetRoomId, blackboard, blackboard.serializePrivileged(), 'blackboard') : null;
         if (changed) {
             stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
                 meetingId: targetRoomId,
+                boardId: blackboard.boardId,
+                boardOwnerType: blackboard.boardOwnerType,
+                boardOwnerId: blackboard.boardOwnerId,
+                boardVisibility: blackboard.boardVisibility,
                 blackboardVersion: blackboard.version,
                 changeType: direction,
                 targetType: 'blackboard',

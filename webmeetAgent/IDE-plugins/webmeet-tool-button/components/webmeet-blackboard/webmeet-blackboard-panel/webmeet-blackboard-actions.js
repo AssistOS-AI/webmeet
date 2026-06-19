@@ -13,6 +13,47 @@ export const blackboardActionMethods = {
         });
     },
 
+    async startPollWidget(widget) {
+        if (!widget?.id || this.busy) return;
+        await this.runFinalChange({
+            changeType: 'start',
+            targetType: 'widget',
+            targetRef: widget.id,
+            reason: 'pollStart'
+        });
+    },
+
+    async closePollWidget(widget) {
+        if (!widget?.id || this.busy) return;
+        await this.runFinalChange({
+            changeType: 'close',
+            targetType: 'widget',
+            targetRef: widget.id,
+            reason: 'pollClose'
+        });
+    },
+
+    async openPollModal(widget) {
+        if (!widget?.id || !globalThis.assistOS?.UI?.showModal) return;
+        const result = await globalThis.assistOS.UI.showModal('webmeet-blackboard-poll-modal', {
+            'widget-json': encodeURIComponent(JSON.stringify(widget)),
+            'participant-id': encodeURIComponent(String(this.adapter?.participantId || '')),
+            'participant-name': encodeURIComponent(String(this.adapter?.participantName || this.adapter?.participantId || ''))
+        }, true);
+        if (!result?.answers) return;
+        await this.submitInteractiveWidget(widget, {
+            answers: result.answers,
+            participantName: result.participantName
+        });
+    },
+
+    async openPollResultsModal(widget) {
+        if (!widget?.id || !globalThis.assistOS?.UI?.showModal) return;
+        await globalThis.assistOS.UI.showModal('webmeet-blackboard-poll-results-modal', {
+            'widget-json': encodeURIComponent(JSON.stringify(widget))
+        }, true);
+    },
+
     updateToolbarState() {
         this.toolbar?.setState?.({
             busy: this.busy,
@@ -324,31 +365,32 @@ export const blackboardActionMethods = {
                 fontStyle: TEXT_DEFAULT_STYLE.fontStyle
             };
             widget.properties.text = 'Text';
-        } else if (normalizedType === 'quiz') {
+        } else if (normalizedType === 'poll') {
+            widget.properties.geometry = {x: 72 + offset, y: 64 + offset, width: 260, height: 132};
             widget.properties = {
                 ...widget.properties,
-                prompt: 'Question',
-                options: ['A', 'B', 'C'],
+                description: 'Poll',
+                questions: [{
+                    id: 'q1',
+                    prompt: 'Question',
+                    pollMode: 'choice',
+                    options: ['Yes', 'No'],
+                    ratingMax: 10
+                }],
+                allowPollChange: false,
+                anonymous: false,
+                status: 'open',
+                durationSeconds: 0,
+                startedAt: '',
+                closesAt: '',
                 participantData: {},
-                aggregation: {},
-                resultsVisibility: 'moderatorsOnly'
-            };
-        } else if (normalizedType === 'vote') {
-            widget.properties = {
-                ...widget.properties,
-                prompt: 'Vote',
-                options: ['Yes', 'No'],
-                participantData: {},
-                aggregation: {},
+                aggregation: {
+                    questions: {
+                        q1: {counts: {Yes: 0, No: 0}, total: 0}
+                    },
+                    totalParticipants: 0
+                },
                 resultsVisibility: 'public'
-            };
-        } else if (normalizedType === 'input') {
-            widget.properties = {
-                ...widget.properties,
-                label: 'Input',
-                participantData: {},
-                aggregation: {},
-                resultsVisibility: 'moderatorsOnly'
             };
         } else if (normalizedType === 'image') {
             widget.properties.geometry = {x: 72 + offset, y: 64 + offset, width: 320, height: 220};
@@ -377,6 +419,8 @@ export const blackboardActionMethods = {
         await this.flushInlineTextEdit();
         const targetRef = String(this.selection || '').trim();
         if (!targetRef) return;
+        const widget = this.getWidgetById(targetRef);
+        if (widget && this.canEditWidget && !this.canEditWidget(widget)) return;
         await this.runFinalChange({
             changeType: 'delete',
             targetType: 'widget',
@@ -462,6 +506,7 @@ export const blackboardActionMethods = {
 
     async editWidget(widget) {
         if (!widget || widget.locked) return;
+        if (this.canEditWidget && !this.canEditWidget(widget)) return;
         if (!globalThis.assistOS?.UI?.showModal) return;
         const result = await globalThis.assistOS.UI.showModal('webmeet-blackboard-widget-editor', {
             'widget-json': encodeURIComponent(JSON.stringify(widget)),

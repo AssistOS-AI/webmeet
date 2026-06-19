@@ -331,12 +331,14 @@ export async function dispatch(toolName, args, context, authInfo) {
     case 'webmeet_blackboard_get':
         return await getRoomBlackboard(context, {
             roomId: getRequiredString(args, 'roomId'),
+            boardId: getRequiredString(args, 'boardId'),
             participantId: String(args?.participantId || '').trim(),
             authInfo
         });
     case 'webmeet_blackboard_apply':
         return await applyRoomBlackboardChange(context, {
             roomId: getRequiredString(args, 'roomId'),
+            boardId: getRequiredString(args, 'boardId'),
             participantId: String(args?.participantId || '').trim(),
             change: getRequiredBlackboardChange(args),
             authInfo
@@ -344,12 +346,14 @@ export async function dispatch(toolName, args, context, authInfo) {
     case 'webmeet_blackboard_undo':
         return await undoRoomBlackboard(context, {
             roomId: getRequiredString(args, 'roomId'),
+            boardId: getRequiredString(args, 'boardId'),
             participantId: String(args?.participantId || '').trim(),
             authInfo
         });
     case 'webmeet_blackboard_redo':
         return await redoRoomBlackboard(context, {
             roomId: getRequiredString(args, 'roomId'),
+            boardId: getRequiredString(args, 'boardId'),
             participantId: String(args?.participantId || '').trim(),
             authInfo
         });

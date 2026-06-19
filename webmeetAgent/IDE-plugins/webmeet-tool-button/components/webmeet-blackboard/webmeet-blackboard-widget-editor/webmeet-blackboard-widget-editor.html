@@ -8,102 +8,136 @@
     </div>
 
     <div class="modal-body webmeet-blackboard-editor-body">
-        <section class="webmeet-blackboard-editor-section" data-role="textSection" hidden>
-            <label class="webmeet-blackboard-editor-field">
-                <span data-role="textLabel">Text</span>
-                <textarea name="text" data-role="text"></textarea>
-            </label>
-        </section>
+        <div class="webmeet-tabs" role="tablist" aria-label="Widget editor sections" data-role="tabs">
+            <button type="button" class="webmeet-tab active is-active" role="tab" aria-selected="true" data-role="contentTab" data-tab="content">Content</button>
+            <button type="button" class="webmeet-tab" role="tab" aria-selected="false" data-role="settingsTab" data-tab="settings">Settings</button>
+        </div>
 
-        <section class="webmeet-blackboard-editor-section webmeet-blackboard-typography-section" data-role="typographySection" hidden>
-            <label class="webmeet-blackboard-editor-field">
-                <span>Font</span>
-                <select name="fontFamily" data-role="fontFamily">
-                    <option value="Arial">Arial</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Georgia">Georgia</option>
-                    <option value="Verdana">Verdana</option>
-                    <option value="Courier New">Courier New</option>
-                    <option value="Trebuchet MS">Trebuchet MS</option>
-                </select>
-            </label>
-            <label class="webmeet-blackboard-editor-field">
-                <span>Size</span>
-                <input name="fontSize" type="number" min="8" max="200" step="1" data-role="fontSize">
-            </label>
-            <label class="webmeet-blackboard-editor-field">
-                <span>Text color</span>
-                <input name="textStyleColor" type="color" data-role="textStyleColor">
-            </label>
-            <label class="webmeet-blackboard-editor-field webmeet-blackboard-text-toggle-field">
-                <span>Style</span>
-                <span class="webmeet-blackboard-text-toggle-row">
-                    <label class="webmeet-blackboard-text-toggle">
-                        <input name="fontBold" type="checkbox" data-role="fontBold">
-                        <span>Bold</span>
+        <div class="webmeet-blackboard-editor-tab-panel" role="tabpanel" data-role="contentPanel">
+            <section class="webmeet-blackboard-editor-section" data-role="textSection" hidden>
+                <label class="webmeet-form-field">
+                    <span data-role="textLabel">Text</span>
+                    <textarea class="form-input" name="text" data-role="text"></textarea>
+                </label>
+            </section>
+
+            <section class="webmeet-blackboard-editor-section" data-role="choiceSection" hidden>
+                <div class="webmeet-form-field webmeet-blackboard-poll-setting" data-role="questionsField" hidden>
+                    <span>Questions</span>
+                    <div class="webmeet-blackboard-poll-question-list" data-role="questions"></div>
+                    <div class="webmeet-blackboard-poll-question-list-actions">
+                        <button type="button" class="gray-button webmeet-blackboard-add-question-button" data-role="addQuestion">Add question</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="webmeet-blackboard-editor-tab-panel" role="tabpanel" data-role="settingsPanel" hidden>
+            <section class="webmeet-blackboard-editor-section webmeet-blackboard-poll-settings-section" data-role="pollSettingsSection" hidden>
+                <label class="webmeet-form-field">
+                    <span>Results</span>
+                    <select class="form-input" name="resultsVisibility" data-role="resultsVisibility">
+                        <option value="hidden">Hidden</option>
+                        <option value="afterSubmit">After submit</option>
+                        <option value="afterPoll">After poll</option>
+                        <option value="afterClose">After close</option>
+                        <option value="moderatorsOnly">Moderators only</option>
+                        <option value="public">Public</option>
+                    </select>
+                </label>
+                <label class="webmeet-form-field webmeet-blackboard-poll-setting" data-role="durationField" hidden>
+                    <span>Timer seconds</span>
+                    <input class="form-input" name="durationSeconds" type="number" min="0" max="86400" step="1" data-role="durationSeconds">
+                </label>
+                <label class="webmeet-form-field webmeet-blackboard-poll-setting" data-role="allowPollChangeField" hidden>
+                    <span>Poll changes</span>
+                    <label class="webmeet-toggle-row">
+                        <input name="allowPollChange" type="checkbox" data-role="allowPollChange">
+                        <span>Allow users to change poll</span>
                     </label>
-                    <label class="webmeet-blackboard-text-toggle">
-                        <input name="fontItalic" type="checkbox" data-role="fontItalic">
-                        <span>Italic</span>
+                </label>
+                <label class="webmeet-form-field webmeet-blackboard-poll-setting" data-role="anonymousField" hidden>
+                    <span>Privacy</span>
+                    <label class="webmeet-toggle-row">
+                        <input name="anonymous" type="checkbox" data-role="anonymous">
+                        <span>Anonymous participant data</span>
                     </label>
-                </span>
-            </label>
-        </section>
+                </label>
 
-        <section class="webmeet-blackboard-editor-section" data-role="choiceSection" hidden>
-            <label class="webmeet-blackboard-editor-field">
-                <span>Options</span>
-                <input name="options" data-role="options" autocomplete="off">
-            </label>
-            <label class="webmeet-blackboard-editor-field">
-                <span>Results</span>
-                <select name="resultsVisibility" data-role="resultsVisibility">
-                    <option value="hidden">Hidden</option>
-                    <option value="afterSubmit">After submit</option>
-                    <option value="afterVote">After vote</option>
-                    <option value="afterClose">After close</option>
-                    <option value="moderatorsOnly">Moderators only</option>
-                    <option value="public">Public</option>
-                </select>
-            </label>
-        </section>
+            </section>
 
-        <section class="webmeet-blackboard-editor-section" data-role="lineSection" hidden>
-            <label class="webmeet-blackboard-editor-field">
-                <span>Arrow</span>
-                <select name="lineMarker" data-role="lineMarker">
-                    <option value="none">None</option>
-                    <option value="end">End</option>
-                    <option value="start">Start</option>
-                    <option value="both">Both</option>
-                </select>
-            </label>
-        </section>
+            <section class="webmeet-blackboard-editor-section webmeet-blackboard-typography-section" data-role="typographySection" hidden>
+                <label class="webmeet-form-field">
+                    <span>Font</span>
+                    <select class="form-input" name="fontFamily" data-role="fontFamily">
+                        <option value="Arial">Arial</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Verdana">Verdana</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Trebuchet MS">Trebuchet MS</option>
+                    </select>
+                </label>
+                <label class="webmeet-form-field">
+                    <span>Size</span>
+                    <input class="form-input" name="fontSize" type="number" min="8" max="200" step="1" data-role="fontSize">
+                </label>
+                <label class="webmeet-form-field">
+                    <span>Text color</span>
+                    <input class="form-input" name="textStyleColor" type="color" data-role="textStyleColor">
+                </label>
+                <label class="webmeet-form-field webmeet-blackboard-text-toggle-field">
+                    <span>Style</span>
+                    <span class="webmeet-blackboard-text-toggle-row">
+                        <label class="webmeet-toggle-row">
+                            <input name="fontBold" type="checkbox" data-role="fontBold">
+                            <span>Bold</span>
+                        </label>
+                        <label class="webmeet-toggle-row">
+                            <input name="fontItalic" type="checkbox" data-role="fontItalic">
+                            <span>Italic</span>
+                        </label>
+                    </span>
+                </label>
+            </section>
 
-        <section class="webmeet-blackboard-editor-section" data-role="surfaceSection" hidden>
-            <label class="webmeet-blackboard-editor-field" data-role="fillField">
-                <span>Background</span>
-                <span class="webmeet-blackboard-fill-control">
-                    <input name="fill" type="color" data-role="fill">
-                    <label class="webmeet-blackboard-transparent-control">
-                        <input name="fillTransparent" type="checkbox" data-role="fillTransparent">
-                        <span>Transparent</span>
-                    </label>
-                </span>
-            </label>
-            <label class="webmeet-blackboard-editor-field">
-                <span data-role="strokeLabel">Border</span>
-                <input name="stroke" type="color" data-role="stroke">
-            </label>
-            <label class="webmeet-blackboard-editor-field">
-                <span data-role="strokeWidthLabel">Border width</span>
-                <input name="strokeWidth" type="number" min="0" max="24" step="1" data-role="strokeWidth">
-            </label>
-            <label class="webmeet-blackboard-editor-field" data-role="textColorField" hidden>
-                <span>Text color</span>
-                <input name="textColor" type="color" data-role="textColor">
-            </label>
-        </section>
+            <section class="webmeet-blackboard-editor-section" data-role="lineSection" hidden>
+                <label class="webmeet-form-field">
+                    <span>Arrow</span>
+                    <select class="form-input" name="lineMarker" data-role="lineMarker">
+                        <option value="none">None</option>
+                        <option value="end">End</option>
+                        <option value="start">Start</option>
+                        <option value="both">Both</option>
+                    </select>
+                </label>
+            </section>
+
+            <section class="webmeet-blackboard-editor-section" data-role="surfaceSection" hidden>
+                <label class="webmeet-form-field" data-role="fillField">
+                    <span>Background</span>
+                    <span class="webmeet-blackboard-fill-control">
+                        <input class="form-input" name="fill" type="color" data-role="fill">
+                        <label class="webmeet-toggle-row">
+                            <input name="fillTransparent" type="checkbox" data-role="fillTransparent">
+                            <span>Transparent</span>
+                        </label>
+                    </span>
+                </label>
+                <label class="webmeet-form-field">
+                    <span data-role="strokeLabel">Border</span>
+                    <input class="form-input" name="stroke" type="color" data-role="stroke">
+                </label>
+                <label class="webmeet-form-field">
+                    <span data-role="strokeWidthLabel">Border width</span>
+                    <input class="form-input" name="strokeWidth" type="number" min="0" max="24" step="1" data-role="strokeWidth">
+                </label>
+                <label class="webmeet-form-field" data-role="textColorField" hidden>
+                    <span>Text color</span>
+                    <input class="form-input" name="textColor" type="color" data-role="textColor">
+                </label>
+            </section>
+        </div>
     </div>
 
     <div class="modal-footer">

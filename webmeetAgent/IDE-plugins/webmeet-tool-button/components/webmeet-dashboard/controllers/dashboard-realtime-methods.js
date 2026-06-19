@@ -97,6 +97,12 @@ export const dashboardRealtimeMethods = {
             this.state.chat.push(payload.message);
             this.renderFeedLists();
         });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_UPDATED, (event) => {
+            void this.handleBlackboardUpdatedEvent?.(event);
+        });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED, (event) => {
+            void this.applyBlackboardVisibility?.(event?.detail?.payload || {});
+        });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.TRANSCRIPT, () => {
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
         });

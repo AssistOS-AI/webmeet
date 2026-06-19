@@ -212,20 +212,20 @@ export async function listWorkspaceEvents(context, workspaceId, { afterId = '' }
     return await listWorkspaceEventsImpl(context, workspaceId, { afterId });
 }
 
-export async function getRoomBlackboard(context, { roomId, participantId = '', authInfo = null } = {}) {
-    return await getRoomBlackboardImpl(context, { roomId, participantId, authInfo });
+export async function getRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    return await getRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
-export async function applyRoomBlackboardChange(context, { roomId, change, participantId = '', authInfo = null } = {}) {
-    return await applyRoomBlackboardChangeImpl(context, { roomId, change, participantId, authInfo });
+export async function applyRoomBlackboardChange(context, { roomId, boardId = '', change, participantId = '', authInfo = null } = {}) {
+    return await applyRoomBlackboardChangeImpl(context, { roomId, boardId, change, participantId, authInfo });
 }
 
-export async function undoRoomBlackboard(context, { roomId, participantId = '', authInfo = null } = {}) {
-    return await undoRoomBlackboardImpl(context, { roomId, participantId, authInfo });
+export async function undoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    return await undoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
-export async function redoRoomBlackboard(context, { roomId, participantId = '', authInfo = null } = {}) {
-    return await redoRoomBlackboardImpl(context, { roomId, participantId, authInfo });
+export async function redoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    return await redoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
 export async function getRoboTeamSettings(context, { roomId, authInfo = null } = {}) {

@@ -32,8 +32,12 @@ export const blackboardRenderingMethods = {
         node.setAttribute('aria-selected', String(this.selection === widget.id));
         node.style.left = `${Number(geometry.x || 0)}px`;
         node.style.top = `${Number(geometry.y || 0)}px`;
-        node.style.width = `${Number(geometry.width || 120)}px`;
-        node.style.height = `${Number(geometry.height || 64)}px`;
+        const widgetWidth = Number(geometry.width || 120);
+        const widgetHeight = Number(geometry.height || 64);
+        const minPollWidth = widget.type === 'poll' ? 260 : 1;
+        const minPollHeight = widget.type === 'poll' ? 132 : 1;
+        node.style.width = `${Math.max(widgetWidth, minPollWidth)}px`;
+        node.style.height = `${Math.max(widgetHeight, minPollHeight)}px`;
         const rotation = this.getWidgetRotation(widget);
         node.style.transform = rotation ? `rotate(${rotation}deg)` : '';
         node.style.transformOrigin = 'center center';
@@ -50,10 +54,13 @@ export const blackboardRenderingMethods = {
         this.renderWidgetContent(node, widget);
         this.renderResizeHandles(node, widget);
         this.renderContextMenu(node, widget);
-        node.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
+        if (this.canMoveWidget(widget)) {
+            node.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
+        }
         node.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (!this.canEditWidget(widget)) return;
             this.selection = widget.id;
             void this.editWidget(widget);
         });
@@ -62,6 +69,7 @@ export const blackboardRenderingMethods = {
 
     renderContextMenu(node, widget) {
         if (!widget?.id || widget.locked) return;
+        if (!this.canEditWidget(widget) && !this.canMoveWidget(widget)) return;
         const menu = document.createElement('div');
         menu.className = 'webmeet-blackboard-context-menu';
         menu.setAttribute('aria-label', 'Widget actions');
@@ -71,14 +79,16 @@ export const blackboardRenderingMethods = {
         moveHandle.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
         menu.append(moveHandle);
 
-        const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
-        settingsButton.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.selection = widget.id;
-            void this.editWidget(widget);
-        });
-        menu.append(settingsButton);
+        if (this.canEditWidget(widget)) {
+            const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
+            settingsButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.selection = widget.id;
+                void this.editWidget(widget);
+            });
+            menu.append(settingsButton);
+        }
 
         if (this.canRotateWidget(widget)) {
             const rotateHandle = this.createContextButton('rotate', 'Rotate widget', 'Rotate', 'rotate');
@@ -86,14 +96,16 @@ export const blackboardRenderingMethods = {
             menu.append(rotateHandle);
         }
 
-        const deleteButton = this.createContextButton('delete', 'Delete widget', 'Delete', 'delete');
-        deleteButton.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.selection = widget.id;
-            void this.deleteSelectedWidget();
-        });
-        menu.append(deleteButton);
+        if (this.canEditWidget(widget)) {
+            const deleteButton = this.createContextButton('delete', 'Delete widget', 'Delete', 'delete');
+            deleteButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.selection = widget.id;
+                void this.deleteSelectedWidget();
+            });
+            menu.append(deleteButton);
+        }
         node.append(menu);
     },
 
@@ -117,8 +129,21 @@ export const blackboardRenderingMethods = {
 
     canResizeWidget(widget) {
         if (!widget || widget.locked) return false;
+        if (widget.type === 'poll' && !this.canEditWidget(widget)) return false;
         const widgetType = String(widget.type || 'shape').trim() || 'shape';
         return ['shape', 'line', 'card', 'text', 'image'].includes(widgetType);
+    },
+
+    canEditWidget(widget) {
+        if (!widget) return false;
+        if (widget.type !== 'poll') return true;
+        return widget.properties?.canManagePoll === true;
+    },
+
+    canMoveWidget(widget) {
+        if (!widget || widget.locked) return false;
+        if (widget.type === 'poll') return this.canEditWidget(widget);
+        return true;
     },
 
     renderResizeHandles(node, widget) {
@@ -178,53 +203,8 @@ export const blackboardRenderingMethods = {
             node.append(frame);
             return;
         }
-        if (widget.type === 'quiz' || widget.type === 'vote') {
-            const title = document.createElement('div');
-            title.className = 'webmeet-blackboard-widget-title';
-            title.textContent = widget.properties?.prompt || widget.properties?.question || widget.type;
-            const control = document.createElement('div');
-            control.className = 'webmeet-blackboard-widget-control';
-            const select = document.createElement('select');
-            for (const option of Array.isArray(widget.properties?.options) ? widget.properties.options : []) {
-                const optionEl = document.createElement('option');
-                optionEl.value = String(option);
-                optionEl.textContent = String(option);
-                select.append(optionEl);
-            }
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'subtle-button webmeet-blackboard-widget-action-button';
-            button.textContent = 'Submit';
-            button.addEventListener('pointerdown', (event) => event.stopPropagation());
-            button.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void this.submitInteractiveWidget(widget, {value: select.value});
-            });
-            control.append(select, button);
-            node.append(title, control);
-            return;
-        }
-        if (widget.type === 'input') {
-            const title = document.createElement('div');
-            title.className = 'webmeet-blackboard-widget-title';
-            title.textContent = widget.properties?.label || 'Input';
-            const control = document.createElement('div');
-            control.className = 'webmeet-blackboard-widget-control';
-            const input = document.createElement('input');
-            input.placeholder = widget.properties?.placeholder || '';
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'subtle-button webmeet-blackboard-widget-action-button';
-            button.textContent = 'Submit';
-            button.addEventListener('pointerdown', (event) => event.stopPropagation());
-            button.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void this.submitInteractiveWidget(widget, {value: input.value});
-            });
-            control.append(input, button);
-            node.append(title, control);
+        if (widget.type === 'poll') {
+            this.renderPollWidgetContent(node, widget);
             return;
         }
         if (widget.type === 'text' || widget.type === 'card') {
@@ -364,10 +344,130 @@ export const blackboardRenderingMethods = {
         return svg;
     },
 
+    renderPollWidgetContent(node, widget) {
+        const props = widget.properties || {};
+        const currentPoll = this.getCurrentPollValue(widget);
+        const canManagePoll = props.canManagePoll === true;
+        const statusValue = this.getPollStatus(widget);
+        const hasPolld = Boolean(currentPoll);
+        const questions = this.getPollQuestions(widget);
+
+        const summary = document.createElement('button');
+        summary.type = 'button';
+        summary.className = 'webmeet-blackboard-poll-summary subtle-button';
+        summary.addEventListener('pointerdown', (event) => event.stopPropagation());
+        summary.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (statusValue === 'closed') {
+                void this.openPollResultsModal(widget);
+                return;
+            }
+            void this.openPollModal(widget);
+        });
+
+        const title = document.createElement('span');
+        title.className = 'webmeet-blackboard-widget-title';
+        title.textContent = props.description || 'Poll';
+
+        const status = document.createElement('div');
+        status.className = 'webmeet-blackboard-poll-status';
+        status.textContent = this.getPollStatusText(widget, currentPoll);
+
+        const meta = document.createElement('span');
+        meta.className = 'webmeet-blackboard-poll-meta';
+        meta.textContent = `${questions.length} question${questions.length === 1 ? '' : 's'}${hasPolld ? ' • polld' : ''}`;
+
+        const adminActions = this.createPollAdminActions(widget, statusValue, canManagePoll);
+        summary.append(title, status, meta);
+        node.append(summary);
+        if (adminActions) node.append(adminActions);
+    },
+
+    getPollQuestions(widget) {
+        return Array.isArray(widget.properties?.questions) ? widget.properties.questions : [];
+    },
+
+    getPollStatus(widget) {
+        const props = widget.properties || {};
+        const status = String(props.status || 'open').trim();
+        if (status === 'closed') return 'closed';
+        if (props.closesAt && Date.now() >= Date.parse(String(props.closesAt))) return 'closed';
+        if (status === 'draft') return 'draft';
+        return 'open';
+    },
+
+    getPollStatusText(widget, currentPoll = '') {
+        const props = widget.properties || {};
+        const status = this.getPollStatus(widget);
+        if (status === 'draft') return 'Poll has not started';
+        if (status === 'closed') return currentPoll ? `Closed. Your poll: ${currentPoll}` : 'Poll closed';
+        const closesAt = String(props.closesAt || '').trim();
+        if (closesAt) {
+            const secondsLeft = Math.max(0, Math.ceil((Date.parse(closesAt) - Date.now()) / 1000));
+            return currentPoll ? `Your poll: ${currentPoll}. Closes in ${secondsLeft}s` : `Open. Closes in ${secondsLeft}s`;
+        }
+        return currentPoll ? `Your poll: ${currentPoll}` : 'No poll submitted';
+    },
+
+    createPollAdminActions(widget, statusValue, canManagePoll) {
+        if (!canManagePoll) return null;
+        const actions = document.createElement('div');
+        actions.className = 'webmeet-blackboard-poll-admin-actions';
+        if (statusValue === 'draft') {
+            const startButton = document.createElement('button');
+            startButton.type = 'button';
+            startButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
+            startButton.textContent = 'Start';
+            startButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+            startButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void this.startPollWidget(widget);
+            });
+            actions.append(startButton);
+        }
+        if (statusValue === 'open') {
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
+            closeButton.textContent = 'Close';
+            closeButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+            closeButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void this.closePollWidget(widget);
+            });
+            actions.append(closeButton);
+        }
+        if (statusValue === 'closed') {
+            const resultsButton = document.createElement('button');
+            resultsButton.type = 'button';
+            resultsButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
+            resultsButton.textContent = 'Results';
+            resultsButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+            resultsButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void this.openPollResultsModal(widget);
+            });
+            actions.append(resultsButton);
+        }
+        return actions.children.length ? actions : null;
+    },
+
+    getCurrentPollValue(widget) {
+        const participantData = widget.properties?.participantData || {};
+        const participantId = String(this.adapter?.participantId || '').trim();
+        if (participantId && participantData[participantId]?.answers) {
+            return Object.values(participantData[participantId].answers || {}).filter(Boolean).join(', ');
+        }
+        return '';
+    },
+
     getWidgetLabel(widget) {
         if (widget.type === 'text') return widget.properties?.text || '';
-        if (widget.type === 'quiz' || widget.type === 'vote') return widget.properties?.prompt || widget.type;
-        if (widget.type === 'input') return widget.properties?.label || '';
+        if (widget.type === 'poll') return widget.properties?.description || widget.type;
         return widget.properties?.label || '';
     }
 };

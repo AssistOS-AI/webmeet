@@ -1218,6 +1218,96 @@
     overflow: hidden;
 }
 
+.webmeet-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    height: fit-content;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.webmeet-tab {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    padding: 7px 12px;
+    cursor: pointer;
+}
+
+.webmeet-tab:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.webmeet-tab.active,
+.webmeet-tab.is-active,
+.webmeet-tab[aria-selected="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.webmeet-form-field {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text, #111827);
+}
+
+.form-input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text, #111827);
+    background: var(--surface, #fff);
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--accent, #2563eb);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+textarea.form-input {
+    resize: vertical;
+}
+
+.form-input[type="color"] {
+    height: 40px;
+    padding: 4px 6px;
+}
+
+.webmeet-toggle-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.webmeet-toggle-row input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent, #2563eb);
+}
+
 .webmeet-settings-tabs {
     display: flex;
     flex: 0 0 auto;

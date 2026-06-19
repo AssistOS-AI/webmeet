@@ -13,6 +13,7 @@ import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/compo
 export const ROBO_TEAM_AGENT_TYPE = 'robo_team';
 export const ROBO_TEAM_MODE = 'blackboard_demo';
 export const ROBO_TEAM_PARTICIPANT_ID = 'agent_robo_team';
+export const ROBO_TEAM_BLACKBOARD_BOARD_ID = `agent:${ROBO_TEAM_PARTICIPANT_ID}`;
 
 export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     assistant: {
@@ -130,8 +131,52 @@ function createRoboTeamBlackboard(roomId = '') {
     const targetRoomId = String(roomId || '').trim();
     return new Blackboard({
         id: `blackboard_${ROBO_TEAM_PARTICIPANT_ID}${targetRoomId ? `_${targetRoomId}` : ''}`,
-        roomId: targetRoomId
+        roomId: targetRoomId,
+        boardId: ROBO_TEAM_BLACKBOARD_BOARD_ID,
+        boardOwnerType: 'agent',
+        boardOwnerId: ROBO_TEAM_PARTICIPANT_ID,
+        boardVisibility: 'room',
+        metadata: {
+            boardId: ROBO_TEAM_BLACKBOARD_BOARD_ID,
+            boardOwnerType: 'agent',
+            boardOwnerId: ROBO_TEAM_PARTICIPANT_ID,
+            boardVisibility: 'room'
+        }
     }).serializePrivileged();
+}
+
+function requireRoboTeamBlackboardField(blackboard = {}, fieldName = '') {
+    const value = String(blackboard?.[fieldName] || '').trim();
+    if (!value) {
+        throw new Error(`Invalid RoboTeam blackboard: missing ${fieldName}.`);
+    }
+    return value;
+}
+
+function normalizeRoboTeamBlackboardPayload(blackboard = {}, roomId = '') {
+    const targetRoomId = String(roomId || blackboard?.roomId || '').trim();
+    const boardId = requireRoboTeamBlackboardField(blackboard, 'boardId');
+    const boardOwnerType = requireRoboTeamBlackboardField(blackboard, 'boardOwnerType');
+    const boardOwnerId = requireRoboTeamBlackboardField(blackboard, 'boardOwnerId');
+    const boardVisibility = requireRoboTeamBlackboardField(blackboard, 'boardVisibility');
+    const metadata = blackboard?.metadata && typeof blackboard.metadata === 'object'
+        ? cloneJson(blackboard.metadata)
+        : {};
+    return {
+        ...cloneJson(blackboard),
+        roomId: targetRoomId,
+        boardId,
+        boardOwnerType,
+        boardOwnerId,
+        boardVisibility,
+        metadata: {
+            ...metadata,
+            boardId,
+            boardOwnerType,
+            boardOwnerId,
+            boardVisibility
+        }
+    };
 }
 
 export function getRoboTeamAgentPayload(payload) {
@@ -148,6 +193,7 @@ export function ensureRoboTeamBlackboardPayload(agent, roomId = '') {
     if (!agent.blackboard || typeof agent.blackboard !== 'object') {
         agent.blackboard = createRoboTeamBlackboard(roomId);
     }
+    agent.blackboard = normalizeRoboTeamBlackboardPayload(agent.blackboard, roomId);
     return agent.blackboard;
 }
 
@@ -159,7 +205,7 @@ export function getRoboTeamBlackboardVersion(payload) {
 function buildRoboTeamAgent(settings = {}, previous = {}, meetingId = '') {
     const timestamp = nowIso();
     const blackboard = previous?.blackboard && typeof previous.blackboard === 'object'
-        ? previous.blackboard
+        ? normalizeRoboTeamBlackboardPayload(previous.blackboard, meetingId)
         : createRoboTeamBlackboard(meetingId);
     return {
         ...(previous && typeof previous === 'object' ? previous : {}),
@@ -261,21 +307,8 @@ export function ensureRoboTeamDemoBlackboard(payload, roomId) {
         visibility: 'all'
     });
     addWidgetIfMissing(blackboard, {
-        id: 'robo_demo_quiz',
-        type: 'quiz',
-        properties: {
-            question: 'What is the next best action?',
-            options: ['Clarify goal', 'Assign tasks', 'Collect risks'],
-            resultsVisibility: 'moderators',
-            participantData: {},
-            aggregation: { resultsVisibility: 'moderators' },
-            geometry: { x: 456, y: 42, width: 360, height: 210 }
-        },
-        visibility: 'all'
-    });
-    addWidgetIfMissing(blackboard, {
-        id: 'robo_demo_vote',
-        type: 'vote',
+        id: 'robo_demo_poll',
+        type: 'poll',
         properties: {
             question: 'Ready to proceed?',
             options: ['Yes', 'Need discussion'],
@@ -283,18 +316,6 @@ export function ensureRoboTeamDemoBlackboard(payload, roomId) {
             participantData: {},
             aggregation: { resultsVisibility: 'public' },
             geometry: { x: 456, y: 280, width: 360, height: 180 }
-        },
-        visibility: 'all'
-    });
-    addWidgetIfMissing(blackboard, {
-        id: 'robo_demo_input',
-        type: 'input',
-        properties: {
-            label: 'Participant request',
-            placeholder: 'Ask RoboTeam to add or update a widget',
-            participantData: {},
-            aggregation: { resultsVisibility: 'moderators' },
-            geometry: { x: 48, y: 304, width: 360, height: 156 }
         },
         visibility: 'all'
     });

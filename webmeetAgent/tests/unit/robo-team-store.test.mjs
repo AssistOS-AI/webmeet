@@ -43,7 +43,11 @@ test('new rooms default RoboTeam to active with blackboard demo widgets', async 
 
         const settingsResponse = await getRoboTeamSettings(context, { roomId: meeting.roomId, authInfo });
         const agents = await listMeetingAgents(context, meeting.roomId, authInfo);
-        const blackboard = await getRoomBlackboard(context, { roomId: meeting.roomId, authInfo });
+        const blackboard = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo
+        });
         const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
         const roboTeam = payload.agents.find((agent) => agent.id === 'agent_robo_team');
 
@@ -54,8 +58,8 @@ test('new rooms default RoboTeam to active with blackboard demo widgets', async 
         assert.equal(settingsResponse.settings.blackboard.participantRequestsEnabled, true);
         assert.ok(agents.some((agent) => agent.agentType === 'robo_team' && agent.runtime === 'ploinky'));
         assert.equal(payload.blackboard, undefined);
-        assert.ok(roboTeam.blackboard.widgets.some((widget) => widget.id === 'robo_demo_quiz'));
-        assert.ok(blackboard.blackboard.widgets.some((widget) => widget.id === 'robo_demo_quiz'));
+        assert.ok(roboTeam.blackboard.widgets.some((widget) => widget.id === 'robo_demo_poll'));
+        assert.ok(blackboard.blackboard.widgets.some((widget) => widget.id === 'robo_demo_poll'));
     });
 });
 

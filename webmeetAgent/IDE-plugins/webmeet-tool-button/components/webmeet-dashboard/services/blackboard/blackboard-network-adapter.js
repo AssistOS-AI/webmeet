@@ -7,13 +7,20 @@ import {
 export class BlackboardNetworkAdapter {
     constructor({
         roomId,
+        boardId = '',
         participantId = '',
+        participantName = '',
         runTool,
         publishRealtimePayload = null,
         room = null
     } = {}) {
         this.roomId = String(roomId || '').trim();
+        this.boardId = String(boardId || '').trim();
+        if (!this.boardId) {
+            throw new Error('Missing blackboard boardId.');
+        }
         this.participantId = String(participantId || '').trim();
+        this.participantName = String(participantName || '').trim();
         this.runTool = runTool;
         this.publishRealtimePayload = publishRealtimePayload;
         this.room = room;
@@ -26,6 +33,7 @@ export class BlackboardNetworkAdapter {
     async loadInitialBlackboard(roomId = this.roomId) {
         const response = await this.runTool('webmeet_blackboard_get', {
             roomId,
+            boardId: this.boardId,
             participantId: this.participantId
         });
         this.currentVersion = Number(response?.blackboard?.version || 0);
@@ -35,6 +43,7 @@ export class BlackboardNetworkAdapter {
     async sendChange(change) {
         const response = await this.runTool('webmeet_blackboard_apply', {
             roomId: this.roomId,
+            boardId: this.boardId,
             participantId: this.participantId,
             change: JSON.stringify(change || {})
         });
@@ -45,6 +54,7 @@ export class BlackboardNetworkAdapter {
     async undo() {
         const response = await this.runTool('webmeet_blackboard_undo', {
             roomId: this.roomId,
+            boardId: this.boardId,
             participantId: this.participantId
         });
         if (response?.changed) {
@@ -56,6 +66,7 @@ export class BlackboardNetworkAdapter {
     async redo() {
         const response = await this.runTool('webmeet_blackboard_redo', {
             roomId: this.roomId,
+            boardId: this.boardId,
             participantId: this.participantId
         });
         if (response?.changed) {
@@ -90,6 +101,10 @@ export class BlackboardNetworkAdapter {
             this.seenMessageIds.add(messageId);
         }
         const version = Number(parsed.payload?.blackboardVersion || 0);
+        const eventBoardId = String(parsed.payload?.boardId || '').trim();
+        if (!eventBoardId || eventBoardId !== this.boardId) {
+            return 'wrong-board';
+        }
         if (version && version < this.currentVersion) {
             return 'old-version';
         }
@@ -98,6 +113,10 @@ export class BlackboardNetworkAdapter {
             const protocol = parseBlackboardProtocolMessage(blackboardMessage);
             if (protocol.payload.roomId !== this.roomId) {
                 return 'wrong-room';
+            }
+            const protocolBoardId = String(protocol.payload.boardId || '').trim();
+            if (!protocolBoardId || protocolBoardId !== this.boardId) {
+                return 'wrong-board';
             }
             const protocolMessageId = protocol.payload.messageId || '';
             if (protocolMessageId && this.seenMessageIds.has(protocolMessageId)) {
@@ -150,6 +169,11 @@ export class BlackboardNetworkAdapter {
             : {
                 kind: response?.object?.id ? 'widget' : 'blackboard',
                 roomId: this.roomId,
+                boardId: this.boardId,
+                blackboardId: this.boardId,
+                boardOwnerType: 'agent',
+                boardOwnerId: 'agent_robo_team',
+                boardVisibility: 'room',
                 version,
                 visibility: response?.object?.visibility || { mode: 'all' },
                 object: response?.object?.id ? response.object : response?.blackboard
@@ -163,6 +187,10 @@ export class BlackboardNetworkAdapter {
         await this.publishRealtimePayload({
             type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
             meetingId: this.roomId,
+            boardId: this.boardId,
+            boardOwnerType: String(broadcastPayload.boardOwnerType || 'agent').trim(),
+            boardOwnerId: String(broadcastPayload.boardOwnerId || 'agent_robo_team').trim(),
+            boardVisibility: String(broadcastPayload.boardVisibility || 'room').trim(),
             blackboardVersion: version,
             changeType: String(response?.change?.changeType || fallbackChangeType || 'update').trim(),
             targetType: String(response?.change?.targetType || 'blackboard').trim(),

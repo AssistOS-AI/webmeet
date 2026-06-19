@@ -1,16 +1,46 @@
 dialog.modal:has(webmeet-blackboard-widget-editor) {
-    width: min(420px, calc(100vw - 32px));
+    width: min(900px, calc(100vw - 32px));
+    height: min(720px, calc(100vh - 32px));
+    min-width: min(660px, calc(100vw - 32px));
+    min-height: min(560px, calc(100vh - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    overflow: hidden;
+    resize: both;
 }
 
 .webmeet-blackboard-widget-editor {
     display: flex;
     flex-direction: column;
+    height: 100%;
     min-width: 0;
 }
 
 .webmeet-blackboard-editor-body {
     display: grid;
+    flex: 1 1 auto;
     gap: 12px;
+    align-content: start;
+    min-height: 0;
+    overflow: auto;
+}
+
+.webmeet-blackboard-widget-editor .webmeet-tabs {
+    justify-self: start;
+}
+
+.webmeet-blackboard-widget-editor .webmeet-tab {
+    min-width: 92px;
+}
+
+.webmeet-blackboard-editor-tab-panel {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+}
+
+.webmeet-blackboard-editor-tab-panel[hidden] {
+    display: none;
 }
 
 .webmeet-blackboard-editor-section {
@@ -23,26 +53,8 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     display: none;
 }
 
-.webmeet-blackboard-editor-field {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-muted, #475569);
-}
-
-.webmeet-blackboard-editor-field textarea,
-.webmeet-blackboard-editor-field input,
-.webmeet-blackboard-editor-field select {
-    min-width: 0;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.webmeet-blackboard-editor-field textarea {
+.webmeet-blackboard-widget-editor textarea.form-input {
     min-height: 78px;
-    resize: vertical;
 }
 
 .webmeet-blackboard-fill-control {
@@ -52,21 +64,14 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     gap: 8px;
 }
 
-.webmeet-blackboard-transparent-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    font-weight: 600;
-}
-
-.webmeet-blackboard-transparent-control input {
-    width: auto;
-}
-
 .webmeet-blackboard-editor-section[data-role="textSection"],
 .webmeet-blackboard-editor-section[data-role="choiceSection"] {
     grid-template-columns: 1fr;
+}
+
+.webmeet-blackboard-poll-settings-section {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border, #d8e0ea);
 }
 
 .webmeet-blackboard-typography-section {
@@ -84,13 +89,101 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     min-height: 32px;
 }
 
-.webmeet-blackboard-text-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-weight: 600;
+.webmeet-blackboard-poll-question-list {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
 }
 
-.webmeet-blackboard-text-toggle input {
-    width: auto;
+.webmeet-blackboard-poll-question-row {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border, #d8e0ea);
+    border-radius: 6px;
+    background: var(--surface, #ffffff);
+}
+
+.webmeet-blackboard-poll-question-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+
+.webmeet-blackboard-poll-question-heading {
+    min-width: 0;
+    color: var(--text, #172033);
+    font-size: 13px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-poll-question-controls {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(130px, 0.34fr);
+    gap: 10px;
+    align-items: end;
+    min-width: 0;
+}
+
+.webmeet-blackboard-poll-question-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+}
+
+.webmeet-blackboard-poll-question-prompt,
+.webmeet-blackboard-poll-question-options {
+    grid-column: 1 / -1;
+}
+
+.webmeet-blackboard-poll-question-field[hidden] {
+    display: none;
+}
+
+.webmeet-blackboard-add-question-button,
+.webmeet-blackboard-remove-question-button {
+    justify-self: start;
+}
+
+.webmeet-blackboard-remove-question-button {
+    flex: 0 0 auto;
+}
+
+.webmeet-blackboard-poll-question-list-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border, #d8e0ea);
+}
+
+@media (max-width: 720px) {
+    dialog.modal:has(webmeet-blackboard-widget-editor) {
+        width: calc(100vw - 24px);
+        height: calc(100vh - 24px);
+        min-width: 0;
+        min-height: 0;
+        resize: vertical;
+    }
+
+    .webmeet-blackboard-editor-section,
+    .webmeet-blackboard-typography-section,
+    .webmeet-blackboard-poll-question-controls {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .webmeet-blackboard-widget-editor .webmeet-tabs {
+        justify-self: stretch;
+    }
+
+    .webmeet-blackboard-widget-editor .webmeet-tab {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
 }

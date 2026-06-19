@@ -11,7 +11,7 @@ export class WebMeetBlackboardToolbar {
         this.menuSelections = {
             shape: { icon: 'rectangle', value: 'shape:rectangle' },
             line: { icon: 'line', value: 'line' },
-            insert: { icon: 'quiz', value: 'quiz' }
+            insert: { icon: 'poll', value: 'poll' }
         };
         this.handleChange = (event) => this.handleToolbarChange(event);
         this.handleDocumentPointerDown = (event) => this.handleOutsideClick(event);

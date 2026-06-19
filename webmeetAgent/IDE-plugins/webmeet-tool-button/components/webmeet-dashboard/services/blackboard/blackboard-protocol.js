@@ -29,9 +29,19 @@ export function buildBlackboardProtocolPayload(input = {}) {
     if (!roomId) {
         throw new Error('Missing blackboard protocol roomId.');
     }
+    const boardId = String(input.boardId || '').trim();
+    if (!boardId) {
+        throw new Error('Missing blackboard protocol boardId.');
+    }
     return {
         kind: String(input.kind || '').trim() === 'widget' ? 'widget' : 'blackboard',
         roomId,
+        ownerParticipantId: String(input.ownerParticipantId || '').trim(),
+        blackboardId: String(input.blackboardId || '').trim(),
+        boardId,
+        boardOwnerType: String(input.boardOwnerType || '').trim(),
+        boardOwnerId: String(input.boardOwnerId || input.ownerParticipantId || '').trim(),
+        boardVisibility: String(input.boardVisibility || '').trim(),
         messageId: String(input.messageId || randomMessageId()).trim(),
         version: Number.isFinite(input.version) ? input.version : 0,
         visibility: input.visibility || 'all',

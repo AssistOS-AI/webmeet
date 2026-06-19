@@ -20,6 +20,27 @@ function getParticipantId(dashboard) {
     ).trim();
 }
 
+function getParticipantName(dashboard, participantId = '') {
+    const id = String(participantId || '').trim();
+    const sessionParticipant = dashboard.state.session?.participant || {};
+    const localParticipant = dashboard.room?.localParticipant || dashboard.webMeetRoom?.localParticipant || {};
+    const stateParticipant = dashboard.state.participants?.find?.((entry) => String(entry?.identity || entry?.participantId || entry?.id || '').trim() === id) || {};
+    return String(
+        stateParticipant.name
+        || stateParticipant.displayName
+        || sessionParticipant.name
+        || sessionParticipant.displayName
+        || localParticipant.name
+        || localParticipant.displayName
+        || localParticipant.metadata?.name
+        || id
+    ).trim();
+}
+
+function getRoboTeamBlackboardBoardId() {
+    return 'agent:agent_robo_team';
+}
+
 function dispatchBlackboardPanelEvent(panel, type, detail = {}) {
     if (!panel) return;
     panel.dispatchEvent(new CustomEvent(type, {
@@ -44,21 +65,27 @@ export const blackboardMethods = {
 
     async ensureBlackboardAdapter() {
         const roomId = getMeetingId(this);
+        const boardId = getRoboTeamBlackboardBoardId();
         const participantId = getParticipantId(this);
+        const participantName = getParticipantName(this, participantId);
         if (!roomId || !participantId) {
             throw new Error('Join a meeting before opening the blackboard.');
         }
         if (
             this.blackboardAdapter
             && this.blackboardAdapter.roomId === roomId
+            && this.blackboardAdapter.boardId === boardId
             && this.blackboardAdapter.participantId === participantId
         ) {
+            this.blackboardAdapter.participantName = participantName;
             return this.blackboardAdapter;
         }
         this.blackboardAdapter?.unsubscribe?.();
         this.blackboardAdapter = new BlackboardNetworkAdapter({
             roomId,
+            boardId,
             participantId,
+            participantName,
             runTool: runWebMeetTool,
             publishRealtimePayload: (payload) => this.publishRealtimePayload(payload),
             room: this.webMeetRoom

@@ -56,6 +56,18 @@
             "path": "components/webmeet-blackboard/webmeet-blackboard-widget-editor/webmeet-blackboard-widget-editor"
         },
         {
+            "component": "webmeet-blackboard-poll-modal",
+            "presenter": "WebMeetBlackboardPollModal",
+            "type": "modal",
+            "path": "components/webmeet-blackboard/webmeet-blackboard-poll-modal/webmeet-blackboard-poll-modal"
+        },
+        {
+            "component": "webmeet-blackboard-poll-results-modal",
+            "presenter": "WebMeetBlackboardPollResultsModal",
+            "type": "modal",
+            "path": "components/webmeet-blackboard/webmeet-blackboard-poll-results-modal/webmeet-blackboard-poll-results-modal"
+        },
+        {
             "component": "webmeet-blackboard-results-panel",
             "presenter": "WebMeetBlackboardResultsPanel",
             "path": "components/webmeet-blackboard/webmeet-blackboard-results-panel/webmeet-blackboard-results-panel"

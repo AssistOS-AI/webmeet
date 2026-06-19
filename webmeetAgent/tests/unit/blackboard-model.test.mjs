@@ -15,6 +15,10 @@ import {
     parseWebMeetEvent
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import {
+    ROOM_EVENT_TYPES,
+    WebMeetRoomEvents
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-events.js';
+import {
     applyRoomBlackboardChange,
     createMeeting,
     createStoreContext,
@@ -168,10 +172,10 @@ test('blackboard theme changes reset widget theme style fields', () => {
 test('blackboard filters participant data for normal participants and exposes it to moderators', () => {
     const blackboard = new Blackboard({ roomId: 'room_1' });
     blackboard.addWidget(new BlackboardWidget({
-        id: 'quiz_1',
-        type: 'quiz',
+        id: 'card_1',
+        type: 'card',
         properties: {
-            prompt: '2 + 2',
+            text: '2 + 2',
             correctAnswer: '4',
             participantData: {
                 alice: { answer: '4' },
@@ -198,20 +202,30 @@ test('blackboard filters participant data for normal participants and exposes it
 test('blackboard supports document visibility and results visibility variants', () => {
     const blackboard = new Blackboard({ roomId: 'room_1' });
     blackboard.addWidget(new BlackboardWidget({
-        id: 'vote_1',
-        type: 'vote',
+        id: 'poll_1',
+        type: 'poll',
         visibility: 'user:alice',
         properties: {
-            question: 'Pick',
-            participantData: {
-                alice: { vote: 'A' },
-                bob: { vote: 'B' }
-            },
-            aggregation: { counts: { A: 1, B: 1 } },
-            resultsVisibility: 'afterVote',
+            description: 'Pick',
+            questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }],
+            resultsVisibility: 'afterPoll',
             anonymous: true
         }
     }));
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'A' }, participantName: 'Alice Smith' }
+    });
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'bob',
+        data: { answers: { q1: 'B' } }
+    });
 
     const alice = blackboard.serialize({ participantId: 'alice', roles: [] });
     const bob = blackboard.serialize({ participantId: 'bob', roles: [] });
@@ -219,9 +233,298 @@ test('blackboard supports document visibility and results visibility variants', 
 
     assert.equal(alice.widgets.length, 1);
     assert.deepEqual(alice.widgets[0].properties.participantData, {});
-    assert.deepEqual(alice.widgets[0].properties.aggregation, { counts: { A: 1, B: 1 } });
+    assert.deepEqual(alice.widgets[0].properties.aggregation, {
+        questions: { q1: { counts: { A: 1, B: 1 }, total: 2 } },
+        totalParticipants: 2
+    });
     assert.equal(bob.widgets.length, 0);
     assert.equal(moderator.widgets.length, 1);
+});
+
+test('blackboard poll submit validates options and computes aggregation', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'poll_1',
+        type: 'poll',
+        properties: {
+            description: 'Pick',
+            questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }],
+            resultsVisibility: 'public'
+        }
+    }));
+
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'A' }, participantName: 'Alice Smith' }
+    });
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'bob',
+        data: { answers: { q1: 'B' } }
+    });
+
+    const poll = blackboard.getWidget('poll_1');
+    assert.deepEqual(poll.properties.participantData, {
+        alice: { answers: { q1: 'A' }, participantName: 'Alice Smith' },
+        bob: { answers: { q1: 'B' } }
+    });
+    assert.deepEqual(poll.properties.aggregation, {
+        questions: { q1: { counts: { A: 1, B: 1 }, total: 2 } },
+        totalParticipants: 2
+    });
+});
+
+test('blackboard poll rejects invalid options and locked poll changes', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'poll_1',
+        type: 'poll',
+        properties: {
+            description: 'Pick',
+            questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }],
+            allowPollChange: false
+        }
+    }));
+
+    assert.throws(() => blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'C' } }
+    }), /Invalid poll option/);
+
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'A' } }
+    });
+
+    assert.throws(() => blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'B' } }
+    }), /Poll cannot be changed/);
+});
+
+test('blackboard poll can allow participant poll changes', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'poll_1',
+        type: 'poll',
+        properties: {
+            description: 'Pick',
+            questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }],
+            allowPollChange: true
+        }
+    }));
+
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'A' } }
+    });
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'B' } }
+    });
+
+    const poll = blackboard.getWidget('poll_1');
+    assert.deepEqual(poll.properties.participantData, { alice: { answers: { q1: 'B' } } });
+    assert.deepEqual(poll.properties.aggregation, {
+        questions: { q1: { counts: { A: 0, B: 1 }, total: 1 } },
+        totalParticipants: 1
+    });
+});
+
+test('blackboard poll supports rating mode aggregation', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.applyFinalChange({
+        changeType: 'create',
+        targetType: 'widget',
+        participantId: 'owner',
+        widget: {
+            id: 'poll_1',
+            type: 'poll',
+            properties: {
+                description: 'Rate',
+                questions: [{ id: 'q1', prompt: 'Rate one', pollMode: 'rating', ratingMax: 5 }]
+            }
+        }
+    });
+
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: '5' } }
+    });
+
+    assert.throws(() => blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'bob',
+        data: { answers: { q1: '6' } }
+    }), /Invalid poll option/);
+
+    const poll = blackboard.getWidget('poll_1');
+    assert.deepEqual(poll.properties.questions[0].options, ['1', '2', '3', '4', '5']);
+    assert.deepEqual(poll.properties.aggregation, {
+        questions: { q1: { counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 1 }, total: 1 } },
+        totalParticipants: 1
+    });
+});
+
+test('blackboard poll owner and admin can manage but participants cannot', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.applyFinalChange({
+        changeType: 'create',
+        targetType: 'widget',
+        participantId: 'owner',
+        widget: {
+            id: 'poll_1',
+            type: 'poll',
+            properties: {
+                description: 'Pick',
+                questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }]
+            }
+        }
+    });
+
+    const poll = blackboard.getWidget('poll_1');
+    assert.equal(poll.createdBy, 'owner');
+    assert.equal(poll.properties.ownerParticipantId, 'owner');
+
+    assert.throws(() => blackboard.applyFinalChange({
+        changeType: 'update',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'other',
+        patch: { properties: { description: 'Nope' } }
+    }), /Only the poll creator or an admin/);
+
+    blackboard.applyFinalChange({
+        changeType: 'update',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'owner',
+        patch: { properties: { description: 'Updated by owner' } }
+    });
+    assert.equal(blackboard.getWidget('poll_1').properties.description, 'Updated by owner');
+
+    blackboard.applyFinalChange({
+        changeType: 'update',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'admin',
+        patch: { properties: { description: 'Updated by admin' } }
+    }, { canManagePoll: true });
+    assert.equal(blackboard.getWidget('poll_1').properties.description, 'Updated by admin');
+});
+
+test('blackboard poll timer start close and expiry rules', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.applyFinalChange({
+        changeType: 'create',
+        targetType: 'widget',
+        participantId: 'owner',
+        widget: {
+            id: 'poll_1',
+            type: 'poll',
+            properties: {
+                description: 'Timed',
+                questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }],
+                durationSeconds: 120
+            }
+        }
+    });
+
+    assert.equal(blackboard.getWidget('poll_1').properties.status, 'draft');
+    assert.throws(() => blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'A' } }
+    }), /Poll is not open/);
+
+    blackboard.applyFinalChange({
+        changeType: 'start',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'owner'
+    }, { nowIso: '2026-06-19T10:00:00.000Z' });
+    assert.equal(blackboard.getWidget('poll_1').properties.status, 'open');
+    assert.equal(blackboard.getWidget('poll_1').properties.closesAt, '2026-06-19T10:02:00.000Z');
+
+    blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'alice',
+        data: { answers: { q1: 'A' } }
+    }, { nowMs: Date.parse('2026-06-19T10:01:00.000Z') });
+
+    assert.throws(() => blackboard.applyFinalChange({
+        changeType: 'submit',
+        targetType: 'widget',
+        targetRef: 'poll_1',
+        participantId: 'bob',
+        data: { answers: { q1: 'B' } }
+    }, { nowMs: Date.parse('2026-06-19T10:03:00.000Z') }), /Poll is closed/);
+    assert.equal(blackboard.getWidget('poll_1').properties.status, 'closed');
+});
+
+test('blackboard poll updates cannot overwrite participant data or aggregation', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'poll_1',
+        type: 'poll',
+        properties: {
+            description: 'Pick',
+            questions: [{ id: 'q1', prompt: 'Pick one', pollMode: 'choice', options: ['A', 'B'] }],
+            participantData: { alice: { answers: { q1: 'A' } } },
+            aggregation: {
+                questions: { q1: { counts: { A: 99, B: 0 }, total: 99 } },
+                totalParticipants: 99
+            }
+        }
+    }));
+
+    blackboard.patchWidget('poll_1', {
+        properties: {
+            participantData: { mallory: { answers: { q1: 'B' } } },
+            aggregation: {
+                questions: { q1: { counts: { A: 0, B: 99 }, total: 99 } },
+                totalParticipants: 99
+            },
+            description: 'Changed'
+        }
+    }, { canManagePoll: true });
+
+    const poll = blackboard.getWidget('poll_1');
+    assert.equal(poll.properties.description, 'Changed');
+    assert.deepEqual(poll.properties.participantData, {});
+    assert.deepEqual(poll.properties.aggregation, {
+        questions: { q1: { counts: { A: 0, B: 0 }, total: 0 } },
+        totalParticipants: 0
+    });
 });
 
 test('blackboard undo and redo keep a bounded final-operation history', () => {
@@ -254,6 +557,19 @@ test('blackboard.updated uses the canonical WebMeet event format', () => {
     assert.equal(parsed.payload.blackboardVersion, 7);
 });
 
+test('blackboard realtime events are routed to dashboard room handlers', () => {
+    const codec = new WebMeetRoomEvents();
+
+    assert.equal(
+        codec.resolveRoomEventType(WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED),
+        ROOM_EVENT_TYPES.BLACKBOARD_UPDATED
+    );
+    assert.equal(
+        codec.resolveRoomEventType(WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED),
+        ROOM_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED
+    );
+});
+
 test('blackboard protocol serializes final filtered objects with actor addresses', () => {
     const encoded = encodeBlackboardProtocolMessage({
         from: 'user:participant_1',
@@ -261,6 +577,7 @@ test('blackboard protocol serializes final filtered objects with actor addresses
         payload: {
             kind: 'widget',
             roomId: 'room_1',
+            boardId: 'agent:agent_robo_team',
             version: 3,
             visibility: { mode: 'all' },
             object: { id: 'widget_1', version: 3 }
@@ -272,6 +589,7 @@ test('blackboard protocol serializes final filtered objects with actor addresses
     assert.equal(parsed.from, 'user:participant_1');
     assert.equal(parsed.to, 'ALL');
     assert.equal(parsed.payload.kind, 'widget');
+    assert.equal(parsed.payload.boardId, 'agent:agent_robo_team');
     assert.equal(parsed.payload.object.id, 'widget_1');
 });
 
@@ -279,6 +597,7 @@ test('blackboard network adapter deduplicates and applies final protocol objects
     let resyncCount = 0;
     const adapter = new BlackboardNetworkAdapter({
         roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
         participantId: 'participant_1',
         runTool: async () => {
             resyncCount += 1;
@@ -293,6 +612,7 @@ test('blackboard network adapter deduplicates and applies final protocol objects
         payload: {
             kind: 'widget',
             roomId: 'room_1',
+            boardId: 'agent:agent_robo_team',
             messageId: 'bb_msg_1',
             version: 4,
             visibility: { mode: 'all' },
@@ -301,6 +621,7 @@ test('blackboard network adapter deduplicates and applies final protocol objects
     });
     const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_1',
+        boardId: 'agent:agent_robo_team',
         blackboardVersion: 4,
         changeType: 'update',
         objectKind: 'widget',
@@ -318,6 +639,7 @@ test('blackboard theme updates are broadcast as full blackboard updates for othe
     const received = [];
     const adapter = new BlackboardNetworkAdapter({
         roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
         participantId: 'participant_2',
         runTool: async () => {
             throw new Error('Theme broadcast should not require resync.');
@@ -331,11 +653,13 @@ test('blackboard theme updates are broadcast as full blackboard updates for othe
         payload: {
             kind: 'blackboard',
             roomId: 'room_1',
+            boardId: 'agent:agent_robo_team',
             messageId: 'bb_theme_1',
             version: 8,
             visibility: { mode: 'all' },
             object: {
                 roomId: 'room_1',
+                boardId: 'agent:agent_robo_team',
                 version: 8,
                 metadata: { theme: { id: 'leadership' } },
                 widgets: []
@@ -344,6 +668,7 @@ test('blackboard theme updates are broadcast as full blackboard updates for othe
     });
     const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_1',
+        boardId: 'agent:agent_robo_team',
         blackboardVersion: 8,
         changeType: 'update',
         targetType: 'blackboard',
@@ -558,6 +883,114 @@ test('blackboard widgets support final resize changes for shape line card text a
     assert.match(source, /event\.target\?\.closest\?\.\('\[data-resize-handle\]'\)/);
     assert.match(css, /\.webmeet-blackboard-resize-handle/);
     assert.match(css, /\.webmeet-blackboard-widget\[aria-selected="true"\] \.webmeet-blackboard-resize-handle/);
+});
+
+test('blackboard poll widget renders summary modal and poll settings', async () => {
+    const componentDir = path.resolve(
+        import.meta.dirname,
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard'
+    );
+    const panelSource = await readBlackboardPanelSource();
+    const panelCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
+        'utf8'
+    );
+    const editorHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-widget-editor/webmeet-blackboard-widget-editor.html'),
+        'utf8'
+    );
+    const editorSource = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-widget-editor/webmeet-blackboard-widget-editor.js'),
+        'utf8'
+    );
+    const pollModalHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-poll-modal/webmeet-blackboard-poll-modal.html'),
+        'utf8'
+    );
+    const pollModalSource = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-poll-modal/webmeet-blackboard-poll-modal.js'),
+        'utf8'
+    );
+    const pollModalCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-poll-modal/webmeet-blackboard-poll-modal.css'),
+        'utf8'
+    );
+    const pollResultsModalHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-poll-results-modal/webmeet-blackboard-poll-results-modal.html'),
+        'utf8'
+    );
+    const pollResultsModalSource = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-poll-results-modal/webmeet-blackboard-poll-results-modal.js'),
+        'utf8'
+    );
+    const pollResultsModalCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-poll-results-modal/webmeet-blackboard-poll-results-modal.css'),
+        'utf8'
+    );
+    const pluginConfig = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/config.json'),
+        'utf8'
+    );
+
+    assert.match(panelSource, /renderPollWidgetContent\(node, widget\)/);
+    assert.match(panelSource, /void this\.openPollModal\(widget\)/);
+    assert.match(panelSource, /void this\.openPollResultsModal\(widget\)/);
+    assert.match(panelSource, /webmeet-blackboard-poll-summary subtle-button/);
+    assert.match(panelSource, /createPollAdminActions\(widget, statusValue, canManagePoll\)/);
+    assert.match(panelSource, /void this\.startPollWidget\(widget\)/);
+    assert.match(panelSource, /void this\.closePollWidget\(widget\)/);
+    assert.match(panelSource, /resultsButton\.textContent = 'Results'/);
+    assert.doesNotMatch(panelSource, /createResultsElement\(\)/);
+    assert.doesNotMatch(panelSource, /createParticipantTable\(\)/);
+    assert.match(panelCss, /\.webmeet-blackboard-poll-summary/);
+    assert.doesNotMatch(panelCss, /\.webmeet-blackboard-poll-results/);
+    assert.doesNotMatch(panelCss, /\.webmeet-blackboard-poll-table/);
+    assert.doesNotMatch(panelCss, /\.webmeet-blackboard-poll-button/);
+    assert.match(pluginConfig, /"component": "webmeet-blackboard-poll-modal"/);
+    assert.match(pluginConfig, /"component": "webmeet-blackboard-poll-results-modal"/);
+    assert.match(pollModalHtml, /class="modal-header"/);
+    assert.match(pollModalHtml, /class="general-button"/);
+    assert.match(pollModalHtml, /class="webmeet-blackboard-poll-modal-layout" data-role="questions"/);
+    assert.doesNotMatch(pollModalHtml, /data-role="participantsSection"/);
+    assert.doesNotMatch(pollModalHtml, /data-role="resultsSection"/);
+    assert.match(pollModalSource, /input\.type = 'radio'/);
+    assert.match(pollModalSource, /participantName: this\.participantName \|\| this\.participantId/);
+    assert.match(pollModalSource, /renderQuestion\(question\)/);
+    assert.match(pollModalSource, /options\.className = 'webmeet-blackboard-poll-modal-options'/);
+    assert.doesNotMatch(pollModalSource, /if \(total > 0 && count === 0\) continue/);
+    assert.doesNotMatch(pollModalSource, /createParticipantTable\(\)/);
+    assert.doesNotMatch(pollModalSource, /renderParticipants\(\)/);
+    assert.doesNotMatch(panelSource, /Object\.values\(participantData\)/);
+    assert.match(pollModalCss, /max-height: min\(72vh, 760px\)/);
+    assert.match(pollModalCss, /overflow: auto/);
+    assert.match(pollModalCss, /\.webmeet-blackboard-poll-modal-options/);
+    assert.doesNotMatch(pollModalCss, /\.webmeet-blackboard-poll-participants-section/);
+    assert.match(pollModalCss, /@media \(max-width: 720px\)/);
+    assert.match(pollResultsModalHtml, /class="webmeet-blackboard-poll-results-modal"/);
+    assert.match(pollResultsModalHtml, /data-role="participantsSection"/);
+    assert.match(pollResultsModalSource, /questionRow\.className = 'webmeet-blackboard-poll-question-row'/);
+    assert.match(pollResultsModalSource, /if \(total > 0 && count === 0\) continue/);
+    assert.match(pollResultsModalSource, /createParticipantTable\(\)/);
+    assert.match(pollResultsModalSource, /renderParticipants\(\)/);
+    assert.match(pollResultsModalSource, /getParticipantDisplayName\(participantId, entry\)/);
+    assert.match(pollResultsModalSource, /Object\.values\(entry\.answers \|\| \{\}\)\.join/);
+    assert.match(pollResultsModalCss, /grid-template-columns: minmax\(160px, 0\.52fr\) minmax\(260px, 1fr\)/);
+    assert.match(pollResultsModalCss, /\.webmeet-blackboard-poll-participants-section/);
+    assert.match(editorHtml, /data-role="questions"/);
+    assert.match(editorHtml, /data-role="addQuestion"/);
+    assert.match(editorHtml, /data-role="allowPollChange"/);
+    assert.match(editorHtml, /data-role="anonymous"/);
+    assert.match(editorHtml, /data-role="durationSeconds"/);
+    assert.match(editorSource, /patch\.properties\.description = text/);
+    assert.match(editorSource, /addPollQuestion\(\)/);
+    assert.match(editorSource, /renderPollQuestionInputs\(questions/);
+    assert.match(editorSource, /data-role="questionPollMode"/);
+    assert.match(editorSource, /data-role="questionOptions"/);
+    assert.match(editorSource, /data-role="questionRatingMax"/);
+    assert.match(editorSource, /patch\.properties\.questions = questions\.map/);
+    assert.match(editorSource, /patch\.properties\.allowPollChange = this\.allowPollChangeInput\?\.checked === true/);
+    assert.match(editorSource, /patch\.properties\.anonymous = this\.anonymousInput\?\.checked === true/);
+    assert.match(editorSource, /patch\.properties\.durationSeconds/);
 });
 
 test('blackboard supports image upload widgets', async () => {
@@ -893,6 +1326,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             authInfo,
             change: {
                 changeType: 'create',
@@ -905,16 +1339,27 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             }
         });
 
-        const response = await getRoomBlackboard(context, { roomId: meeting.roomId, authInfo });
+        const response = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo
+        });
         const events = await listMeetingEvents(context, meeting.roomId);
         const record = await loadRoomRecord(context, meeting.roomId);
         const payload = decryptRoomPayload(context, record);
         const roboTeam = payload.agents.find((agent) => agent.id === 'agent_robo_team');
 
         assert.ok(response.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
+        assert.equal(response.blackboard.boardId, 'agent:agent_robo_team');
+        assert.equal(response.blackboard.boardOwnerType, 'agent');
+        assert.equal(response.blackboard.boardOwnerId, 'agent_robo_team');
+        assert.equal(response.blackboard.boardVisibility, 'room');
         assert.equal(payload.blackboard, undefined);
         assert.ok(roboTeam.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
+        assert.equal(roboTeam.blackboard.boardId, 'agent:agent_robo_team');
+        assert.equal(roboTeam.blackboard.metadata.boardOwnerType, 'agent');
         assert.ok(events.some((event) => parseWebMeetEvent(event).type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED));
+        assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === 'agent:agent_robo_team'));
     } finally {
         if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
         else process.env.WEBMEET_DATA_DIR = previousDataDir;
@@ -946,6 +1391,7 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
         });
         await dispatch('webmeet_blackboard_apply', {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             participantId: 'participant-admin',
             change: JSON.stringify({
                 changeType: 'create',
@@ -963,6 +1409,7 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
 
         const response = await dispatch('webmeet_blackboard_apply', {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             participantId: 'participant-admin',
             change: JSON.stringify({
                 changeType: 'update',
@@ -979,10 +1426,21 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
         assert.equal(response.broadcast.version, response.blackboard.version);
         assert.equal(response.broadcast.ownerParticipantId, 'agent_robo_team');
         assert.equal(response.broadcast.blackboardId, response.blackboard.id);
+        assert.equal(response.broadcast.boardId, 'agent:agent_robo_team');
+        assert.equal(response.broadcast.boardOwnerType, 'agent');
+        assert.equal(response.broadcast.boardOwnerId, 'agent_robo_team');
+        assert.equal(response.broadcast.boardVisibility, 'room');
         assert.notEqual(response.broadcast.version, response.object.version);
+
+        await assert.rejects(dispatch('webmeet_blackboard_get', {
+            roomId: meeting.roomId,
+            boardId: 'participant:participant-admin',
+            participantId: 'participant-admin'
+        }, context, authInfo), /Participant-owned blackboards are not enabled yet/);
 
         const backgroundResponse = await dispatch('webmeet_blackboard_apply', {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             participantId: 'participant-admin',
             change: JSON.stringify({
                 changeType: 'update',
@@ -1032,36 +1490,42 @@ test('webmeet blackboard submit derives participant authority from joined partic
         });
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             participantId: 'participant_admin',
             authInfo: adminAuth,
             change: {
                 changeType: 'create',
                 targetType: 'widget',
                 widget: {
-                    id: 'quiz_1',
-                    type: 'quiz',
-                    properties: { prompt: 'Q', participantData: {}, resultsVisibility: 'moderators' }
+                    id: 'card_1',
+                    type: 'card',
+                    properties: { text: 'Q', participantData: {}, resultsVisibility: 'moderators' }
                 }
             }
         });
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             participantId: 'participant_user_1',
             authInfo: userAuth,
             change: {
                 changeType: 'submit',
                 targetType: 'widget',
-                targetRef: 'quiz_1',
+                targetRef: 'card_1',
                 participantId: 'participant_admin',
                 data: { answer: 'spoof attempt' }
             }
         });
 
-        const moderatorView = await getRoomBlackboard(context, { roomId: meeting.roomId, authInfo: adminAuth });
-        const quiz = moderatorView.blackboard.widgets.find((widget) => widget.id === 'quiz_1');
-        assert.equal(quiz.properties.participantData.participant_admin, undefined);
-        assert.deepEqual(quiz.properties.participantData.participant_user_1, { answer: 'spoof attempt' });
+        const moderatorView = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo: adminAuth
+        });
+        const card = moderatorView.blackboard.widgets.find((widget) => widget.id === 'card_1');
+        assert.equal(card.properties.participantData.participant_admin, undefined);
+        assert.deepEqual(card.properties.participantData.participant_user_1, { answer: 'spoof attempt' });
     } finally {
         if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
         else process.env.WEBMEET_DATA_DIR = previousDataDir;
@@ -1093,6 +1557,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
             participantId: 'participant_user_1',
             authInfo: userAuth,
             change: {
@@ -1107,7 +1572,11 @@ test('webmeet blackboard strips non-admin visibility authority from final change
             }
         });
 
-        const adminView = await getRoomBlackboard(context, { roomId: meeting.roomId, authInfo: adminAuth });
+        const adminView = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo: adminAuth
+        });
         const widget = adminView.blackboard.widgets.find((entry) => entry.id === 'shape_private');
         assert.deepEqual(widget.visibility, { mode: 'all' });
     } finally {
