@@ -585,9 +585,11 @@ test('blackboard supports image upload widgets', async () => {
     assert.match(panelSource, /addImageWidgetFromFile\(file\)/);
     assert.match(panelSource, /createWidget\('image'\)/);
     assert.match(panelSource, /widget\.type === 'image'/);
+    assert.match(panelSource, /className = 'webmeet-blackboard-image-frame'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image'/);
     assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image'\]\.includes/);
-    assert.match(panelCss, /\.webmeet-blackboard-image/);
+    assert.match(panelCss, /\.webmeet-blackboard-image-frame/);
+    assert.match(panelCss, /\.webmeet-blackboard-image-frame[\s\S]*border: var\(--stroke-width/);
 });
 
 test('blackboard supports shape variants angled lines and arrows', async () => {
@@ -633,6 +635,7 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /line-end/);
     assert.match(panelSource, /getLineEndpointResize\(state, event\)/);
     assert.match(panelSource, /movingEndpoint: handle === 'line-start' \? 'start' : 'end'/);
+    assert.match(panelSource, /canRotateWidget\(widget\)[\s\S]*\['shape', 'line', 'text', 'image'\]\.includes/);
     assert.match(panelCss, /\.webmeet-blackboard-line-svg/);
     assert.match(panelCss, /\.webmeet-blackboard-resize-handle\.line-endpoint/);
     assert.doesNotMatch(editorHtml, /data-role="shapeKind"/);
@@ -654,12 +657,17 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.doesNotMatch(editorSource, /patch\.properties\.shapeKind/);
     assert.match(editorSource, /SURFACE_WIDGET_TYPES/);
     assert.match(editorSource, /TEXT_COLOR_WIDGET_TYPES/);
+    assert.match(panelSource, /'theme-json': encodeURIComponent\(JSON\.stringify\(this\.getBlackboardTheme\(\)\)\)/);
+    assert.match(editorSource, /readJsonAttribute\(element, 'data-theme-json'\)/);
+    assert.match(editorSource, /delete style\[property\]/);
+    assert.match(editorSource, /sameColor\(normalizedValue, normalizedDefault\)/);
     assert.match(editorSource, /style\.fontFamily/);
     assert.match(editorSource, /style\.fontSize/);
     assert.match(editorSource, /style\.fontWeight/);
     assert.match(editorSource, /style\.fontStyle/);
     assert.match(editorHtml, /data-role="fillTransparent"/);
-    assert.match(editorSource, /style\.fill = this\.fillTransparentInput\?\.checked[\s\S]*\? 'transparent'/);
+    assert.match(editorSource, /style\.fill = 'transparent'/);
+    assert.match(editorSource, /this\.setThemedStyleValue\(style, 'fill', this\.fillInput\?\.value, typeDefaults\.fill\)/);
     assert.match(editorSource, /patch\.properties\.line/);
     assert.match(editorSource, /strokeWidth/);
     assert.match(panelCss, /border: var\(--stroke-width/);
@@ -715,10 +723,31 @@ test('blackboard exposes Leadership theme extracted from the provided palette', 
     assert.equal(theme.tokens.boardGridColor, '#d8d6d5');
     assert.equal(theme.tokens.widgetBorder, '#5d9cac');
     assert.equal(theme.tokens.selectionColor, '#6276b7');
+    assert.equal(theme.defaults.shape.fill, '#d7eef0');
     assert.equal(theme.defaults.shape.stroke, '#5d9cac');
     assert.equal(theme.defaults.line.stroke, '#6276b7');
+    assert.equal(theme.defaults.text.fill, 'transparent');
     assert.equal(theme.defaults.text.stroke, '#91c9c8');
     assert.equal(theme.defaults.text.textColor, '#315f86');
+});
+
+test('blackboard text widget theme defaults are transparent in every theme', () => {
+    for (const option of getBlackboardThemeOptions()) {
+        const theme = getBlackboardTheme(option.id);
+        assert.equal(theme.defaults.text.fill, 'transparent', `${option.id} text fill`);
+    }
+    assert.equal(getBlackboardTheme('slate').defaults.text.textColor, '#e0f2fe');
+    assert.equal(getBlackboardTheme('contrast').tokens.widgetText, '#ffffff');
+    assert.equal(getBlackboardTheme('contrast').defaults.text.textColor, '#ffffff');
+});
+
+test('blackboard image widget defaults are transparent and borderless in every theme', () => {
+    for (const option of getBlackboardThemeOptions()) {
+        const theme = getBlackboardTheme(option.id);
+        assert.equal(theme.defaults.image.fill, 'transparent', `${option.id} image fill`);
+        assert.equal(theme.defaults.image.strokeWidth, 0, `${option.id} image strokeWidth`);
+        assert.match(theme.defaults.image.stroke, /^#[0-9a-f]{6}$/i, `${option.id} image stroke`);
+    }
 });
 
 test('blackboard widgets rely on theme defaults until a style is explicitly set', async () => {
@@ -729,9 +758,12 @@ test('blackboard widgets rely on theme defaults until a style is explicitly set'
     assert.doesNotMatch(source, /stroke: shapeDefaults\.stroke/);
     assert.doesNotMatch(source, /stroke: lineDefaults\.stroke/);
     assert.doesNotMatch(source, /textColor: textDefaults\.textColor/);
+    assert.match(source, /normalizedType === 'text'[\s\S]*fill: 'transparent'/);
     assert.match(source, /style\.fill \|\| typeDefaults\.fill/);
     assert.match(source, /style\.stroke \|\| typeDefaults\.stroke/);
+    assert.match(source, /node\.style\.setProperty\('--stroke-width', `\$\{cssStrokeWidth\}px`\)/);
     assert.match(source, /normalized\.textColor \|\| textDefaults\.textColor/);
+    assert.match(source, /node\.style\.setProperty\('--text-color', style\.textColor \|\| textDefaults\.textColor/);
     assert.match(source, /resetThemeStyles: true/);
 });
 

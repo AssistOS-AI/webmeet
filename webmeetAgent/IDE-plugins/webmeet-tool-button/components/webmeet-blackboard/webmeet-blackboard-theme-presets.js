@@ -24,7 +24,8 @@ const blackboardThemePresets = [
         defaults: {
             shape: {fill: '#ffffff', stroke: '#334155', strokeWidth: 2},
             line: {stroke: '#334155', strokeWidth: 3},
-            text: {fill: '#ffffff', stroke: '#cbd5e1', textColor: '#172033'}
+            text: {fill: 'transparent', stroke: '#cbd5e1', textColor: '#172033'},
+            image: {fill: 'transparent', stroke: '#334155', strokeWidth: 0}
         }
     },
     {
@@ -48,9 +49,10 @@ const blackboardThemePresets = [
             danger: '#ef4444'
         },
         defaults: {
-            shape: {fill: '#f9fafb', stroke: '#38bdf8', strokeWidth: 2},
+            shape: {fill: '#e0f2fe', stroke: '#38bdf8', strokeWidth: 2},
             line: {stroke: '#38bdf8', strokeWidth: 3},
-            text: {fill: '#f9fafb', stroke: '#38bdf8', textColor: '#075985'}
+            text: {fill: 'transparent', stroke: '#38bdf8', textColor: '#e0f2fe'},
+            image: {fill: 'transparent', stroke: '#38bdf8', strokeWidth: 0}
         }
     },
     {
@@ -74,9 +76,10 @@ const blackboardThemePresets = [
             danger: '#b91c1c'
         },
         defaults: {
-            shape: {fill: '#ffffff', stroke: '#7c6f57', strokeWidth: 2},
+            shape: {fill: '#fff7df', stroke: '#7c6f57', strokeWidth: 2},
             line: {stroke: '#7c6f57', strokeWidth: 3},
-            text: {fill: '#ffffff', stroke: '#b8a47f', textColor: '#5f4b24'}
+            text: {fill: 'transparent', stroke: '#b8a47f', textColor: '#5f4b24'},
+            image: {fill: 'transparent', stroke: '#7c6f57', strokeWidth: 0}
         }
     },
     {
@@ -100,9 +103,10 @@ const blackboardThemePresets = [
             danger: '#dc2626'
         },
         defaults: {
-            shape: {fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2},
+            shape: {fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 2},
             line: {stroke: '#16a34a', strokeWidth: 3},
-            text: {fill: '#ffffff', stroke: '#16a34a', textColor: '#166534'}
+            text: {fill: 'transparent', stroke: '#16a34a', textColor: '#166534'},
+            image: {fill: 'transparent', stroke: '#16a34a', strokeWidth: 0}
         }
     },
     {
@@ -126,9 +130,10 @@ const blackboardThemePresets = [
             danger: '#b91c1c'
         },
         defaults: {
-            shape: {fill: '#ffffff', stroke: '#5d9cac', strokeWidth: 2},
+            shape: {fill: '#d7eef0', stroke: '#5d9cac', strokeWidth: 2},
             line: {stroke: '#6276b7', strokeWidth: 3},
-            text: {fill: '#ffffff', stroke: '#91c9c8', textColor: '#315f86'}
+            text: {fill: 'transparent', stroke: '#91c9c8', textColor: '#315f86'},
+            image: {fill: 'transparent', stroke: '#5d9cac', strokeWidth: 0}
         }
     },
     {
@@ -140,7 +145,7 @@ const blackboardThemePresets = [
             boardGridColor: '#27272a',
             boardBorder: '#ffffff',
             widgetSurface: '#ffffff',
-            widgetText: '#000000',
+            widgetText: '#ffffff',
             widgetBorder: '#ffffff',
             selectionColor: '#facc15',
             selectionShadow: 'rgba(250, 204, 21, 0.45)',
@@ -152,9 +157,10 @@ const blackboardThemePresets = [
             danger: '#ef4444'
         },
         defaults: {
-            shape: {fill: '#ffffff', stroke: '#facc15', strokeWidth: 3},
+            shape: {fill: '#facc15', stroke: '#ffffff', strokeWidth: 3},
             line: {stroke: '#facc15', strokeWidth: 4},
-            text: {fill: '#ffffff', stroke: '#facc15', textColor: '#000000'}
+            text: {fill: 'transparent', stroke: '#facc15', textColor: '#ffffff'},
+            image: {fill: 'transparent', stroke: '#ffffff', strokeWidth: 0}
         }
     }
 ];

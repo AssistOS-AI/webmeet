@@ -317,6 +317,7 @@ export const blackboardActionMethods = {
             widget.properties.label = '';
         } else if (normalizedType === 'text') {
             widget.properties.style = {
+                fill: 'transparent',
                 fontFamily: TEXT_DEFAULT_STYLE.fontFamily,
                 fontSize: TEXT_DEFAULT_STYLE.fontSize,
                 fontWeight: TEXT_DEFAULT_STYLE.fontWeight,
@@ -387,7 +388,7 @@ export const blackboardActionMethods = {
     },
 
     canRotateWidget(widget) {
-        return !widget?.locked && ['shape', 'text', 'image'].includes(String(widget?.type || '').trim());
+        return !widget?.locked && ['shape', 'line', 'text', 'image'].includes(String(widget?.type || '').trim());
     },
 
     getWidgetRotation(widget) {
@@ -463,7 +464,8 @@ export const blackboardActionMethods = {
         if (!widget || widget.locked) return;
         if (!globalThis.assistOS?.UI?.showModal) return;
         const result = await globalThis.assistOS.UI.showModal('webmeet-blackboard-widget-editor', {
-            'widget-json': encodeURIComponent(JSON.stringify(widget))
+            'widget-json': encodeURIComponent(JSON.stringify(widget)),
+            'theme-json': encodeURIComponent(JSON.stringify(this.getBlackboardTheme()))
         }, true);
         if (!result?.patch || !widget.id) return;
         await this.runFinalChange({

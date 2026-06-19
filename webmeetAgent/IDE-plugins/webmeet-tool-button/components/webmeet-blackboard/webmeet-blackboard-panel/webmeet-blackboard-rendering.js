@@ -44,7 +44,8 @@ export const blackboardRenderingMethods = {
         const textDefaults = themeDefaults.text || {};
         node.style.setProperty('--fill', style.fill || typeDefaults.fill || 'var(--bb-widget-bg)');
         node.style.setProperty('--stroke', style.stroke || typeDefaults.stroke || 'var(--bb-widget-border)');
-        node.style.setProperty('--stroke-width', String(Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? 1) || 0));
+        const cssStrokeWidth = Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? 1) || 0;
+        node.style.setProperty('--stroke-width', `${cssStrokeWidth}px`);
         node.style.setProperty('--text-color', style.textColor || textDefaults.textColor || 'var(--bb-widget-text)');
         this.renderWidgetContent(node, widget);
         this.renderResizeHandles(node, widget);
@@ -165,13 +166,16 @@ export const blackboardRenderingMethods = {
             return;
         }
         if (widget.type === 'image') {
+            const frame = document.createElement('div');
+            frame.className = 'webmeet-blackboard-image-frame';
             const image = document.createElement('img');
             const source = widget.properties?.source || {};
             image.className = 'webmeet-blackboard-image';
             image.alt = String(widget.properties?.alt || source.name || 'Image');
             image.draggable = false;
             image.src = String(source.url || source.downloadUrl || widget.properties?.src || '');
-            node.append(image);
+            frame.append(image);
+            node.append(frame);
             return;
         }
         if (widget.type === 'quiz' || widget.type === 'vote') {
