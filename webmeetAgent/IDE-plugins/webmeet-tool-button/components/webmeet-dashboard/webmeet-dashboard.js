@@ -43,7 +43,7 @@ import {
 let avatarSettingsFormRegistrationPromise = null;
 
 function getSharedAvatarSettingsComponentBaseUrl() {
-    return '/explorer/ui-shared/avatar-settings-form/avatar-settings-form';
+    return '/explorer/shared/ui/avatar-settings-form/avatar-settings-form';
 }
 
 async function fetchComponentText(url, description) {

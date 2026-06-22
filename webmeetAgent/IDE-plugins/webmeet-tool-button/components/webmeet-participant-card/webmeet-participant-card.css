@@ -201,8 +201,7 @@ webmeet-participant-card.is-focused .wm-participant-stage {
     background: color-mix(in srgb, var(--surface) 56%, transparent);
     backdrop-filter: blur(4px);
     margin: 0;
-    opacity: 0;
-    transform: translateY(4px);
+    opacity: 1;
     pointer-events: none;
     transition: opacity 0.16s ease, transform 0.16s ease;
     top: 0;

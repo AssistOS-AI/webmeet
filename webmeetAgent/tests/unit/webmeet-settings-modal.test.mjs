@@ -59,7 +59,7 @@ test('WebMeet close buttons use the shared modal icon asset from ui-common', asy
         'components/webmeet-participant-audio-modal/webmeet-participant-audio-modal.html',
         'components/webmeet-room-settings-modal/webmeet-room-settings-modal.html'
     ];
-    const commonCss = await fs.readFile(path.join(repoRoot, '../explorer/ui-common.css'), 'utf8');
+    const commonCss = await fs.readFile(path.join(repoRoot, '../explorer/shared/ui/ui-common.css'), 'utf8');
 
     assert.match(commonCss, /\.close:empty::before\s*\{[\s\S]*\/explorer\/assets\/icons\/x-mark\.svg/);
     for (const file of htmlFiles) {

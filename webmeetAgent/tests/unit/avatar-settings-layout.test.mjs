@@ -6,7 +6,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const sharedAvatarSettingsCssPath = path.join(
     repoRoot,
-    '../shared/ui/avatar-settings-form/avatar-settings-form.css'
+    '../explorer/shared/ui/avatar-settings-form/avatar-settings-form.css'
 );
 
 test('shared avatar settings form groups fields in aligned responsive sections', async () => {

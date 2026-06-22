@@ -1,4 +1,4 @@
-import WebSkel from '/web-libs/webskel/webskel.mjs';
+import WebSkel from '/explorer/shared/libs/webskel/webskel.mjs';
 
 const ROOM_ID_PATTERN = /^room_[0-9a-fA-F-]{36}$/;
 const MCP_PROTOCOL_VERSION = '2025-06-18';
