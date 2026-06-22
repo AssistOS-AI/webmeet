@@ -13,7 +13,8 @@ webmeet-blackboard-panel {
     flex: 1;
     position: relative;
     min-height: inherit;
-    overflow: hidden;
+    overflow: auto;
+    overscroll-behavior: contain;
     border: 1px solid var(--bb-board-border, #d6deea);
     background-color: var(--bb-board-bg);
     height: 100%;

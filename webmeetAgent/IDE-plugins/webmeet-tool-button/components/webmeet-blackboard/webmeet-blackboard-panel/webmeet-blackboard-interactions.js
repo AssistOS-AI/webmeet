@@ -229,8 +229,10 @@ export const blackboardInteractionMethods = {
         const scale = Number(this.viewport?.scale || 1) || 1;
         const viewportX = Number(this.viewport?.x || 0) || 0;
         const viewportY = Number(this.viewport?.y || 0) || 0;
-        const x = (Number(event.clientX || 0) - Number(rect.left || 0) - viewportX) / scale;
-        const y = (Number(event.clientY || 0) - Number(rect.top || 0) - viewportY) / scale;
+        const scrollX = Number(this.board?.scrollLeft || 0) || 0;
+        const scrollY = Number(this.board?.scrollTop || 0) || 0;
+        const x = (Number(event.clientX || 0) - Number(rect.left || 0) + scrollX - viewportX) / scale;
+        const y = (Number(event.clientY || 0) - Number(rect.top || 0) + scrollY - viewportY) / scale;
         if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
         return {
             x: Math.max(0, x),

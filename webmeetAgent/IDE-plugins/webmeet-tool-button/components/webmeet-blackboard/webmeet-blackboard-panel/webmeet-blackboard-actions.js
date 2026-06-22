@@ -693,6 +693,9 @@ export const blackboardActionMethods = {
         const onBlur = () => {
             void this.finishInlineTextEdit(true);
         };
+        const onInput = () => {
+            this.growInlineTextBoxToFit(widget.id, editable);
+        };
         const onKeyDown = (event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
@@ -709,10 +712,12 @@ export const blackboardActionMethods = {
             initialText,
             editable,
             onBlur,
+            onInput,
             onKeyDown,
             finishing: false
         };
         editable.addEventListener('blur', onBlur);
+        editable.addEventListener('input', onInput);
         editable.addEventListener('keydown', onKeyDown);
     },
 
@@ -731,13 +736,14 @@ export const blackboardActionMethods = {
             return this.inlineEditCommitPromise || null;
         }
         state.finishing = true;
-        const { editable, initialText, onBlur, onKeyDown, property, widgetId } = state;
+        const { editable, initialText, onBlur, onInput, onKeyDown, property, widgetId } = state;
         editable.removeEventListener('blur', onBlur);
+        editable.removeEventListener('input', onInput);
         editable.removeEventListener('keydown', onKeyDown);
         editable.contentEditable = 'false';
         this.inlineEditState = null;
         this.inlineEditWidgetId = '';
-        const nextText = editable.textContent || '';
+        const nextText = this.readInlineEditableText(editable);
         if (!commit) {
             editable.textContent = initialText;
             if (this.pendingRenderAfterInlineEdit) {
@@ -755,18 +761,60 @@ export const blackboardActionMethods = {
             }
             return null;
         }
-        this.inlineEditCommitPromise = this.runFinalChange({
-            changeType: 'update',
-            targetType: 'widget',
-            targetRef: widgetId,
-            reason: 'edit',
-            patch: {properties: {[property]: nextText}}
-        }).finally(() => {
+        const fitGeometry = this.getInlineTextFitGeometry(widgetId, editable);
+        this.inlineEditCommitPromise = (async () => {
+            await this.runFinalChange({
+                changeType: 'update',
+                targetType: 'widget',
+                targetRef: widgetId,
+                reason: 'edit',
+                patch: {properties: {[property]: nextText}}
+            });
+            if (fitGeometry) {
+                await this.runFinalChange({
+                    changeType: 'update',
+                    targetType: 'widget',
+                    targetRef: widgetId,
+                    reason: 'resize',
+                    patch: {properties: {geometry: fitGeometry}}
+                });
+            }
+        })().finally(() => {
             this.inlineEditCommitPromise = null;
             if (this.pendingRenderAfterInlineEdit) {
                 this.renderWidgets();
             }
         });
         return this.inlineEditCommitPromise;
+    },
+
+    readInlineEditableText(editable) {
+        return String(editable?.innerText ?? editable?.textContent ?? '');
+    },
+
+    growInlineTextBoxToFit(widgetId, editable) {
+        const fitGeometry = this.getInlineTextFitGeometry(widgetId, editable);
+        if (!fitGeometry) return;
+        const node = this.widgetNodes.get(widgetId);
+        if (!node) return;
+        node.style.width = `${fitGeometry.width}px`;
+        node.style.height = `${fitGeometry.height}px`;
+    },
+
+    getInlineTextFitGeometry(widgetId, editable) {
+        const widget = (this.blackboard?.widgets || []).find((entry) => String(entry?.id || '') === String(widgetId || ''));
+        if (widget?.type !== 'text' || !editable) return null;
+        const node = this.widgetNodes.get(widgetId);
+        const geometry = widget.properties?.geometry || {};
+        const currentWidth = Math.max(1, Number(geometry.width || node?.offsetWidth || 120) || 120);
+        const currentHeight = Math.max(1, Number(geometry.height || node?.offsetHeight || 64) || 64);
+        const nextWidth = Math.ceil(Math.max(currentWidth, Number(editable.scrollWidth || 0) + 16));
+        const nextHeight = Math.ceil(Math.max(currentHeight, Number(editable.scrollHeight || 0) + 16));
+        if (nextWidth <= currentWidth && nextHeight <= currentHeight) return null;
+        return {
+            ...geometry,
+            width: nextWidth,
+            height: nextHeight
+        };
     }
 };

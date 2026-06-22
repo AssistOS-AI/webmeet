@@ -116,7 +116,7 @@ test('blackboard applies final background changes to board metadata', () => {
     assert.equal(blackboard.version, 1);
 });
 
-test('blackboard theme changes reset widget theme style fields', () => {
+test('blackboard theme changes reset only widget color style fields', () => {
     const blackboard = new Blackboard({ roomId: 'room_1' });
     blackboard.addWidget(new BlackboardWidget({
         id: 'shape_1',
@@ -159,8 +159,8 @@ test('blackboard theme changes reset widget theme style fields', () => {
     });
 
     assert.deepEqual(blackboard.metadata.theme, { id: 'leadership' });
-    assert.deepEqual(blackboard.getWidget('shape_1').properties.style, {});
-    assert.deepEqual(blackboard.getWidget('line_1').properties.style, {});
+    assert.deepEqual(blackboard.getWidget('shape_1').properties.style, { strokeWidth: 2 });
+    assert.deepEqual(blackboard.getWidget('line_1').properties.style, { strokeWidth: 3 });
     assert.deepEqual(blackboard.getWidget('text_1').properties.style, {
         fontFamily: 'Georgia',
         fontSize: 24,
@@ -773,7 +773,7 @@ test('RoboTeam card widgets persist inline edits into the canonical text propert
 
     assert.match(roboTeamSource, /id: 'robo_demo_context'[\s\S]*type: 'card'[\s\S]*text:/);
     assert.match(source, /widget\.type === 'card'[\s\S]*webmeet-blackboard-widget-title/);
-    assert.match(source, /patch:\s*\{\s*properties:\s*\{\s*\[property\]:\s*nextText\s*\}\s*\}/);
+    assert.match(source, /reason: 'edit'[\s\S]*patch:\s*\{\s*properties:\s*\{\s*\[property\]: nextText\s*\}\s*\}/);
     assert.match(source, /getEditableWidgetProperty\(\) \{[\s\S]*return 'text';[\s\S]*\}/);
     assert.doesNotMatch(editableTextMethod, /label/);
 });
@@ -796,9 +796,18 @@ test('blackboard inline text editing survives render refresh and flushes before 
     assert.match(renderWidgetsMethod, /if \(this\.inlineEditWidgetId\)/);
     assert.match(renderWidgetsMethod, /this\.pendingRenderAfterInlineEdit = true/);
     assert.match(startInlineTextEditMethod, /this\.inlineEditState = \{/);
+    assert.match(startInlineTextEditMethod, /editable\.addEventListener\('input', onInput\)/);
+    assert.match(startInlineTextEditMethod, /this\.growInlineTextBoxToFit\(widget\.id, editable\)/);
     assert.match(startInlineTextEditMethod, /void this\.finishInlineTextEdit\(true\)/);
     assert.match(flushInlineTextEditMethod, /await this\.finishInlineTextEdit\(true\)/);
     assert.match(flushInlineTextEditMethod, /await this\.inlineEditCommitPromise/);
+    assert.match(source, /readInlineEditableText\(editable\)[\s\S]*innerText/);
+    assert.match(source, /getInlineTextFitGeometry\(widgetId, editable\)/);
+    assert.match(source, /growInlineTextBoxToFit\(widgetId, editable\)/);
+    assert.match(source, /node\.style\.width = `\$\{fitGeometry\.width\}px`/);
+    assert.match(source, /editable\.scrollWidth/);
+    assert.match(source, /editable\.scrollHeight/);
+    assert.match(source, /reason: 'resize'[\s\S]*patch:\s*\{\s*properties:\s*\{\s*geometry: fitGeometry\s*\}\s*\}/);
     assert.doesNotMatch(source, /async setTextWidgetStyle\(detail = \{\}\)/);
     assert.match(source, /async undo\(\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
     assert.match(source, /async redo\(\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
@@ -910,6 +919,8 @@ test('blackboard selected toolbar widget is created at board click position', as
     board.addEventListener = () => {};
     board.removeEventListener = () => {};
     board.setPointerCapture = () => {};
+    board.scrollLeft = 40;
+    board.scrollTop = 60;
     board.getBoundingClientRect = () => ({ left: 30, top: 50, width: 640, height: 480 });
     const toolbarState = [];
     const element = {
@@ -981,8 +992,8 @@ test('blackboard selected toolbar widget is created at board click position', as
     assert.equal(sentChanges[0].widget.type, 'shape');
     assert.equal(sentChanges[0].widget.properties.shapeKind, 'ellipse');
     assert.deepEqual(sentChanges[0].widget.properties.geometry, {
-        x: 210,
-        y: 152,
+        x: 250,
+        y: 212,
         width: 180,
         height: 96
     });
@@ -1152,6 +1163,9 @@ test('blackboard widgets support final resize changes for shape line card text a
     assert.match(source, /event\.target\?\.closest\?\.\('\[data-resize-handle\]'\)/);
     assert.match(css, /\.webmeet-blackboard-resize-handle/);
     assert.match(css, /\.webmeet-blackboard-widget\[aria-selected="true"\] \.webmeet-blackboard-resize-handle/);
+    assert.match(css, /\.webmeet-blackboard-board[\s\S]*overflow: auto/);
+    assert.match(source, /scrollLeft/);
+    assert.match(source, /scrollTop/);
 });
 
 test('blackboard poll widget renders summary modal and poll settings', async () => {

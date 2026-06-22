@@ -30,6 +30,14 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     width: 100%;
 }
 
+.webmeet-blackboard-widget-editor .webmeet-tabs[hidden] {
+    display: none !important;
+}
+
+.webmeet-blackboard-editor-body.has-single-panel {
+    gap: 0;
+}
+
 .webmeet-blackboard-widget-editor .webmeet-tab {
     min-width: 92px;
 }

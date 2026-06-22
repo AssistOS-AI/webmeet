@@ -134,6 +134,8 @@ export class WebMeetBlackboardWidgetEditor {
     cacheElements() {
         this.form = this.element.querySelector('[data-role="form"]');
         this.title = this.element.querySelector('[data-role="title"]');
+        this.body = this.element.querySelector('[data-role="body"]');
+        this.tabsHost = this.element.querySelector('[data-role="tabs"]');
         this.tabs = Array.from(this.element.querySelectorAll('[data-tab]'));
         this.contentTab = this.element.querySelector('[data-role="contentTab"]');
         this.settingsTab = this.element.querySelector('[data-role="settingsTab"]');
@@ -209,6 +211,38 @@ export class WebMeetBlackboardWidgetEditor {
             tab.classList.toggle('is-active', active);
             tab.setAttribute('aria-selected', active ? 'true' : 'false');
         }
+    }
+
+    syncTabVisibility({hasContentPanel = true, hasSettingsPanel = true, activeTab = 'content'} = {}) {
+        const hasMultiplePanels = hasContentPanel && hasSettingsPanel;
+        if (this.tabsHost) this.tabsHost.hidden = !hasMultiplePanels;
+        this.body?.classList.toggle('has-single-panel', !hasMultiplePanels);
+        if (hasMultiplePanels) {
+            this.activateTab(activeTab);
+            return;
+        }
+        if (this.contentPanel) this.contentPanel.hidden = !hasContentPanel;
+        if (this.settingsPanel) this.settingsPanel.hidden = !hasSettingsPanel;
+        for (const tab of this.tabs || []) {
+            tab.classList.remove('active', 'is-active');
+            tab.setAttribute('aria-selected', 'false');
+        }
+    }
+
+    getEditorPanelState(type = '') {
+        const normalizedType = String(type || '').trim() || 'widget';
+        const hasContentPanel = TEXT_WIDGET_TYPES.has(normalizedType)
+            || CHOICE_WIDGET_TYPES.has(normalizedType)
+            || normalizedType === 'bullets';
+        const hasSettingsPanel = normalizedType === 'poll'
+            || normalizedType === 'text'
+            || normalizedType === 'line'
+            || SURFACE_WIDGET_TYPES.has(normalizedType);
+        return {
+            hasContentPanel,
+            hasSettingsPanel,
+            activeTab: hasContentPanel ? 'content' : 'settings'
+        };
     }
 
     addPollQuestion() {
@@ -478,7 +512,7 @@ export class WebMeetBlackboardWidgetEditor {
             if (this.pollSettingsSection) this.pollSettingsSection.hidden = true;
             if (this.lineSection) this.lineSection.hidden = true;
             if (this.surfaceSection) this.surfaceSection.hidden = true;
-            this.activateTab('content');
+            this.syncTabVisibility({hasContentPanel: false, hasSettingsPanel: false});
             if (this.saveButton) this.saveButton.disabled = true;
             return;
         }
@@ -568,7 +602,7 @@ export class WebMeetBlackboardWidgetEditor {
         if (this.strokeWidthInput) this.strokeWidthInput.value = String(Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? (isLine ? 3 : 2)) || 0);
         if (this.textColorField) this.textColorField.hidden = !hasTextColor;
         if (this.textColorInput) this.textColorInput.value = style.textColor || typeDefaults.textColor || TEXT_DEFAULT_STYLE.textColor;
-        this.activateTab(hasText || isPoll || isBullets ? 'content' : 'settings');
+        this.syncTabVisibility(this.getEditorPanelState(type));
     }
 
     getWidgetText(widget = {}) {

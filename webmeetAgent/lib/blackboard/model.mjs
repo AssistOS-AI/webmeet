@@ -88,16 +88,16 @@ function resetThemeStyleProperties(properties = {}, widgetType = '') {
     }
     const nextStyle = cloneJson(properties.style);
     const keysByType = {
-        shape: ['fill', 'stroke', 'strokeWidth'],
-        line: ['stroke', 'strokeWidth'],
-        text: ['fill', 'stroke', 'strokeWidth', 'textColor'],
-        card: ['fill', 'stroke', 'strokeWidth', 'textColor'],
-        poll: ['fill', 'stroke', 'strokeWidth', 'textColor'],
-        bullets: ['fill', 'stroke', 'strokeWidth', 'textColor'],
-        embed: ['fill', 'stroke', 'strokeWidth', 'textColor'],
-        image: ['stroke', 'strokeWidth']
+        shape: ['fill', 'stroke'],
+        line: ['stroke'],
+        text: ['fill', 'stroke', 'textColor'],
+        card: ['fill', 'stroke', 'textColor'],
+        poll: ['fill', 'stroke', 'textColor'],
+        bullets: ['fill', 'stroke', 'textColor'],
+        embed: ['fill', 'stroke', 'textColor'],
+        image: ['stroke']
     };
-    const keys = keysByType[String(widgetType || '').trim()] || ['fill', 'stroke', 'strokeWidth', 'textColor'];
+    const keys = keysByType[String(widgetType || '').trim()] || ['fill', 'stroke', 'textColor'];
     let changed = false;
     for (const key of keys) {
         if (Object.prototype.hasOwnProperty.call(nextStyle, key)) {

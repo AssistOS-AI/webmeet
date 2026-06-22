@@ -195,8 +195,8 @@
 }
 
 [data-icon-key='bullets']::before {
-    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/text.svg');
-    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/text.svg');
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/bullets.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/bullets.svg');
 }
 
 [data-icon-key='undo']::before {
