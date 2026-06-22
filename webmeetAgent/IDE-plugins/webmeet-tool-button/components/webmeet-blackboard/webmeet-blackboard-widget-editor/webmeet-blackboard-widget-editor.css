@@ -27,6 +27,7 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
 .webmeet-blackboard-widget-editor .webmeet-tabs {
     justify-self: start;
+    width: 100%;
 }
 
 .webmeet-blackboard-widget-editor .webmeet-tab {
@@ -51,10 +52,6 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
 .webmeet-blackboard-editor-section[hidden] {
     display: none;
-}
-
-.webmeet-blackboard-widget-editor textarea.form-input {
-    min-height: 78px;
 }
 
 .webmeet-blackboard-fill-control {
@@ -176,18 +173,65 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
 .webmeet-blackboard-bullets-editor-row {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) minmax(120px, 0.28fr) minmax(120px, 0.28fr) auto;
-    align-items: end;
-    gap: 10px;
+    grid-template-columns: minmax(260px, 1fr) 132px 118px 34px;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
-    padding: 12px;
+    padding: 8px;
     border: 1px solid var(--border, #d8e0ea);
     border-radius: 6px;
     background: var(--surface, #ffffff);
 }
 
 .webmeet-blackboard-bullets-editor-text {
-    align-self: stretch;
+    min-width: 0;
+}
+
+.webmeet-blackboard-bullets-editor-text textarea {
+    min-height: 36px;
+    max-height: 96px;
+    resize: vertical;
+}
+
+.webmeet-blackboard-bullets-editor-select-field {
+    gap: 0;
+    min-width: 0;
+}
+
+.webmeet-blackboard-bullets-editor-select-field > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-bullets-remove-button {
+    display: inline-grid;
+    place-items: center;
+    justify-self: end;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    color: var(--danger, #b42318);
+}
+
+.webmeet-blackboard-bullets-remove-icon::before {
+    content: '';
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: currentColor;
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/delete.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/delete.svg');
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    mask-size: contain;
 }
 
 @media (max-width: 720px) {
@@ -208,6 +252,7 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
     .webmeet-blackboard-widget-editor .webmeet-tabs {
         justify-self: stretch;
+        width: 100%;
     }
 
     .webmeet-blackboard-widget-editor .webmeet-tab {

@@ -25,6 +25,7 @@ export class WebMeetBlackboardPanel {
         this.inlineEditState = null;
         this.inlineEditCommitPromise = null;
         this.pendingRenderAfterInlineEdit = false;
+        this.fullscreenWidgetId = '';
 
         this.bindPointerHandlers();
         this.handleConnectEvent = (event) => this.connect(event.detail || {});
@@ -182,6 +183,13 @@ export class WebMeetBlackboardPanel {
     }
 
     handlePanelKeydown(event) {
+        if (event.key === 'Escape' && this.fullscreenWidgetId) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.fullscreenWidgetId = '';
+            this.renderWidgets();
+            return;
+        }
         if (!this.isDeleteKeyEvent(event)) return;
         if (this.busy || !this.selection) return;
         if (this.isTextEditingTarget(event.target)) return;

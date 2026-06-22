@@ -12,7 +12,11 @@ export const blackboardRenderingMethods = {
         this.applyBoardBackground();
         const fragment = document.createDocumentFragment();
         this.widgetNodes.clear();
-        for (const widget of this.blackboard?.widgets || []) {
+        const widgets = this.blackboard?.widgets || [];
+        if (this.fullscreenWidgetId && !widgets.some((widget) => String(widget.id || '') === String(this.fullscreenWidgetId))) {
+            this.fullscreenWidgetId = '';
+        }
+        for (const widget of widgets) {
             const node = this.renderWidget(widget);
             fragment.append(node);
             this.widgetNodes.set(widget.id, node);
@@ -27,6 +31,8 @@ export const blackboardRenderingMethods = {
         const style = widget.properties?.style || {};
         node.className = `webmeet-blackboard-widget ${widget.type || 'shape'}`;
         node.classList.toggle('is-locked', Boolean(widget.locked));
+        const isFullscreen = String(this.fullscreenWidgetId || '') === String(widget.id || '');
+        node.classList.toggle('is-fullscreen', isFullscreen);
         node.dataset.widgetId = widget.id;
         node.tabIndex = 0;
         node.setAttribute('aria-selected', String(this.selection === widget.id));
@@ -54,9 +60,9 @@ export const blackboardRenderingMethods = {
         node.style.setProperty('--stroke-width', `${cssStrokeWidth}px`);
         node.style.setProperty('--text-color', style.textColor || textDefaults.textColor || 'var(--bb-widget-text)');
         this.renderWidgetContent(node, widget);
-        this.renderResizeHandles(node, widget);
-        this.renderContextMenu(node, widget);
-        if (this.canMoveWidget(widget)) {
+        if (!isFullscreen) this.renderResizeHandles(node, widget);
+        if (!isFullscreen) this.renderContextMenu(node, widget);
+        if (!isFullscreen && this.canMoveWidget(widget)) {
             node.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
         }
         node.addEventListener('dblclick', (event) => {
@@ -127,6 +133,14 @@ export const blackboardRenderingMethods = {
         span.className = `webmeet-blackboard-context-icon ${icon}`;
         span.setAttribute('aria-hidden', 'true');
         return span;
+    },
+
+    toggleBulletsFullscreen(widgetId = '') {
+        const normalizedId = String(widgetId || '').trim();
+        if (!normalizedId) return;
+        this.fullscreenWidgetId = this.fullscreenWidgetId === normalizedId ? '' : normalizedId;
+        this.selection = normalizedId;
+        this.renderWidgets();
     },
 
     canResizeWidget(widget) {
@@ -393,58 +407,66 @@ export const blackboardRenderingMethods = {
     renderBulletsWidgetContent(node, widget) {
         const props = widget.properties || {};
         const items = Array.isArray(props.items) ? props.items : [];
-        const visibleItems = items.slice(0, 5);
 
         const header = document.createElement('div');
         header.className = 'webmeet-blackboard-bullets-header';
+        const headerText = document.createElement('div');
+        headerText.className = 'webmeet-blackboard-bullets-header-text';
         const title = document.createElement('div');
         title.className = 'webmeet-blackboard-bullets-title';
         title.textContent = String(props.title || 'Meeting Bullets').trim() || 'Meeting Bullets';
         const meta = document.createElement('div');
         meta.className = 'webmeet-blackboard-bullets-meta';
         const dateText = String(props.meetingDateTime || '').trim();
-        const participantCount = Number.parseInt(String(props.participantCount || 0), 10) || 0;
-        meta.textContent = [dateText, participantCount > 0 ? `${participantCount} participants` : '']
-            .filter(Boolean)
-            .join(' • ');
-        header.append(title, meta);
+        meta.textContent = dateText;
+        headerText.append(title, meta);
+        const isFullscreen = String(this.fullscreenWidgetId || '') === String(widget.id || '');
+        const fullscreenButton = document.createElement('button');
+        fullscreenButton.type = 'button';
+        fullscreenButton.className = 'icon-button webmeet-blackboard-bullets-fullscreen-button';
+        fullscreenButton.title = isFullscreen ? 'Exit full screen' : 'Full screen';
+        fullscreenButton.setAttribute('aria-label', isFullscreen ? 'Exit full screen' : 'Full screen');
+        fullscreenButton.setAttribute('aria-pressed', String(isFullscreen));
+        const fullscreenIcon = document.createElement('img');
+        fullscreenIcon.src = '/explorer/assets/icons/fullscreen.svg';
+        fullscreenIcon.alt = '';
+        fullscreenIcon.className = 'webmeet-blackboard-bullets-fullscreen-icon';
+        fullscreenIcon.setAttribute('aria-hidden', 'true');
+        fullscreenButton.append(fullscreenIcon);
+        fullscreenButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+        fullscreenButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleBulletsFullscreen(widget.id);
+        });
+        header.append(headerText, fullscreenButton);
 
         const list = document.createElement('div');
         list.className = 'webmeet-blackboard-bullets-list';
-        if (visibleItems.length) {
-            for (const item of visibleItems) {
+        if (items.length) {
+            for (const item of items) {
                 list.append(this.createBulletsItemRow(item));
             }
         } else {
             const empty = document.createElement('div');
             empty.className = 'webmeet-blackboard-bullets-empty';
-            empty.textContent = 'No notes yet';
+            empty.textContent = 'No bullets yet';
             list.append(empty);
         }
 
         const footer = document.createElement('div');
         footer.className = 'webmeet-blackboard-bullets-footer';
-        const addButton = document.createElement('button');
-        addButton.type = 'button';
-        addButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
-        addButton.textContent = 'Add Note';
-        addButton.addEventListener('pointerdown', (event) => event.stopPropagation());
-        addButton.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void this.addBulletsNote(widget);
-        });
-        const viewButton = document.createElement('button');
-        viewButton.type = 'button';
-        viewButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
-        viewButton.textContent = items.length > visibleItems.length ? `View Full Notes (+${items.length - visibleItems.length})` : 'View Full Notes';
-        viewButton.addEventListener('pointerdown', (event) => event.stopPropagation());
-        viewButton.addEventListener('click', (event) => {
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
+        editButton.textContent = 'Edit';
+        editButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+        editButton.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
             void this.editWidget(widget);
         });
-        footer.append(addButton, viewButton);
+        footer.append(editButton);
         node.append(header, list, footer);
     },
 

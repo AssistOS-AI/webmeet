@@ -403,8 +403,7 @@ export const blackboardActionMethods = {
             widget.properties = {
                 ...widget.properties,
                 title: 'Meeting Bullets',
-                meetingDateTime: '',
-                participantCount: 0,
+                meetingDateTime: new Date().toISOString(),
                 items: [{
                     id: 'b1',
                     text: 'Add a note from the meeting',

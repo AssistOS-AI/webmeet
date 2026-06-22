@@ -445,7 +445,6 @@ test('blackboard bullets widget is collaborative and normalizes items', () => {
         type: 'bullets',
         properties: {
             title: 'Daily Standup',
-            participantCount: '3',
             items: [
                 { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
                 { id: 'n2', text: 'Needs design input', status: 'blocked', priority: 'low' },
@@ -456,7 +455,7 @@ test('blackboard bullets widget is collaborative and normalizes items', () => {
 
     const created = blackboard.getWidget('bullets_1');
     assert.equal(created.properties.title, 'Daily Standup');
-    assert.equal(created.properties.participantCount, 3);
+    assert.equal(Object.prototype.hasOwnProperty.call(created.properties, 'participantCount'), false);
     assert.deepEqual(created.properties.items, [
         { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
         { id: 'n2', text: 'Needs design input', status: 'blocked', priority: 'low' }
@@ -1263,15 +1262,24 @@ test('blackboard poll widget renders summary modal and poll settings', async () 
     assert.match(editorSource, /patch\.properties\.durationSeconds/);
     assert.match(panelSource, /renderBulletsWidgetContent\(node, widget\)/);
     assert.match(panelSource, /createBulletsItemRow\(item\)/);
-    assert.match(panelSource, /void this\.addBulletsNote\(widget\)/);
-    assert.match(panelSource, /View Full Notes/);
+    assert.match(panelSource, /if \(!isFullscreen\) this\.renderContextMenu\(node, widget\)/);
+    assert.match(panelSource, /toggleBulletsFullscreen\(widget\.id\)/);
+    assert.match(panelSource, /webmeet-blackboard-bullets-fullscreen-button/);
+    assert.match(panelSource, /fullscreenIcon\.src = '\/explorer\/assets\/icons\/fullscreen\.svg'/);
+    assert.match(panelSource, /editButton\.textContent = 'Edit'/);
+    assert.doesNotMatch(panelSource, /View Full Notes/);
+    assert.match(panelCss, /\.webmeet-blackboard-bullets-list[\s\S]*overflow: auto/);
+    assert.match(panelCss, /\.webmeet-blackboard-bullets-fullscreen-button/);
+    assert.match(panelCss, /\.webmeet-blackboard-widget\.bullets\.is-fullscreen/);
     assert.match(panelCss, /\.webmeet-blackboard-widget\.bullets/);
     assert.match(panelCss, /\.webmeet-blackboard-bullets-priority\.priority-high/);
     assert.match(panelCss, /\.webmeet-blackboard-bullets-item\.status-blocked/);
     assert.match(editorHtml, /data-role="bulletsSection"/);
     assert.match(editorHtml, /data-role="bulletsTitle"/);
-    assert.match(editorHtml, /data-role="bulletsDateTime"/);
-    assert.match(editorHtml, /data-role="bulletsParticipantCount"/);
+    assert.doesNotMatch(editorHtml, /data-role="bulletsDateTime"/);
+    assert.doesNotMatch(editorHtml, />Date \/ Time</);
+    assert.doesNotMatch(editorHtml, /data-role="bulletsParticipantCount"/);
+    assert.doesNotMatch(editorHtml, />Participants</);
     assert.match(editorHtml, /data-role="bulletsItems"/);
     assert.match(editorSource, /renderBulletsItemInputs\(items/);
     assert.match(editorSource, /patch\.properties\.items = this\.readBulletsItemsFromForm/);

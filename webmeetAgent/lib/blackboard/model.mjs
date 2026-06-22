@@ -426,7 +426,6 @@ function normalizeBulletsProperties(properties = {}) {
         ...cloneJson(properties),
         title: String(properties.title || 'Meeting Bullets').trim() || 'Meeting Bullets',
         meetingDateTime: String(properties.meetingDateTime || '').trim(),
-        participantCount: Math.max(0, Number.parseInt(String(properties.participantCount || 0), 10) || 0),
         items
     };
 }

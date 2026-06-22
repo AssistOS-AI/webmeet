@@ -1,8 +1,7 @@
 <form class="webmeet-blackboard-widget-editor" data-role="form">
     <div class="modal-header">
         <div class="modal-header-left">
-            <div class="modal-title" data-role="title">Widget settings</div>
-            <div class="modal-subtitle" data-role="subtitle"></div>
+            <div class="modal-title" data-role="title">Edit widget</div>
         </div>
         <button type="button" class="close" data-local-action="closeModal" aria-label="Close"></button>
     </div>
@@ -37,20 +36,39 @@
                         <span>Title</span>
                         <input class="form-input" name="bulletsTitle" type="text" data-role="bulletsTitle">
                     </label>
-                    <label class="webmeet-form-field">
-                        <span>Date / Time</span>
-                        <input class="form-input" name="bulletsDateTime" type="text" data-role="bulletsDateTime">
-                    </label>
-                    <label class="webmeet-form-field">
-                        <span>Participants</span>
-                        <input class="form-input" name="bulletsParticipantCount" type="number" min="0" step="1" data-role="bulletsParticipantCount">
-                    </label>
                 </div>
                 <div class="webmeet-form-field">
-                    <span>Notes</span>
+                    <span>Bullets</span>
+                    <template data-role="bulletsItemTemplate">
+                        <div class="webmeet-blackboard-bullets-editor-row" data-role="bulletsItemRow">
+                            <label class="webmeet-form-field webmeet-blackboard-bullets-editor-text">
+                                <textarea class="form-input" rows="1" data-role="bulletsItemText"></textarea>
+                            </label>
+                            <label class="webmeet-form-field webmeet-blackboard-bullets-editor-select-field">
+                                <span>Status</span>
+                                <select class="form-input" data-role="bulletsItemStatus" aria-label="Bullet status">
+                                    <option value="todo">To Do</option>
+                                    <option value="inProgress">In Progress</option>
+                                    <option value="done">Done</option>
+                                    <option value="blocked">Blocked</option>
+                                </select>
+                            </label>
+                            <label class="webmeet-form-field webmeet-blackboard-bullets-editor-select-field">
+                                <span>Priority</span>
+                                <select class="form-input" data-role="bulletsItemPriority" aria-label="Bullet priority">
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                </select>
+                            </label>
+                            <button type="button" class="gray-button webmeet-blackboard-remove-question-button webmeet-blackboard-bullets-remove-button" title="Remove this bullet">
+                                <span class="webmeet-blackboard-bullets-remove-icon" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </template>
                     <div class="webmeet-blackboard-bullets-editor-list" data-role="bulletsItems"></div>
                     <div class="webmeet-blackboard-poll-question-list-actions">
-                        <button type="button" class="gray-button webmeet-blackboard-add-question-button" data-role="addBulletsItem">Add Note</button>
+                        <button type="button" class="gray-button webmeet-blackboard-add-question-button" data-role="addBulletsItem">Add item</button>
                     </div>
                 </div>
             </section>
