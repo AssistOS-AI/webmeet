@@ -46,7 +46,8 @@ function createLiveKitRoomAdminToken(context, roomName) {
         exp: now + 60 * 10,
         video: {
             room: roomName,
-            roomAdmin: true
+            roomAdmin: true,
+            roomCreate: true
         }
     })).toString('base64url');
     const signature = crypto
@@ -96,10 +97,10 @@ async function callLiveKitRoomApi(context, methodName, roomName, body) {
 }
 
 export async function closeLiveKitRoom(context, roomName, { strict = false } = {}) {
-    if (typeof context.closeLiveKitRoom === 'function') {
-        return await context.closeLiveKitRoom(roomName);
-    }
     try {
+        if (typeof context.closeLiveKitRoom === 'function') {
+            return await context.closeLiveKitRoom(roomName);
+        }
         return await callLiveKitRoomApi(context, 'DeleteRoom', roomName, { room: roomName });
     } catch (error) {
         if (strict) {

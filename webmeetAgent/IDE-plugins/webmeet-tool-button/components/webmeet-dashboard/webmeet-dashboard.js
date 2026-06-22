@@ -102,6 +102,7 @@ export class WebmeetDashboard {
                 message: ''
             },
             canManageRooms: false,
+            showArchivedRooms: false,
             session: null,
             roomState: 'Disconnected',
             media: {
@@ -190,6 +191,7 @@ export class WebmeetDashboard {
         this.handleAvatarSettingsUpdatedEvent = (event) => this.handleAvatarSettingsUpdated(event);
         this.handleWebMeetAvatarSettingsChangeEvent = (event) => this.handleWebMeetAvatarSettingsChange(event);
         this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
+        this.handleArchivedRoomsToggleChange = (event) => this.toggleArchivedRoomsVisibility(event);
         this.handleSubmitEvent = (event) => {
             if (event.target?.matches?.('#webmeetGuestEntryForm')) {
                 void this.handleGuestEntrySubmit?.(event);
@@ -205,6 +207,7 @@ export class WebmeetDashboard {
         this.element.addEventListener('click', this.handleClick);
         this.element.addEventListener('submit', this.handleSubmitEvent);
         this.element.addEventListener('keydown', this.handleChatInputKeydown);
+        this.element.addEventListener('change', this.handleArchivedRoomsToggleChange);
         this.element.addEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
         window.addEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         window.addEventListener('assistOS:avatar-settings-updated', this.handleAvatarSettingsUpdatedEvent);
@@ -535,6 +538,8 @@ export class WebmeetDashboard {
         this.chatSidebar = this.element.querySelector('#webmeetChatSidebar');
         this.chatResizer = this.element.querySelector('#webmeetChatResizer');
         this.toggleChatButton = this.element.querySelector('#webmeetToggleChatButton');
+        this.archivedRoomsToggle = this.element.querySelector('#webmeetArchivedRoomsToggle');
+        this.showArchivedRoomsInput = this.element.querySelector('#webmeetShowArchivedRooms');
         this.createRoomButton = this.element.querySelector('#webmeetCreateRoomButton');
         this.mediaSettingsButton = this.element.querySelector('#webmeetMediaSettingsButton');
         this.applyMediaSettingsButton = this.element.querySelector('#webmeetApplyMediaSettingsButton');
@@ -613,6 +618,7 @@ export class WebmeetDashboard {
         this.element.removeEventListener('click', this.handleClick);
         this.element.removeEventListener('submit', this.handleSubmitEvent);
         this.element.removeEventListener('keydown', this.handleChatInputKeydown);
+        this.element.removeEventListener('change', this.handleArchivedRoomsToggleChange);
         this.element.removeEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
         this.chatComponent?.destroyChatAutocomplete?.();
         this.stopWorkspaceEvents();
@@ -659,6 +665,17 @@ export class WebmeetDashboard {
             this.micButton.title = label;
             this.micButton.setAttribute('aria-label', label);
         }
+    }
+
+    toggleArchivedRoomsVisibility(event) {
+        if (!event?.target?.matches?.('#webmeetShowArchivedRooms')) return;
+        if (!this.canManageRooms()) {
+            this.state.showArchivedRooms = false;
+            event.target.checked = false;
+            return;
+        }
+        this.state.showArchivedRooms = event.target.checked === true;
+        this.renderMeetingList();
     }
 
     get currentActor() {

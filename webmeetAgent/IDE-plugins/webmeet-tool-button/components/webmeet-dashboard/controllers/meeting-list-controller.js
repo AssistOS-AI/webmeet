@@ -15,11 +15,13 @@ export class MeetingListController {
         this.meetingListElement = element || null;
     }
 
-    render(meetings, selectedMeetingId, meetingParticipantsById, canManageRooms = false, joiningMeetingId = '') {
+    render(meetings, selectedMeetingId, meetingParticipantsById, canManageRooms = false, joiningMeetingId = '', showArchivedRooms = false) {
         if (!this.meetingListElement) return;
         const safeMeetings = Array.isArray(meetings) ? meetings : [];
         const activeMeetings = safeMeetings.filter((entry) => !this.isArchivedRoom(entry));
-        const archivedMeetings = safeMeetings.filter((entry) => this.isArchivedRoom(entry));
+        const archivedMeetings = canManageRooms && showArchivedRooms
+            ? safeMeetings.filter((entry) => this.isArchivedRoom(entry))
+            : [];
         const activeJoiningId = String(joiningMeetingId || '').trim();
         const activeHtml = activeMeetings.map((entry) => this.renderRoomItem(entry, selectedMeetingId, meetingParticipantsById, canManageRooms, activeJoiningId)).join('');
         const archivedHtml = archivedMeetings.length

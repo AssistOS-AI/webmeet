@@ -187,3 +187,30 @@ test('meeting list marks speaking participants without removing idle placeholder
     assert.match(element.innerHTML, /webmeet-room-participant-speaking/);
     assert.match(element.innerHTML, /webmeet-room-participant-speaking is-idle/);
 });
+
+test('meeting list hides archived rooms unless admin enables them', () => {
+    const controller = new MeetingListController();
+    const element = { innerHTML: '' };
+    const meetings = [{
+        id: 'active-room',
+        title: 'Active room',
+        roomType: 'team'
+    }, {
+        id: 'archived-room',
+        title: 'Archived room',
+        roomType: 'team',
+        status: 'archived'
+    }];
+    controller.setElement(element);
+
+    controller.render(meetings, 'active-room', {}, true, '', false);
+    assert.match(element.innerHTML, /Active room/);
+    assert.doesNotMatch(element.innerHTML, /Archived room/);
+
+    controller.render(meetings, 'active-room', {}, true, '', true);
+    assert.match(element.innerHTML, /Archived rooms/);
+    assert.match(element.innerHTML, /Archived room/);
+
+    controller.render(meetings, 'active-room', {}, false, '', true);
+    assert.doesNotMatch(element.innerHTML, /Archived room/);
+});

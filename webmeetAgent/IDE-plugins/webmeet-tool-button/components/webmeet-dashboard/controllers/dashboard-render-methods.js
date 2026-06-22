@@ -79,6 +79,15 @@ export const dashboardRenderMethods = {
         if (this.createRoomButton) {
             this.createRoomButton.classList.toggle('webmeet-hidden', !canManageRooms);
         }
+        if (!canManageRooms) {
+            this.state.showArchivedRooms = false;
+        }
+        if (this.archivedRoomsToggle) {
+            this.archivedRoomsToggle.classList.toggle('webmeet-hidden', !canManageRooms);
+        }
+        if (this.showArchivedRoomsInput) {
+            this.showArchivedRoomsInput.checked = Boolean(canManageRooms && this.state.showArchivedRooms);
+        }
         this.renderRoomsCategory();
         this.renderMeetingList();
         this.renderMeetingSummary();
@@ -159,7 +168,8 @@ export const dashboardRenderMethods = {
             this.state.selectedMeetingId,
             this.state.meetingParticipantsById,
             this.canManageRooms(),
-            this.state.joiningMeetingId
+            this.state.joiningMeetingId,
+            this.state.showArchivedRooms
         );
     },
 

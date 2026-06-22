@@ -424,6 +424,43 @@
     font-weight: 600;
 }
 
+.webmeet-panel-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.main-header-content {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    align-items: center;
+}
+.webmeet-archived-rooms-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 28px;;
+    color: var(--muted-text);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+}
+
+.webmeet-archived-rooms-toggle input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+}
+
+.webmeet-archived-rooms-toggle span {
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+}
+
 .webmeet-collapse-button {
     background: transparent;
     border: none;
@@ -485,11 +522,15 @@
 .webmeet-sidebar .webmeet-panel-header {
     padding: 0;
     margin-bottom: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: unset;
 }
 
 .webmeet-panel-actions {
     display: flex;
     gap: 8px;
+    flex-direction: column;
 }
 
 .webmeet-create-room-button {
@@ -527,7 +568,6 @@
     color: var(--text-soft);
     font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 

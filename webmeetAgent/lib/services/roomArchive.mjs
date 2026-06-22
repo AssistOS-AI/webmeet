@@ -30,7 +30,7 @@ export async function archiveRoom(context, meetingId, authInfo = null, deps = {}
             throw new Error('Room not found.');
         }
         if (current.roomName) {
-            await closeLiveKitRoom(context, current.roomName, { strict: true });
+            await closeLiveKitRoom(context, current.roomName, { strict: false });
         }
         const archivedAt = nowIso();
         const members = Array.isArray(payload.members) ? payload.members : [];

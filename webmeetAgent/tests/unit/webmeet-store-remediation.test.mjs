@@ -373,6 +373,26 @@ describe('filesystem lock mechanics', () => {
         await fs.access(path.join(context.meetingsDir, `${meeting.id}.json`));
         await fs.rm(lockPath, { force: true });
     });
+
+    test('archiveMeeting persists WebMeet archive when LiveKit close is denied', async () => {
+        const { archiveMeeting, listMeetings } = await import('../../lib/webmeetStore.mjs');
+        const meeting = await createTestMeeting(context, 'LiveKit Denied Archive Room');
+        const liveContext = {
+            ...context,
+            closeLiveKitRoom: async () => {
+                throw new Error('LiveKit room API failed: permissions denied');
+            }
+        };
+
+        const result = await archiveMeeting(liveContext, meeting.id, ADMIN_AUTH);
+        const archived = (await listMeetings(context, '', ADMIN_AUTH))
+            .find((entry) => entry.id === meeting.id);
+
+        assert.equal(result.ok, true);
+        assert.equal(result.meeting.status, 'archived');
+        assert.equal(archived.status, 'archived');
+        assert.ok(archived.archivedAt);
+    });
 });
 
 describe('removed WebMeet public server', () => {
@@ -406,5 +426,34 @@ describe('manifest secret compatibility', () => {
             assert.equal(entry.derive, undefined);
             assert.equal(entry.sharedGeneratedSecret, undefined);
         }
+    });
+
+    test('LiveKit room close token includes DeleteRoom grant', async () => {
+        const { closeLiveKitRoom } = await import('../../lib/runtime/livekitRuntime.mjs');
+        const originalFetch = globalThis.fetch;
+        let authorization = '';
+        globalThis.fetch = async (_url, options = {}) => {
+            authorization = String(options?.headers?.Authorization || '');
+            return {
+                ok: true,
+                text: async () => '{}'
+            };
+        };
+        try {
+            await closeLiveKitRoom({
+                livekitApiUrl: 'http://livekit.test',
+                livekitApiKey: 'test-key',
+                livekitApiSecret: 'test-secret',
+                agentName: 'WebMeetAgent'
+            }, 'room-a', { strict: true });
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+
+        const token = authorization.replace(/^Bearer\s+/i, '');
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        assert.equal(payload.video.roomAdmin, true);
+        assert.equal(payload.video.roomCreate, true);
+        assert.equal(payload.video.room, 'room-a');
     });
 });
