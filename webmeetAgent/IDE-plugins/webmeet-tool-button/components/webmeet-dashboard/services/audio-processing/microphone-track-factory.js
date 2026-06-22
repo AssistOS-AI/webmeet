@@ -9,6 +9,11 @@ import {
 } from './audio-level-analyzer.js';
 
 const WORKLET_MODULE_URL = new URL('./rnnoise-worklet.js', import.meta.url).href;
+let workletPreloadPromise = null;
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
 
 function getAudioContextConstructor() {
     return globalThis.AudioContext || globalThis.webkitAudioContext || null;
@@ -50,6 +55,27 @@ function createBiquad(audioContext, type, frequency, q = null) {
         node.Q.value = q;
     }
     return node;
+}
+
+export async function preloadVoiceProcessingWorklet() {
+    if (workletPreloadPromise) return workletPreloadPromise;
+    const AudioContextRef = getAudioContextConstructor();
+    if (!AudioContextRef) {
+        return Promise.resolve(false);
+    }
+    workletPreloadPromise = (async () => {
+        const audioContext = new AudioContextRef({ sampleRate: 48000 });
+        try {
+            await audioContext.audioWorklet.addModule(WORKLET_MODULE_URL);
+            return true;
+        } finally {
+            try { await audioContext.close?.(); } catch (_) {}
+        }
+    })().catch((error) => {
+        workletPreloadPromise = null;
+        throw error;
+    });
+    return workletPreloadPromise;
 }
 
 async function createRnnoiseNode(audioContext) {
@@ -103,6 +129,27 @@ function waitForWorkletReady(node, timeoutMs = 1500) {
     });
 }
 
+function createNoiseGateController(audioContext, gainNode) {
+    let currentGain = 1;
+    return {
+        update(metrics = {}) {
+            const rmsDb = Number(metrics.rmsDb);
+            const noiseFloorDb = Number(metrics.noiseFloorDb);
+            const floor = Number.isFinite(noiseFloorDb) ? noiseFloorDb : -60;
+            const thresholdDb = clamp(floor + 10, -58, -38);
+            const open = metrics.speaking === true || (Number.isFinite(rmsDb) && rmsDb > thresholdDb);
+            const distanceBelowThreshold = Number.isFinite(rmsDb)
+                ? clamp((thresholdDb - rmsDb) / 18, 0, 1)
+                : 1;
+            const targetGain = open ? 1 : clamp(1 - (distanceBelowThreshold * 0.72), 0.28, 1);
+            const timeConstant = targetGain > currentGain ? 0.035 : 0.16;
+            currentGain = targetGain;
+            gainNode.gain.setTargetAtTime(targetGain, audioContext.currentTime, timeConstant);
+            return targetGain;
+        }
+    };
+}
+
 export async function createProcessedMicrophoneTrack(settings = {}) {
     const browserNavigator = globalThis.navigator;
     if (!browserNavigator?.mediaDevices?.getUserMedia) {
@@ -115,13 +162,13 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
 
     const mode = normalizeVoiceProcessingMode(settings.voiceProcessingMode);
     const automatic = mode === 'auto';
-    const humFilter = automatic ? 'off' : normalizeHumFilter(settings.humFilter);
+    const humFilter = normalizeHumFilter(settings.humFilter);
     const enhanced = automatic || mode === 'enhanced';
-    const configuredGain = automatic ? 1 : normalizeMicrophoneGain(settings.microphoneGain);
+    const configuredGain = normalizeMicrophoneGain(settings.microphoneGain);
     const sourceStream = await browserNavigator.mediaDevices.getUserMedia({
         audio: buildCaptureConstraints(settings, {
             echoCancellation: automatic || (mode !== 'off' && settings.echoCancellation !== false),
-            noiseSuppression: ['standard', 'custom'].includes(mode) && settings.noiseSuppression !== false,
+            noiseSuppression: !automatic && ['standard', 'custom'].includes(mode) && settings.noiseSuppression !== false,
             autoGainControl: automatic ? false : settings.autoGainControl === true
         }),
         video: false
@@ -153,32 +200,41 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
             currentNode = connectIfPresent(currentNode, rnnoiseNode);
         }
 
-        if (humFilter !== 'off') {
+        if (humFilter === '50' || humFilter === '60') {
             const humFrequency = humFilter === '60' ? 60 : 50;
             const humNode = createBiquad(audioContext, 'notch', humFrequency, 18);
             nodes.push(humNode);
             currentNode = connectIfPresent(currentNode, humNode);
-        } else if (automatic) {
+        } else if (humFilter === 'auto') {
             automaticHumNode = createBiquad(audioContext, 'notch', 10, 1);
             nodes.push(automaticHumNode);
             currentNode = connectIfPresent(currentNode, automaticHumNode);
         }
+
+        const gateGainNode = audioContext.createGain();
+        gateGainNode.gain.value = 1;
+        nodes.push(gateGainNode);
+        currentNode = connectIfPresent(currentNode, gateGainNode);
 
         const gainNode = audioContext.createGain();
         gainNode.gain.value = configuredGain;
         nodes.push(gainNode);
         currentNode = connectIfPresent(currentNode, gainNode);
 
-        if (automatic) {
+        if (automatic || automaticHumNode) {
             adaptiveGainController = new AdaptiveGainController();
+            const noiseGateController = createNoiseGateController(audioContext, gateGainNode);
             levelMonitor = createAudioLevelMonitor(audioContext, sourceNode, {
                 onMetrics(metrics) {
-                    const adaptiveGain = adaptiveGainController.update(metrics);
-                    gainNode.gain.setTargetAtTime(
-                        configuredGain * adaptiveGain,
-                        audioContext.currentTime,
-                        adaptiveGain < 1 ? 0.08 : 0.35
-                    );
+                    const gateGain = noiseGateController.update(metrics);
+                    const adaptiveGain = automatic ? adaptiveGainController.update(metrics) : 1;
+                    if (automatic) {
+                        gainNode.gain.setTargetAtTime(
+                            configuredGain * adaptiveGain,
+                            audioContext.currentTime,
+                            adaptiveGain < 1 ? 0.08 : 0.4
+                        );
+                    }
                     if (automaticHumNode) {
                         const frequency = metrics.humFrequency === '60' ? 60
                             : metrics.humFrequency === '50' ? 50
@@ -190,6 +246,7 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
                     settings.onMetrics?.({
                         ...metrics,
                         adaptiveGain,
+                        gateGain,
                         mode
                     });
                 }

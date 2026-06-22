@@ -1,4 +1,5 @@
 import {
+    DEFAULT_HUM_FILTER,
     DEFAULT_MICROPHONE_GAIN,
     DEFAULT_OUTPUT_VOLUME,
     DEFAULT_VOICE_PROCESSING_MODE,
@@ -135,7 +136,7 @@ export const mediaSettingsMethods = {
             automaticParticipantVolume: true,
             microphoneGain: DEFAULT_MICROPHONE_GAIN,
             voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
-            humFilter: 'off',
+            humFilter: DEFAULT_HUM_FILTER,
             outputVolume: DEFAULT_OUTPUT_VOLUME,
             roomNotificationSounds: true,
             cameraQuality: 'h720',

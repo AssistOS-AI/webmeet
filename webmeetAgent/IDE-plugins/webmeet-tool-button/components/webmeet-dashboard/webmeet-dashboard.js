@@ -15,6 +15,7 @@ import { dashboardRealtimeMethods } from './controllers/dashboard-realtime-metho
 import { dashboardSessionMethods } from './controllers/dashboard-session-methods.js';
 import { ChatComponent } from './service-components/index.js';
 import {
+    DEFAULT_HUM_FILTER,
     DEFAULT_MICROPHONE_GAIN,
     DEFAULT_OUTPUT_VOLUME,
     DEFAULT_VOICE_PROCESSING_MODE
@@ -125,7 +126,7 @@ export class WebmeetDashboard {
                 automaticParticipantVolume: true,
                 microphoneGain: DEFAULT_MICROPHONE_GAIN,
                 voiceProcessingMode: DEFAULT_VOICE_PROCESSING_MODE,
-                humFilter: 'off',
+                humFilter: DEFAULT_HUM_FILTER,
                 outputVolume: DEFAULT_OUTPUT_VOLUME,
                 roomNotificationSounds: true,
                 cameraQuality: 'h720',
@@ -151,6 +152,7 @@ export class WebmeetDashboard {
             roomAvatarsByParticipantId: {},
             participantAudioSettings: {},
             audioHealth: 'Good',
+            audioCleanupStatus: 'voice-focus',
             audioNetworkUnstable: false,
             participants: [],
             activeSpeakerIds: new Set(),
@@ -327,6 +329,10 @@ export class WebmeetDashboard {
                 }
                 this.updateAudioHealthIndicator();
             },
+            onAudioCleanupStatusChange: (status) => {
+                this.state.audioCleanupStatus = status;
+                this.updateAudioHealthIndicator();
+            },
             onAfterToggle: () => {
                 this.renderMeetingSummary();
             }
@@ -335,6 +341,7 @@ export class WebmeetDashboard {
         this.state.webMeetAvatarOverride = this.loadCurrentWebMeetAvatarOverride();
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.mediaController.setSettings(this.state.mediaSettings);
+        void this.mediaController.preloadVoiceProcessing();
         this.remoteAudioNormalizer = new RemoteAudioNormalizer({
             isEnabled: () => this.state.mediaSettings?.automaticParticipantVolume !== false,
             hasManualOverride: (participantId) => this.hasParticipantAudioOverrides(
@@ -572,6 +579,7 @@ export class WebmeetDashboard {
         this.backgroundImageWarning = this.element.querySelector('#webmeetBackgroundImageWarning');
         this.mediaDeviceWarnings = this.element.querySelector('#webmeetMediaDeviceWarnings');
         this.audioHealthIndicator = this.element.querySelector('#webmeetAudioHealthIndicator');
+        this.audioCleanupIndicator = this.element.querySelector('#webmeetAudioCleanupIndicator');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
         this.guestEntry = this.element.querySelector('#webmeetGuestEntry');
         this.guestEntryForm = this.element.querySelector('#webmeetGuestEntryForm');
@@ -637,12 +645,17 @@ export class WebmeetDashboard {
     updateAudioHealthIndicator() {
         const health = String(this.state.audioHealth || 'Good').trim() || 'Good';
         const healthKey = health.toLowerCase().replaceAll(' ', '-');
+        const usingBrowserCleanup = this.state.audioCleanupStatus === 'browser';
         if (this.audioHealthIndicator) {
             this.audioHealthIndicator.dataset.health = healthKey;
             this.audioHealthIndicator.title = `Audio: ${health}`;
         }
+        if (this.audioCleanupIndicator) {
+            this.audioCleanupIndicator.classList.toggle('webmeet-hidden', !usingBrowserCleanup);
+        }
         if (this.micButton) {
-            const label = `Toggle Microphone - Audio: ${health}`;
+            const cleanupLabel = usingBrowserCleanup ? ' - Using browser audio cleanup' : '';
+            const label = `Toggle Microphone - Audio: ${health}${cleanupLabel}`;
             this.micButton.title = label;
             this.micButton.setAttribute('aria-label', label);
         }

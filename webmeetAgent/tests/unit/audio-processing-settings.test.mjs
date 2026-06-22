@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    DEFAULT_HUM_FILTER,
     DEFAULT_MICROPHONE_GAIN,
     DEFAULT_VOICE_PROCESSING_MODE,
     normalizeHumFilter,
@@ -21,12 +22,14 @@ test('voice processing mode normalization defaults to auto', () => {
     assert.equal(normalizeVoiceProcessingMode('unknown'), DEFAULT_VOICE_PROCESSING_MODE);
 });
 
-test('hum filter normalization accepts off, 50 and 60 hertz modes', () => {
+test('hum filter normalization accepts auto, off, 50 and 60 hertz modes', () => {
+    assert.equal(DEFAULT_HUM_FILTER, 'auto');
+    assert.equal(normalizeHumFilter('auto'), 'auto');
     assert.equal(normalizeHumFilter('off'), 'off');
     assert.equal(normalizeHumFilter('50'), '50');
     assert.equal(normalizeHumFilter('50hz'), '50');
     assert.equal(normalizeHumFilter('60HZ'), '60');
-    assert.equal(normalizeHumFilter('120'), 'off');
+    assert.equal(normalizeHumFilter('120'), DEFAULT_HUM_FILTER);
 });
 
 test('microphone gain normalization clamps to supported range', () => {

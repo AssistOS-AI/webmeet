@@ -56,22 +56,31 @@ test('unsupported enhanced voice processing is persisted as standard', async () 
 test('automatic voice processing falls back without overwriting the automatic preference', async () => {
     const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
     const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
+    const dashboardTemplate = await fs.readFile(dashboardHtmlPath, 'utf8');
 
     assert.match(factorySource, /const automatic = mode === 'auto'/);
-    assert.match(factorySource, /const humFilter = automatic \? 'off'/);
-    assert.match(factorySource, /const configuredGain = automatic \? 1/);
+    assert.match(factorySource, /const humFilter = normalizeHumFilter\(settings\.humFilter\)/);
+    assert.match(factorySource, /const configuredGain = normalizeMicrophoneGain\(settings\.microphoneGain\)/);
     assert.match(factorySource, /autoGainControl: automatic \? false/);
+    assert.match(factorySource, /noiseSuppression: !automatic/);
+    assert.match(factorySource, /createNoiseGateController/);
     assert.match(factorySource, /adaptiveGainController = new AdaptiveGainController/);
+    assert.ok(factorySource.indexOf('currentNode = connectIfPresent(currentNode, gateGainNode)') < factorySource.indexOf('currentNode = connectIfPresent(currentNode, gainNode)'));
     assert.ok(factorySource.indexOf('currentNode = connectIfPresent(currentNode, gainNode)') < factorySource.indexOf('createDynamicsCompressor'));
     assert.match(controllerSource, /if \(mode === 'auto'\)/);
+    assert.match(controllerSource, /await preloadVoiceProcessingWorklet\(\)/);
+    assert.match(controllerSource, /await this\.enableProcessedMicrophone\(room/);
     assert.match(controllerSource, /await this\.enableMicrophoneWithMode\(room, 'standard'/);
     assert.ok(
-        controllerSource.indexOf("await this.enableMicrophoneWithMode(room, 'standard'") < controllerSource.indexOf('this.scheduleDeferredMicrophoneProcessing(room)'),
-        'auto mode should publish standard microphone audio before deferred processing'
+        controllerSource.indexOf('await this.enableProcessedMicrophone(room') < controllerSource.indexOf("await this.enableMicrophoneWithMode(room, 'standard'"),
+        'auto mode should try processed Voice Focus before browser fallback'
     );
-    assert.match(controllerSource, /scheduleDeferredMicrophoneProcessing\(room\)/);
+    assert.doesNotMatch(controllerSource, /scheduleDeferredMicrophoneProcessing/);
     assert.match(controllerSource, /microphoneGain: 1/);
     assert.match(controllerSource, /humFilter: 'off'/);
+    assert.match(controllerSource, /setAudioCleanupStatus\('browser'\)/);
+    assert.match(dashboardTemplate, /Voice Focus, recommended/);
+    assert.match(dashboardTemplate, /Using browser audio cleanup/);
     assert.doesNotMatch(controllerSource, /replaceUnsupportedVoiceProcessingMode\('standard', 'auto/);
 });
 

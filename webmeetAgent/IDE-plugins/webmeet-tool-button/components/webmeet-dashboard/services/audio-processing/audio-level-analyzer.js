@@ -70,18 +70,27 @@ export class AdaptiveGainController {
         this.minGain = Number.isFinite(options.minGain) ? options.minGain : 0.7;
         this.maxGain = Number.isFinite(options.maxGain) ? options.maxGain : 1.5;
         this.gain = 1;
+        this.speakingFrames = 0;
     }
 
     update(metrics = {}) {
         if (metrics.clipping) {
-            this.gain = clamp(this.gain * 0.86, this.minGain, this.maxGain);
+            this.speakingFrames = 0;
+            this.gain = clamp(this.gain * 0.78, this.minGain, this.maxGain);
             return this.gain;
         }
-        if (!metrics.speaking) return this.gain;
+        if (!metrics.speaking) {
+            this.speakingFrames = 0;
+            return this.gain;
+        }
+        this.speakingFrames += 1;
         const errorDb = this.targetDb - Number(metrics.rmsDb || MIN_DB);
         if (Math.abs(errorDb) < 3) return this.gain;
         const desiredGain = clamp(10 ** (errorDb / 20), this.minGain, this.maxGain);
-        const amount = desiredGain < this.gain ? 0.35 : 0.08;
+        const warmup = this.speakingFrames <= 12;
+        const amount = desiredGain < this.gain
+            ? (warmup ? 0.55 : 0.35)
+            : (warmup ? 0.18 : 0.06);
         this.gain = clamp(this.gain + ((desiredGain - this.gain) * amount), this.minGain, this.maxGain);
         return this.gain;
     }

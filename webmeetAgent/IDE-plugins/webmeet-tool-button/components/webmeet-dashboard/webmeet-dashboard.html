@@ -208,11 +208,11 @@
                                         aria-label="About Voice processing"
                                         aria-describedby="webmeetSettingHelpVoiceProcessing">i</button>
                                 <span id="webmeetSettingHelpVoiceProcessing" role="tooltip"
-                                      class="webmeet-setting-help-tooltip">Chooses how WebMeet cleans up your mic audio. Adjusting gain, hum filter, echo cancellation, noise suppression, or AGC switches Automatic to Custom.</span>
+                                      class="webmeet-setting-help-tooltip">Voice Focus optimizes speech and reduces keyboard noise, mic vibration, echo, and steady room noise. Manual changes switch to Custom.</span>
                             </span>
                         </div>
                         <select id="webmeetVoiceProcessingMode" class="form-input">
-                            <option value="auto">Automatic, recommended</option>
+                            <option value="auto">Voice Focus, recommended</option>
                             <option value="custom">Custom manual controls</option>
                             <option value="standard">Standard browser processing</option>
                             <option value="enhanced">Enhanced local denoise</option>
@@ -226,10 +226,11 @@
                                 <button type="button" class="webmeet-setting-help-button" aria-label="About Hum filter"
                                         aria-describedby="webmeetSettingHelpHumFilter">i</button>
                                 <span id="webmeetSettingHelpHumFilter" role="tooltip"
-                                      class="webmeet-setting-help-tooltip">Reduces steady electrical hum at 50 Hz or 60 Hz when your setup picks it up.</span>
+                                      class="webmeet-setting-help-tooltip">Reduces steady electrical hum. Auto detects whether the room needs 50 Hz or 60 Hz filtering.</span>
                             </span>
                         </div>
                         <select id="webmeetHumFilter" class="form-input">
+                            <option value="auto">Auto</option>
                             <option value="off">Off</option>
                             <option value="50">50 Hz</option>
                             <option value="60">60 Hz</option>
@@ -602,6 +603,8 @@
                                           data-health="good"
                                           aria-hidden="true"></span>
                                 </button>
+                                <span id="webmeetAudioCleanupIndicator"
+                                      class="webmeet-audio-cleanup-indicator webmeet-hidden">Using browser audio cleanup</span>
                                 <button type="button" class="webmeet-icon-button webmeet-deafen-button"
                                         data-local-action="toggleDeafen" id="webmeetDeafenButton" title="Deafen"
                                         aria-label="Deafen">

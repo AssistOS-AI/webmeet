@@ -1800,6 +1800,21 @@ textarea.form-input {
     background: #64748b;
 }
 
+.webmeet-audio-cleanup-indicator {
+    max-width: 180px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%);
+    color: var(--muted-text);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .webmeet-icon-button.active {
     background: var(--accent);
     border-color: var(--accent);
