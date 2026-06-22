@@ -2,8 +2,8 @@ import { TEXT_DEFAULT_STYLE, TEXT_FONT_FAMILIES, TEXT_MIN_FONT_SIZE, TEXT_MAX_FO
 
 const TEXT_WIDGET_TYPES = new Set(['text', 'card']);
 const CHOICE_WIDGET_TYPES = new Set(['poll']);
-const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'poll', 'embed', 'image']);
-const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'poll', 'embed']);
+const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'poll', 'bullets', 'embed', 'image']);
+const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'poll', 'bullets', 'embed']);
 
 function readJsonAttribute(element, attributeName) {
     const raw = String(element?.getAttribute(attributeName) || '').trim();
@@ -68,6 +68,29 @@ function normalizePollQuestionMode(question = {}) {
     return String(question.pollMode || question.voteMode || 'choice').trim() === 'rating' ? 'rating' : 'choice';
 }
 
+function normalizeBulletsStatus(value = '') {
+    const normalized = String(value || '').trim();
+    return ['todo', 'inProgress', 'done', 'blocked'].includes(normalized) ? normalized : 'todo';
+}
+
+function normalizeBulletsPriority(value = '') {
+    const normalized = String(value || '').trim();
+    return ['high', 'medium', 'low'].includes(normalized) ? normalized : 'medium';
+}
+
+function createBulletsItemId(index) {
+    return `b${index + 1}`;
+}
+
+function createNextBulletsItemId(items = []) {
+    const used = new Set(items.map((item) => String(item.id || '').trim()).filter(Boolean));
+    let index = 0;
+    while (used.has(createBulletsItemId(index))) {
+        index += 1;
+    }
+    return createBulletsItemId(index);
+}
+
 function isHexColor(value) {
     return /^#[0-9a-f]{6}$/i.test(String(value || '').trim());
 }
@@ -116,6 +139,12 @@ export class WebMeetBlackboardWidgetEditor {
         this.questionsField = this.element.querySelector('[data-role="questionsField"]');
         this.questionsHost = this.element.querySelector('[data-role="questions"]');
         this.addQuestionButton = this.element.querySelector('[data-role="addQuestion"]');
+        this.bulletsSection = this.element.querySelector('[data-role="bulletsSection"]');
+        this.bulletsTitleInput = this.element.querySelector('[data-role="bulletsTitle"]');
+        this.bulletsDateTimeInput = this.element.querySelector('[data-role="bulletsDateTime"]');
+        this.bulletsParticipantCountInput = this.element.querySelector('[data-role="bulletsParticipantCount"]');
+        this.bulletsItemsHost = this.element.querySelector('[data-role="bulletsItems"]');
+        this.addBulletsItemButton = this.element.querySelector('[data-role="addBulletsItem"]');
         this.resultsVisibilityInput = this.element.querySelector('[data-role="resultsVisibility"]');
         this.pollSettingsSection = this.element.querySelector('[data-role="pollSettingsSection"]');
         this.allowPollChangeField = this.element.querySelector('[data-role="allowPollChangeField"]');
@@ -145,6 +174,7 @@ export class WebMeetBlackboardWidgetEditor {
         }
         this.fillTransparentInput?.addEventListener('change', () => this.syncFillControlState());
         this.addQuestionButton?.addEventListener('click', () => this.addPollQuestion());
+        this.addBulletsItemButton?.addEventListener('click', () => this.addBulletsItem());
         this.form?.addEventListener('submit', (event) => {
             event.preventDefault();
             if (!this.widget?.id) return;
@@ -216,6 +246,113 @@ export class WebMeetBlackboardWidgetEditor {
             });
         });
         return questions;
+    }
+
+    addBulletsItem() {
+        const items = this.readBulletsItemsFromForm();
+        items.push({
+            id: createNextBulletsItemId(items),
+            text: '',
+            status: 'todo',
+            priority: 'medium'
+        });
+        this.renderBulletsItemInputs(items);
+        const inputs = Array.from(this.bulletsItemsHost?.querySelectorAll?.('[data-role="bulletsItemText"]') || []);
+        inputs.at(-1)?.focus?.();
+    }
+
+    removeBulletsItem(itemId) {
+        const items = this.readBulletsItemsFromForm().filter((item) => item.id !== itemId);
+        this.renderBulletsItemInputs(items);
+    }
+
+    readBulletsItemsFromForm() {
+        const rows = Array.from(this.bulletsItemsHost?.querySelectorAll?.('[data-role="bulletsItemRow"]') || []);
+        return rows.map((row, index) => {
+            const textInput = row.querySelector('[data-role="bulletsItemText"]');
+            const statusInput = row.querySelector('[data-role="bulletsItemStatus"]');
+            const priorityInput = row.querySelector('[data-role="bulletsItemPriority"]');
+            return {
+                id: String(row.dataset.itemId || createBulletsItemId(index)).trim() || createBulletsItemId(index),
+                text: String(textInput?.value || '').trim(),
+                status: normalizeBulletsStatus(statusInput?.value),
+                priority: normalizeBulletsPriority(priorityInput?.value)
+            };
+        });
+    }
+
+    renderBulletsItemInputs(items = []) {
+        if (!this.bulletsItemsHost) return;
+        const fragment = document.createDocumentFragment();
+        items.forEach((item, index) => {
+            const row = document.createElement('div');
+            row.className = 'webmeet-blackboard-bullets-editor-row';
+            row.dataset.role = 'bulletsItemRow';
+            row.dataset.itemId = String(item.id || createBulletsItemId(index)).trim() || createBulletsItemId(index);
+
+            const textField = document.createElement('label');
+            textField.className = 'webmeet-form-field webmeet-blackboard-bullets-editor-text';
+            const textLabel = document.createElement('span');
+            textLabel.textContent = `Note ${index + 1}`;
+            const textInput = document.createElement('textarea');
+            textInput.className = 'form-input';
+            textInput.rows = 2;
+            textInput.value = String(item.text || '');
+            textInput.dataset.role = 'bulletsItemText';
+            textInput.setAttribute('aria-label', `Note ${index + 1}`);
+            textField.append(textLabel, textInput);
+
+            const statusField = document.createElement('label');
+            statusField.className = 'webmeet-form-field';
+            const statusLabel = document.createElement('span');
+            statusLabel.textContent = 'Status';
+            const statusSelect = document.createElement('select');
+            statusSelect.className = 'form-input';
+            statusSelect.dataset.role = 'bulletsItemStatus';
+            for (const [value, label] of [
+                ['todo', 'To Do'],
+                ['inProgress', 'In Progress'],
+                ['done', 'Done'],
+                ['blocked', 'Blocked']
+            ]) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                statusSelect.append(option);
+            }
+            statusSelect.value = normalizeBulletsStatus(item.status);
+            statusField.append(statusLabel, statusSelect);
+
+            const priorityField = document.createElement('label');
+            priorityField.className = 'webmeet-form-field';
+            const priorityLabel = document.createElement('span');
+            priorityLabel.textContent = 'Priority';
+            const prioritySelect = document.createElement('select');
+            prioritySelect.className = 'form-input';
+            prioritySelect.dataset.role = 'bulletsItemPriority';
+            for (const [value, label] of [
+                ['high', 'High'],
+                ['medium', 'Medium'],
+                ['low', 'Low']
+            ]) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                prioritySelect.append(option);
+            }
+            prioritySelect.value = normalizeBulletsPriority(item.priority);
+            priorityField.append(priorityLabel, prioritySelect);
+
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'gray-button webmeet-blackboard-remove-question-button';
+            removeButton.textContent = 'Remove';
+            removeButton.addEventListener('click', () => this.removeBulletsItem(row.dataset.itemId));
+
+            row.append(textField, statusField, priorityField, removeButton);
+            fragment.append(row);
+        });
+        this.bulletsItemsHost.replaceChildren(fragment);
     }
 
     syncPollQuestionRow(row) {
@@ -370,6 +507,7 @@ export class WebMeetBlackboardWidgetEditor {
             if (this.textSection) this.textSection.hidden = true;
             if (this.typographySection) this.typographySection.hidden = true;
             if (this.choiceSection) this.choiceSection.hidden = true;
+            if (this.bulletsSection) this.bulletsSection.hidden = true;
             if (this.pollSettingsSection) this.pollSettingsSection.hidden = true;
             if (this.lineSection) this.lineSection.hidden = true;
             if (this.surfaceSection) this.surfaceSection.hidden = true;
@@ -384,6 +522,7 @@ export class WebMeetBlackboardWidgetEditor {
         const typeDefaults = this.getTypeDefaults(type);
         const isChoice = CHOICE_WIDGET_TYPES.has(type);
         const isPoll = type === 'poll';
+        const isBullets = type === 'bullets';
         const isLine = type === 'line';
         const isSurface = SURFACE_WIDGET_TYPES.has(type) || isLine;
         const hasText = TEXT_WIDGET_TYPES.has(type) || isChoice;
@@ -413,6 +552,20 @@ export class WebMeetBlackboardWidgetEditor {
         }
 
         if (this.choiceSection) this.choiceSection.hidden = !isChoice;
+        if (this.bulletsSection) this.bulletsSection.hidden = !isBullets;
+        if (isBullets) {
+            if (this.bulletsTitleInput) this.bulletsTitleInput.value = String(props.title || 'Meeting Bullets').trim() || 'Meeting Bullets';
+            if (this.bulletsDateTimeInput) this.bulletsDateTimeInput.value = String(props.meetingDateTime || '').trim();
+            if (this.bulletsParticipantCountInput) this.bulletsParticipantCountInput.value = String(Math.max(0, Number.parseInt(String(props.participantCount || 0), 10) || 0));
+            this.renderBulletsItemInputs((Array.isArray(props.items) ? props.items : []).map((item, index) => ({
+                id: String(item.id || createBulletsItemId(index)).trim() || createBulletsItemId(index),
+                text: String(item.text || '').trim(),
+                status: normalizeBulletsStatus(item.status),
+                priority: normalizeBulletsPriority(item.priority)
+            })));
+        } else if (this.bulletsItemsHost) {
+            this.bulletsItemsHost.replaceChildren();
+        }
         if (this.questionsField) this.questionsField.hidden = !isPoll;
         if (this.pollSettingsSection) this.pollSettingsSection.hidden = !isPoll;
         if (isPoll) {
@@ -451,7 +604,7 @@ export class WebMeetBlackboardWidgetEditor {
         if (this.strokeWidthInput) this.strokeWidthInput.value = String(Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? (isLine ? 3 : 2)) || 0);
         if (this.textColorField) this.textColorField.hidden = !hasTextColor;
         if (this.textColorInput) this.textColorInput.value = style.textColor || typeDefaults.textColor || TEXT_DEFAULT_STYLE.textColor;
-        this.activateTab(hasText || isPoll ? 'content' : 'settings');
+        this.activateTab(hasText || isPoll || isBullets ? 'content' : 'settings');
     }
 
     getWidgetText(widget = {}) {
@@ -476,6 +629,18 @@ export class WebMeetBlackboardWidgetEditor {
 
         if (type === 'poll') {
             patch.properties.description = text;
+        } else if (type === 'bullets') {
+            patch.properties.title = String(this.bulletsTitleInput?.value || 'Meeting Bullets').trim() || 'Meeting Bullets';
+            patch.properties.meetingDateTime = String(this.bulletsDateTimeInput?.value || '').trim();
+            patch.properties.participantCount = Math.max(0, Number.parseInt(String(this.bulletsParticipantCountInput?.value || 0), 10) || 0);
+            patch.properties.items = this.readBulletsItemsFromForm()
+                .filter((item) => item.text)
+                .map((item, index) => ({
+                    id: String(item.id || createBulletsItemId(index)).trim() || createBulletsItemId(index),
+                    text: item.text,
+                    status: item.status,
+                    priority: item.priority
+                }));
         } else if (type === 'text' || type === 'card') {
             patch.properties.text = text;
         }

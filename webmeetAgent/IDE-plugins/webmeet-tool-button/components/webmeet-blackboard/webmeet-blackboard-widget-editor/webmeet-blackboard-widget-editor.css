@@ -163,6 +163,33 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     border-top: 1px solid var(--border, #d8e0ea);
 }
 
+.webmeet-blackboard-bullets-editor-section,
+.webmeet-blackboard-bullets-editor-list {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.webmeet-blackboard-bullets-editor-section[hidden] {
+    display: none;
+}
+
+.webmeet-blackboard-bullets-editor-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(120px, 0.28fr) minmax(120px, 0.28fr) auto;
+    align-items: end;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border, #d8e0ea);
+    border-radius: 6px;
+    background: var(--surface, #ffffff);
+}
+
+.webmeet-blackboard-bullets-editor-text {
+    align-self: stretch;
+}
+
 @media (max-width: 720px) {
     dialog.modal:has(webmeet-blackboard-widget-editor) {
         width: calc(100vw - 24px);
@@ -174,7 +201,8 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
     .webmeet-blackboard-editor-section,
     .webmeet-blackboard-typography-section,
-    .webmeet-blackboard-poll-question-controls {
+    .webmeet-blackboard-poll-question-controls,
+    .webmeet-blackboard-bullets-editor-row {
         grid-template-columns: minmax(0, 1fr);
     }
 

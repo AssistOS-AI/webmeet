@@ -5,6 +5,7 @@ export const BLACKBOARD_WIDGET_TYPES = Object.freeze([
     'image',
     'card',
     'poll',
+    'bullets',
     'embed'
 ]);
 
@@ -92,6 +93,7 @@ function resetThemeStyleProperties(properties = {}, widgetType = '') {
         text: ['fill', 'stroke', 'strokeWidth', 'textColor'],
         card: ['fill', 'stroke', 'strokeWidth', 'textColor'],
         poll: ['fill', 'stroke', 'strokeWidth', 'textColor'],
+        bullets: ['fill', 'stroke', 'strokeWidth', 'textColor'],
         embed: ['fill', 'stroke', 'strokeWidth', 'textColor'],
         image: ['stroke', 'strokeWidth']
     };
@@ -393,6 +395,42 @@ function normalizePollProperties(properties = {}, { resetResponses = false } = {
     };
 }
 
+function createBulletsItemId(index) {
+    return `b${index + 1}`;
+}
+
+function normalizeBulletsStatus(value = '') {
+    const normalized = String(value || '').trim();
+    return ['todo', 'inProgress', 'done', 'blocked'].includes(normalized) ? normalized : 'todo';
+}
+
+function normalizeBulletsPriority(value = '') {
+    const normalized = String(value || '').trim();
+    return ['high', 'medium', 'low'].includes(normalized) ? normalized : 'medium';
+}
+
+function normalizeBulletsItem(input = {}, index = 0) {
+    return {
+        id: String(input.id || createBulletsItemId(index)).trim() || createBulletsItemId(index),
+        text: String(input.text || '').trim(),
+        status: normalizeBulletsStatus(input.status),
+        priority: normalizeBulletsPriority(input.priority)
+    };
+}
+
+function normalizeBulletsProperties(properties = {}) {
+    const items = (Array.isArray(properties.items) ? properties.items : [])
+        .map((item, index) => normalizeBulletsItem(item, index))
+        .filter((item) => item.text);
+    return {
+        ...cloneJson(properties),
+        title: String(properties.title || 'Meeting Bullets').trim() || 'Meeting Bullets',
+        meetingDateTime: String(properties.meetingDateTime || '').trim(),
+        participantCount: Math.max(0, Number.parseInt(String(properties.participantCount || 0), 10) || 0),
+        items
+    };
+}
+
 function sanitizeWidgetPatch(widget, patch = {}) {
     if (widget?.type !== 'poll' || !isPlainObject(patch?.properties)) {
         return patch;
@@ -642,6 +680,8 @@ export class Blackboard {
                 ownerParticipantId
             };
             normalized.properties = normalizePollProperties(normalized.properties, { resetResponses: true });
+        } else if (normalized.type === 'bullets') {
+            normalized.properties = normalizeBulletsProperties(normalized.properties);
         }
         this.widgets.set(normalized.id, normalized);
         this.bumpVersion(options.blackboardVersion);
@@ -668,6 +708,8 @@ export class Blackboard {
         widget.patch(sanitizeWidgetPatch(widget, patch), options);
         if (widget.type === 'poll') {
             widget.properties = normalizePollProperties(widget.properties);
+        } else if (widget.type === 'bullets') {
+            widget.properties = normalizeBulletsProperties(widget.properties);
         }
         this.bumpVersion(options.blackboardVersion);
         if (options.record !== false) {

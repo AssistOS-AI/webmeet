@@ -438,6 +438,50 @@ test('blackboard poll owner and admin can manage but participants cannot', () =>
     assert.equal(blackboard.getWidget('poll_1').properties.description, 'Updated by admin');
 });
 
+test('blackboard bullets widget is collaborative and normalizes items', () => {
+    const blackboard = new Blackboard({ roomId: 'room_1' });
+    blackboard.addWidget(new BlackboardWidget({
+        id: 'bullets_1',
+        type: 'bullets',
+        properties: {
+            title: 'Daily Standup',
+            participantCount: '3',
+            items: [
+                { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
+                { id: 'n2', text: 'Needs design input', status: 'blocked', priority: 'low' },
+                { id: 'empty', text: '', status: 'bad', priority: 'bad' }
+            ]
+        }
+    }), { participantId: 'owner' });
+
+    const created = blackboard.getWidget('bullets_1');
+    assert.equal(created.properties.title, 'Daily Standup');
+    assert.equal(created.properties.participantCount, 3);
+    assert.deepEqual(created.properties.items, [
+        { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
+        { id: 'n2', text: 'Needs design input', status: 'blocked', priority: 'low' }
+    ]);
+
+    blackboard.patchWidget('bullets_1', {
+        properties: {
+            items: [
+                { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
+                { id: 'n3', text: 'Follow up with QA', status: 'inProgress', priority: 'medium' },
+                { id: 'n4', text: 'Bad values normalize', status: 'unknown', priority: 'urgent' }
+            ]
+        }
+    }, { participantId: 'alice' });
+
+    assert.deepEqual(blackboard.getWidget('bullets_1').properties.items, [
+        { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
+        { id: 'n3', text: 'Follow up with QA', status: 'inProgress', priority: 'medium' },
+        { id: 'n4', text: 'Bad values normalize', status: 'todo', priority: 'medium' }
+    ]);
+
+    blackboard.removeWidget('bullets_1', { participantId: 'bob' });
+    assert.equal(blackboard.getWidget('bullets_1'), null);
+});
+
 test('blackboard poll timer start close and expiry rules', () => {
     const blackboard = new Blackboard({ roomId: 'room_1' });
     blackboard.applyFinalChange({
@@ -1101,7 +1145,7 @@ test('blackboard widgets support final resize changes for shape line card text a
         'utf8'
     );
 
-    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image'\]\.includes/);
+    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'bullets'\]\.includes/);
     assert.match(source, /renderResizeHandles\(node, widget\)/);
     assert.match(source, /data-resize-handle/);
     assert.match(source, /reason: 'resize'/);
@@ -1217,6 +1261,20 @@ test('blackboard poll widget renders summary modal and poll settings', async () 
     assert.match(editorSource, /patch\.properties\.allowPollChange = this\.allowPollChangeInput\?\.checked === true/);
     assert.match(editorSource, /patch\.properties\.anonymous = this\.anonymousInput\?\.checked === true/);
     assert.match(editorSource, /patch\.properties\.durationSeconds/);
+    assert.match(panelSource, /renderBulletsWidgetContent\(node, widget\)/);
+    assert.match(panelSource, /createBulletsItemRow\(item\)/);
+    assert.match(panelSource, /void this\.addBulletsNote\(widget\)/);
+    assert.match(panelSource, /View Full Notes/);
+    assert.match(panelCss, /\.webmeet-blackboard-widget\.bullets/);
+    assert.match(panelCss, /\.webmeet-blackboard-bullets-priority\.priority-high/);
+    assert.match(panelCss, /\.webmeet-blackboard-bullets-item\.status-blocked/);
+    assert.match(editorHtml, /data-role="bulletsSection"/);
+    assert.match(editorHtml, /data-role="bulletsTitle"/);
+    assert.match(editorHtml, /data-role="bulletsDateTime"/);
+    assert.match(editorHtml, /data-role="bulletsParticipantCount"/);
+    assert.match(editorHtml, /data-role="bulletsItems"/);
+    assert.match(editorSource, /renderBulletsItemInputs\(items/);
+    assert.match(editorSource, /patch\.properties\.items = this\.readBulletsItemsFromForm/);
 });
 
 test('blackboard supports image upload widgets', async () => {
@@ -1246,7 +1304,7 @@ test('blackboard supports image upload widgets', async () => {
     assert.match(panelSource, /widget\.type === 'image'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image-frame'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image'/);
-    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image'\]\.includes/);
+    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'bullets'\]\.includes/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame[\s\S]*border: var\(--stroke-width/);
 });
@@ -1278,6 +1336,7 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(toolbarHtml, /data-local-action="addWidget shape:diamond"/);
     assert.match(toolbarHtml, /data-local-action="addWidget line:arrow-end"/);
     assert.match(toolbarHtml, /data-local-action="addWidget line:arrow-both"/);
+    assert.match(toolbarHtml, /data-local-action="addWidget bullets"/);
     assert.doesNotMatch(toolbarHtml, /data-widget-type=/);
     assert.match(panelSource, /createShapeSvg\(widget\)/);
     assert.match(panelSource, /shapeKind === 'triangle'/);

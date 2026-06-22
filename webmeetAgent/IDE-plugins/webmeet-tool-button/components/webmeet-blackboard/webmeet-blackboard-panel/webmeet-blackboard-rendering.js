@@ -36,8 +36,10 @@ export const blackboardRenderingMethods = {
         const widgetHeight = Number(geometry.height || 64);
         const minPollWidth = widget.type === 'poll' ? 260 : 1;
         const minPollHeight = widget.type === 'poll' ? 132 : 1;
-        node.style.width = `${Math.max(widgetWidth, minPollWidth)}px`;
-        node.style.height = `${Math.max(widgetHeight, minPollHeight)}px`;
+        const minBulletsWidth = widget.type === 'bullets' ? 320 : 1;
+        const minBulletsHeight = widget.type === 'bullets' ? 190 : 1;
+        node.style.width = `${Math.max(widgetWidth, minPollWidth, minBulletsWidth)}px`;
+        node.style.height = `${Math.max(widgetHeight, minPollHeight, minBulletsHeight)}px`;
         const rotation = this.getWidgetRotation(widget);
         node.style.transform = rotation ? `rotate(${rotation}deg)` : '';
         node.style.transformOrigin = 'center center';
@@ -131,7 +133,7 @@ export const blackboardRenderingMethods = {
         if (!widget || widget.locked) return false;
         if (widget.type === 'poll' && !this.canEditWidget(widget)) return false;
         const widgetType = String(widget.type || 'shape').trim() || 'shape';
-        return ['shape', 'line', 'card', 'text', 'image'].includes(widgetType);
+        return ['shape', 'line', 'card', 'text', 'image', 'bullets'].includes(widgetType);
     },
 
     canEditWidget(widget) {
@@ -205,6 +207,10 @@ export const blackboardRenderingMethods = {
         }
         if (widget.type === 'poll') {
             this.renderPollWidgetContent(node, widget);
+            return;
+        }
+        if (widget.type === 'bullets') {
+            this.renderBulletsWidgetContent(node, widget);
             return;
         }
         if (widget.type === 'text' || widget.type === 'card') {
@@ -384,6 +390,110 @@ export const blackboardRenderingMethods = {
         if (adminActions) node.append(adminActions);
     },
 
+    renderBulletsWidgetContent(node, widget) {
+        const props = widget.properties || {};
+        const items = Array.isArray(props.items) ? props.items : [];
+        const visibleItems = items.slice(0, 5);
+
+        const header = document.createElement('div');
+        header.className = 'webmeet-blackboard-bullets-header';
+        const title = document.createElement('div');
+        title.className = 'webmeet-blackboard-bullets-title';
+        title.textContent = String(props.title || 'Meeting Bullets').trim() || 'Meeting Bullets';
+        const meta = document.createElement('div');
+        meta.className = 'webmeet-blackboard-bullets-meta';
+        const dateText = String(props.meetingDateTime || '').trim();
+        const participantCount = Number.parseInt(String(props.participantCount || 0), 10) || 0;
+        meta.textContent = [dateText, participantCount > 0 ? `${participantCount} participants` : '']
+            .filter(Boolean)
+            .join(' • ');
+        header.append(title, meta);
+
+        const list = document.createElement('div');
+        list.className = 'webmeet-blackboard-bullets-list';
+        if (visibleItems.length) {
+            for (const item of visibleItems) {
+                list.append(this.createBulletsItemRow(item));
+            }
+        } else {
+            const empty = document.createElement('div');
+            empty.className = 'webmeet-blackboard-bullets-empty';
+            empty.textContent = 'No notes yet';
+            list.append(empty);
+        }
+
+        const footer = document.createElement('div');
+        footer.className = 'webmeet-blackboard-bullets-footer';
+        const addButton = document.createElement('button');
+        addButton.type = 'button';
+        addButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
+        addButton.textContent = 'Add Note';
+        addButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+        addButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void this.addBulletsNote(widget);
+        });
+        const viewButton = document.createElement('button');
+        viewButton.type = 'button';
+        viewButton.className = 'subtle-button webmeet-blackboard-widget-action-button';
+        viewButton.textContent = items.length > visibleItems.length ? `View Full Notes (+${items.length - visibleItems.length})` : 'View Full Notes';
+        viewButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+        viewButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void this.editWidget(widget);
+        });
+        footer.append(addButton, viewButton);
+        node.append(header, list, footer);
+    },
+
+    createBulletsItemRow(item = {}) {
+        const row = document.createElement('div');
+        const status = this.normalizeBulletsStatus(item.status);
+        const priority = this.normalizeBulletsPriority(item.priority);
+        row.className = `webmeet-blackboard-bullets-item status-${status} priority-${priority}`;
+
+        const icon = document.createElement('span');
+        icon.className = 'webmeet-blackboard-bullets-status-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = this.getBulletsStatusIcon(status);
+
+        const text = document.createElement('span');
+        text.className = 'webmeet-blackboard-bullets-text';
+        text.textContent = String(item.text || '').trim();
+
+        const badge = document.createElement('span');
+        badge.className = `webmeet-blackboard-bullets-priority priority-${priority}`;
+        badge.textContent = this.getBulletsPriorityLabel(priority);
+
+        row.append(icon, text, badge);
+        return row;
+    },
+
+    normalizeBulletsStatus(status = '') {
+        const normalized = String(status || '').trim();
+        return ['todo', 'inProgress', 'done', 'blocked'].includes(normalized) ? normalized : 'todo';
+    },
+
+    normalizeBulletsPriority(priority = '') {
+        const normalized = String(priority || '').trim();
+        return ['high', 'medium', 'low'].includes(normalized) ? normalized : 'medium';
+    },
+
+    getBulletsStatusIcon(status = 'todo') {
+        if (status === 'inProgress') return '↯';
+        if (status === 'done') return '✓';
+        if (status === 'blocked') return '!';
+        return '○';
+    },
+
+    getBulletsPriorityLabel(priority = 'medium') {
+        if (priority === 'high') return '▲ High';
+        if (priority === 'low') return '▼ Low';
+        return 'Medium';
+    },
+
     getPollQuestions(widget) {
         return Array.isArray(widget.properties?.questions) ? widget.properties.questions : [];
     },
@@ -468,6 +578,7 @@ export const blackboardRenderingMethods = {
     getWidgetLabel(widget) {
         if (widget.type === 'text') return widget.properties?.text || '';
         if (widget.type === 'poll') return widget.properties?.description || widget.type;
+        if (widget.type === 'bullets') return widget.properties?.title || widget.type;
         return widget.properties?.label || '';
     }
 };

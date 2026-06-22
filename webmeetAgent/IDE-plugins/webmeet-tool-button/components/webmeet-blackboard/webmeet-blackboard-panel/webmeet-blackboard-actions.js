@@ -398,6 +398,20 @@ export const blackboardActionMethods = {
                 },
                 resultsVisibility: 'public'
             };
+        } else if (normalizedType === 'bullets') {
+            widget.properties.geometry = {x: 72 + offset, y: 64 + offset, width: 360, height: 230};
+            widget.properties = {
+                ...widget.properties,
+                title: 'Meeting Bullets',
+                meetingDateTime: '',
+                participantCount: 0,
+                items: [{
+                    id: 'b1',
+                    text: 'Add a note from the meeting',
+                    status: 'todo',
+                    priority: 'medium'
+                }]
+            };
         } else if (normalizedType === 'image') {
             widget.properties.geometry = {x: 72 + offset, y: 64 + offset, width: 320, height: 220};
             widget.properties.style = {
@@ -611,6 +625,37 @@ export const blackboardActionMethods = {
             reason: 'settings',
             patch: result.patch
         });
+    },
+
+    async addBulletsNote(widget) {
+        const props = widget?.properties || {};
+        const items = Array.isArray(props.items) ? props.items : [];
+        await this.editWidget({
+            ...widget,
+            properties: {
+                ...props,
+                items: [
+                    ...items,
+                    {
+                        id: this.createNextBulletsItemId(items),
+                        text: '',
+                        status: 'todo',
+                        priority: 'medium'
+                    }
+                ]
+            }
+        });
+    },
+
+    createNextBulletsItemId(items = []) {
+        const used = new Set((Array.isArray(items) ? items : [])
+            .map((item) => String(item?.id || '').trim())
+            .filter(Boolean));
+        let index = 1;
+        while (used.has(`b${index}`)) {
+            index += 1;
+        }
+        return `b${index}`;
     },
 
     getEditableWidgetProperty() {

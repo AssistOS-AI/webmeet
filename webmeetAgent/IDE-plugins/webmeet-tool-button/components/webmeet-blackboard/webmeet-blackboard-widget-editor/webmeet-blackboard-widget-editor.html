@@ -30,6 +30,30 @@
                     </div>
                 </div>
             </section>
+
+            <section class="webmeet-blackboard-bullets-editor-section" data-role="bulletsSection" hidden>
+                <div class="webmeet-blackboard-editor-section">
+                    <label class="webmeet-form-field">
+                        <span>Title</span>
+                        <input class="form-input" name="bulletsTitle" type="text" data-role="bulletsTitle">
+                    </label>
+                    <label class="webmeet-form-field">
+                        <span>Date / Time</span>
+                        <input class="form-input" name="bulletsDateTime" type="text" data-role="bulletsDateTime">
+                    </label>
+                    <label class="webmeet-form-field">
+                        <span>Participants</span>
+                        <input class="form-input" name="bulletsParticipantCount" type="number" min="0" step="1" data-role="bulletsParticipantCount">
+                    </label>
+                </div>
+                <div class="webmeet-form-field">
+                    <span>Notes</span>
+                    <div class="webmeet-blackboard-bullets-editor-list" data-role="bulletsItems"></div>
+                    <div class="webmeet-blackboard-poll-question-list-actions">
+                        <button type="button" class="gray-button webmeet-blackboard-add-question-button" data-role="addBulletsItem">Add Note</button>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <div class="webmeet-blackboard-editor-tab-panel" role="tabpanel" data-role="settingsPanel" hidden>

@@ -209,6 +209,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-widget.text,
 .webmeet-blackboard-widget.card,
 .webmeet-blackboard-widget.poll,
+.webmeet-blackboard-widget.bullets,
 .webmeet-blackboard-widget.embed {
     overflow: hidden;
     padding: 8px;
@@ -223,6 +224,143 @@ webmeet-blackboard-panel {
     gap: 8px;
     min-width: 260px;
     min-height: 132px;
+}
+
+.webmeet-blackboard-widget.bullets {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    min-width: 320px;
+    min-height: 190px;
+}
+
+.webmeet-blackboard-bullets-header {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid color-mix(in srgb, var(--stroke, var(--bb-widget-border, #cbd5e1)) 45%, transparent);
+}
+
+.webmeet-blackboard-bullets-title {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-color, var(--bb-widget-text, #172033));
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-bullets-meta {
+    min-height: 14px;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--text-color, var(--bb-widget-text, #172033)) 62%, transparent);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-bullets-list {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.webmeet-blackboard-bullets-item {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 24px;
+}
+
+.webmeet-blackboard-bullets-status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.webmeet-blackboard-bullets-item.status-inProgress .webmeet-blackboard-bullets-status-icon {
+    color: #1d4ed8;
+    background: #dbeafe;
+}
+
+.webmeet-blackboard-bullets-item.status-done .webmeet-blackboard-bullets-status-icon {
+    color: #ffffff;
+    background: #16a34a;
+}
+
+.webmeet-blackboard-bullets-item.status-blocked .webmeet-blackboard-bullets-status-icon {
+    color: #ffffff;
+    background: #dc2626;
+}
+
+.webmeet-blackboard-bullets-text {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-color, var(--bb-widget-text, #172033));
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-bullets-priority {
+    display: inline-flex;
+    align-items: center;
+    max-width: 82px;
+    min-height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-bullets-priority.priority-high {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.webmeet-blackboard-bullets-priority.priority-medium {
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+.webmeet-blackboard-bullets-priority.priority-low {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.webmeet-blackboard-bullets-empty {
+    color: color-mix(in srgb, var(--text-color, var(--bb-widget-text, #172033)) 58%, transparent);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.webmeet-blackboard-bullets-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding-top: 6px;
+    border-top: 1px solid color-mix(in srgb, var(--stroke, var(--bb-widget-border, #cbd5e1)) 45%, transparent);
 }
 
 .webmeet-blackboard-widget.poll > * {
