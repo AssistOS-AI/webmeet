@@ -29,20 +29,15 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     position: relative;
     width: 100%;
     height: 100%;
+    min-height: 0;
     overflow: hidden;
 }
 
-.webmeet-settings-modal-content {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-}
-
-.webmeet-settings-modal-content .webmeet-hidden {
+.webmeet-settings-modal .webmeet-hidden {
     display: none !important;
 }
 
-.webmeet-settings-modal-content > #webmeetMediaSettingsPanel {
+#webmeetMediaSettingsPanel {
     position: relative;
     inset: auto;
     z-index: auto;
@@ -55,12 +50,12 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     transform: none;
 }
 
-.webmeet-settings-modal-content .webmeet-modal-window-actions img {
+.webmeet-settings-modal .webmeet-modal-window-actions img {
     width: 16px;
     height: 16px;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings {
+#webmeetMediaSettingsPanel.webmeet-media-settings {
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -68,13 +63,13 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     overflow: hidden;
 }
 
-.webmeet-settings-modal-content .webmeet-modal-window-actions {
+.webmeet-settings-modal .webmeet-modal-window-actions {
     display: inline-flex;
     align-items: center;
     gap: 8px;
 }
 
-.webmeet-settings-modal-content .webmeet-icon-button {
+.webmeet-settings-modal .webmeet-icon-button {
     background: var(--gray-button-background);
     border: 1px solid var(--gray-button-border);
     border-radius: 6px;
@@ -89,27 +84,27 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     position: relative;
 }
 
-.webmeet-settings-modal-content .webmeet-icon-button:hover {
+.webmeet-settings-modal .webmeet-icon-button:hover {
     background: var(--option-hover);
     border-color: var(--accent);
     color: var(--accent);
 }
 
-.webmeet-settings-modal-content .webmeet-icon-button:disabled {
+.webmeet-settings-modal .webmeet-icon-button:disabled {
     cursor: wait;
     opacity: 0.68;
 }
 
-.webmeet-settings-modal-content .webmeet-icon-button svg {
+.webmeet-settings-modal .webmeet-icon-button svg {
     width: 20px;
     height: 20px;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings .modal-header {
+.webmeet-settings-modal .webmeet-media-settings .modal-header {
     flex: 0 0 auto;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings .modal-body {
+.webmeet-settings-modal .webmeet-media-settings .modal-body {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -117,7 +112,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     overflow: hidden;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-tabs {
+.webmeet-settings-modal .webmeet-settings-tabs {
     display: flex;
     flex: 0 0 auto;
     flex-wrap: wrap;
@@ -127,7 +122,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     border-bottom: 1px solid var(--border);
 }
 
-.webmeet-settings-modal-content .webmeet-settings-tab {
+.webmeet-settings-modal .webmeet-settings-tab {
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface);
@@ -138,19 +133,19 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     cursor: pointer;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-tab:hover {
+.webmeet-settings-modal .webmeet-settings-tab:hover {
     border-color: var(--accent);
     color: var(--accent);
 }
 
-.webmeet-settings-modal-content .webmeet-settings-tab.active,
-.webmeet-settings-modal-content .webmeet-settings-tab.is-active {
+.webmeet-settings-modal .webmeet-settings-tab.active,
+.webmeet-settings-modal .webmeet-settings-tab.is-active {
     border-color: var(--accent);
     color: var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
-.webmeet-settings-modal-content .webmeet-settings-section {
+.webmeet-settings-modal .webmeet-settings-section {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -159,43 +154,43 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     overflow: auto;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-section[hidden] {
+.webmeet-settings-modal .webmeet-settings-section[hidden] {
     display: none !important;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-section-header {
+.webmeet-settings-modal .webmeet-settings-section-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 10px;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-section-header h3 {
+.webmeet-settings-modal .webmeet-settings-section-header h3 {
     margin: 0;
     color: var(--text);
     font-size: 0.95rem;
     font-weight: 700;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-section-header p {
+.webmeet-settings-modal .webmeet-settings-section-header p {
     margin: 4px 0 0;
     color: var(--text-soft);
     font-size: 0.8rem;
     line-height: 1.45;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-grid {
+.webmeet-settings-modal .webmeet-settings-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(180px, 1fr));
     gap: 12px;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-grid-background,
-.webmeet-settings-modal-content .webmeet-settings-grid-avatar {
+.webmeet-settings-modal .webmeet-settings-grid-background,
+.webmeet-settings-modal .webmeet-settings-grid-avatar {
     grid-template-columns: minmax(0, 1fr);
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-group {
+.webmeet-settings-modal .webmeet-media-settings-group {
     min-width: 0;
     display: grid;
     align-content: start;
@@ -206,11 +201,11 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     background: color-mix(in srgb, var(--file-exp-panel) 64%, var(--surface) 36%);
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-group-wide {
+.webmeet-settings-modal .webmeet-media-settings-group-wide {
     grid-column: 1 / -1;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-group-header {
+.webmeet-settings-modal .webmeet-media-settings-group-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -219,39 +214,39 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     border-bottom: 1px solid var(--border);
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-group-header span {
+.webmeet-settings-modal .webmeet-media-settings-group-header span {
     color: var(--text);
     font-size: 0.78rem;
     font-weight: 700;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-row {
+.webmeet-settings-modal .webmeet-media-settings-row {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-row label {
+.webmeet-settings-modal .webmeet-media-settings-row label {
     font-size: 0.78rem;
     color: var(--text-soft);
     font-weight: 600;
 }
 
-.webmeet-settings-modal-content .webmeet-setting-label {
+.webmeet-settings-modal .webmeet-setting-label {
     min-width: 0;
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-.webmeet-settings-modal-content .webmeet-setting-help-control {
+.webmeet-settings-modal .webmeet-setting-help-control {
     position: relative;
     display: inline-flex;
     align-items: center;
     flex: 0 0 auto;
 }
 
-.webmeet-settings-modal-content .webmeet-setting-help-button {
+.webmeet-settings-modal .webmeet-setting-help-button {
     width: 15px;
     height: 15px;
     display: inline-flex;
@@ -268,14 +263,14 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     cursor: help;
 }
 
-.webmeet-settings-modal-content .webmeet-setting-help-button:hover,
-.webmeet-settings-modal-content .webmeet-setting-help-button:focus-visible {
+.webmeet-settings-modal .webmeet-setting-help-button:hover,
+.webmeet-settings-modal .webmeet-setting-help-button:focus-visible {
     color: var(--accent);
     border-color: var(--accent);
     outline: none;
 }
 
-.webmeet-settings-modal-content .webmeet-setting-help-tooltip {
+.webmeet-settings-modal .webmeet-setting-help-tooltip {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
@@ -296,44 +291,44 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
 }
 
-.webmeet-settings-modal-content .webmeet-setting-help-control:hover .webmeet-setting-help-tooltip,
-.webmeet-settings-modal-content .webmeet-setting-help-control:focus-within .webmeet-setting-help-tooltip {
+.webmeet-settings-modal .webmeet-setting-help-control:hover .webmeet-setting-help-tooltip,
+.webmeet-settings-modal .webmeet-setting-help-control:focus-within .webmeet-setting-help-tooltip {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-row select.form-input,
-.webmeet-settings-modal-content .webmeet-media-settings-row input.form-input[type="file"] {
+.webmeet-settings-modal .webmeet-media-settings-row select.form-input,
+.webmeet-settings-modal .webmeet-media-settings-row input.form-input[type="file"] {
     min-height: 34px;
     padding: 6px 10px;
 }
 
-.webmeet-settings-modal-content .webmeet-media-slider-row input[type="range"] {
+.webmeet-settings-modal .webmeet-media-slider-row input[type="range"] {
     width: 100%;
     accent-color: var(--accent);
 }
 
-.webmeet-settings-modal-content .webmeet-media-slider-label {
+.webmeet-settings-modal .webmeet-media-slider-label {
     display: flex;
     justify-content: space-between;
     gap: 8px;
     align-items: center;
 }
 
-.webmeet-settings-modal-content .webmeet-media-slider-label span {
+.webmeet-settings-modal .webmeet-media-slider-label span {
     color: var(--text);
     font-size: 0.78rem;
     font-weight: 650;
 }
 
-.webmeet-settings-modal-content .webmeet-media-warning {
+.webmeet-settings-modal .webmeet-media-warning {
     color: var(--danger);
     font-size: 0.74rem;
     line-height: 1.25;
 }
 
-.webmeet-settings-modal-content .webmeet-media-device-warnings {
+.webmeet-settings-modal .webmeet-media-device-warnings {
     grid-column: 1 / -1;
     display: grid;
     gap: 6px;
@@ -346,27 +341,27 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     line-height: 1.35;
 }
 
-.webmeet-settings-modal-content .webmeet-media-device-warnings.webmeet-hidden {
+.webmeet-settings-modal .webmeet-media-device-warnings.webmeet-hidden {
     display: none;
 }
 
-.webmeet-settings-modal-content .webmeet-media-device-warning {
+.webmeet-settings-modal .webmeet-media-device-warning {
     margin: 0;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-flags {
+.webmeet-settings-modal .webmeet-media-settings-flags {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
 }
 
-.webmeet-settings-modal-content .webmeet-media-flag-item {
+.webmeet-settings-modal .webmeet-media-flag-item {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-.webmeet-settings-modal-content .webmeet-media-flag {
+.webmeet-settings-modal .webmeet-media-flag {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -374,7 +369,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     color: var(--text);
 }
 
-.webmeet-settings-modal-content .webmeet-background-preview {
+.webmeet-settings-modal .webmeet-background-preview {
     display: grid;
     grid-template-columns: 112px minmax(0, 1fr);
     gap: 12px;
@@ -385,7 +380,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     background: color-mix(in srgb, var(--file-exp-panel) 72%, var(--surface) 28%);
 }
 
-.webmeet-settings-modal-content .webmeet-background-preview img {
+.webmeet-settings-modal .webmeet-background-preview img {
     width: 112px;
     height: 72px;
     object-fit: cover;
@@ -394,13 +389,13 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     background: var(--menu-backgroud);
 }
 
-.webmeet-settings-modal-content .webmeet-background-preview-meta {
+.webmeet-settings-modal .webmeet-background-preview-meta {
     min-width: 0;
     display: grid;
     gap: 8px;
 }
 
-.webmeet-settings-modal-content .webmeet-background-preview-meta span {
+.webmeet-settings-modal .webmeet-background-preview-meta span {
     color: var(--text);
     font-size: 0.78rem;
     font-weight: 600;
@@ -409,14 +404,14 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     white-space: nowrap;
 }
 
-.webmeet-settings-modal-content .webmeet-settings-help {
+.webmeet-settings-modal .webmeet-settings-help {
     margin: 0;
     color: var(--text-soft);
     font-size: 0.76rem;
     line-height: 1.45;
 }
 
-.webmeet-settings-modal-content .webmeet-media-settings-actions {
+.webmeet-settings-modal .webmeet-media-settings-actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
@@ -426,7 +421,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     align-items: center;
 }
 
-.webmeet-settings-modal-content .webmeet-apply-media-settings-button {
+.webmeet-settings-modal .webmeet-apply-media-settings-button {
     position: relative;
     min-width: 74px;
     display: inline-flex;
@@ -434,16 +429,16 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     justify-content: center;
 }
 
-.webmeet-settings-modal-content .webmeet-apply-media-settings-button:disabled {
+.webmeet-settings-modal .webmeet-apply-media-settings-button:disabled {
     cursor: wait;
     opacity: 0.78;
 }
 
-.webmeet-settings-modal-content .webmeet-apply-media-settings-button.is-loading .webmeet-button-label {
+.webmeet-settings-modal .webmeet-apply-media-settings-button.is-loading .webmeet-button-label {
     opacity: 0;
 }
 
-.webmeet-settings-modal-content .webmeet-apply-media-settings-button.is-loading::after {
+.webmeet-settings-modal .webmeet-apply-media-settings-button.is-loading::after {
     content: "";
     position: absolute;
     width: 16px;
@@ -454,13 +449,13 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     animation: webmeet-spin 0.8s linear infinite;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-settings-layout {
+.webmeet-settings-modal .webmeet-avatar-settings-layout {
     display: flex;
     flex-direction: column;
     gap: 14px;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-preview {
+.webmeet-settings-modal .webmeet-avatar-preview {
     width: 100px;
     height: 100px;
     display: grid;
@@ -472,18 +467,18 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     margin: 0 auto;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-preview axi-face {
+.webmeet-settings-modal .webmeet-avatar-preview axi-face {
     width: 72px;
     height: 72px;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-preview-letter {
+.webmeet-settings-modal .webmeet-avatar-preview-letter {
     color: var(--text-soft);
     font-size: 1.6rem;
     font-weight: 700;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-settings-fields {
+.webmeet-settings-modal .webmeet-avatar-settings-fields {
     min-width: 0;
     display: grid;
     gap: 14px;
@@ -491,18 +486,18 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     align-items: start;
 }
 
-.webmeet-settings-modal-content .preview-section {
+.webmeet-settings-modal .preview-section {
     display: flex;
     flex-direction: column;
     gap: 14px;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-status {
+.webmeet-settings-modal .webmeet-avatar-status {
     color: var(--text-soft);
     font-size: 0.78rem;
 }
 
-.webmeet-settings-modal-content .webmeet-avatar-settings-actions {
+.webmeet-settings-modal .webmeet-avatar-settings-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -555,7 +550,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen .webmeet-settings-resiz
 }
 
 @media (max-width: 860px) {
-    .webmeet-settings-modal-content .webmeet-avatar-settings-fields {
+    .webmeet-settings-modal .webmeet-avatar-settings-fields {
         grid-template-columns: 1fr;
     }
 }
@@ -578,28 +573,28 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen .webmeet-settings-resiz
         display: none;
     }
 
-    .webmeet-settings-modal-content .webmeet-settings-grid {
+    .webmeet-settings-modal .webmeet-settings-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .webmeet-settings-modal-content .webmeet-media-settings-group,
-    .webmeet-settings-modal-content .webmeet-media-settings-group-wide,
-    .webmeet-settings-modal-content .webmeet-media-device-warnings,
-    .webmeet-settings-modal-content .webmeet-media-settings-actions {
+    .webmeet-settings-modal .webmeet-media-settings-group,
+    .webmeet-settings-modal .webmeet-media-settings-group-wide,
+    .webmeet-settings-modal .webmeet-media-device-warnings,
+    .webmeet-settings-modal .webmeet-media-settings-actions {
         grid-column: 1 / -1;
     }
 
-    .webmeet-settings-modal-content .webmeet-media-settings-flags,
-    .webmeet-settings-modal-content .webmeet-media-settings-actions {
+    .webmeet-settings-modal .webmeet-media-settings-flags,
+    .webmeet-settings-modal .webmeet-media-settings-actions {
         flex-direction: column;
         align-items: stretch;
     }
 
-    .webmeet-settings-modal-content .webmeet-background-preview {
+    .webmeet-settings-modal .webmeet-background-preview {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .webmeet-settings-modal-content .webmeet-background-preview img {
+    .webmeet-settings-modal .webmeet-background-preview img {
         width: 100%;
         height: auto;
         aspect-ratio: 16 / 10;

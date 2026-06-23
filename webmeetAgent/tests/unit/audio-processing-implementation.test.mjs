@@ -24,6 +24,10 @@ const dashboardHtmlPath = path.join(
     repoRoot,
     'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.html'
 );
+const settingsModalHtmlPath = path.join(
+    repoRoot,
+    'IDE-plugins/webmeet-tool-button/components/webmeet-settings-modal/webmeet-settings-modal.html'
+);
 
 test('RNNoise initialization timeout disposes the worklet node', async () => {
     const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
@@ -57,6 +61,7 @@ test('automatic voice processing falls back without overwriting the automatic pr
     const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
     const controllerSource = await fs.readFile(mediaControllerPath, 'utf8');
     const dashboardTemplate = await fs.readFile(dashboardHtmlPath, 'utf8');
+    const settingsTemplate = await fs.readFile(settingsModalHtmlPath, 'utf8');
 
     assert.match(factorySource, /const automatic = mode === 'auto'/);
     assert.match(factorySource, /const humFilter = normalizeHumFilter\(settings\.humFilter\)/);
@@ -79,20 +84,20 @@ test('automatic voice processing falls back without overwriting the automatic pr
     assert.match(controllerSource, /microphoneGain: 1/);
     assert.match(controllerSource, /humFilter: 'off'/);
     assert.match(controllerSource, /setAudioCleanupStatus\('browser'\)/);
-    assert.match(dashboardTemplate, /Voice Focus, recommended/);
+    assert.match(settingsTemplate, /Voice Focus, recommended/);
     assert.match(dashboardTemplate, /Using browser audio cleanup/);
     assert.doesNotMatch(controllerSource, /replaceUnsupportedVoiceProcessingMode\('standard', 'auto/);
 });
 
 test('manual audio controls switch automatic voice processing to custom instead of disabling controls', async () => {
     const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
-    const dashboardTemplate = await fs.readFile(dashboardHtmlPath, 'utf8');
+    const settingsTemplate = await fs.readFile(settingsModalHtmlPath, 'utf8');
     const mediaSettingsSource = await fs.readFile(path.join(
         repoRoot,
         'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/media-settings-methods.js'
     ), 'utf8');
 
-    assert.match(dashboardTemplate, /<option value="custom">Custom manual controls<\/option>/);
+    assert.match(settingsTemplate, /<option value="custom">Custom manual controls<\/option>/);
     assert.match(mediaSettingsSource, /switchAutomaticVoiceProcessingToCustom/);
     assert.match(mediaSettingsSource, /this\.voiceProcessingModeSelect\.value = 'custom'/);
     assert.doesNotMatch(mediaSettingsSource, /control\.disabled = automaticVoiceProcessing/);

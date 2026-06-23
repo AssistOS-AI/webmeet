@@ -17,7 +17,7 @@ export class WebmeetSettingsModal {
         window.dispatchEvent(new CustomEvent(SETTINGS_READY_EVENT, {
             detail: {
                 element: this.element,
-                content: this.element.querySelector('[data-role="settingsContent"]')
+                panel: this.element.querySelector('#webmeetMediaSettingsPanel')
             }
         }));
     }
@@ -102,7 +102,7 @@ export class WebmeetSettingsModal {
             const handle = document.createElement('div');
             handle.className = `webmeet-settings-resize-handle ${direction}`;
             handle.addEventListener('pointerdown', (event) => this.startResize(event, direction));
-            this.element.querySelector('.webmeet-settings-modal')?.appendChild(handle);
+            this.element.querySelector('#webmeetMediaSettingsPanel')?.appendChild(handle);
         }
         dialog.dataset.webmeetSettingsResizable = 'true';
     }

@@ -1299,6 +1299,13 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
         ),
         'utf8'
     );
+    const modalHtml = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-settings-modal/webmeet-settings-modal.html'
+        ),
+        'utf8'
+    );
     const renderSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1314,38 +1321,39 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
         'utf8'
     );
 
-    assert.doesNotMatch(html, /id="webmeetAvatarPresetSelect"/);
-    assert.doesNotMatch(html, /State preset/);
-    assert.doesNotMatch(html, /id="webmeetAvatarOverrideEnabled"/);
-    assert.match(html, /id="webmeetSettingsTabMedia"/);
-    assert.match(html, /id="webmeetSettingsTabAvatar"/);
-    assert.match(html, /data-local-action="setSettingsTab"/);
-    assert.match(html, /id="webmeetAudioVideoSettingsTabPanel"/);
-    assert.match(html, /id="webmeetAvatarSettingsTabPanel"/);
-    assert.match(html, /data-settings-tab-panel="avatar" hidden/);
-    assert.match(html, /id="webmeetMediaSettingsPanel" class="webmeet-media-settings webmeet-hidden"/);
-    assert.match(html, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-header"/);
-    assert.match(html, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-body"/);
-    assert.match(html, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-footer modal-actions"/);
-    assert.match(html, /data-local-action="closeMediaSettings"/);
-    assert.match(html, /id="webmeetMediaSettingsActions"/);
-    assert.match(html, /id="webmeetAvatarSettingsActions"/);
+    assert.doesNotMatch(modalHtml, /id="webmeetAvatarPresetSelect"/);
+    assert.doesNotMatch(modalHtml, /State preset/);
+    assert.doesNotMatch(modalHtml, /id="webmeetAvatarOverrideEnabled"/);
+    assert.doesNotMatch(html, /id="webmeetMediaSettingsPanel"/);
+    assert.match(modalHtml, /id="webmeetSettingsTabMedia"/);
+    assert.match(modalHtml, /id="webmeetSettingsTabAvatar"/);
+    assert.match(modalHtml, /data-local-action="setSettingsTab"/);
+    assert.match(modalHtml, /id="webmeetAudioVideoSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetAvatarSettingsTabPanel"/);
+    assert.match(modalHtml, /data-settings-tab-panel="avatar" hidden/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsPanel" class="webmeet-settings-modal webmeet-media-settings"/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-header"/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-body"/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsPanel"[\s\S]*class="modal-footer modal-actions"/);
+    assert.match(modalHtml, /data-local-action="closeMediaSettings"/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsActions"/);
+    assert.match(modalHtml, /id="webmeetAvatarSettingsActions"/);
     assert.match(css, /\.webmeet-settings-section\[hidden\][\s\S]*display: none !important/);
     assert.match(css, /\.webmeet-settings-tabs[\s\S]*border-bottom: 1px solid var\(--border\)/);
     assert.match(css, /\.webmeet-media-settings \.modal-body[\s\S]*overflow: hidden/);
     assert.match(css, /\.webmeet-avatar-settings-fields[\s\S]*grid-template-columns: minmax\(0, 1fr\) 144px/);
     assert.match(css, /\.preview-section[\s\S]*align-items: center/);
-    assert.doesNotMatch(html, /webmeet-settings-close-button/);
-    assert.doesNotMatch(html, /class="gray-button" data-local-action="closeMediaSettings"/);
-    assert.match(html, /id="webmeetAvatarSettingsForm"/);
-    assert.match(html, /<avatar-settings-form/);
-    assert.doesNotMatch(html, /id="webmeetAvatarStyle"/);
-    assert.doesNotMatch(html, /id="webmeetAvatarSrc"/);
-    assert.doesNotMatch(html, /id="webmeetAvatarPackSrc"/);
-    assert.match(html, /id="webmeetAvatarPreview"/);
-    assert.match(html, /Reset to profile/);
-    assert.match(html, /data-local-action="applyWebMeetAvatarSettings"/);
-    assert.match(html, /data-local-action="resetWebMeetAvatarOverride"/);
+    assert.doesNotMatch(modalHtml, /webmeet-settings-close-button/);
+    assert.doesNotMatch(modalHtml, /class="gray-button" data-local-action="closeMediaSettings"/);
+    assert.match(modalHtml, /id="webmeetAvatarSettingsForm"/);
+    assert.match(modalHtml, /<avatar-settings-form/);
+    assert.doesNotMatch(modalHtml, /id="webmeetAvatarStyle"/);
+    assert.doesNotMatch(modalHtml, /id="webmeetAvatarSrc"/);
+    assert.doesNotMatch(modalHtml, /id="webmeetAvatarPackSrc"/);
+    assert.match(modalHtml, /id="webmeetAvatarPreview"/);
+    assert.match(modalHtml, /Reset to profile/);
+    assert.match(modalHtml, /data-local-action="applyWebMeetAvatarSettings"/);
+    assert.match(modalHtml, /data-local-action="resetWebMeetAvatarOverride"/);
     assert.match(html, /id="webmeetAvatarQuickButton"/);
     assert.match(html, /id="webmeetAvatarQuickMenu"/);
     assert.match(renderSource, /WEBMEET_AVATAR_PRESETS/);
@@ -1353,13 +1361,10 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.match(renderSource, /avatarPreviewLoadPromise/);
     assert.match(renderSource, /data-local-action="applyWebMeetAvatarPreset"/);
     assert.match(renderSource, /data-avatar-preset/);
-    assert.match(renderSource, /data-local-action="applyWebMeetAvatarSourceMode"/);
-    assert.match(renderSource, /data-avatar-source-mode/);
-    assert.match(renderSource, /data-local-action="applyWebMeetAvatarStyle"/);
-    assert.match(renderSource, /data-avatar-style/);
-    assert.match(renderSource, /data-local-action="applyWebMeetAvatarPack"/);
-    assert.match(renderSource, /data-avatar-pack-src/);
-    assert.match(renderSource, /Avatar source/);
+    assert.match(renderSource, /avatarSettingsForm\.webSkelPresenter\.setData/);
+    assert.match(renderSource, /sourceModes: \[/);
+    assert.match(renderSource, /AVATAR_SOURCE_MODES\.GENERATED/);
+    assert.match(renderSource, /AVATAR_SOURCE_MODES\.PACK/);
     assert.match(renderSource, /loadAxiFaceGeneratedFaceStyles/);
     assert.match(renderSource, /loadAxiFaceGeneratedFacePalettes/);
     assert.match(renderSource, /loadAxiFacePacks/);

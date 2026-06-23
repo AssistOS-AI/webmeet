@@ -35,12 +35,12 @@ test('WebMeet settings modal supports resize, fullscreen, and dashboard action d
     assert.match(modalSource, /ensureResizable\(\)/);
     assert.match(modalSource, /toggleFullscreen\(\)/);
     assert.match(modalSource, /webmeet:settings-modal-action/);
-    assert.match(modalCss, /\.webmeet-settings-modal-content \.webmeet-hidden/);
+    assert.match(modalCss, /\.webmeet-settings-modal \.webmeet-hidden/);
     assert.match(modalCss, /\.webmeet-settings-resize-handle\.se/);
     assert.match(modalCss, /webmeet-settings-modal-dialog\.is-fullscreen/);
     const dialogRule = modalCss.match(/dialog\.modal\.webmeet-settings-modal-dialog\s*\{[^}]*\}/)?.[0] || '';
     const wrapperRule = modalCss.match(/\.webmeet-settings-modal\s*\{[^}]*\}/)?.[0] || '';
-    const contentPanelRule = modalCss.match(/\.webmeet-settings-modal-content \.webmeet-media-settings\s*\{[^}]*\}/)?.[0] || '';
+    const contentPanelRule = modalCss.match(/#webmeetMediaSettingsPanel\.webmeet-media-settings\s*\{[^}]*\}/)?.[0] || '';
     assert.doesNotMatch(dialogRule, /background: transparent/);
     assert.doesNotMatch(dialogRule, /border: none/);
     assert.doesNotMatch(wrapperRule, /background: var\(--surface\)/);
@@ -49,7 +49,27 @@ test('WebMeet settings modal supports resize, fullscreen, and dashboard action d
     assert.match(contentPanelRule, /box-shadow: none/);
     assert.match(dashboardSource, /showModal\?\.\('webmeet-settings-modal'\)/);
     assert.match(dashboardSource, /mountMediaSettingsModal/);
-    assert.match(dashboardSource, /restoreMediaSettingsPanel/);
+    assert.match(dashboardSource, /cacheMediaSettingsElements\(detail\.element\)/);
+    assert.match(dashboardSource, /cacheMediaSettingsElements\(detail\.element\);\s*this\.registerMediaSettingsInputHandlers\(\);/);
+    assert.doesNotMatch(dashboardSource, /appendChild\(this\.mediaSettingsPanel\)/);
+});
+
+test('WebMeet settings fields live in the WebSkel modal template, not the dashboard page', async () => {
+    const dashboardHtml = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-dashboard/webmeet-dashboard.html'),
+        'utf8'
+    );
+    const modalHtml = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-settings-modal/webmeet-settings-modal.html'),
+        'utf8'
+    );
+
+    assert.doesNotMatch(dashboardHtml, /id="webmeetMediaSettingsPanel"/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsPanel" class="webmeet-settings-modal webmeet-media-settings"/);
+    assert.match(modalHtml, /id="webmeetAudioVideoSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetAvatarSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetMediaSettingsActions"/);
+    assert.match(modalHtml, /id="webmeetAvatarSettingsActions"/);
 });
 
 test('WebMeet close buttons use the shared modal icon asset from ui-common', async () => {
@@ -92,8 +112,8 @@ test('WebMeet participant audio volume defaults to 100 percent', async () => {
 });
 
 test('WebMeet settings tab footer actions hide inactive tab controls inside the modal', async () => {
-    const dashboardHtml = await fs.readFile(
-        path.join(pluginRoot, 'components/webmeet-dashboard/webmeet-dashboard.html'),
+    const modalHtml = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-settings-modal/webmeet-settings-modal.html'),
         'utf8'
     );
     const mediaSettingsSource = await fs.readFile(
@@ -105,10 +125,10 @@ test('WebMeet settings tab footer actions hide inactive tab controls inside the 
         'utf8'
     );
 
-    assert.match(dashboardHtml, /id="webmeetAvatarSettingsActions" class="webmeet-media-settings-actions webmeet-hidden"/);
+    assert.match(modalHtml, /id="webmeetAvatarSettingsActions" class="webmeet-media-settings-actions webmeet-hidden"/);
     assert.match(mediaSettingsSource, /mediaSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'media'\)/);
     assert.match(mediaSettingsSource, /avatarSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'avatar'\)/);
-    assert.match(modalCss, /\.webmeet-settings-modal-content \.webmeet-hidden\s*\{[\s\S]*display: none !important;/);
+    assert.match(modalCss, /\.webmeet-settings-modal \.webmeet-hidden\s*\{[\s\S]*display: none !important;/);
 });
 
 test('WebMeet audio health is a microphone button badge, not a settings field', async () => {

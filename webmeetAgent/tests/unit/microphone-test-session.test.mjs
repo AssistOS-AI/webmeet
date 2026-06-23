@@ -91,8 +91,8 @@ test('microphone test session records a playback sample and revokes it on stop',
 });
 
 test('WebMeet microphone test UI is wired to processed audio settings lifecycle', async () => {
-    const dashboardHtml = await fs.readFile(
-        path.join(pluginRoot, 'components/webmeet-dashboard/webmeet-dashboard.html'),
+    const settingsModalHtml = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-settings-modal/webmeet-settings-modal.html'),
         'utf8'
     );
     const dashboardSource = await fs.readFile(
@@ -108,13 +108,14 @@ test('WebMeet microphone test UI is wired to processed audio settings lifecycle'
         'utf8'
     );
 
-    assert.match(dashboardHtml, /id="webmeetMicrophoneTestToggleButton"/);
-    assert.match(dashboardHtml, /id="webmeetMicrophoneTestRecordButton"/);
-    assert.match(dashboardHtml, /id="webmeetMicrophoneTestPlayButton"/);
-    assert.match(dashboardHtml, /id="webmeetMicrophoneTestMeterBar"/);
-    assert.match(dashboardHtml, /Tests the processed microphone signal WebMeet sends to other participants/);
+    assert.match(settingsModalHtml, /id="webmeetMicrophoneTestToggleButton"/);
+    assert.match(settingsModalHtml, /id="webmeetMicrophoneTestRecordButton"/);
+    assert.match(settingsModalHtml, /id="webmeetMicrophoneTestPlayButton"/);
+    assert.match(settingsModalHtml, /id="webmeetMicrophoneTestMeterBar"/);
+    assert.match(settingsModalHtml, /Tests the processed microphone signal WebMeet sends to other participants/);
     assert.match(dashboardSource, /microphoneTest:\s*\{/);
-    assert.match(dashboardSource, /this\.microphoneTestToggleButton = this\.element\.querySelector\('#webmeetMicrophoneTestToggleButton'\)/);
+    assert.match(mediaSettingsSource, /cacheMediaSettingsElements\(root = this\.element\)/);
+    assert.match(mediaSettingsSource, /this\.microphoneTestToggleButton = root\?\.querySelector\?\.\('#webmeetMicrophoneTestToggleButton'\)/);
     assert.match(mediaSettingsSource, /createMicrophoneTestSession\(this\.getMicrophoneTestSettings\(\)\)/);
     assert.match(mediaSettingsSource, /await this\.stopMicrophoneTest\(\)/);
     assert.match(mediaSettingsSource, /scheduleMicrophoneTestRestart/);

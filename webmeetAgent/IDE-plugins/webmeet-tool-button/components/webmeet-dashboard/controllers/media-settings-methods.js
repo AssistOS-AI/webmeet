@@ -70,6 +70,54 @@ export const mediaSettingsMethods = {
         this.handleMediaDeviceChange = null;
     },
 
+    cacheMediaSettingsElements(root = this.element) {
+        this.mediaSettingsPanel = root?.querySelector?.('#webmeetMediaSettingsPanel') || null;
+        this.settingsFullscreenButton = root?.querySelector?.('#webmeetSettingsFullscreenButton') || null;
+        this.applyMediaSettingsButton = root?.querySelector?.('#webmeetApplyMediaSettingsButton') || null;
+        this.settingsTabButtons = Array.from(root?.querySelectorAll?.('[data-settings-tab]') || []);
+        this.settingsTabPanels = Array.from(root?.querySelectorAll?.('[data-settings-tab-panel]') || []);
+        this.mediaSettingsActions = root?.querySelector?.('#webmeetMediaSettingsActions') || null;
+        this.avatarSettingsActions = root?.querySelector?.('#webmeetAvatarSettingsActions') || null;
+        this.audioInputSelect = root?.querySelector?.('#webmeetAudioInputSelect') || null;
+        this.videoInputSelect = root?.querySelector?.('#webmeetVideoInputSelect') || null;
+        this.cameraQualitySelect = root?.querySelector?.('#webmeetCameraQualitySelect') || null;
+        this.screenShareQualitySelect = root?.querySelector?.('#webmeetScreenShareQualitySelect') || null;
+        this.audioOutputSelect = root?.querySelector?.('#webmeetAudioOutputSelect') || null;
+        this.echoCancellationInput = root?.querySelector?.('#webmeetAudioEchoCancellation') || null;
+        this.noiseSuppressionInput = root?.querySelector?.('#webmeetAudioNoiseSuppression') || null;
+        this.autoGainControlInput = root?.querySelector?.('#webmeetAudioAutoGainControl') || null;
+        this.automaticParticipantVolumeInput = root?.querySelector?.('#webmeetAutomaticParticipantVolume') || null;
+        this.microphoneGainInput = root?.querySelector?.('#webmeetMicrophoneGain') || null;
+        this.microphoneGainValue = root?.querySelector?.('#webmeetMicrophoneGainValue') || null;
+        this.microphoneGainWarning = root?.querySelector?.('#webmeetMicrophoneGainWarning') || null;
+        this.microphoneTestToggleButton = root?.querySelector?.('#webmeetMicrophoneTestToggleButton') || null;
+        this.microphoneTestRecordButton = root?.querySelector?.('#webmeetMicrophoneTestRecordButton') || null;
+        this.microphoneTestPlayButton = root?.querySelector?.('#webmeetMicrophoneTestPlayButton') || null;
+        this.microphoneTestMeterBar = root?.querySelector?.('#webmeetMicrophoneTestMeterBar') || null;
+        this.microphoneTestStatus = root?.querySelector?.('#webmeetMicrophoneTestStatus') || null;
+        this.microphoneTestSampleStatus = root?.querySelector?.('#webmeetMicrophoneTestSampleStatus') || null;
+        this.microphoneTestAudio = root?.querySelector?.('#webmeetMicrophoneTestAudio') || null;
+        this.voiceProcessingModeSelect = root?.querySelector?.('#webmeetVoiceProcessingMode') || null;
+        this.humFilterSelect = root?.querySelector?.('#webmeetHumFilter') || null;
+        this.outputVolumeInput = root?.querySelector?.('#webmeetOutputVolume') || null;
+        this.outputVolumeValue = root?.querySelector?.('#webmeetOutputVolumeValue') || null;
+        this.roomNotificationSoundsInput = root?.querySelector?.('#webmeetRoomNotificationSounds') || null;
+        this.avatarSettingsForm = root?.querySelector?.('#webmeetAvatarSettingsForm') || null;
+        this.avatarPreview = root?.querySelector?.('#webmeetAvatarPreview') || null;
+        this.backgroundEffectSelect = root?.querySelector?.('#webmeetBackgroundEffectSelect') || null;
+        this.backgroundBlurInput = root?.querySelector?.('#webmeetBackgroundBlurRadius') || null;
+        this.backgroundBlurValue = root?.querySelector?.('#webmeetBackgroundBlurValue') || null;
+        this.backgroundBlurRow = root?.querySelector?.('#webmeetBackgroundBlurRow') || null;
+        this.backgroundImageInput = root?.querySelector?.('#webmeetBackgroundImageInput') || null;
+        this.backgroundImageRow = root?.querySelector?.('#webmeetBackgroundImageRow') || null;
+        this.backgroundImagePreview = root?.querySelector?.('#webmeetBackgroundImagePreview') || null;
+        this.backgroundImagePreviewImage = root?.querySelector?.('#webmeetBackgroundImagePreviewImage') || null;
+        this.backgroundImageName = root?.querySelector?.('#webmeetBackgroundImageName') || null;
+        this.backgroundImageRemoveButton = root?.querySelector?.('#webmeetBackgroundImageRemoveButton') || null;
+        this.backgroundImageWarning = root?.querySelector?.('#webmeetBackgroundImageWarning') || null;
+        this.mediaDeviceWarnings = root?.querySelector?.('#webmeetMediaDeviceWarnings') || null;
+    },
+
     setMicrophoneTestState(patch = {}) {
         this.state.microphoneTest = {
             ...(this.state.microphoneTest || {}),
@@ -1237,19 +1285,16 @@ export const mediaSettingsMethods = {
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.state.activeMobilePanel = 'room';
         this.applyMobilePanelState?.();
-        this.renderMediaSettingsPanel();
         window.addEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
         window.addEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
         window.addEventListener('webmeet:settings-modal-closed', this.handleSettingsModalClosedEvent);
-        if (!this.state.microphonePermissionRequested) {
-            this.state.microphonePermissionRequested = true;
-            void this.refreshMediaDevices({ requestPermission: true, showToast: false });
-        } else {
-            void this.refreshMediaDevices({ requestPermission: false, showToast: false });
-        }
         Promise.resolve(globalThis.assistOS?.UI?.showModal?.('webmeet-settings-modal')).catch(() => {
             this.state.mediaSettingsPanelVisible = false;
             this.clearMediaSettingsDraft();
+            window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
+            window.removeEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
+            window.removeEventListener('webmeet:settings-modal-closed', this.handleSettingsModalClosedEvent);
+            this.clearMediaSettingsElementRefs();
             this.renderMediaSettingsPanel();
         });
     },
@@ -1269,23 +1314,25 @@ export const mediaSettingsMethods = {
 
     mountMediaSettingsModal(event) {
         const detail = event?.detail || {};
-        if (!this.state.mediaSettingsPanelVisible || !detail.content || !this.mediaSettingsPanel) return;
+        if (!this.state.mediaSettingsPanelVisible || !detail.element) return;
         this.mediaSettingsModalElement = detail.element || null;
-        detail.content.appendChild(this.mediaSettingsPanel);
-        this.mediaSettingsPanel.classList.remove('webmeet-hidden');
+        this.cacheMediaSettingsElements(detail.element);
+        this.registerMediaSettingsInputHandlers();
         this.renderMediaSettingsPanel();
-        void this.refreshMediaDevices({ requestPermission: false, showToast: false });
+        if (!this.state.microphonePermissionRequested) {
+            this.state.microphonePermissionRequested = true;
+            void this.refreshMediaDevices({ requestPermission: true, showToast: false });
+        } else {
+            void this.refreshMediaDevices({ requestPermission: false, showToast: false });
+        }
     },
 
-    restoreMediaSettingsPanel() {
-        if (!this.mediaSettingsPanel || !this.mediaSettingsMount) return;
-        this.mediaSettingsMount.insertAdjacentElement('afterend', this.mediaSettingsPanel);
-        this.mediaSettingsPanel.classList.add('webmeet-hidden');
+    clearMediaSettingsElementRefs() {
+        this.cacheMediaSettingsElements();
     },
 
     closeMediaSettingsDialog(payload = null) {
         const modalElement = this.mediaSettingsModalElement;
-        this.restoreMediaSettingsPanel();
         this.mediaSettingsModalElement = null;
         window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
         window.removeEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
@@ -1293,17 +1340,18 @@ export const mediaSettingsMethods = {
         if (modalElement?.isConnected) {
             globalThis.assistOS?.UI?.closeModal?.(modalElement, payload);
         }
+        this.clearMediaSettingsElementRefs();
     },
 
     async handleMediaSettingsModalClosed() {
         await this.stopMicrophoneTest();
-        this.restoreMediaSettingsPanel();
         this.mediaSettingsModalElement = null;
         window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
         window.removeEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
         window.removeEventListener('webmeet:settings-modal-closed', this.handleSettingsModalClosedEvent);
         this.state.mediaSettingsPanelVisible = false;
         this.clearMediaSettingsDraft();
+        this.clearMediaSettingsElementRefs();
         this.renderMediaSettingsPanel();
     },
 
