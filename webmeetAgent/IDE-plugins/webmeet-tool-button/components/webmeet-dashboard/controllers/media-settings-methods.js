@@ -7,6 +7,7 @@ import {
     normalizeMicrophoneGain as normalizeSharedMicrophoneGain,
     normalizeVoiceProcessingMode as normalizeSharedVoiceProcessingMode
 } from '../services/audio-processing/settings.js';
+import { createMicrophoneTestSession } from '../services/audio-processing/microphone-test-session.js';
 
 function escapeHtml(value) {
     return String(value || '')
@@ -19,6 +20,35 @@ function escapeHtml(value) {
 const PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY = 'webmeet.participantAudioSettings';
 const MEDIA_SETTINGS_STORAGE_KEY = 'webmeet.mediaSettings';
 const DEFAULT_PARTICIPANT_VOLUME = 1;
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function getMicrophoneTestErrorMessage(error) {
+    const name = String(error?.name || '').trim();
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return 'Microphone permission is blocked.';
+    }
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        return 'Selected microphone cannot be opened.';
+    }
+    if (name === 'NotReadableError') {
+        return 'Selected microphone is busy or blocked by the operating system.';
+    }
+    return error instanceof Error ? error.message : 'Microphone test failed.';
+}
+
+function getMicrophoneTestStatus(metrics = null) {
+    if (!metrics) return { label: 'Listening...', state: 'active' };
+    if (metrics.clipping) return { label: 'Clipping - lower microphone volume.', state: 'warning' };
+    if (metrics.speaking && Number(metrics.rmsDb) < -30) {
+        return { label: 'Quiet - raise microphone volume or move closer.', state: 'warning' };
+    }
+    if (metrics.speaking) return { label: 'Good level.', state: 'good' };
+    if (Number(metrics.rmsDb) < -55) return { label: 'No signal detected.', state: 'warning' };
+    return { label: 'Speak to test your microphone.', state: 'active' };
+}
 
 export const mediaSettingsMethods = {
     registerMediaDeviceChangeHandler() {
@@ -40,12 +70,215 @@ export const mediaSettingsMethods = {
         this.handleMediaDeviceChange = null;
     },
 
+    setMicrophoneTestState(patch = {}) {
+        this.state.microphoneTest = {
+            ...(this.state.microphoneTest || {}),
+            ...patch
+        };
+        this.renderMicrophoneTestPanel();
+    },
+
+    getMicrophoneTestSettings() {
+        this.syncMediaSettingsDraftFromInputs();
+        return this.getCurrentMediaSettingsForPanel();
+    },
+
+    renderMicrophoneTestPanel() {
+        const state = this.state.microphoneTest || {};
+        const active = Boolean(state.active);
+        const starting = Boolean(state.starting);
+        const recording = Boolean(state.recording);
+        const sampleUrl = String(state.sampleUrl || '').trim();
+        const levelPercent = clamp(Number(state.levelPercent) || 0, 0, 100);
+        if (this.microphoneTestToggleButton) {
+            this.microphoneTestToggleButton.textContent = active ? 'Stop test' : 'Start test';
+            this.microphoneTestToggleButton.disabled = starting || recording;
+            this.microphoneTestToggleButton.classList.toggle('active', active);
+            this.microphoneTestToggleButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+        if (this.microphoneTestRecordButton) {
+            this.microphoneTestRecordButton.disabled = !active || starting || recording;
+            this.microphoneTestRecordButton.textContent = recording ? 'Recording...' : 'Record sample';
+        }
+        if (this.microphoneTestPlayButton) {
+            this.microphoneTestPlayButton.disabled = !sampleUrl || recording;
+        }
+        if (this.microphoneTestMeterBar) {
+            this.microphoneTestMeterBar.style.width = `${levelPercent}%`;
+        }
+        if (this.microphoneTestStatus) {
+            this.microphoneTestStatus.textContent = String(state.status || 'Test your microphone before speaking.');
+            this.microphoneTestStatus.dataset.state = String(state.statusState || 'idle');
+        }
+        if (this.microphoneTestSampleStatus) {
+            this.microphoneTestSampleStatus.textContent = String(state.sampleStatus || 'No sample recorded.');
+        }
+        if (this.microphoneTestAudio && this.microphoneTestAudio.src !== sampleUrl) {
+            if (sampleUrl) {
+                this.microphoneTestAudio.src = sampleUrl;
+            } else {
+                this.microphoneTestAudio.removeAttribute('src');
+            }
+        }
+    },
+
+    startMicrophoneTestMetricsTimer() {
+        window.clearInterval(this.microphoneTestMetricsTimer);
+        this.microphoneTestMetricsTimer = window.setInterval(() => {
+            const metrics = this.microphoneTestSession?.getMetrics?.() || null;
+            const status = getMicrophoneTestStatus(metrics);
+            const rmsDb = Number(metrics?.rmsDb);
+            const levelPercent = Number.isFinite(rmsDb)
+                ? clamp(Math.round(((rmsDb + 60) / 42) * 100), 0, 100)
+                : 0;
+            this.setMicrophoneTestState({
+                status: status.label,
+                statusState: status.state,
+                levelPercent,
+                clipping: Boolean(metrics?.clipping)
+            });
+        }, 250);
+    },
+
+    async startMicrophoneTest() {
+        if (this.state.microphoneTest?.active || this.state.microphoneTest?.starting) {
+            return;
+        }
+        await this.stopMicrophoneTest({ resetStatus: false });
+        this.setMicrophoneTestState({
+            active: false,
+            starting: true,
+            recording: false,
+            status: 'Starting microphone test...',
+            statusState: 'active',
+            sampleStatus: 'No sample recorded.',
+            sampleUrl: '',
+            levelPercent: 0
+        });
+        try {
+            this.microphoneTestSession = createMicrophoneTestSession(this.getMicrophoneTestSettings());
+            await this.microphoneTestSession.start();
+            this.setMicrophoneTestState({
+                active: true,
+                starting: false,
+                status: 'Speak to test your microphone.',
+                statusState: 'active'
+            });
+            this.startMicrophoneTestMetricsTimer();
+        } catch (error) {
+            await this.stopMicrophoneTest({ resetStatus: false });
+            this.setMicrophoneTestState({
+                active: false,
+                starting: false,
+                status: getMicrophoneTestErrorMessage(error),
+                statusState: 'warning',
+                levelPercent: 0
+            });
+        }
+    },
+
+    async stopMicrophoneTest(options = {}) {
+        window.clearTimeout(this.microphoneTestRestartTimer);
+        this.microphoneTestRestartTimer = null;
+        window.clearInterval(this.microphoneTestMetricsTimer);
+        this.microphoneTestMetricsTimer = null;
+        const session = this.microphoneTestSession;
+        this.microphoneTestSession = null;
+        try { await session?.stop?.(); } catch (_) {}
+        if (this.microphoneTestAudio) {
+            try { this.microphoneTestAudio.pause?.(); } catch (_) {}
+            this.microphoneTestAudio.removeAttribute('src');
+            try { this.microphoneTestAudio.load?.(); } catch (_) {}
+        }
+        const resetStatus = options.resetStatus !== false;
+        this.setMicrophoneTestState({
+            active: false,
+            starting: false,
+            recording: false,
+            playing: false,
+            status: resetStatus ? 'Test your microphone before speaking.' : (this.state.microphoneTest?.status || ''),
+            statusState: resetStatus ? 'idle' : (this.state.microphoneTest?.statusState || 'idle'),
+            sampleStatus: 'No sample recorded.',
+            sampleUrl: '',
+            levelPercent: 0
+        });
+    },
+
+    async toggleMicrophoneTest() {
+        if (this.state.microphoneTest?.active || this.state.microphoneTest?.starting) {
+            await this.stopMicrophoneTest();
+            return;
+        }
+        await this.startMicrophoneTest();
+    },
+
+    scheduleMicrophoneTestRestart() {
+        if (!this.state.microphoneTest?.active) return;
+        window.clearTimeout(this.microphoneTestRestartTimer);
+        this.setMicrophoneTestState({
+            status: 'Updating microphone test...',
+            statusState: 'active'
+        });
+        this.microphoneTestRestartTimer = window.setTimeout(async () => {
+            const wasActive = Boolean(this.state.microphoneTest?.active);
+            await this.stopMicrophoneTest({ resetStatus: false });
+            if (wasActive && this.state.mediaSettingsPanelVisible) {
+                await this.startMicrophoneTest();
+            }
+        }, 350);
+    },
+
+    async recordMicrophoneTestSample() {
+        if (this.state.microphoneTest?.recording) return;
+        if (!this.state.microphoneTest?.active) {
+            await this.startMicrophoneTest();
+        }
+        if (!this.microphoneTestSession) return;
+        this.setMicrophoneTestState({
+            recording: true,
+            sampleStatus: 'Recording 5 second sample...'
+        });
+        try {
+            const sample = await this.microphoneTestSession.recordSample(5000);
+            this.setMicrophoneTestState({
+                recording: false,
+                sampleUrl: sample.url,
+                sampleStatus: sample.url ? 'Sample ready.' : 'Sample recorded, but playback is unavailable.'
+            });
+        } catch (error) {
+            this.setMicrophoneTestState({
+                recording: false,
+                sampleStatus: getMicrophoneTestErrorMessage(error)
+            });
+        }
+    },
+
+    async playMicrophoneTestSample() {
+        const sampleUrl = String(this.state.microphoneTest?.sampleUrl || '').trim();
+        if (!sampleUrl || !this.microphoneTestAudio) return;
+        try {
+            this.microphoneTestAudio.currentTime = 0;
+            await this.microphoneTestAudio.play();
+            this.setMicrophoneTestState({ sampleStatus: 'Playing sample...' });
+            this.microphoneTestAudio.onended = () => {
+                this.setMicrophoneTestState({ sampleStatus: 'Sample ready.' });
+            };
+        } catch (error) {
+            this.setMicrophoneTestState({ sampleStatus: getMicrophoneTestErrorMessage(error) });
+        }
+    },
+
     registerMediaSettingsInputHandlers() {
         if (this.mediaSettingsPanel?.dataset?.boundInputHandlers === 'true') {
             return;
         }
         const syncDraftFromControls = () => {
             this.syncMediaSettingsDraftFromInputs();
+        };
+        const syncMicrophoneTestFromControls = () => {
+            if (this.state.microphoneTest?.active) {
+                this.scheduleMicrophoneTestRestart();
+            }
         };
         const switchAutomaticVoiceProcessingToCustom = () => {
             if (this.voiceProcessingModeSelect?.value === 'auto') {
@@ -62,6 +295,7 @@ export const mediaSettingsMethods = {
             if (this.microphoneGainWarning) {
                 this.microphoneGainWarning.classList.toggle('webmeet-hidden', microphoneGain <= 1.25);
             }
+            syncMicrophoneTestFromControls();
         };
         const updateOutputVolumePreview = () => {
             const outputVolume = this.normalizeOutputVolume(this.outputVolumeInput?.value);
@@ -75,9 +309,13 @@ export const mediaSettingsMethods = {
             syncDraftFromControls();
             this.renderMediaSettingsPanel();
         };
+        const handleMicrophoneTestAffectingChange = () => {
+            handleSelectOrCheckboxChange();
+            syncMicrophoneTestFromControls();
+        };
         const handleManualVoiceProcessingControlChange = () => {
             switchAutomaticVoiceProcessingToCustom();
-            handleSelectOrCheckboxChange();
+            handleMicrophoneTestAffectingChange();
         };
         const handleAvatarPresetChange = () => {
             this.syncWebMeetAvatarSettingsDraftFromInputs?.();
@@ -93,7 +331,7 @@ export const mediaSettingsMethods = {
         this.outputVolumeInput?.addEventListener?.('input', updateOutputVolumePreview);
         this.roomNotificationSoundsInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.roomNotificationSoundsInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
-        this.audioInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.audioInputSelect?.addEventListener?.('change', handleMicrophoneTestAffectingChange);
         this.videoInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.audioOutputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.cameraQualitySelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
@@ -106,10 +344,19 @@ export const mediaSettingsMethods = {
         this.autoGainControlInput?.addEventListener?.('input', handleManualVoiceProcessingControlChange);
         this.automaticParticipantVolumeInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.automaticParticipantVolumeInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
-        this.voiceProcessingModeSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
-        this.voiceProcessingModeSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
+        this.voiceProcessingModeSelect?.addEventListener?.('change', handleMicrophoneTestAffectingChange);
+        this.voiceProcessingModeSelect?.addEventListener?.('input', handleMicrophoneTestAffectingChange);
         this.humFilterSelect?.addEventListener?.('change', handleManualVoiceProcessingControlChange);
         this.humFilterSelect?.addEventListener?.('input', handleManualVoiceProcessingControlChange);
+        this.microphoneTestToggleButton?.addEventListener?.('click', () => {
+            void this.toggleMicrophoneTest();
+        });
+        this.microphoneTestRecordButton?.addEventListener?.('click', () => {
+            void this.recordMicrophoneTestSample();
+        });
+        this.microphoneTestPlayButton?.addEventListener?.('click', () => {
+            void this.playMicrophoneTestSample();
+        });
         this.backgroundEffectSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.backgroundEffectSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.avatarSettingsForm?.addEventListener?.('avatar-settings-change', handleAvatarPresetChange);
@@ -973,6 +1220,7 @@ export const mediaSettingsMethods = {
             this.applyMediaSettingsButton.disabled = isApplying;
             this.applyMediaSettingsButton.setAttribute('aria-busy', isApplying ? 'true' : 'false');
         }
+        this.renderMicrophoneTestPanel();
         this.renderAvatarControls?.();
     },
 
@@ -981,7 +1229,7 @@ export const mediaSettingsMethods = {
             return;
         }
         if (this.state.mediaSettingsPanelVisible) {
-            this.closeMediaSettings();
+            void this.closeMediaSettings();
             return;
         }
         this.state.mediaSettingsPanelVisible = true;
@@ -1006,10 +1254,11 @@ export const mediaSettingsMethods = {
         });
     },
 
-    closeMediaSettings() {
+    async closeMediaSettings() {
         if (this.state.mediaSettingsApplying || !this.state.mediaSettingsPanelVisible) {
             return;
         }
+        await this.stopMicrophoneTest();
         this.state.mediaSettingsPanelVisible = false;
         this.clearMediaSettingsDraft();
         this.state.activeMobilePanel = 'room';
@@ -1046,7 +1295,8 @@ export const mediaSettingsMethods = {
         }
     },
 
-    handleMediaSettingsModalClosed() {
+    async handleMediaSettingsModalClosed() {
+        await this.stopMicrophoneTest();
         this.restoreMediaSettingsPanel();
         this.mediaSettingsModalElement = null;
         window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
@@ -1211,6 +1461,7 @@ export const mediaSettingsMethods = {
             return;
         }
         this.state.mediaSettingsApplying = true;
+        await this.stopMicrophoneTest();
         this.state.mediaSettings = nextSettings;
         this.renderMediaSettingsPanel();
         try {

@@ -1631,6 +1631,78 @@ textarea.form-input {
     line-height: 1.25;
 }
 
+.webmeet-microphone-test {
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--surface) 88%, var(--file-exp-panel) 12%);
+}
+
+.webmeet-microphone-test-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.webmeet-microphone-test-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.webmeet-microphone-test-actions .general-button {
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 0.74rem;
+}
+
+.webmeet-microphone-test-meter {
+    height: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+}
+
+.webmeet-microphone-test-meter span {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transition: width 0.16s ease;
+}
+
+.webmeet-microphone-test-status,
+.webmeet-microphone-test-sample-status {
+    color: var(--text-soft);
+    font-size: 0.74rem;
+    line-height: 1.3;
+}
+
+.webmeet-microphone-test-status[data-state="good"] {
+    color: var(--success, #2e7d32);
+}
+
+.webmeet-microphone-test-status[data-state="warning"] {
+    color: var(--warning, var(--danger));
+}
+
+@media (max-width: 720px) {
+    .webmeet-microphone-test-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .webmeet-microphone-test-actions {
+        justify-content: flex-start;
+    }
+}
+
 .webmeet-media-device-warnings {
     grid-column: 1 / -1;
     display: grid;

@@ -141,6 +141,18 @@ export class WebmeetDashboard {
             mediaSettingsPanelVisible: false,
             mediaSettingsApplying: false,
             mediaSettingsDraft: null,
+            microphoneTest: {
+                active: false,
+                starting: false,
+                recording: false,
+                playing: false,
+                status: 'Test your microphone before speaking.',
+                statusState: 'idle',
+                sampleStatus: 'No sample recorded.',
+                sampleUrl: '',
+                levelPercent: 0,
+                clipping: false
+            },
             activeSettingsTab: 'media',
             webMeetAvatarOverride: null,
             webMeetAvatarOverrideDraft: null,
@@ -179,6 +191,9 @@ export class WebmeetDashboard {
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
         this.audioWebRtcStatsTimer = null;
+        this.microphoneTestSession = null;
+        this.microphoneTestMetricsTimer = null;
+        this.microphoneTestRestartTimer = null;
         this.avatarMetadataLoaded = false;
         this.avatarMetadataLoadFailed = false;
         this.avatarPreviewLoadPromise = null;
@@ -559,6 +574,13 @@ export class WebmeetDashboard {
         this.microphoneGainInput = this.element.querySelector('#webmeetMicrophoneGain');
         this.microphoneGainValue = this.element.querySelector('#webmeetMicrophoneGainValue');
         this.microphoneGainWarning = this.element.querySelector('#webmeetMicrophoneGainWarning');
+        this.microphoneTestToggleButton = this.element.querySelector('#webmeetMicrophoneTestToggleButton');
+        this.microphoneTestRecordButton = this.element.querySelector('#webmeetMicrophoneTestRecordButton');
+        this.microphoneTestPlayButton = this.element.querySelector('#webmeetMicrophoneTestPlayButton');
+        this.microphoneTestMeterBar = this.element.querySelector('#webmeetMicrophoneTestMeterBar');
+        this.microphoneTestStatus = this.element.querySelector('#webmeetMicrophoneTestStatus');
+        this.microphoneTestSampleStatus = this.element.querySelector('#webmeetMicrophoneTestSampleStatus');
+        this.microphoneTestAudio = this.element.querySelector('#webmeetMicrophoneTestAudio');
         this.voiceProcessingModeSelect = this.element.querySelector('#webmeetVoiceProcessingMode');
         this.humFilterSelect = this.element.querySelector('#webmeetHumFilter');
         this.outputVolumeInput = this.element.querySelector('#webmeetOutputVolume');
@@ -624,6 +646,7 @@ export class WebmeetDashboard {
         this.clearWorkspaceRosterRefreshTimer();
         window.clearInterval(this.audioWebRtcStatsTimer);
         this.audioWebRtcStatsTimer = null;
+        void this.stopMicrophoneTest?.();
         this.unregisterMediaDeviceChangeHandler();
         window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
         window.removeEventListener('webmeet:settings-modal-action', this.handleSettingsModalActionEvent);
