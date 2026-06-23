@@ -273,27 +273,31 @@
                     </div>
                     <div class="webmeet-media-settings-row webmeet-microphone-test" aria-label="Microphone test">
                         <div class="webmeet-microphone-test-header">
-                            <div class="webmeet-setting-label">
-                                <span>Microphone test</span>
-                                <span class="webmeet-setting-help-control">
-                                <button type="button" class="webmeet-setting-help-button"
-                                        aria-label="About Microphone test"
-                                        aria-describedby="webmeetSettingHelpMicrophoneTest">i</button>
-                                <span id="webmeetSettingHelpMicrophoneTest" role="tooltip"
-                                      class="webmeet-setting-help-tooltip">Tests the processed microphone signal WebMeet sends to other participants.</span>
-                            </span>
+                            <div class="webmeet-microphone-test-title">
+                                <span class="webmeet-microphone-test-icon" aria-hidden="true">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                        <path d="M12 19v3"></path>
+                                    </svg>
+                                </span>
+                                <div class="webmeet-microphone-test-copy">
+                                    <div class="webmeet-setting-label">
+                                        <span>Microphone test</span>
+                                        <span class="webmeet-setting-help-control">
+                                        <button type="button" class="webmeet-setting-help-button"
+                                                aria-label="About Microphone test"
+                                                aria-describedby="webmeetSettingHelpMicrophoneTest">i</button>
+                                        <span id="webmeetSettingHelpMicrophoneTest" role="tooltip"
+                                              class="webmeet-setting-help-tooltip">Tests the processed microphone signal WebMeet sends to other participants.</span>
+                                    </span>
+                                    </div>
+                                    <span class="webmeet-microphone-test-caption">Check level, record a short sample, then play it back locally.</span>
+                                </div>
                             </div>
-                            <div class="webmeet-microphone-test-actions">
-                                <button type="button" id="webmeetMicrophoneTestToggleButton"
-                                        class="general-button subtle-button">Start test
-                                </button>
-                                <button type="button" id="webmeetMicrophoneTestRecordButton"
-                                        class="general-button subtle-button" disabled>Record sample
-                                </button>
-                                <button type="button" id="webmeetMicrophoneTestPlayButton"
-                                        class="general-button subtle-button" disabled>Play sample
-                                </button>
-                            </div>
+
                         </div>
                         <div class="webmeet-microphone-test-meter" aria-hidden="true">
                             <span id="webmeetMicrophoneTestMeterBar"></span>
@@ -303,6 +307,48 @@
                         </div>
                         <div id="webmeetMicrophoneTestSampleStatus" class="webmeet-microphone-test-sample-status">
                             No sample recorded.
+                        </div>
+                        <div class="webmeet-microphone-test-actions">
+                            <button type="button" id="webmeetMicrophoneTestToggleButton"
+                                    class="webmeet-microphone-test-action-button"
+                                    aria-label="Start microphone test" title="Start microphone test"
+                                    aria-pressed="false">
+                                <svg class="icon-start" width="18" height="18" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2"
+                                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <path d="M12 19v3"></path>
+                                </svg>
+                                <svg class="icon-stop" width="18" height="18" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2"
+                                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect x="7" y="7" width="10" height="10" rx="1"></rect>
+                                </svg>
+                                <span class="webmeet-microphone-test-action-label" data-role="toggleLabel">Start</span>
+                            </button>
+                            <button type="button" id="webmeetMicrophoneTestRecordButton"
+                                    class="webmeet-microphone-test-action-button"
+                                    aria-label="Record microphone sample" title="Record microphone sample"
+                                    disabled>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="6"></circle>
+                                </svg>
+                                <span class="webmeet-microphone-test-action-label" data-role="recordLabel">Record</span>
+                            </button>
+                            <button type="button" id="webmeetMicrophoneTestPlayButton"
+                                    class="webmeet-microphone-test-action-button"
+                                    aria-label="Play microphone sample" title="Play microphone sample"
+                                    disabled>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M8 5v14l11-7Z"></path>
+                                </svg>
+                                <span class="webmeet-microphone-test-action-label" data-role="playLabel">Play</span>
+                            </button>
                         </div>
                         <audio id="webmeetMicrophoneTestAudio" class="webmeet-hidden" preload="none"></audio>
                     </div>

@@ -139,17 +139,32 @@ export const mediaSettingsMethods = {
         const sampleUrl = String(state.sampleUrl || '').trim();
         const levelPercent = clamp(Number(state.levelPercent) || 0, 0, 100);
         if (this.microphoneTestToggleButton) {
-            this.microphoneTestToggleButton.textContent = active ? 'Stop test' : 'Start test';
+            const label = active ? 'Stop microphone test' : 'Start microphone test';
+            const visibleLabel = active ? 'Stop' : 'Start';
             this.microphoneTestToggleButton.disabled = starting || recording;
             this.microphoneTestToggleButton.classList.toggle('active', active);
             this.microphoneTestToggleButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+            this.microphoneTestToggleButton.setAttribute('aria-label', label);
+            this.microphoneTestToggleButton.setAttribute('title', label);
+            const labelEl = this.microphoneTestToggleButton.querySelector('[data-role="toggleLabel"]');
+            if (labelEl) labelEl.textContent = visibleLabel;
         }
         if (this.microphoneTestRecordButton) {
+            const label = recording ? 'Recording microphone sample' : 'Record microphone sample';
+            const visibleLabel = recording ? 'Recording' : 'Record';
             this.microphoneTestRecordButton.disabled = !active || starting || recording;
-            this.microphoneTestRecordButton.textContent = recording ? 'Recording...' : 'Record sample';
+            this.microphoneTestRecordButton.classList.toggle('is-recording', recording);
+            this.microphoneTestRecordButton.setAttribute('aria-label', label);
+            this.microphoneTestRecordButton.setAttribute('title', label);
+            const labelEl = this.microphoneTestRecordButton.querySelector('[data-role="recordLabel"]');
+            if (labelEl) labelEl.textContent = visibleLabel;
         }
         if (this.microphoneTestPlayButton) {
             this.microphoneTestPlayButton.disabled = !sampleUrl || recording;
+            this.microphoneTestPlayButton.setAttribute('aria-label', 'Play microphone sample');
+            this.microphoneTestPlayButton.setAttribute('title', 'Play microphone sample');
+            const labelEl = this.microphoneTestPlayButton.querySelector('[data-role="playLabel"]');
+            if (labelEl) labelEl.textContent = 'Play';
         }
         if (this.microphoneTestMeterBar) {
             this.microphoneTestMeterBar.style.width = `${levelPercent}%`;

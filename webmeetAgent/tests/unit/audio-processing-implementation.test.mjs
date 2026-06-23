@@ -66,8 +66,9 @@ test('automatic voice processing falls back without overwriting the automatic pr
     assert.match(factorySource, /const automatic = mode === 'auto'/);
     assert.match(factorySource, /const humFilter = normalizeHumFilter\(settings\.humFilter\)/);
     assert.match(factorySource, /const configuredGain = normalizeMicrophoneGain\(settings\.microphoneGain\)/);
-    assert.match(factorySource, /autoGainControl: automatic \? false/);
-    assert.match(factorySource, /noiseSuppression: !automatic/);
+    assert.match(factorySource, /const automaticCleanup = normalizeVoiceProcessingMode\(settings\.voiceProcessingMode\) === 'auto'/);
+    assert.match(factorySource, /autoGainControl: automaticCleanup\s*\?\s*true/);
+    assert.match(factorySource, /noiseSuppression: automaticCleanup\s*\?\s*true/);
     assert.match(factorySource, /createNoiseGateController/);
     assert.match(factorySource, /adaptiveGainController = new AdaptiveGainController/);
     assert.ok(factorySource.indexOf('currentNode = connectIfPresent(currentNode, gateGainNode)') < factorySource.indexOf('currentNode = connectIfPresent(currentNode, gainNode)'));
@@ -101,7 +102,7 @@ test('manual audio controls switch automatic voice processing to custom instead 
     assert.match(mediaSettingsSource, /switchAutomaticVoiceProcessingToCustom/);
     assert.match(mediaSettingsSource, /this\.voiceProcessingModeSelect\.value = 'custom'/);
     assert.doesNotMatch(mediaSettingsSource, /control\.disabled = automaticVoiceProcessing/);
-    assert.match(factorySource, /\['standard', 'custom'\]\.includes\(mode\)/);
+    assert.match(factorySource, /const browserAudioCleanup = automatic \|\| mode === 'standard' \|\| mode === 'custom'/);
 });
 
 test('dashboard defaults microphone and output volume to eighty percent', async () => {

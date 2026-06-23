@@ -31,13 +31,20 @@ export function isEnhancedVoiceProcessingSupported() {
 function buildCaptureConstraints(settings = {}, overrides = {}) {
     const audioDeviceId = String(settings.audioInputDeviceId || '').trim();
     const deviceId = audioDeviceId ? { exact: audioDeviceId } : undefined;
+    const automaticCleanup = normalizeVoiceProcessingMode(settings.voiceProcessingMode) === 'auto';
     return {
         deviceId,
         channelCount: 1,
         sampleRate: 48000,
-        echoCancellation: overrides.echoCancellation,
-        noiseSuppression: overrides.noiseSuppression,
-        autoGainControl: overrides.autoGainControl
+        echoCancellation: automaticCleanup
+            ? true
+            : overrides.echoCancellation,
+        noiseSuppression: automaticCleanup
+            ? true
+            : overrides.noiseSuppression,
+        autoGainControl: automaticCleanup
+            ? true
+            : overrides.autoGainControl
     };
 }
 
@@ -165,11 +172,12 @@ export async function createProcessedMicrophoneTrack(settings = {}) {
     const humFilter = normalizeHumFilter(settings.humFilter);
     const enhanced = automatic || mode === 'enhanced';
     const configuredGain = normalizeMicrophoneGain(settings.microphoneGain);
+    const browserAudioCleanup = automatic || mode === 'standard' || mode === 'custom';
     const sourceStream = await browserNavigator.mediaDevices.getUserMedia({
         audio: buildCaptureConstraints(settings, {
-            echoCancellation: automatic || (mode !== 'off' && settings.echoCancellation !== false),
-            noiseSuppression: !automatic && ['standard', 'custom'].includes(mode) && settings.noiseSuppression !== false,
-            autoGainControl: automatic ? false : settings.autoGainControl === true
+            echoCancellation: browserAudioCleanup && (automatic || settings.echoCancellation !== false),
+            noiseSuppression: browserAudioCleanup && (automatic || settings.noiseSuppression !== false),
+            autoGainControl: browserAudioCleanup && (automatic || settings.autoGainControl === true)
         }),
         video: false
     });
