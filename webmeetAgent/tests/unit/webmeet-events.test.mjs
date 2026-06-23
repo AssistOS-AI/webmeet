@@ -8,6 +8,10 @@ import {
     isWorkspacePersistentWebMeetEvent,
     parseWebMeetEvent
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
+import {
+    ROOM_EVENT_TYPES,
+    WebMeetRoomEvents
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-events.js';
 
 test('WebMeet events encode as room:type:base64_payload and parse through the central contract', () => {
     const event = buildWebMeetEvent('meeting_1', WEBMEET_EVENT_TYPES.CHAT_REALTIME, {
@@ -41,4 +45,13 @@ test('WebMeet event builders reject missing required payload fields', () => {
     assert.throws(() => buildWebMeetEvent('meeting_1', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, {
         meetingId: 'meeting_1'
     }), /participantId/);
+});
+
+test('workspace meeting creation events map to dashboard room creation refresh events', () => {
+    const codec = new WebMeetRoomEvents();
+
+    assert.equal(
+        codec.resolveRoomEventType(WEBMEET_EVENT_TYPES.MEETING_CREATED),
+        ROOM_EVENT_TYPES.CREATED
+    );
 });

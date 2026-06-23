@@ -645,7 +645,7 @@ export const meetingActionMethods = {
         this.removeParticipantFromMeetingList(previousMeetingId, previousParticipantId);
         this.state.session = preserveDisplayName && preservedName ? { participant: { displayName: preservedName } } : null;
         if (!wasGuestSession) {
-            await this.loadParticipantsForMeetings();
+            await this.loadMeetings();
             this.startWorkspaceEvents();
         }
         if (manageTransition) {

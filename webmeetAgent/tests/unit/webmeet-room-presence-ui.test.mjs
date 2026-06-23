@@ -62,6 +62,39 @@ test('workspace event polling is outside the active LiveKit room lifecycle', asy
         'workspace polling must stop before joining the active LiveKit room'
     );
     assert.match(unjoinCurrentSession, /this\.startWorkspaceEvents\(\)/);
+    assert.match(unjoinCurrentSession, /await this\.loadMeetings\(\)/);
+    assert.ok(
+        unjoinCurrentSession.indexOf('await this.loadMeetings()') < unjoinCurrentSession.indexOf('this.startWorkspaceEvents()'),
+        'room list must refresh before workspace polling restarts'
+    );
+});
+
+test('external LiveKit disconnect refreshes authenticated room list before rendering', async () => {
+    const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
+    const disconnectedHandler = roomSessionMethods.slice(
+        roomSessionMethods.indexOf('onDisconnected: () =>'),
+        roomSessionMethods.indexOf('\n            onConnected:', roomSessionMethods.indexOf('onDisconnected: () =>'))
+    );
+    const externalDisconnect = roomSessionMethods.slice(
+        roomSessionMethods.indexOf('async handleExternalRoomDisconnect'),
+        roomSessionMethods.indexOf('\n    resetRoomUiState', roomSessionMethods.indexOf('async handleExternalRoomDisconnect'))
+    );
+    const disconnectRoom = roomSessionMethods.slice(
+        roomSessionMethods.indexOf('async disconnectRoom'),
+        roomSessionMethods.indexOf('\n    async toggleMicrophone', roomSessionMethods.indexOf('async disconnectRoom'))
+    );
+
+    assert.match(disconnectedHandler, /this\.expectedLiveKitDisconnect/);
+    assert.match(disconnectedHandler, /this\.handleExternalRoomDisconnect\(\)/);
+    assert.match(externalDisconnect, /await this\.loadMeetings\(\)/);
+    assert.match(externalDisconnect, /this\.startWorkspaceEvents\(\)/);
+    assert.match(externalDisconnect, /this\.renderAll\(\)/);
+    assert.ok(
+        externalDisconnect.indexOf('await this.loadMeetings()') < externalDisconnect.indexOf('this.renderAll()'),
+        'external disconnect must refresh room list before rendering'
+    );
+    assert.match(disconnectRoom, /this\.expectedLiveKitDisconnect = true/);
+    assert.match(disconnectRoom, /this\.expectedLiveKitDisconnect = false/);
 });
 
 test('meeting details use LiveKit participants as the room presence source', async () => {

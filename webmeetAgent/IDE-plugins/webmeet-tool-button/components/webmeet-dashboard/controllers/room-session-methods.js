@@ -505,7 +505,11 @@ export const roomSessionMethods = {
                 this.updateAudioHealthIndicator?.();
             },
             onDisconnected: () => {
-                this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
+                if (this.expectedLiveKitDisconnect) {
+                    this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
+                    return;
+                }
+                void this.handleExternalRoomDisconnect();
             },
             onConnected: ({ room, Track }) => {
                 this.state.roomState = 'Connected';
@@ -534,6 +538,15 @@ export const roomSessionMethods = {
                 this.renderMeetingSummary();
             }
         });
+    },
+
+    async handleExternalRoomDisconnect() {
+        this.resetRoomUiState({ forceRenderAll: false, applyVideoFullscreenMode: false });
+        if (!this.isGuestSession()) {
+            await this.loadMeetings();
+            this.startWorkspaceEvents();
+        }
+        this.renderAll();
     },
 
     resetRoomUiState(options = {}) {
@@ -642,7 +655,12 @@ export const roomSessionMethods = {
         if (options.stopMediaFirst !== false) {
             await this.stopRoomMediaBeforeDisconnect(room);
         }
-        await this.roomLiveKit.disconnect();
+        this.expectedLiveKitDisconnect = true;
+        try {
+            await this.roomLiveKit.disconnect();
+        } finally {
+            this.expectedLiveKitDisconnect = false;
+        }
         this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: true });
     },
 

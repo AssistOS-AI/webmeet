@@ -153,6 +153,28 @@ describe('concurrent meeting mutations (lock + in-process queue)', () => {
 });
 
 describe('event staging — events recorded only after successful payload save', () => {
+    test('meeting creation records room and workspace events', async () => {
+        const { listMeetingEvents, listWorkspaceEvents } = await import('../../lib/webmeetStore.mjs');
+        const { WEBMEET_EVENT_TYPES, parseWebMeetEvent } = await import('../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js');
+        const meeting = await createTestMeeting(context, 'Created Event Room');
+
+        const meetingEvents = await listMeetingEvents(context, meeting.id);
+        const workspaceEvents = await listWorkspaceEvents(context, 'rooms');
+        const createdMeetingEvents = meetingEvents.map(parseWebMeetEvent).filter((event) => (
+            event.type === WEBMEET_EVENT_TYPES.MEETING_CREATED
+            && event.payload.meetingId === meeting.id
+        ));
+        const createdWorkspaceEvents = workspaceEvents.map(parseWebMeetEvent).filter((event) => (
+            event.type === WEBMEET_EVENT_TYPES.MEETING_CREATED
+            && event.payload.meetingId === meeting.id
+        ));
+
+        assert.equal(createdMeetingEvents.length, 1);
+        assert.equal(createdWorkspaceEvents.length, 1);
+        assert.equal(createdWorkspaceEvents[0].room, 'rooms');
+        assert.equal(createdWorkspaceEvents[0].payload.workspaceId, 'rooms');
+    });
+
     test('chat message event appears in event log after mutation completes', async () => {
         const { appendMeetingChat, listMeetingEvents } = await import('../../lib/webmeetStore.mjs');
         const meeting = await createTestMeeting(context);

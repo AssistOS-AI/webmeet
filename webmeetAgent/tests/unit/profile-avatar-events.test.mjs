@@ -869,6 +869,27 @@ test("authenticated workspace view does not open protected HTTP EventSource dire
     assert.match(method, /roomId: workspaceId/);
 });
 
+test("authenticated workspace meeting creation events refresh the room list", async () => {
+    const realtimeSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-realtime-methods.js'
+        ),
+        'utf8'
+    );
+    const eventSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-events.js'
+        ),
+        'utf8'
+    );
+
+    assert.match(eventSource, /MEETING_CREATED\]: ROOM_EVENT_TYPES\.CREATED/);
+    assert.match(realtimeSource, /addEventListener\(ROOM_EVENT_TYPES\.CREATED/);
+    assert.match(realtimeSource, /source === 'authenticated-workspace'[\s\S]*?this\.scheduleWorkspaceMeetingsRefresh\(\)/);
+});
+
 test("browser exit disconnects LiveKit and leaves through the room session without WebMeet HTTP keepalive", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(

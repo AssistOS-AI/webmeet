@@ -19,6 +19,7 @@ const PRESENCE_TTL_MS_VAR = 'PLOINKY_WEBMEET_PRESENCE_TTL_MS';
 const DEFAULT_RETENTION_DAYS = 30;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
 const ROOM_SCHEMA_VERSION = 2;
+const ROOMS_WORKSPACE_ID = 'rooms';
 
 function nowIso() {
     return new Date().toISOString();
@@ -287,7 +288,8 @@ export async function createRoomRecord(context, title, roomType = 'team') {
         name: title,
         title,
         roomType: isGuestRoom ? 'guest' : 'team',
-        roomName: buildRoomName(context.roomPrefix, 'rooms', roomId),
+        workspaceId: ROOMS_WORKSPACE_ID,
+        roomName: buildRoomName(context.roomPrefix, ROOMS_WORKSPACE_ID, roomId),
         status: 'active',
         createdAt,
         updatedAt: createdAt,
@@ -302,7 +304,8 @@ export async function createRoomRecord(context, title, roomType = 'team') {
     };
     await writeJsonFile(filePathFor(context.meetingsDir, roomId), record);
     try {
-        await recordRoomEvent(context, roomId, payload, WEBMEET_EVENT_TYPES.MEETING_CREATED, {
+        await recordRoomEvent(context, roomId, WEBMEET_EVENT_TYPES.MEETING_CREATED, {
+            workspaceId: ROOMS_WORKSPACE_ID,
             meetingId: roomId,
             roomId,
             roomType: record.roomType,

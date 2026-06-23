@@ -65,7 +65,11 @@ export async function recordRoomEvent(context, roomId, type, data = {}) {
         try {
             const record = await context.loadRoomRecord?.(roomId);
             if (record?.workspaceId) {
-                await appendWorkspaceEventLog(context.workspaceRoot, record.workspaceId, event);
+                const workspaceEvent = buildWebMeetEvent(record.workspaceId, type, {
+                    ...data,
+                    workspaceId: record.workspaceId
+                });
+                await appendWorkspaceEventLog(context.workspaceRoot, record.workspaceId, workspaceEvent);
             }
         } catch (_) {
             // Room creation records workspace events after the room file exists.

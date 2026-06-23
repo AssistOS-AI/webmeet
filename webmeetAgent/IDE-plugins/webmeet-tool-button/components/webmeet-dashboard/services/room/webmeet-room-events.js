@@ -1,6 +1,7 @@
 import { WEBMEET_EVENT_TYPES, buildWebMeetEvent, parseWebMeetEvent } from '../webmeet-events.js';
 
 export const ROOM_EVENT_TYPES = Object.freeze({
+    CREATED: 'room:created',
     JOINED: 'room:joined',
     LEFT: 'room:left',
     ARCHIVED: 'room:archived',
@@ -14,6 +15,7 @@ export const ROOM_EVENT_TYPES = Object.freeze({
 });
 
 const ROOM_EVENT_BY_WEBMEET_TYPE = Object.freeze({
+    [WEBMEET_EVENT_TYPES.MEETING_CREATED]: ROOM_EVENT_TYPES.CREATED,
     [WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED]: ROOM_EVENT_TYPES.PARTICIPANT_JOINED,
     [WEBMEET_EVENT_TYPES.PARTICIPANT_LEFT]: ROOM_EVENT_TYPES.PARTICIPANT_LEFT,
     [WEBMEET_EVENT_TYPES.PARTICIPANT_TIMED_OUT]: ROOM_EVENT_TYPES.PARTICIPANT_LEFT,

@@ -29,6 +29,12 @@ export const dashboardRealtimeMethods = {
             return;
         }
         this.roomEventHandlersBound = true;
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.CREATED, (event) => {
+            const source = String(event?.detail?.source || '').trim();
+            if (source === 'authenticated-workspace') {
+                this.scheduleWorkspaceMeetingsRefresh();
+            }
+        });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.PARTICIPANT_JOINED, (event) => {
             const detail = event?.detail || {};
             const source = String(detail.source || '').trim();
