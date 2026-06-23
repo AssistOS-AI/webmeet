@@ -71,6 +71,26 @@ test('WebMeet close buttons use the shared modal icon asset from ui-common', asy
     }
 });
 
+test('WebMeet participant audio volume defaults to 100 percent', async () => {
+    const modalSource = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-participant-audio-modal/webmeet-participant-audio-modal.js'),
+        'utf8'
+    );
+    const modalHtml = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-participant-audio-modal/webmeet-participant-audio-modal.html'),
+        'utf8'
+    );
+    const dashboardSource = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-dashboard/controllers/media-settings-methods.js'),
+        'utf8'
+    );
+
+    assert.match(modalSource, /DEFAULT_PARTICIPANT_VOLUME = 1/);
+    assert.match(modalHtml, /data-role="volumeValue">100%/);
+    assert.match(dashboardSource, /DEFAULT_PARTICIPANT_VOLUME = 1/);
+    assert.doesNotMatch(dashboardSource, /normalizeParticipantAudioVolume\(value\)\s*\{[\s\S]{0,120}return DEFAULT_OUTPUT_VOLUME/);
+});
+
 test('WebMeet settings tab footer actions hide inactive tab controls inside the modal', async () => {
     const dashboardHtml = await fs.readFile(
         path.join(pluginRoot, 'components/webmeet-dashboard/webmeet-dashboard.html'),

@@ -311,6 +311,38 @@ test('WebMeetRoom rejects LiveKit participant events forged for another sender',
     );
 });
 
+test('WebMeetRoom keeps avatar projection published when LiveKit metadata update times out', async () => {
+    const realtimePayloads = [];
+    const applied = [];
+    const room = new WebMeetRoom(createRoomOptions({
+        getCurrentActorId: () => 'user-a',
+        getRoom: () => ({
+            localParticipant: {
+                attributes: {},
+                setAttributes: async () => {
+                    throw new Error('Request to update local metadata timed out');
+                }
+            }
+        }),
+        applyRealtimeParticipantAvatar: (payload) => applied.push(payload),
+        publishRealtimePayload: async (payload) => realtimePayloads.push(payload)
+    }));
+
+    await room.publishAvatarProjection({
+        enabled: true,
+        config: { agentId: 'profile:user-a', style: 'pixel' },
+        fallbackLetter: 'A'
+    }, {
+        user: { id: 'user-a' }
+    });
+
+    assert.equal(applied.length, 1);
+    assert.equal(realtimePayloads.length, 1);
+    const parsed = room.eventCodec.parse(realtimePayloads[0]);
+    assert.equal(parsed.type, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED);
+    assert.equal(parsed.payload.profileAvatar.config.style, 'pixel');
+});
+
 test('WebMeetRoom rejects LiveKit chat events forged for another author', () => {
     const room = new WebMeetRoom(createRoomOptions());
     const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.CHAT_REALTIME, {

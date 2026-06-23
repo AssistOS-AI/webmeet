@@ -28,13 +28,27 @@ function createContext() {
                     id: 'meeting-1'
                 }
             },
+            mediaSettings: {
+                outputVolume: 0.8
+            },
+            mediaDeafened: false,
             selectedMeetingId: ''
         },
         remoteAudioNormalizer: {
-            refreshParticipant() {}
+            multiplier: 1,
+            refreshParticipant() {},
+            getMultiplier() {
+                return this.multiplier;
+            }
         },
         participantLayoutController: {
-            refreshParticipantAudioState() {}
+            refreshParticipantAudioState() {},
+            getTrackEntries() {
+                return [];
+            },
+            findTrackIdsForParticipant() {
+                return [];
+            }
         }
     };
 }
@@ -47,7 +61,7 @@ test('participant audio volume keeps an explicit one hundred percent override', 
 
     assert.deepEqual(context.getParticipantAudioSettings('participant-1'), {
         muted: false,
-        volume: 0.8
+        volume: 1
     });
     assert.equal(context.hasParticipantAudioOverrideForParticipant('participant-1'), false);
 
@@ -74,6 +88,44 @@ test('participant audio volume keeps an explicit one hundred percent override', 
     assert.equal(context.hasParticipantAudioOverrideForParticipant('participant-1'), false);
     assert.deepEqual(context.getParticipantAudioSettings('participant-1'), {
         muted: false,
-        volume: 0.8
+        volume: 1
     });
+});
+
+test('participant audio applies proportional volume over the speaker volume', () => {
+    globalThis.window = {
+        localStorage: createStorage()
+    };
+    const context = createContext();
+    const mediaElement = {
+        dataset: {
+            participantId: 'participant-1'
+        },
+        volume: 1,
+        muted: false
+    };
+
+    context.applyOutputVolumePreviewToElement(mediaElement, 0.8);
+    assert.equal(mediaElement.volume, 0.8);
+    assert.equal(mediaElement.dataset.webmeetOutputVolume, '0.8');
+    assert.equal(mediaElement.dataset.webmeetParticipantVolume, '1');
+
+    context.setParticipantAudioSettings('participant-1', {
+        muted: false,
+        volume: 0.5
+    });
+    context.applyOutputVolumePreviewToElement(mediaElement, 0.8);
+    assert.equal(mediaElement.volume, 0.4);
+    assert.equal(mediaElement.dataset.webmeetParticipantVolume, '0.5');
+
+    context.applyOutputVolumePreviewToElement(mediaElement, 1);
+    assert.equal(mediaElement.volume, 0.5);
+
+    context.setParticipantAudioSettings('participant-1', {
+        muted: true,
+        volume: 0.5
+    });
+    context.applyOutputVolumePreviewToElement(mediaElement, 0.8);
+    assert.equal(mediaElement.volume, 0.4);
+    assert.equal(mediaElement.muted, true);
 });

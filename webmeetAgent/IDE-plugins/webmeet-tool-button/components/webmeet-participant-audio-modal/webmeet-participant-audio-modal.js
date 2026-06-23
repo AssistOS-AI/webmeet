@@ -1,4 +1,4 @@
-const DEFAULT_PARTICIPANT_VOLUME = 0.8;
+const DEFAULT_PARTICIPANT_VOLUME = 1;
 
 export class WebmeetParticipantAudioModal {
     constructor(element, invalidate) {

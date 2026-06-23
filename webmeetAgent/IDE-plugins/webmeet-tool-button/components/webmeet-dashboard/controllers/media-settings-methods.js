@@ -18,6 +18,7 @@ function escapeHtml(value) {
 
 const PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY = 'webmeet.participantAudioSettings';
 const MEDIA_SETTINGS_STORAGE_KEY = 'webmeet.mediaSettings';
+const DEFAULT_PARTICIPANT_VOLUME = 1;
 
 export const mediaSettingsMethods = {
     registerMediaDeviceChangeHandler() {
@@ -313,7 +314,7 @@ export const mediaSettingsMethods = {
 
     normalizeParticipantAudioVolume(value) {
         const numberValue = Number(value);
-        if (!Number.isFinite(numberValue)) return DEFAULT_OUTPUT_VOLUME;
+        if (!Number.isFinite(numberValue)) return DEFAULT_PARTICIPANT_VOLUME;
         return Math.min(1, Math.max(0, numberValue));
     },
 

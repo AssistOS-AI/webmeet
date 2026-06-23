@@ -347,9 +347,7 @@ export class WebmeetDashboard {
         void this.mediaController.preloadVoiceProcessing();
         this.remoteAudioNormalizer = new RemoteAudioNormalizer({
             isEnabled: () => this.state.mediaSettings?.automaticParticipantVolume !== false,
-            hasManualOverride: (participantId) => this.hasParticipantAudioOverrides(
-                this.getParticipantAudioSettings(participantId)
-            ),
+            hasManualOverride: (participantId) => this.hasParticipantAudioOverrideForParticipant(participantId),
             onMultiplierChange: (mediaElement) => this.applyOutputVolumePreviewToElement(mediaElement)
         });
 

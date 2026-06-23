@@ -403,7 +403,11 @@ export class WebMeetRoom extends EventTarget {
                 } : {}),
                 webmeetProfileAvatar: JSON.stringify(avatarProjection)
             };
-            await localParticipant.setAttributes(attributes);
+            try {
+                await localParticipant.setAttributes(attributes);
+            } catch (_) {
+                // LiveKit metadata is a propagation hint; room state and realtime avatar payloads remain authoritative.
+            }
         }
         await this.publishRealtimePayload({
             type: WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED,
