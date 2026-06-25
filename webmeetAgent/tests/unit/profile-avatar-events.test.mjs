@@ -1415,6 +1415,20 @@ test("WebMeet avatar loaders do not re-render forever when AxiFace is unavailabl
     assert.match(renderSource, /this\.avatarPreviewAxiFaceLoadFailed = true;/);
 });
 
+test("WebMeet settings modal resets avatar preview render cache when the preview element changes", async () => {
+    const mediaSettingsSource = fs.readFileSync(
+        path.resolve(
+            import.meta.dirname,
+            '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/media-settings-methods.js'
+        ),
+        'utf8'
+    );
+
+    assert.match(mediaSettingsSource, /const previousAvatarPreview = this\.avatarPreview \|\| null;/);
+    assert.match(mediaSettingsSource, /this\.avatarPreview = root\?\.querySelector\?\.\('#webmeetAvatarPreview'\) \|\| null;/);
+    assert.match(mediaSettingsSource, /if \(previousAvatarPreview !== this\.avatarPreview\) \{[\s\S]*this\.avatarPreviewRenderKey = '';[\s\S]*\}/);
+});
+
 test("Apply avatar closes the WebMeet settings panel after saving", async () => {
     let closeCalls = 0;
     let publishedOptions = null;
@@ -1505,7 +1519,7 @@ test("Apply pack switches the quick menu selection to the chosen AxiFace pack", 
                 {
                     id: 'robot-soft',
                     label: 'Robot Soft',
-                    manifestSrc: '/services/explorer/axi-face/packs/robot-soft/manifest.json'
+                    manifestSrc: '/explorer/shared/vendor/axi-face/packs/robot-soft/manifest.json'
                 }
             ],
             webMeetAvatarOverride: null,
@@ -1536,14 +1550,14 @@ test("Apply pack switches the quick menu selection to the chosen AxiFace pack", 
 
     await meetingActionMethods.applyWebMeetAvatarPack.call(context, {
         dataset: {
-            avatarPackSrc: '/services/explorer/axi-face/packs/robot-soft/manifest.json'
+            avatarPackSrc: '/explorer/shared/vendor/axi-face/packs/robot-soft/manifest.json'
         }
     });
 
     assert.deepEqual(publishedOptions, { force: true });
     assert.equal(context.state.avatarQuickMenuVisible, false);
     assert.equal(context.state.webMeetAvatarOverride.config.sourceMode, 'pack');
-    assert.equal(context.state.webMeetAvatarOverride.config.packSrc, '/services/explorer/axi-face/packs/robot-soft/manifest.json');
+    assert.equal(context.state.webMeetAvatarOverride.config.packSrc, '/explorer/shared/vendor/axi-face/packs/robot-soft/manifest.json');
     assert.equal(context.lastError, 'WebMeet avatar pack set to Robot Soft and published.');
 });
 
@@ -1844,11 +1858,14 @@ test("guest WebMeet avatar runtime avoids protected Explorer imports and uses pu
     assert.doesNotMatch(participantCardSource, /\/explorer\/services\/profile-avatar-client\.js/);
     assert.match(participantCardSource, /webmeet-profile-avatar-runtime\.js/);
     assert.match(runtimeSource, /isGuestWebMeetContext/);
-    assert.match(runtimeSource, /\/services\/explorer\/axi-face\/src\/axi-face\.mjs/);
-    assert.match(runtimeSource, /\/services\/explorer\/axi-face/);
+    assert.match(runtimeSource, /\/explorer\/shared\/vendor\/axi-face/);
+    assert.match(runtimeSource, /src\/axi-face\.mjs/);
     assert.doesNotMatch(runtimeSource, /export async function loadAxiFaceModule\(\) \{\s*if \(isGuestWebMeetContext\(\)\) return null;/);
     assert.doesNotMatch(runtimeSource, /export async function loadAxiFacePacks\(\) \{\s*if \(isGuestWebMeetContext\(\)\) return \[\];/);
     assert.doesNotMatch(runtimeSource, /export async function ensureAxiFaceLoaded\(\) \{\s*if \(isGuestWebMeetContext\(\)\) return;/);
+    assert.match(runtimeSource, /return globalThis\.__WEBMEET_GUEST_ENTRY__ === true;/);
+    assert.doesNotMatch(runtimeSource, /new URLSearchParams\(String\(window\?\.location\?\.search/);
+    assert.doesNotMatch(runtimeSource, /params\.get\('roomId'\)/);
     assert.match(runtimeSource, /if \(isGuestWebMeetContext\(\)\) \{\s*return null;\s*\}/);
 });
 

@@ -34,6 +34,7 @@ const currentUserCache = {
     value: null,
     promise: null
 };
+const AXIFACE_ASSET_BASE_URL = '/explorer/shared/vendor/axi-face';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -45,20 +46,15 @@ function escapeHtml(value) {
 }
 
 function isGuestWebMeetContext() {
-    try {
-        const params = new URLSearchParams(String(window?.location?.search || ''));
-        return Boolean(params.get('roomId'));
-    } catch (_) {
-        return false;
-    }
+    return globalThis.__WEBMEET_GUEST_ENTRY__ === true;
 }
 
 function getAxiFaceModuleUrl() {
-    return '/services/explorer/axi-face/src/axi-face.mjs';
+    return `${AXIFACE_ASSET_BASE_URL}/src/axi-face.mjs`;
 }
 
 function getAxiFaceAssetBaseUrl() {
-    return '/services/explorer/axi-face';
+    return AXIFACE_ASSET_BASE_URL;
 }
 
 function normalizeAxiFaceStyleList(styles = []) {

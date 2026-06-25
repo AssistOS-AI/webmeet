@@ -71,6 +71,7 @@ export const mediaSettingsMethods = {
     },
 
     cacheMediaSettingsElements(root = this.element) {
+        const previousAvatarPreview = this.avatarPreview || null;
         this.mediaSettingsPanel = root?.querySelector?.('#webmeetMediaSettingsPanel') || null;
         this.settingsFullscreenButton = root?.querySelector?.('#webmeetSettingsFullscreenButton') || null;
         this.applyMediaSettingsButton = root?.querySelector?.('#webmeetApplyMediaSettingsButton') || null;
@@ -104,6 +105,9 @@ export const mediaSettingsMethods = {
         this.roomNotificationSoundsInput = root?.querySelector?.('#webmeetRoomNotificationSounds') || null;
         this.avatarSettingsForm = root?.querySelector?.('#webmeetAvatarSettingsForm') || null;
         this.avatarPreview = root?.querySelector?.('#webmeetAvatarPreview') || null;
+        if (previousAvatarPreview !== this.avatarPreview) {
+            this.avatarPreviewRenderKey = '';
+        }
         this.backgroundEffectSelect = root?.querySelector?.('#webmeetBackgroundEffectSelect') || null;
         this.backgroundBlurInput = root?.querySelector?.('#webmeetBackgroundBlurRadius') || null;
         this.backgroundBlurValue = root?.querySelector?.('#webmeetBackgroundBlurValue') || null;
