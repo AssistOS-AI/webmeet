@@ -13,7 +13,7 @@
         "webmeetInfra/liveKitServerAgent"
     ],
     "repos": {
-        "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
+        "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
     },
     "routerAccess": {
         "httpRoutes": [
