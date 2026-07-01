@@ -10,10 +10,10 @@
         ]
     },
     "enable": [
-        "webmeetInfra/liveKitServerAgent"
+        "webmeetInfra/liveKitServerAgent no-wait"
     ],
     "repos": {
-        "webmeetInfra": "https://github.com/PloinkyRepos/webmeetInfra.git"
+        "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
     },
     "routerAccess": {
         "httpRoutes": [
@@ -236,7 +236,7 @@
             ]
         },
         "prod": {
-            "ports": [
+            "openPorts": [
                 "127.0.0.1:17001:7000"
             ],
             "env": [
