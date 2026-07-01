@@ -10,7 +10,7 @@
         ]
     },
     "enable": [
-        "webmeetInfra/liveKitServerAgent"
+        "webmeetInfra/liveKitServerAgent no-wait"
     ],
     "repos": {
         "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
