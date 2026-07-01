@@ -2556,7 +2556,7 @@ textarea.form-input {
     color: var(--text);
 }
 
-@media (max-width: 1180px) {
+/*@media (max-width: 1180px) {
     .webmeet-media-settings {
         grid-template-columns: 1fr;
     }
@@ -2577,9 +2577,9 @@ textarea.form-input {
     .webmeet-member-list {
         display: none;
     }
-}
+}*/
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
     .webmeet-dashboard {
         top: 0;
         left: 0;
