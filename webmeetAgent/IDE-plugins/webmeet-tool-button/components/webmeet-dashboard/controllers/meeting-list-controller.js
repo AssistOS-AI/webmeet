@@ -6,6 +6,26 @@ function escapeHtml(value) {
         .replaceAll('"', '&quot;');
 }
 
+function getMeetingSortName(entry) {
+    return String(entry?.title || entry?.name || entry?.id || '').trim();
+}
+
+function sortMeetingsByName(meetings) {
+    return [...meetings].sort((left, right) => {
+        const nameCompare = getMeetingSortName(left).localeCompare(getMeetingSortName(right), undefined, {
+            numeric: true,
+            sensitivity: 'base'
+        });
+        if (nameCompare !== 0) {
+            return nameCompare;
+        }
+        return String(left?.id || '').localeCompare(String(right?.id || ''), undefined, {
+            numeric: true,
+            sensitivity: 'base'
+        });
+    });
+}
+
 export class MeetingListController {
     constructor() {
         this.meetingListElement = null;
@@ -17,7 +37,7 @@ export class MeetingListController {
 
     render(meetings, selectedMeetingId, meetingParticipantsById, canManageRooms = false, joiningMeetingId = '', showArchivedRooms = false) {
         if (!this.meetingListElement) return;
-        const safeMeetings = Array.isArray(meetings) ? meetings : [];
+        const safeMeetings = sortMeetingsByName(Array.isArray(meetings) ? meetings : []);
         const activeMeetings = safeMeetings.filter((entry) => !this.isArchivedRoom(entry));
         const archivedMeetings = canManageRooms && showArchivedRooms
             ? safeMeetings.filter((entry) => this.isArchivedRoom(entry))

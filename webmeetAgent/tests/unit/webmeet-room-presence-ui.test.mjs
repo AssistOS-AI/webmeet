@@ -247,3 +247,48 @@ test('meeting list hides archived rooms unless admin enables them', () => {
     controller.render(meetings, 'active-room', {}, false, '', true);
     assert.doesNotMatch(element.innerHTML, /Archived room/);
 });
+
+test('meeting list sorts rooms alphabetically by name', () => {
+    const controller = new MeetingListController();
+    const element = { innerHTML: '' };
+    const meetings = [{
+        id: 'room-zebra',
+        title: 'Zebra room',
+        roomType: 'team'
+    }, {
+        id: 'room-alpha-2',
+        title: 'Alpha 2',
+        roomType: 'team'
+    }, {
+        id: 'room-alpha-10',
+        title: 'Alpha 10',
+        roomType: 'team'
+    }, {
+        id: 'room-beta-archived',
+        title: 'Beta archived',
+        roomType: 'team',
+        status: 'archived'
+    }, {
+        id: 'room-alpha-archived',
+        title: 'Alpha archived',
+        roomType: 'team',
+        status: 'archived'
+    }];
+    controller.setElement(element);
+
+    controller.render(meetings, 'room-alpha-2', {}, true, '', true);
+
+    const alpha2Index = element.innerHTML.indexOf('Alpha 2');
+    const alpha10Index = element.innerHTML.indexOf('Alpha 10');
+    const zebraIndex = element.innerHTML.indexOf('Zebra room');
+    const archivedHeadingIndex = element.innerHTML.indexOf('Archived rooms');
+    const alphaArchivedIndex = element.innerHTML.indexOf('Alpha archived');
+    const betaArchivedIndex = element.innerHTML.indexOf('Beta archived');
+
+    assert.ok(alpha2Index >= 0);
+    assert.ok(alpha10Index > alpha2Index);
+    assert.ok(zebraIndex > alpha10Index);
+    assert.ok(archivedHeadingIndex > zebraIndex);
+    assert.ok(alphaArchivedIndex > archivedHeadingIndex);
+    assert.ok(betaArchivedIndex > alphaArchivedIndex);
+});
