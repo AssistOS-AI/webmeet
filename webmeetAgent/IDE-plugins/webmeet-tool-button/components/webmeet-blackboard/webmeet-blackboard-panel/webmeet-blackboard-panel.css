@@ -1,12 +1,28 @@
 webmeet-blackboard-panel {
+    --bb-panel-bg: var(--bg);
+    --bb-board-bg: var(--surface);
+    --bb-grid-color: var(--border);
+    --bb-board-border: var(--border);
+    --bb-widget-bg: var(--surface);
+    --bb-widget-text: var(--text);
+    --bb-widget-border: var(--border-strong);
+    --bb-selection: var(--accent);
+    --bb-selection-shadow: color-mix(in srgb, var(--accent) 18%, transparent);
+    --bb-resize-bg: var(--surface);
+    --bb-resize-border: var(--accent);
+    --bb-inline-edit-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+    --bb-context-bg: var(--action-button-background);
+    --bb-context-hover-bg: var(--surface-soft);
+    --bb-context-text: var(--text);
+    --bb-danger: var(--danger);
     display: flex;
     flex-direction: column;
     position: relative;
     min-height: 320px;
     height: 100%;
-    background: var(--bb-panel-bg, #f7f8fb);
-    color: var(--bb-widget-text, #172033);
-    font-family: system-ui, sans-serif;
+    background: var(--bb-panel-bg);
+    color: var(--bb-widget-text);
+    font-family: var(--default-font);
 }
 
 .webmeet-blackboard-board {
@@ -15,7 +31,7 @@ webmeet-blackboard-panel {
     min-height: inherit;
     overflow: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--bb-board-border, #d6deea);
+    border: 1px solid var(--bb-board-border);
     background-color: var(--bb-board-bg);
     height: 100%;
 }
@@ -31,8 +47,8 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-widget[aria-selected="true"] {
-    border-color: var(--bb-selection, #2563eb);
-    box-shadow: 0 0 0 2px var(--bb-selection-shadow, rgba(37, 99, 235, 0.18));
+    border-color: var(--bb-selection);
+    box-shadow: 0 0 0 2px var(--bb-selection-shadow);
     overflow: visible;
 }
 
@@ -47,8 +63,8 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-create-preview.shape {
     min-width: 1px;
     min-height: 1px;
-    border: 2px dashed var(--bb-selection, #2563eb);
-    background: color-mix(in srgb, var(--bb-selection, #2563eb) 12%, transparent);
+    border: 2px dashed var(--bb-selection);
+    background: color-mix(in srgb, var(--bb-selection) 12%, transparent);
 }
 
 .webmeet-blackboard-create-preview.shape.shape-rounded {
@@ -66,7 +82,7 @@ webmeet-blackboard-panel {
 
 .webmeet-blackboard-create-preview.shape.shape-triangle {
     border: 0;
-    background: color-mix(in srgb, var(--bb-selection, #2563eb) 14%, transparent);
+    background: color-mix(in srgb, var(--bb-selection) 14%, transparent);
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -74,7 +90,7 @@ webmeet-blackboard-panel {
     content: '';
     position: absolute;
     inset: 1px;
-    border: 2px dashed var(--bb-selection, #2563eb);
+    border: 2px dashed var(--bb-selection);
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -92,8 +108,8 @@ webmeet-blackboard-panel {
 
 .webmeet-blackboard-create-preview-line,
 .webmeet-blackboard-create-preview-line-svg marker path {
-    stroke: var(--bb-selection, #2563eb);
-    fill: var(--bb-selection, #2563eb);
+    stroke: var(--bb-selection);
+    fill: var(--bb-selection);
 }
 
 .webmeet-blackboard-create-preview-line {
@@ -110,9 +126,9 @@ webmeet-blackboard-panel {
     width: 10px;
     height: 10px;
     box-sizing: border-box;
-    border: 1px solid var(--bb-resize-border, #2563eb);
+    border: 1px solid var(--bb-resize-border);
     border-radius: 2px;
-    background: var(--bb-resize-bg, #ffffff);
+    background: var(--bb-resize-bg);
     touch-action: none;
 }
 
@@ -214,9 +230,9 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-widget.embed {
     overflow: hidden;
     padding: 8px;
-    border: var(--stroke-width, 1px) solid var(--stroke, var(--bb-widget-border, #cbd5e1));
-    background: var(--fill, var(--bb-widget-bg, #ffffff));
-    color: var(--text-color, var(--bb-widget-text, #172033));
+    border: var(--stroke-width) solid var(--stroke);
+    background: var(--fill);
+    color: var(--text-color);
 }
 
 .webmeet-blackboard-widget.poll {
@@ -263,7 +279,7 @@ webmeet-blackboard-panel {
     gap: 8px;
     min-width: 0;
     padding-bottom: 6px;
-    border-bottom: 1px solid color-mix(in srgb, var(--stroke, var(--bb-widget-border, #cbd5e1)) 45%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--stroke) 45%, transparent);
 }
 
 .webmeet-blackboard-bullets-header-text {
@@ -279,14 +295,14 @@ webmeet-blackboard-panel {
     height: 28px;
     min-width: 28px;
     padding: 0;
-    border: 1px solid color-mix(in srgb, var(--stroke, var(--bb-widget-border, #cbd5e1)) 55%, transparent);
+    border: 1px solid color-mix(in srgb, var(--stroke) 55%, transparent);
     border-radius: 6px;
     background: transparent;
-    color: var(--text-color, var(--bb-widget-text, #172033));
+    color: var(--text-color);
 }
 
 .webmeet-blackboard-bullets-fullscreen-button:hover {
-    background: color-mix(in srgb, var(--text-color, var(--bb-widget-text, #172033)) 8%, transparent);
+    background: color-mix(in srgb, var(--text-color) 8%, transparent);
 }
 
 .webmeet-blackboard-bullets-fullscreen-icon {
@@ -298,7 +314,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-bullets-title {
     min-width: 0;
     overflow: hidden;
-    color: var(--text-color, var(--bb-widget-text, #172033));
+    color: var(--text-color);
     font-size: 13px;
     font-weight: 800;
     line-height: 1.2;
@@ -309,7 +325,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-bullets-meta {
     min-height: 14px;
     overflow: hidden;
-    color: color-mix(in srgb, var(--text-color, var(--bb-widget-text, #172033)) 62%, transparent);
+    color: color-mix(in srgb, var(--text-color) 62%, transparent);
     font-size: 11px;
     font-weight: 600;
     line-height: 1.25;
@@ -367,7 +383,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-bullets-text {
     min-width: 0;
     overflow: hidden;
-    color: var(--text-color, var(--bb-widget-text, #172033));
+    color: var(--text-color);
     font-size: 12px;
     font-weight: 600;
     line-height: 1.25;
@@ -404,7 +420,7 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-bullets-empty {
-    color: color-mix(in srgb, var(--text-color, var(--bb-widget-text, #172033)) 58%, transparent);
+    color: color-mix(in srgb, var(--text-color) 58%, transparent);
     font-size: 12px;
     font-weight: 600;
 }
@@ -416,7 +432,7 @@ webmeet-blackboard-panel {
     justify-content: flex-end;
     gap: 6px;
     padding-top: 6px;
-    border-top: 1px solid color-mix(in srgb, var(--stroke, var(--bb-widget-border, #cbd5e1)) 45%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--stroke) 45%, transparent);
 }
 
 .webmeet-blackboard-widget.poll > * {
@@ -451,7 +467,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-inline-text:focus,
 .webmeet-blackboard-inline-text[contenteditable="true"] {
     user-select: text;
-    background: var(--bb-inline-edit-bg, rgba(37, 99, 235, 0.08));
+    background: var(--bb-inline-edit-bg);
     border-radius: 4px;
     padding: 2px 4px;
 }
@@ -463,7 +479,7 @@ webmeet-blackboard-panel {
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    border: var(--stroke-width, 1px) solid var(--stroke, var(--bb-widget-border, #cbd5e1));
+    border: var(--stroke-width) solid var(--stroke);
     background: var(--fill, transparent);
     overflow: hidden;
 }
@@ -488,9 +504,9 @@ webmeet-blackboard-panel {
     min-width: 0;
     flex: 1;
     height: 28px;
-    border: 1px solid var(--bb-widget-border, #cbd5e1);
-    background: var(--bb-widget-bg, #ffffff);
-    color: var(--bb-widget-text, #172033);
+    border: 1px solid var(--bb-widget-border);
+    background: var(--bb-widget-bg);
+    color: var(--bb-widget-text);
     border-radius: 4px;
     padding: 0 6px;
 }
@@ -534,7 +550,7 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-poll-status {
-    color: var(--text-color, var(--bb-widget-text, #172033));
+    color: var(--text-color);
     font-size: 11px;
     opacity: 0.72;
 }
@@ -584,15 +600,15 @@ webmeet-blackboard-panel {
     border: 1px solid transparent;
     border-radius: 4px;
     background: transparent;
-    color: var(--bb-context-text, var(--text, #172033));
+    color: var(--bb-context-text);
     cursor: pointer;
     background: var(--bb-context-bg, var(--action-button-background));
 }
 
 .webmeet-blackboard-context-button:hover,
 .webmeet-blackboard-context-button:focus-visible {
-    border-color: var(--bb-selection, var(--border-strong, #cbd5e1));
-    background: var(--bb-context-hover-bg, var(--surface-soft, #f8fafc));
+    border-color: var(--bb-selection);
+    background: var(--bb-context-hover-bg);
 }
 
 .webmeet-blackboard-context-button.move {
@@ -606,7 +622,7 @@ webmeet-blackboard-panel {
 
 .webmeet-blackboard-context-button.delete:hover,
 .webmeet-blackboard-context-button.delete:focus-visible {
-    color: var(--bb-danger, var(--danger, #dc2626));
+    color: var(--bb-danger);
 }
 
 .webmeet-blackboard-context-icon {

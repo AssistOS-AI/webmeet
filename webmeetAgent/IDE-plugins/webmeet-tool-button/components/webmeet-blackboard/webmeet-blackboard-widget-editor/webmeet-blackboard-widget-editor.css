@@ -76,7 +76,7 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
 .webmeet-blackboard-poll-settings-section {
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--border, #d8e0ea);
+    border-bottom: 1px solid var(--border);
 }
 
 .webmeet-blackboard-typography-section {
@@ -105,9 +105,9 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     gap: 12px;
     min-width: 0;
     padding: 12px;
-    border: 1px solid var(--border, #d8e0ea);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--surface, #ffffff);
+    background: var(--surface);
 }
 
 .webmeet-blackboard-poll-question-row-header {
@@ -120,7 +120,7 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
 
 .webmeet-blackboard-poll-question-heading {
     min-width: 0;
-    color: var(--text, #172033);
+    color: var(--text);
     font-size: 13px;
     font-weight: 800;
     overflow: hidden;
@@ -165,7 +165,7 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     justify-content: flex-start;
     margin-top: 10px;
     padding-top: 12px;
-    border-top: 1px solid var(--border, #d8e0ea);
+    border-top: 1px solid var(--border);
 }
 
 .webmeet-blackboard-bullets-editor-section,
@@ -186,9 +186,9 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     gap: 8px;
     min-width: 0;
     padding: 8px;
-    border: 1px solid var(--border, #d8e0ea);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--surface, #ffffff);
+    background: var(--surface);
 }
 
 .webmeet-blackboard-bullets-editor-text {
@@ -223,7 +223,7 @@ dialog.modal:has(webmeet-blackboard-widget-editor) {
     height: 34px;
     min-width: 34px;
     padding: 0;
-    color: var(--danger, #b42318);
+    color: var(--danger);
 }
 
 .webmeet-blackboard-bullets-remove-icon::before {

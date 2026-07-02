@@ -4,8 +4,8 @@
     gap: 6px;
     flex-wrap: wrap;
     padding: 8px;
-    border-bottom: 1px solid var(--border, #d6deea);
-    background: var(--surface, #ffffff);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
 }
 
 .webmeet-blackboard-tool-button {
@@ -15,19 +15,19 @@
     min-width: 34px;
     height: 32px;
     padding: 0 9px;
-    border: 1px solid var(--border-strong, #cbd5e1);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--surface-soft, #f8fafc);
-    color: var(--text, #172033);
+    background: var(--surface-soft);
+    color: var(--text);
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
 }
 
 .webmeet-blackboard-tool-button.is-active {
-    background: var(--accent, #2563eb);
-    border-color: var(--accent, #2563eb);
-    color: var(--white-text, #ffffff);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--white-text);
 }
 
 .webmeet-blackboard-tool-button:disabled {
@@ -88,9 +88,9 @@
     display: none;
     min-width: 150px;
     padding: 4px;
-    border: 1px solid var(--border, #d6deea);
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm, 4px);
-    background: var(--surface, #ffffff);
+    background: var(--surface);
     box-shadow: var(--shadow-md, 0 4px 12px rgba(15, 23, 42, 0.1));
 }
 
@@ -109,7 +109,7 @@
     border: 0;
     border-radius: var(--radius-sm, 4px);
     background: transparent;
-    color: var(--text, #172033);
+    color: var(--text);
     font: inherit;
     font-size: 12px;
     font-weight: 600;
@@ -120,8 +120,8 @@
 .webmeet-blackboard-menu-item:hover,
 .webmeet-blackboard-menu-item:focus-visible,
 .webmeet-blackboard-menu-item.is-selected {
-    background: var(--bg-active, rgba(37, 99, 235, 0.08));
-    color: var(--text, #172033);
+    background: var(--bg-active);
+    color: var(--text);
 }
 
 .webmeet-blackboard-menu-item:disabled {
@@ -222,7 +222,7 @@
 .webmeet-blackboard-separator {
     width: 1px;
     height: 24px;
-    background: var(--border, #d6deea);
+    background: var(--border);
     margin: 0 2px;
 }
 
@@ -248,7 +248,7 @@
     justify-content: center;
     width: 18px;
     height: 18px;
-    color: var(--accent, #2563eb);
+    color: var(--accent);
     font-size: 14px;
     font-weight: 800;
     line-height: 1;
@@ -258,10 +258,10 @@
 .webmeet-blackboard-input {
     height: 32px;
     padding: 0 8px;
-    border: 1px solid var(--border-strong, #cbd5e1);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--surface-soft, #f8fafc);
-    color: var(--text, #172033);
+    background: var(--surface-soft);
+    color: var(--text);
     font: inherit;
     font-size: 12px;
 }

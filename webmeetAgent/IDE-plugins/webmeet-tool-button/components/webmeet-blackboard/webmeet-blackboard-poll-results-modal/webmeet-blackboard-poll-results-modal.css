@@ -26,7 +26,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
 }
 
 .webmeet-blackboard-poll-modal-description {
-    color: var(--text-muted, #475569);
+    color: var(--text-soft);
     font-size: 13px;
     overflow-wrap: anywhere;
 }
@@ -38,7 +38,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
 }
 
 .webmeet-blackboard-poll-modal-section-title {
-    color: var(--text-muted, #475569);
+    color: var(--text-soft);
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
@@ -51,7 +51,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
     align-items: start;
     min-width: 0;
     padding: 14px 0;
-    border-bottom: 1px solid var(--border, #d8e0ea);
+    border-bottom: 1px solid var(--border);
 }
 
 .webmeet-blackboard-poll-question-row:first-child {
@@ -92,7 +92,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
 }
 
 .webmeet-blackboard-poll-result-value {
-    color: var(--text-muted, #475569);
+    color: var(--text-soft);
     text-align: right;
 }
 
@@ -102,7 +102,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
     min-width: 0;
     overflow: hidden;
     border-radius: 999px;
-    background: var(--surface-soft, #eef2f7);
+    background: var(--surface-soft);
 }
 
 .webmeet-blackboard-poll-result-bar::before {
@@ -111,11 +111,11 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
     inset: 0 auto 0 0;
     width: var(--poll-result-width, 0%);
     border-radius: inherit;
-    background: var(--accent, #2563eb);
+    background: var(--accent);
 }
 
 .webmeet-blackboard-poll-result-empty {
-    color: var(--text-muted, #475569);
+    color: var(--text-soft);
     font-size: 12px;
 }
 
@@ -125,7 +125,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
     min-width: 0;
     margin-top: 18px;
     padding-top: 16px;
-    border-top: 1px solid var(--border, #d8e0ea);
+    border-top: 1px solid var(--border);
 }
 
 .webmeet-blackboard-poll-table-wrap {
@@ -138,7 +138,7 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
     width: 100%;
     min-width: 320px;
     border-collapse: collapse;
-    color: var(--text, #172033);
+    color: var(--text);
     font-size: 12px;
 }
 
@@ -147,14 +147,14 @@ dialog.modal:has(webmeet-blackboard-poll-results-modal) {
     max-width: 240px;
     overflow: hidden;
     padding: 7px 8px;
-    border: 1px solid var(--border, #d8e0ea);
+    border: 1px solid var(--border);
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .webmeet-blackboard-poll-table th {
-    background: var(--surface-soft, #f8fafc);
+    background: var(--surface-soft);
     font-weight: 700;
 }
 

@@ -28,7 +28,7 @@
     z-index: 100000;
     display: grid;
     place-items: center;
-    background: color-mix(in srgb, var(--bg, #0f172a) 70%, transparent);
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
     padding: 24px;
 }
 
@@ -38,10 +38,10 @@
     flex-direction: column;
     gap: 12px;
     padding: 22px;
-    border: 1px solid var(--border-strong, rgba(148, 163, 184, 0.28));
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
-    background: var(--file-exp-panel, #ffffff);
-    color: var(--text, #111827);
+    background: var(--file-exp-panel);
+    color: var(--text);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
 
@@ -53,17 +53,17 @@
 .webmeet-guest-name-label {
     font-size: 13px;
     font-weight: 600;
-    color: var(--gray-button-border, #4b5563);
+    color: var(--gray-button-border);
 }
 
 .webmeet-guest-name-input {
     width: 100%;
     height: 40px;
     padding: 0 11px;
-    border: 1px solid var(--border-strong, #cbd5e1);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--surface, #ffffff);
-    color: var(--text, #111827);
+    background: var(--surface);
+    color: var(--text);
     font: inherit;
 }
 
@@ -71,7 +71,7 @@
     height: 40px;
     border: none;
     border-radius: 6px;
-    background: var(--accent, #2563eb);
+    background: var(--accent);
     color: #ffffff;
     font: inherit;
     font-weight: 700;
@@ -92,10 +92,10 @@
     flex-direction: column;
     gap: 12px;
     padding: 24px;
-    border: 1px solid var(--border-strong, #cbd5e1);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
-    background: var(--surface, #ffffff);
-    color: var(--text, #111827);
+    background: var(--surface);
+    color: var(--text);
     box-shadow: var(--shadow-lg, 0 20px 60px rgba(0, 0, 0, 0.16));
 }
 
@@ -105,8 +105,8 @@
     display: grid;
     place-items: center;
     border-radius: 8px;
-    background: var(--bg-active, rgba(37, 99, 235, 0.08));
-    color: var(--accent, #2563eb);
+    background: var(--bg-active);
+    color: var(--accent);
 }
 
 .webmeet-guest-entry-title {
@@ -117,7 +117,7 @@
 
 .webmeet-guest-entry-copy {
     margin: 6px 0 0;
-    color: var(--text-soft, #4b5563);
+    color: var(--text-soft);
     font-size: 13px;
     line-height: 1.45;
 }
@@ -125,17 +125,17 @@
 .webmeet-guest-entry-label {
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-soft, #4b5563);
+    color: var(--text-soft);
 }
 
 .webmeet-guest-entry-input {
     width: 100%;
     height: 40px;
     padding: 0 11px;
-    border: 1px solid var(--border-strong, #cbd5e1);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    background: var(--surface, #ffffff);
-    color: var(--text, #111827);
+    background: var(--surface);
+    color: var(--text);
     font: inherit;
 }
 
@@ -146,12 +146,12 @@
 
 .webmeet-guest-entry-status {
     min-height: 18px;
-    color: var(--text-soft, #4b5563);
+    color: var(--text-soft);
     font-size: 12px;
 }
 
 .webmeet-guest-entry-status.is-error {
-    color: var(--danger, #dc2626);
+    color: var(--danger);
 }
 
 .webmeet-guest-entry-form.is-joining {
@@ -1298,25 +1298,25 @@
     min-width: 0;
     font-size: 14px;
     font-weight: 500;
-    color: var(--text, #111827);
+    color: var(--text);
 }
 
 .form-input {
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    border: 1px solid var(--border, #d1d5db);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 10px 12px;
     font: inherit;
     font-size: 14px;
-    color: var(--text, #111827);
-    background: var(--surface, #fff);
+    color: var(--text);
+    background: var(--surface);
 }
 
 .form-input:focus {
     outline: none;
-    border-color: var(--accent, #2563eb);
+    border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
@@ -1344,7 +1344,7 @@ textarea.form-input {
     width: 16px;
     height: 16px;
     cursor: pointer;
-    accent-color: var(--accent, #2563eb);
+    accent-color: var(--accent);
 }
 
 .webmeet-settings-tabs {
@@ -1685,7 +1685,7 @@ textarea.form-input {
 }
 
 .webmeet-microphone-test-status[data-state="good"] {
-    color: var(--success, #2e7d32);
+    color: var(--success);
 }
 
 .webmeet-microphone-test-status[data-state="warning"] {
@@ -2228,7 +2228,7 @@ textarea.form-input {
 }
 
 .webmeet-chat-suggest-label {
-    font-family: ui-monospace, "SF Mono", "Fira Code", Consolas, monospace;
+    font-family: var(--mono-font);
     font-size: 0.82rem;
     font-weight: 600;
     white-space: nowrap;
@@ -2535,7 +2535,7 @@ textarea.form-input {
 }
 
 .webmeet-code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--mono-font);
     font-size: 0.75rem;
 }
 
@@ -2579,7 +2579,7 @@ textarea.form-input {
     }
 }*/
 
-@media (max-width: 1200px) {
+@media (max-width: 520px) {
     .webmeet-dashboard {
         top: 0;
         left: 0;

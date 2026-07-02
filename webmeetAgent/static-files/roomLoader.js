@@ -1,9 +1,12 @@
 import WebSkel from '/explorer/shared/libs/webskel/webskel.mjs';
+import { initializeTheme } from '/explorer/shared/ui/theme.js';
 
 const ROOM_ID_PATTERN = /^room_[0-9a-fA-F-]{36}$/;
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const COMPONENT_ROOT = new URL('../IDE-plugins/webmeet-tool-button/', import.meta.url);
 const PLUGIN_CONFIG_URL = new URL('config.json', COMPONENT_ROOT);
+
+initializeTheme();
 
 function getRoomIdParam() {
   const roomId = String(new URLSearchParams(window.location.search || '').get('roomId') || '').trim();
@@ -339,10 +342,10 @@ start().catch((error) => {
     return;
   }
   document.querySelector('#page_content').innerHTML = `
-    <div style="padding: 20px; color: #d32f2f; background: #ffebee; border-radius: 4px; margin: 20px; border: 1px solid #f44336; font-family: sans-serif;">
-      <h3 style="margin-top: 0;">Application Error</h3>
+    <div class="webmeet-room-loader-error" role="alert">
+      <h3>Application Error</h3>
       <p>${message}</p>
-      <button onclick="window.location.reload()" style="padding: 8px 16px; cursor: pointer; background: #d32f2f; color: white; border: none; border-radius: 4px;">Retry</button>
+      <button type="button" onclick="window.location.reload()">Retry</button>
     </div>
   `;
 });

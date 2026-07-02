@@ -468,7 +468,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     width: 0;
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, var(--success, #2e7d32), var(--accent), var(--warning, #c47f00));
+    background: linear-gradient(90deg, var(--success), var(--accent), var(--warning));
     transition: width 0.16s ease;
 }
 
@@ -485,7 +485,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
 }
 
 .webmeet-settings-modal .webmeet-microphone-test-status[data-state="good"] {
-    color: var(--success, #2e7d32);
+    color: var(--success);
 }
 
 .webmeet-settings-modal .webmeet-microphone-test-status[data-state="warning"] {
@@ -784,8 +784,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen .webmeet-settings-resiz
         grid-column: 1 / -1;
     }
 
-    .webmeet-settings-modal .webmeet-media-settings-flags,
-    .webmeet-settings-modal .webmeet-media-settings-actions {
+    .webmeet-settings-modal .webmeet-media-settings-flags {
         flex-direction: column;
         align-items: stretch;
     }
@@ -797,8 +796,8 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen .webmeet-settings-resiz
     }
 
     .webmeet-settings-modal .webmeet-media-settings-actions > button {
-        width: 100%;
         min-height: 40px;
+        justify-content: center;
     }
 
     .webmeet-settings-modal .webmeet-background-preview {

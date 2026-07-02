@@ -10,7 +10,7 @@ body {
 
 body {
     margin: 0;
-    font-family: var(--default-font), "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--default-font);
     background: var(--bg);
     color: var(--text);
 }
@@ -57,5 +57,35 @@ body {
     background: var(--accent);
     color: var(--white);
     text-decoration: none;
+    font-weight: 600;
+}
+
+.webmeet-room-loader-error {
+    margin: 20px;
+    padding: 20px;
+    border: 1px solid var(--danger);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+    color: var(--danger);
+    font-family: var(--default-font);
+}
+
+.webmeet-room-loader-error h3 {
+    margin: 0 0 12px;
+}
+
+.webmeet-room-loader-error p {
+    color: var(--text);
+}
+
+.webmeet-room-loader-error button {
+    min-height: 36px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--danger);
+    color: var(--white);
+    cursor: pointer;
+    font: inherit;
     font-weight: 600;
 }
