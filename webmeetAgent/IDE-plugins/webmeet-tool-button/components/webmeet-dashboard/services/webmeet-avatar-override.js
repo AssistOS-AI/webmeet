@@ -2,71 +2,18 @@ import {
     normalizeAvatarConfig,
     renderAxiFaceMarkup
 } from './webmeet-profile-avatar-runtime.js';
+import { EMOTIONS } from '../../../../../../explorer/shared/vendor/axi-face/src/state-machine.mjs';
+import {
+    formatAvatarOptionLabel
+} from './avatar-settings-model.js';
 
 const STORAGE_PREFIX = 'webmeet.avatarOverride.';
 
-export const WEBMEET_AVATAR_PRESETS = Object.freeze([
-    {
-        id: 'neutral',
-        label: 'Neutral',
-        patch: {
-            emotion: 'neutral',
-            thought: '',
-            thoughtMode: 'none',
-            mode: 'static',
-            shape: 'circle',
-            theme: 'auto'
-        }
-    },
-    {
-        id: 'focused',
-        label: 'Focused',
-        patch: {
-            emotion: 'thinking',
-            thought: '',
-            thoughtMode: 'caption',
-            mode: 'controlled',
-            shape: 'rounded',
-            theme: 'auto'
-        }
-    },
-    {
-        id: 'listening',
-        label: 'Listening',
-        patch: {
-            emotion: 'listening',
-            thought: '',
-            thoughtMode: 'bubble',
-            mode: 'event-driven',
-            shape: 'circle',
-            theme: 'auto'
-        }
-    },
-    {
-        id: 'happy',
-        label: 'Happy',
-        patch: {
-            emotion: 'happy',
-            thought: '',
-            thoughtMode: 'bubble',
-            mode: 'autonomous',
-            shape: 'circle',
-            theme: 'auto'
-        }
-    },
-    {
-        id: 'quiet',
-        label: 'Quiet',
-        patch: {
-            emotion: 'sleepy',
-            thought: '',
-            thoughtMode: 'none',
-            mode: 'static',
-            shape: 'none',
-            theme: 'auto'
-        }
-    }
-]);
+export const WEBMEET_AVATAR_PRESETS = Object.freeze(EMOTIONS.map((emotion) => Object.freeze({
+    id: emotion,
+    label: formatAvatarOptionLabel(emotion),
+    patch: Object.freeze({ emotion })
+})));
 
 export function getWebMeetAvatarPreset(presetId = '') {
     const id = String(presetId || '').trim();

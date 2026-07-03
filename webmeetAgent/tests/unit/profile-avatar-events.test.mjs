@@ -26,6 +26,8 @@ import { meetingActionMethods } from '../../IDE-plugins/webmeet-tool-button/comp
 import { dashboardRenderMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-render-methods.js';
 import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-session-methods.js';
 import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
+import { WEBMEET_AVATAR_PRESETS } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-avatar-override.js';
+import { EMOTIONS } from '../../../explorer/shared/vendor/axi-face/src/state-machine.mjs';
 
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
@@ -1289,6 +1291,17 @@ test("WebMeet avatar override is browser scoped and participates in effective av
     assert.match(meetingActionSource, /this\.renderMeetingList\?\.\(\)/);
     assert.match(meetingActionSource, /applyWebMeetAvatarSourceMode/);
     assert.match(serviceSource, /sourceMode/);
+});
+
+test("WebMeet quick avatar menu exposes every settings emotion", () => {
+    assert.deepEqual(
+        WEBMEET_AVATAR_PRESETS.map((preset) => preset.id),
+        EMOTIONS
+    );
+    for (const preset of WEBMEET_AVATAR_PRESETS) {
+        assert.deepEqual(Object.keys(preset.patch), ['emotion']);
+        assert.equal(preset.patch.emotion, preset.id);
+    }
 });
 
 test("WebMeet avatar UI exposes settings and quick preset controls", async () => {
