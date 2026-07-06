@@ -462,27 +462,6 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
     display: none !important;
 }
 
-@media (max-width: 560px) {
-    .webmeet-room-settings-modal {
-        min-width: 0;
-    }
-
-    .webmeet-room-settings-link {
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
-    .webmeet-robo-section-header {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .webmeet-robo-checklist {
-        flex-direction: column;
-        gap: 6px;
-    }
-}
-
 .webmeet-room-settings-window-actions {
     display: inline-flex;
     align-items: center;
@@ -563,7 +542,27 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
     }
 
     .webmeet-room-settings-modal {
+        min-width: 0;
         border-radius: 0;
+    }
+
+    .webmeet-room-settings-link {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .webmeet-room-settings-link > div {
+        display: contents;
+    }
+
+    .webmeet-robo-section-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .webmeet-robo-checklist {
+        flex-direction: column;
+        gap: 6px;
     }
 
     .webmeet-room-settings-resize-handle {
