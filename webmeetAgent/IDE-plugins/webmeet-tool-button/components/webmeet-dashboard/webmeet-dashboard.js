@@ -401,6 +401,7 @@ export class WebmeetDashboard {
     async afterRender() {
         this.cacheElements();
         this.registerChatSidebarResizer();
+        this.ensureHelpTooltipPositioning();
         this.registerMediaSettingsInputHandlers();
         this.renderMediaSettingsPanel();
         if (!this.initialMediaDevicesRefreshStarted) {
@@ -427,6 +428,47 @@ export class WebmeetDashboard {
                 Promise.resolve().then(loadInitialData);
             }
         }
+    }
+
+    ensureHelpTooltipPositioning() {
+        if (!this.element || this.element.dataset.webmeetHelpTooltipPositioning === 'true') return;
+        const updateFromEvent = (event) => {
+            const control = event.target?.closest?.('.webmeet-setting-help-control');
+            if (control) this.positionHelpTooltip(control);
+        };
+        const updateActive = () => {
+            const control = this.element.querySelector('.webmeet-setting-help-control:focus-within');
+            if (control) this.positionHelpTooltip(control);
+        };
+        this.element.addEventListener('pointerenter', updateFromEvent, true);
+        this.element.addEventListener('focusin', updateFromEvent, true);
+        this.element.addEventListener('click', updateFromEvent, true);
+        this.element.addEventListener('scroll', updateActive, true);
+        window.addEventListener('resize', updateActive, { passive: true });
+        this.element.dataset.webmeetHelpTooltipPositioning = 'true';
+    }
+
+    positionHelpTooltip(control) {
+        if (!control || !globalThis.matchMedia?.('(max-width: 720px)')?.matches) return;
+        const tooltip = control.querySelector('.webmeet-setting-help-tooltip');
+        if (!tooltip) return;
+        const viewportWidth = document.documentElement?.clientWidth || window.innerWidth || 0;
+        const viewportHeight = document.documentElement?.clientHeight || window.innerHeight || 0;
+        if (!viewportWidth || !viewportHeight) return;
+        const margin = 12;
+        const width = Math.max(0, Math.min(280, viewportWidth - margin * 2));
+        tooltip.style.setProperty('--webmeet-help-tooltip-width', `${width}px`);
+        const controlRect = control.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const tooltipHeight = tooltipRect.height || 80;
+        const centeredLeft = controlRect.left + controlRect.width / 2 - width / 2;
+        const left = Math.min(Math.max(margin, centeredLeft), Math.max(margin, viewportWidth - width - margin));
+        let top = controlRect.bottom + 8;
+        if (top + tooltipHeight + margin > viewportHeight) {
+            top = Math.max(margin, controlRect.top - tooltipHeight - 8);
+        }
+        tooltip.style.setProperty('--webmeet-help-tooltip-left', `${Math.round(left)}px`);
+        tooltip.style.setProperty('--webmeet-help-tooltip-top', `${Math.round(top)}px`);
     }
 
     registerActions() {
