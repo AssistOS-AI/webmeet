@@ -65,9 +65,15 @@ export const dashboardRealtimeMethods = {
             }
             void this.handleParticipantRosterEvent({ data: parsed.encoded });
         });
-        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.ARCHIVED, () => {
-            this.setError('Room was archived by an admin.');
-            void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.ARCHIVED, (event) => {
+            const payload = event?.detail?.payload || event?.detail?.parsed?.payload || {};
+            const meetingId = String(payload?.meetingId || payload?.roomId || event?.detail?.parsed?.room || '').trim();
+            const activeMeetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+            const appliesToCurrentRoom = !meetingId || !activeMeetingId || meetingId === activeMeetingId;
+            if (appliesToCurrentRoom) {
+                this.setError('Room was archived by an admin.');
+                void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+            }
             this.scheduleWorkspaceMeetingsRefresh();
         });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.AVATAR_PROJECTED, (event) => {
@@ -170,10 +176,8 @@ export const dashboardRealtimeMethods = {
             return;
         }
         if (type === WEBMEET_EVENT_TYPES.MEETING_ARCHIVED) {
-            if (selectedMeetingId && meetingId === selectedMeetingId) {
-                this.setError('Room was archived by an admin.');
-                void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
-            }
+            // MEETING_ARCHIVED is already normalized and handled as ROOM_EVENT_TYPES.ARCHIVED.
+            // Keeping this branch would process the same incoming event twice for LiveKit events.
             this.scheduleWorkspaceMeetingsRefresh();
             return;
         }

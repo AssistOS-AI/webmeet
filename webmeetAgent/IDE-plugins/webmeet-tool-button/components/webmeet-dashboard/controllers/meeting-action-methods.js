@@ -104,8 +104,13 @@ export const meetingActionMethods = {
 
         if (result.archive === true) {
             await runTool('webmeet_room_archive', { roomId: meeting.id });
+            const activeRoomId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+            if (activeRoomId && activeRoomId === String(meeting.id || '').trim()) {
+                void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+            }
             await this.loadMeetings();
             this.renderAll();
+            this.setError('Room archived successfully.');
             return;
         }
 
