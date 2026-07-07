@@ -19,6 +19,10 @@ function escapeHtml(value) {
         .replaceAll('"', '&quot;');
 }
 
+function encodeOptions(options) {
+    return encodeURIComponent(JSON.stringify(options || []));
+}
+
 const ROBO_TEAM_TABS = Object.freeze([
     { key: 'generalSettings', label: 'General settings' },
     { key: 'meetingNotes', label: 'Meeting Notes' },
@@ -517,6 +521,19 @@ export class WebmeetRoomSettingsModal {
         `;
     }
 
+    renderRoboSelect({ field, label, options, value, required = false }) {
+        const requiredMark = required ? ' <span class="webmeet-robo-required" aria-label="required">*</span>' : '';
+        return `
+            <div class="webmeet-room-settings-field">
+                <span>${escapeHtml(label)}${requiredMark}</span>
+                <custom-select data-presenter="custom-select"
+                               data-robo-field="${escapeHtml(field)}"
+                               data-options="${encodeOptions(options)}"
+                               data-selected="${escapeHtml(value)}"></custom-select>
+            </div>
+        `;
+    }
+
     renderAssistantSection(assistant) {
         return `
             <div class="webmeet-robo-section" data-robo-section="generalSettings">
@@ -527,22 +544,12 @@ export class WebmeetRoomSettingsModal {
                         <span>Name <span class="webmeet-robo-required" aria-label="required">*</span></span>
                         <input type="text" data-robo-field="assistant.name" value="${escapeHtml(assistant.name)}" placeholder="Assistant name" autocomplete="off" required>
                     </label>
-                    <label class="webmeet-room-settings-field">
-                        <span>Mode <span class="webmeet-robo-required" aria-label="required">*</span></span>
-                        <select data-robo-field="assistant.mode" class="form-input" required>
-                            ${ASSISTANT_MODES.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === assistant.mode ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
-                        </select>
-                    </label>
+                    ${this.renderRoboSelect({ field: 'assistant.mode', label: 'Mode', options: ASSISTANT_MODES, value: assistant.mode, required: true })}
                     <label class="webmeet-room-settings-field">
                         <span>Instructions <span class="webmeet-robo-required" aria-label="required">*</span></span>
                         <textarea data-robo-field="assistant.instructions" rows="3" placeholder="Describe the assistant's purpose, tone, and limits" required>${escapeHtml(assistant.instructions)}</textarea>
                     </label>
-                    <label class="webmeet-room-settings-field">
-                        <span>Scenario / Objective <span class="webmeet-robo-required" aria-label="required">*</span></span>
-                        <select data-robo-field="assistant.scenarioOrObjective" class="form-input" required>
-                            ${SCENARIO_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === assistant.scenarioOrObjective ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
-                        </select>
-                    </label>
+                    ${this.renderRoboSelect({ field: 'assistant.scenarioOrObjective', label: 'Scenario / Objective', options: SCENARIO_OPTIONS, value: assistant.scenarioOrObjective, required: true })}
                 </div>
             </div>
         `;
@@ -598,12 +605,7 @@ export class WebmeetRoomSettingsModal {
 
     renderBlackboardFields(bb) {
         return `
-            <label class="webmeet-room-settings-field">
-                <span>Visibility <span class="webmeet-robo-required" aria-label="required">*</span></span>
-                <select data-robo-field="blackboard.visibility" class="form-input" required>
-                    ${BLACKBOARD_VISIBILITY_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === bb.visibility ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
-                </select>
-            </label>
+            ${this.renderRoboSelect({ field: 'blackboard.visibility', label: 'Visibility', options: BLACKBOARD_VISIBILITY_OPTIONS, value: bb.visibility, required: true })}
             <label class="webmeet-robo-toggle-row">
                 <input type="checkbox" data-robo-toggle="blackboard.autoUpdateFromConversation"${bb.autoUpdateFromConversation ? ' checked' : ''}>
                 <span>Auto-update from conversation</span>
@@ -617,22 +619,12 @@ export class WebmeetRoomSettingsModal {
 
     renderDocumentBuilderFields(doc) {
         return `
-            <label class="webmeet-room-settings-field">
-                <span>Purpose <span class="webmeet-robo-required" aria-label="required">*</span></span>
-                <select data-robo-field="documentBuilder.purpose" class="form-input" required>
-                    ${DOCUMENT_PURPOSE_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === doc.purpose ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
-                </select>
-            </label>
+            ${this.renderRoboSelect({ field: 'documentBuilder.purpose', label: 'Purpose', options: DOCUMENT_PURPOSE_OPTIONS, value: doc.purpose, required: true })}
             <label class="webmeet-room-settings-field">
                 <span>Structure instructions <span class="webmeet-robo-required" aria-label="required">*</span></span>
                 <textarea data-robo-field="documentBuilder.structureInstructions" rows="3" placeholder="Describe sections, order, detail level" required>${escapeHtml(doc.structureInstructions)}</textarea>
             </label>
-            <label class="webmeet-room-settings-field">
-                <span>Tone <span class="webmeet-robo-required" aria-label="required">*</span></span>
-                <select data-robo-field="documentBuilder.toneInstructions" class="form-input" required>
-                    ${DOCUMENT_TONE_OPTIONS.map((opt) => `<option value="${escapeHtml(opt.value)}"${opt.value === doc.toneInstructions ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
-                </select>
-            </label>
+            ${this.renderRoboSelect({ field: 'documentBuilder.toneInstructions', label: 'Tone', options: DOCUMENT_TONE_OPTIONS, value: doc.toneInstructions, required: true })}
             <label class="webmeet-robo-toggle-row">
                 <input type="checkbox" data-robo-toggle="documentBuilder.participantCorrectionsEnabled"${doc.participantCorrectionsEnabled ? ' checked' : ''}>
                 <span>Allow participant corrections</span>

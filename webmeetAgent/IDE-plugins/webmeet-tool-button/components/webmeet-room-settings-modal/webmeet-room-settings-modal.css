@@ -195,6 +195,10 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
     cursor: pointer;
 }
 
+.webmeet-room-settings-field custom-select .custom-select {
+    margin-top: 0;
+}
+
 .webmeet-room-settings-link {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
