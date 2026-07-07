@@ -93,35 +93,6 @@ export const dashboardRenderMethods = {
         this.renderMeetingSummary();
         this.renderFeedLists();
         this.renderAvatarControls?.();
-        this.renderGuestEntry?.();
-    },
-
-    renderGuestEntry() {
-        const guestEntry = this.state.guestEntry || {};
-        const active = Boolean(guestEntry.active);
-        const joining = Boolean(guestEntry.joining);
-        const status = String(guestEntry.status || guestEntry.error || '').trim();
-        if (this.guestEntry) {
-            this.guestEntry.classList.toggle('webmeet-hidden', !active);
-        }
-        if (this.guestEntryForm) {
-            this.guestEntryForm.classList.toggle('is-joining', joining);
-        }
-        if (this.guestEntryNameInput) {
-            this.guestEntryNameInput.disabled = joining;
-            const nextValue = String(guestEntry.displayName || '').trim();
-            if (nextValue && this.guestEntryNameInput.value !== nextValue) {
-                this.guestEntryNameInput.value = nextValue;
-            }
-        }
-        if (this.guestEntrySubmitButton) {
-            this.guestEntrySubmitButton.disabled = joining;
-            this.guestEntrySubmitButton.textContent = joining ? 'Joining...' : 'Join';
-        }
-        if (this.guestEntryStatus) {
-            this.guestEntryStatus.textContent = status;
-            this.guestEntryStatus.classList.toggle('is-error', Boolean(guestEntry.error));
-        }
     },
 
     setError(message) {

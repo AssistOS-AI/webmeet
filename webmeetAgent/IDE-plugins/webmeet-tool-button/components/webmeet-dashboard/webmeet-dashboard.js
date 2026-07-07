@@ -207,11 +207,6 @@ export class WebmeetDashboard {
         this.handleWebMeetAvatarSettingsChangeEvent = (event) => this.handleWebMeetAvatarSettingsChange(event);
         this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
         this.handleArchivedRoomsToggleChange = (event) => this.toggleArchivedRoomsVisibility(event);
-        this.handleSubmitEvent = (event) => {
-            if (event.target?.matches?.('#webmeetGuestEntryForm')) {
-                void this.handleGuestEntrySubmit?.(event);
-            }
-        };
         this.handleSettingsModalReadyEvent = (event) => this.mountMediaSettingsModal(event);
         this.handleSettingsModalActionEvent = (event) => this.handleMediaSettingsModalAction(event);
         this.handleSettingsModalClosedEvent = (event) => this.handleMediaSettingsModalClosed(event);
@@ -220,7 +215,6 @@ export class WebmeetDashboard {
         };
         this.element.addEventListener('webmeet-blackboard-panel-ready', this.handleBlackboardPanelReadyEvent);
         this.element.addEventListener('click', this.handleClick);
-        this.element.addEventListener('submit', this.handleSubmitEvent);
         this.element.addEventListener('keydown', this.handleChatInputKeydown);
         this.element.addEventListener('change', this.handleArchivedRoomsToggleChange);
         this.element.addEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
@@ -605,11 +599,6 @@ export class WebmeetDashboard {
         this.audioHealthIndicator = this.element.querySelector('#webmeetAudioHealthIndicator');
         this.audioCleanupIndicator = this.element.querySelector('#webmeetAudioCleanupIndicator');
         this.welcomeScreen = this.element.querySelector('#webmeetWelcomeScreen');
-        this.guestEntry = this.element.querySelector('#webmeetGuestEntry');
-        this.guestEntryForm = this.element.querySelector('#webmeetGuestEntryForm');
-        this.guestEntryNameInput = this.element.querySelector('#webmeetGuestEntryName');
-        this.guestEntrySubmitButton = this.element.querySelector('#webmeetGuestEntrySubmit');
-        this.guestEntryStatus = this.element.querySelector('#webmeetGuestEntryStatus');
         this.meetingBar = this.element.querySelector('.webmeet-meeting-bar');
         this.mainContent = this.element.querySelector('.webmeet-main-content');
         this.mobileNav = this.element.querySelector('.webmeet-mobile-nav');

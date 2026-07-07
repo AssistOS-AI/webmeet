@@ -82,38 +82,17 @@ export function storeGuestDisplayName(displayName) {
     }
 }
 
-export function requestGuestDisplayName() {
+export async function requestGuestDisplayName() {
     const storedName = readStoredGuestDisplayName();
-    return new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.className = 'webmeet-guest-name-overlay';
-        overlay.innerHTML = `
-            <form class="webmeet-guest-name-form">
-                <div class="webmeet-guest-name-title">Join room</div>
-                <label class="webmeet-guest-name-label" for="webmeetGuestDisplayName">Your name</label>
-                <input id="webmeetGuestDisplayName" class="webmeet-guest-name-input" type="text"
-                       autocomplete="name" maxlength="80" required>
-                <button type="submit" class="webmeet-guest-name-submit">Join</button>
-            </form>
-        `;
-        const form = overlay.querySelector('form');
-        const input = overlay.querySelector('input');
-        input.value = storedName;
-        form.addEventListener('submit', (event) => {
-            event.preventDefault();
-            const displayName = String(input.value || '').trim();
-            if (!displayName) {
-                input.focus();
-                return;
-            }
-            storeGuestDisplayName(displayName);
-            overlay.remove();
-            resolve(displayName);
-        });
-        document.body.appendChild(overlay);
-        input.focus();
-        input.select();
-    });
+    const result = await assistOS.UI.showModal('webmeet-guest-entry-modal', {
+        displayName: storedName,
+        status: 'Enter your name to join this public room.'
+    }, true);
+    const displayName = String(result?.displayName || '').trim();
+    if (displayName) {
+        storeGuestDisplayName(displayName);
+    }
+    return displayName;
 }
 
 export function isAdminActor(actor = null) {

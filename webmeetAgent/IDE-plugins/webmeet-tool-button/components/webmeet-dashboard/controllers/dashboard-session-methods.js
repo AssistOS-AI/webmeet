@@ -112,7 +112,7 @@ export const dashboardSessionMethods = {
             joining: true,
             error: ''
         };
-        this.renderGuestEntry();
+        this.renderAll();
         const participantId = this.getStableParticipantId(displayName);
         storeGuestDisplayName(displayName);
         const session = await runWebMeetTool('webmeet_room_join_guest', {
@@ -186,7 +186,7 @@ export const dashboardSessionMethods = {
                 this.showGuestAccessDenied();
                 return;
             }
-            this.showGuestRoomEntry(targetRoomId, meeting);
+            await this.showGuestRoomEntry(targetRoomId, meeting);
         } catch (_) {
             this.showGuestAccessDenied();
         }
@@ -209,7 +209,7 @@ export const dashboardSessionMethods = {
         this.renderAll();
     },
 
-    showGuestRoomEntry(roomId, meeting = null) {
+    async showGuestRoomEntry(roomId, meeting = null) {
         const targetRoomId = String(roomId || '').trim();
         const title = String(meeting?.title || meeting?.name || 'Public room').trim() || 'Public room';
         this.state.meetings = [{
@@ -222,7 +222,7 @@ export const dashboardSessionMethods = {
         this.state.selectedMeetingId = targetRoomId;
         this.state.canManageRooms = false;
         this.state.guestEntry = {
-            active: true,
+            active: false,
             roomId: targetRoomId,
             displayName: readStoredGuestDisplayName(),
             status: 'Enter your name to join this public room.',
@@ -230,33 +230,28 @@ export const dashboardSessionMethods = {
             error: ''
         };
         this.renderAll();
-        this.guestEntryNameInput?.focus?.();
-    },
-
-    async handleGuestEntrySubmit(event) {
-        event?.preventDefault?.();
-        const roomId = String(this.state.guestEntry?.roomId || globalThis.__WEBMEET_INITIAL_ROOM_ID__ || '').trim();
-        const displayName = String(this.guestEntryNameInput?.value || '').trim();
+        const result = await assistOS.UI.showModal('webmeet-guest-entry-modal', {
+            displayName: this.state.guestEntry.displayName,
+            status: this.state.guestEntry.status
+        }, true);
+        const displayName = String(result?.displayName || '').trim();
         if (!displayName) {
-            this.state.guestEntry.status = 'Enter your name to join.';
-            this.state.guestEntry.error = 'Enter your name to join.';
-            this.renderGuestEntry();
-            this.guestEntryNameInput?.focus?.();
             return;
         }
         try {
-            await this.bootstrapGuestRoomEntry({ roomId, displayName });
+            await this.bootstrapGuestRoomEntry({ roomId: targetRoomId, displayName });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error || 'Failed to join room.');
             this.state.guestEntry = {
-                active: true,
-                roomId,
+                active: false,
+                roomId: targetRoomId,
                 displayName,
                 status: message,
                 joining: false,
                 error: message
             };
             this.renderAll();
+            this.setError(message);
         }
     },
 
