@@ -323,6 +323,44 @@ webmeet-participant-card.is-focused .wm-participant-footer {
 webmeet-participant-card.is-mini {
     aspect-ratio: 1 / 1;
     border-radius: 8px;
+    overflow: visible;
+}
+
+webmeet-participant-card.is-mini:hover,
+webmeet-participant-card.is-mini:focus-within {
+    z-index: 20;
+}
+
+webmeet-participant-card.is-mini::after {
+    content: attr(data-display-name);
+    position: fixed;
+    right: auto;
+    z-index: 50;
+    max-width: min(280px, calc(100vw - 24px));
+    padding: 4px 6px;
+    border-radius: 6px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow-color, var(--black)) 18%, transparent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+webmeet-participant-card.is-mini:hover::after,
+webmeet-participant-card.is-mini:focus-within::after {
+    opacity: 1;
+    transform: translate(-101%, -40px);
+}
+
+webmeet-participant-card.is-mini:not([data-display-name])::after,
+webmeet-participant-card.is-mini[data-display-name=""]::after {
+    content: none;
 }
 
 webmeet-participant-card.is-mini .wm-participant-avatar {
