@@ -27,7 +27,7 @@ export const dashboardChromeMethods = {
     },
 
     setMobilePanel(panelName) {
-        const nextPanel = ['room', 'rooms', 'chat', 'info', 'settings'].includes(panelName) ? panelName : 'room';
+        const nextPanel = ['room', 'rooms', 'chat', 'settings'].includes(panelName) ? panelName : 'room';
         if (nextPanel === 'settings') {
             this.toggleMediaSettings?.();
             return;

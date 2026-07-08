@@ -820,6 +820,7 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen .webmeet-settings-resiz
     .webmeet-settings-modal .webmeet-media-settings-actions > button {
         min-height: 40px;
         justify-content: center;
+        width: 100%;
     }
 
     .webmeet-settings-modal .webmeet-background-preview {

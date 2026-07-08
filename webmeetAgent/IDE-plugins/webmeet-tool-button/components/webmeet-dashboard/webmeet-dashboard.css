@@ -2529,7 +2529,7 @@ textarea.form-input {
     .webmeet-mobile-nav {
         order: 10;
         display: none;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 4px;
         padding: 6px max(8px, env(safe-area-inset-left, 0)) max(6px, env(safe-area-inset-bottom, 0)) max(8px, env(safe-area-inset-right, 0));
         border-top: 1px solid var(--border-strong);
@@ -2614,43 +2614,6 @@ textarea.form-input {
         width: calc(100% - 20px);
     }
 
-    .webmeet-dashboard[data-mobile-panel="info"] .webmeet-secondary-panels {
-        display: flex !important;
-        flex-direction: column;
-        height: 100%;
-        padding: 10px;
-        border-top: none;
-        overflow: hidden;
-    }
-
-    .webmeet-dashboard[data-mobile-panel="settings"] .webmeet-chat-area {
-        display: flex !important;
-        height: 100%;
-    }
-
-    .webmeet-dashboard[data-mobile-panel="settings"] .webmeet-video-grid {
-        display: none;
-    }
-
-    .webmeet-dashboard[data-mobile-panel="settings"] .webmeet-media-controls {
-        display: none;
-    }
-
-    .webmeet-dashboard[data-mobile-panel="settings"] #webmeetMediaSettingsPanel {
-        display: grid !important;
-        position: relative;
-        top: auto;
-        left: auto;
-        right: auto;
-        z-index: auto;
-        border-radius: 0;
-        box-shadow: none;
-        overflow: auto;
-        border-bottom: none;
-        flex: 1 1 auto;
-        max-height: none;
-    }
-
     .webmeet-list-item {
         min-height: 100px;
         border: 2px solid var(--border-strong);
@@ -2725,8 +2688,7 @@ textarea.form-input {
     }
 
     .webmeet-inline-actions {
-        margin-left: 0;
-        gap: 15px;
+        display: none;
     }
 
     .webmeet-icon-button {
