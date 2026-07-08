@@ -196,9 +196,8 @@ export class WebmeetDashboard {
         this.microphoneTestRestartTimer = null;
         this.avatarMetadataLoaded = false;
         this.avatarMetadataLoadFailed = false;
-        this.avatarPreviewLoadPromise = null;
-        this.avatarPreviewRenderKey = '';
-        this.avatarPreviewAxiFaceLoadFailed = false;
+        this.avatarRuntimeLoadPromise = null;
+        this.avatarRuntimeLoadFailed = false;
         this.initialDashboardDataLoadStarted = false;
         this.dashboardReadyDispatched = false;
         this.initialMediaDevicesRefreshStarted = false;

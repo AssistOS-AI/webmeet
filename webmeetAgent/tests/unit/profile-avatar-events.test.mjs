@@ -1354,8 +1354,8 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.match(css, /\.webmeet-settings-section\[hidden\][\s\S]*display: none !important/);
     assert.match(css, /\.webmeet-settings-tabs[\s\S]*border-bottom: 1px solid var\(--border\)/);
     assert.match(css, /\.webmeet-media-settings \.modal-body[\s\S]*overflow: hidden/);
-    assert.match(css, /\.webmeet-avatar-settings-fields[\s\S]*grid-template-columns: minmax\(0, 1fr\) 144px/);
-    assert.match(css, /\.preview-section[\s\S]*align-items: center/);
+    assert.doesNotMatch(css, /\.webmeet-avatar-settings-fields/);
+    assert.doesNotMatch(css, /\.preview-section/);
     assert.doesNotMatch(modalHtml, /webmeet-settings-close-button/);
     assert.doesNotMatch(modalHtml, /class="gray-button" data-local-action="closeMediaSettings"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsForm"/);
@@ -1363,15 +1363,15 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.doesNotMatch(modalHtml, /id="webmeetAvatarStyle"/);
     assert.doesNotMatch(modalHtml, /id="webmeetAvatarSrc"/);
     assert.doesNotMatch(modalHtml, /id="webmeetAvatarPackSrc"/);
-    assert.match(modalHtml, /id="webmeetAvatarPreview"/);
+    assert.doesNotMatch(modalHtml, /id="webmeetAvatarPreview"/);
     assert.match(modalHtml, /Reset to profile/);
     assert.match(modalHtml, /data-local-action="applyWebMeetAvatarSettings"/);
     assert.match(modalHtml, /data-local-action="resetWebMeetAvatarOverride"/);
     assert.match(html, /id="webmeetAvatarQuickButton"/);
     assert.match(html, /id="webmeetAvatarQuickMenu"/);
     assert.match(renderSource, /WEBMEET_AVATAR_PRESETS/);
-    assert.match(renderSource, /ensureAxiFaceLoaded/);
-    assert.match(renderSource, /avatarPreviewLoadPromise/);
+    assert.match(renderSource, /showPreview: true/);
+    assert.doesNotMatch(renderSource, /avatarPreviewLoadPromise/);
     assert.match(renderSource, /data-local-action="applyWebMeetAvatarPreset"/);
     assert.match(renderSource, /data-avatar-preset/);
     assert.match(renderSource, /avatarSettingsForm\.webSkelPresenter\.setData/);
@@ -1392,7 +1392,7 @@ test("WebMeet avatar UI exposes settings and quick preset controls", async () =>
     assert.doesNotMatch(renderSource, /resetWebMeetAvatarOverride">Profile avatar/);
 });
 
-test("WebMeet avatar loaders do not re-render forever when AxiFace is unavailable", async () => {
+test("WebMeet avatar metadata loader does not re-render forever when metadata is unavailable", async () => {
     const dashboardSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1408,10 +1408,10 @@ test("WebMeet avatar loaders do not re-render forever when AxiFace is unavailabl
         'utf8'
     );
 
-    assert.match(dashboardSource, /this\.avatarPreviewRenderKey = '';/);
     assert.match(dashboardSource, /this\.avatarMetadataLoaded = false;/);
     assert.match(dashboardSource, /this\.avatarMetadataLoadFailed = false;/);
-    assert.match(dashboardSource, /this\.avatarPreviewAxiFaceLoadFailed = false;/);
+    assert.doesNotMatch(dashboardSource, /avatarPreviewRenderKey/);
+    assert.doesNotMatch(dashboardSource, /avatarPreviewAxiFaceLoadFailed/);
     assert.doesNotMatch(dashboardSource, /afterRenderBound/);
     assert.match(dashboardSource, /this\.initialDashboardDataLoadStarted = false;/);
     assert.match(dashboardSource, /this\.dashboardReadyDispatched = false;/);
@@ -1421,14 +1421,14 @@ test("WebMeet avatar loaders do not re-render forever when AxiFace is unavailabl
     assert.match(renderSource, /&& !this\.avatarMetadataLoadPromise/);
     assert.match(renderSource, /this\.avatarMetadataLoaded = true;/);
     assert.match(renderSource, /this\.avatarMetadataLoadFailed = true;/);
-    assert.match(renderSource, /const previewMarkup = renderWebMeetAvatarPreview\(previewConfig\);/);
-    assert.match(renderSource, /this\.avatarPreviewRenderKey !== previewMarkup/);
-    assert.match(renderSource, /!this\.avatarPreviewAxiFaceLoadFailed/);
-    assert.match(renderSource, /if \(customElements\.get\('axi-face'\)\) \{[\s\S]*this\.renderAvatarControls\?\.\(\);[\s\S]*return;[\s\S]*\}/);
-    assert.match(renderSource, /this\.avatarPreviewAxiFaceLoadFailed = true;/);
+    assert.match(renderSource, /showPreview: true/);
+    assert.match(renderSource, /ensureAxiFaceLoaded/);
+    assert.match(renderSource, /avatarRuntimeLoadPromise/);
+    assert.doesNotMatch(renderSource, /const previewMarkup = renderWebMeetAvatarPreview\(previewConfig\);/);
+    assert.doesNotMatch(renderSource, /avatarPreviewAxiFaceLoadFailed/);
 });
 
-test("WebMeet settings modal resets avatar preview render cache when the preview element changes", async () => {
+test("WebMeet settings modal delegates avatar preview layout to the shared component", async () => {
     const mediaSettingsSource = fs.readFileSync(
         path.resolve(
             import.meta.dirname,
@@ -1437,9 +1437,8 @@ test("WebMeet settings modal resets avatar preview render cache when the preview
         'utf8'
     );
 
-    assert.match(mediaSettingsSource, /const previousAvatarPreview = this\.avatarPreview \|\| null;/);
-    assert.match(mediaSettingsSource, /this\.avatarPreview = root\?\.querySelector\?\.\('#webmeetAvatarPreview'\) \|\| null;/);
-    assert.match(mediaSettingsSource, /if \(previousAvatarPreview !== this\.avatarPreview\) \{[\s\S]*this\.avatarPreviewRenderKey = '';[\s\S]*\}/);
+    assert.doesNotMatch(mediaSettingsSource, /webmeetAvatarPreview/);
+    assert.doesNotMatch(mediaSettingsSource, /avatarPreviewRenderKey/);
 });
 
 test("Apply avatar closes the WebMeet settings panel after saving", async () => {
@@ -1506,7 +1505,6 @@ test("WebMeet avatar settings preview renders a generated avatar without saved p
                 }
             }
         },
-        avatarPreview: { innerHTML: '' },
         loadCurrentWebMeetAvatarOverride() {
             return null;
         },
@@ -1517,8 +1515,8 @@ test("WebMeet avatar settings preview renders a generated avatar without saved p
 
     dashboardRenderMethods.renderAvatarControls.call(context);
 
-    assert.match(context.avatarPreview.innerHTML, /<axi-face /);
-    assert.doesNotMatch(context.avatarPreview.innerHTML, /webmeet-avatar-preview-letter/);
+    assert.equal(context.avatarSettingsForm.webSkelPresenter.lastData.showPreview, true);
+    assert.equal(context.avatarSettingsForm.webSkelPresenter.lastData.value.agentId, undefined);
 });
 
 test("Apply pack switches the quick menu selection to the chosen AxiFace pack", async () => {

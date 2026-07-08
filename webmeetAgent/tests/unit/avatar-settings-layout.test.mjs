@@ -16,4 +16,6 @@ test('shared avatar settings form groups fields in aligned responsive sections',
     assert.match(css, /avatar-settings-form \.avatar-settings-section\s*\{[\s\S]*align-items: end/);
     assert.match(css, /avatar-settings-form \.avatar-settings-section\s*\{[\s\S]*border: 1px solid var\(--border/);
     assert.match(css, /avatar-settings-form \.avatar-settings-field\s*\{[\s\S]*grid-template-rows: auto 36px/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-content\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) 180px/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-preview\s*\{[\s\S]*width: 100px/);
 });

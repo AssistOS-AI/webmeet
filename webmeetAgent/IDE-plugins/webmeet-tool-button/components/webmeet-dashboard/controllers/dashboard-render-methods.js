@@ -6,7 +6,6 @@ import {
 } from '../services/dashboard-utils.js';
 import { renderMessageWithMentionHighlights } from '../services/chat-autocomplete/index.js';
 import {
-    buildWebMeetAvatarSource,
     renderWebMeetAvatarPreview,
     WEBMEET_AVATAR_PRESETS
 } from '../services/webmeet-avatar-override.js';
@@ -181,6 +180,26 @@ export const dashboardRenderMethods = {
                     this.avatarMetadataLoadPromise = null;
                 });
         }
+        if (
+            typeof customElements !== 'undefined'
+            && !customElements.get('axi-face')
+            && !this.avatarRuntimeLoadFailed
+            && !this.avatarRuntimeLoadPromise
+        ) {
+            this.avatarRuntimeLoadPromise = ensureAxiFaceLoaded()
+                .then(() => {
+                    this.avatarRuntimeLoadPromise = null;
+                    if (customElements.get('axi-face')) {
+                        this.renderAvatarControls?.();
+                        return;
+                    }
+                    this.avatarRuntimeLoadFailed = true;
+                })
+                .catch(() => {
+                    this.avatarRuntimeLoadPromise = null;
+                    this.avatarRuntimeLoadFailed = true;
+                });
+        }
         if (this.avatarSettingsForm?.webSkelPresenter) {
             this.avatarSettingsForm.webSkelPresenter.setData({
                 value: config,
@@ -203,47 +222,13 @@ export const dashboardRenderMethods = {
                     AVATAR_SOURCE_MODES.GENERATED,
                     AVATAR_SOURCE_MODES.PACK
                 ],
-                showPreview: false
+                showPreview: true
             });
         }
         if (this.avatarSourceLabel) {
             this.avatarSourceLabel.textContent = currentOverride
                 ? 'WebMeet browser override'
                 : 'Profile avatar';
-        }
-        if (this.avatarPreview) {
-            const profileAvatar = this.state.session?.participant?.profileAvatar || null;
-            const effectiveSource = buildWebMeetAvatarSource({
-                profileAvatar,
-                override: draft,
-                userId: this.getCurrentAvatarOverrideUserId?.() || '',
-                participantId: this.state.session?.participantIdentity || ''
-            });
-            const previewConfig = effectiveSource?.config || config || {};
-            const previewMarkup = renderWebMeetAvatarPreview(previewConfig);
-            if (this.avatarPreviewRenderKey !== previewMarkup) {
-                this.avatarPreview.innerHTML = previewMarkup;
-                this.avatarPreviewRenderKey = previewMarkup;
-            }
-            if (
-                typeof customElements !== 'undefined'
-                && !customElements.get('axi-face')
-                && !this.avatarPreviewAxiFaceLoadFailed
-            ) {
-                this.avatarPreviewLoadPromise ||= ensureAxiFaceLoaded()
-                    .then(() => {
-                        this.avatarPreviewLoadPromise = null;
-                        if (customElements.get('axi-face')) {
-                            this.renderAvatarControls?.();
-                            return;
-                        }
-                        this.avatarPreviewAxiFaceLoadFailed = true;
-                    })
-                    .catch(() => {
-                        this.avatarPreviewLoadPromise = null;
-                        this.avatarPreviewAxiFaceLoadFailed = true;
-                    });
-            }
         }
         if (this.avatarQuickButton) {
             this.avatarQuickButton.classList.toggle('active', Boolean(currentOverride));
