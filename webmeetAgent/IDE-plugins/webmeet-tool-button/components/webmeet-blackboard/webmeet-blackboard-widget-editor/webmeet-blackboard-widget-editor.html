@@ -46,20 +46,19 @@
                             </label>
                             <label class="webmeet-form-field webmeet-blackboard-bullets-editor-select-field">
                                 <span>Status</span>
-                                <select class="form-input" data-role="bulletsItemStatus" aria-label="Bullet status">
-                                    <option value="todo">To Do</option>
-                                    <option value="inProgress">In Progress</option>
-                                    <option value="done">Done</option>
-                                    <option value="blocked">Blocked</option>
-                                </select>
+                                <custom-select data-presenter="custom-select"
+                                               data-role="bulletsItemStatus"
+                                               data-name="bulletsItemStatus"
+                                               aria-label="Bullet status"
+                                               data-options="%5B%7B%22value%22%3A%22todo%22%2C%22label%22%3A%22To%20Do%22%7D%2C%7B%22value%22%3A%22inProgress%22%2C%22label%22%3A%22In%20Progress%22%7D%2C%7B%22value%22%3A%22done%22%2C%22label%22%3A%22Done%22%7D%2C%7B%22value%22%3A%22blocked%22%2C%22label%22%3A%22Blocked%22%7D%5D"></custom-select>
                             </label>
                             <label class="webmeet-form-field webmeet-blackboard-bullets-editor-select-field">
                                 <span>Priority</span>
-                                <select class="form-input" data-role="bulletsItemPriority" aria-label="Bullet priority">
-                                    <option value="high">High</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="low">Low</option>
-                                </select>
+                                <custom-select data-presenter="custom-select"
+                                               data-role="bulletsItemPriority"
+                                               data-name="bulletsItemPriority"
+                                               aria-label="Bullet priority"
+                                               data-options="%5B%7B%22value%22%3A%22high%22%2C%22label%22%3A%22High%22%7D%2C%7B%22value%22%3A%22medium%22%2C%22label%22%3A%22Medium%22%7D%2C%7B%22value%22%3A%22low%22%2C%22label%22%3A%22Low%22%7D%5D"></custom-select>
                             </label>
                             <button type="button" class="gray-button webmeet-blackboard-remove-question-button webmeet-blackboard-bullets-remove-button" title="Remove this bullet">
                                 <span class="webmeet-blackboard-bullets-remove-icon" aria-hidden="true"></span>
@@ -78,14 +77,10 @@
             <section class="webmeet-blackboard-editor-section webmeet-blackboard-poll-settings-section" data-role="pollSettingsSection" hidden>
                 <label class="webmeet-form-field">
                     <span>Results</span>
-                    <select class="form-input" name="resultsVisibility" data-role="resultsVisibility">
-                        <option value="hidden">Hidden</option>
-                        <option value="afterSubmit">After submit</option>
-                        <option value="afterPoll">After poll</option>
-                        <option value="afterClose">After close</option>
-                        <option value="moderatorsOnly">Moderators only</option>
-                        <option value="public">Public</option>
-                    </select>
+                    <custom-select name="resultsVisibility"
+                                   data-presenter="custom-select"
+                                   data-role="resultsVisibility"
+                                   data-options="%5B%7B%22value%22%3A%22hidden%22%2C%22label%22%3A%22Hidden%22%7D%2C%7B%22value%22%3A%22afterSubmit%22%2C%22label%22%3A%22After%20submit%22%7D%2C%7B%22value%22%3A%22afterPoll%22%2C%22label%22%3A%22After%20poll%22%7D%2C%7B%22value%22%3A%22afterClose%22%2C%22label%22%3A%22After%20close%22%7D%2C%7B%22value%22%3A%22moderatorsOnly%22%2C%22label%22%3A%22Moderators%20only%22%7D%2C%7B%22value%22%3A%22public%22%2C%22label%22%3A%22Public%22%7D%5D"></custom-select>
                 </label>
                 <label class="webmeet-form-field webmeet-blackboard-poll-setting" data-role="durationField" hidden>
                     <span>Timer seconds</span>
@@ -111,14 +106,10 @@
             <section class="webmeet-blackboard-editor-section webmeet-blackboard-typography-section" data-role="typographySection" hidden>
                 <label class="webmeet-form-field">
                     <span>Font</span>
-                    <select class="form-input" name="fontFamily" data-role="fontFamily">
-                        <option value="Arial">Arial</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                        <option value="Georgia">Georgia</option>
-                        <option value="Verdana">Verdana</option>
-                        <option value="Courier New">Courier New</option>
-                        <option value="Trebuchet MS">Trebuchet MS</option>
-                    </select>
+                    <custom-select name="fontFamily"
+                                   data-presenter="custom-select"
+                                   data-role="fontFamily"
+                                   data-options="%5B%7B%22value%22%3A%22Arial%22%2C%22label%22%3A%22Arial%22%7D%2C%7B%22value%22%3A%22Times%20New%20Roman%22%2C%22label%22%3A%22Times%20New%20Roman%22%7D%2C%7B%22value%22%3A%22Georgia%22%2C%22label%22%3A%22Georgia%22%7D%2C%7B%22value%22%3A%22Verdana%22%2C%22label%22%3A%22Verdana%22%7D%2C%7B%22value%22%3A%22Courier%20New%22%2C%22label%22%3A%22Courier%20New%22%7D%2C%7B%22value%22%3A%22Trebuchet%20MS%22%2C%22label%22%3A%22Trebuchet%20MS%22%7D%5D"></custom-select>
                 </label>
                 <label class="webmeet-form-field">
                     <span>Size</span>
@@ -146,12 +137,10 @@
             <section class="webmeet-blackboard-editor-section" data-role="lineSection" hidden>
                 <label class="webmeet-form-field">
                     <span>Arrow</span>
-                    <select class="form-input" name="lineMarker" data-role="lineMarker">
-                        <option value="none">None</option>
-                        <option value="end">End</option>
-                        <option value="start">Start</option>
-                        <option value="both">Both</option>
-                    </select>
+                    <custom-select name="lineMarker"
+                                   data-presenter="custom-select"
+                                   data-role="lineMarker"
+                                   data-options="%5B%7B%22value%22%3A%22none%22%2C%22label%22%3A%22None%22%7D%2C%7B%22value%22%3A%22end%22%2C%22label%22%3A%22End%22%7D%2C%7B%22value%22%3A%22start%22%2C%22label%22%3A%22Start%22%7D%2C%7B%22value%22%3A%22both%22%2C%22label%22%3A%22Both%22%7D%5D"></custom-select>
                 </label>
             </section>
 

@@ -1135,14 +1135,18 @@ export const mediaSettingsMethods = {
     renderMediaDeviceOptions(selectElement, devices, selectedId, emptyLabel) {
         if (!selectElement) return;
         const safeDevices = Array.isArray(devices) ? devices : [];
-        const options = ['<option value="">System default</option>'];
+        const options = [{ value: '', label: 'System default' }];
         for (const device of safeDevices) {
-            const id = escapeHtml(String(device.deviceId || '').trim());
-            const label = escapeHtml(this.getMediaDeviceDisplayLabel(device, emptyLabel, safeDevices.indexOf(device)));
-            options.push(`<option value="${id}">${label}</option>`);
+            options.push({
+                value: String(device.deviceId || '').trim(),
+                label: this.getMediaDeviceDisplayLabel(device, emptyLabel, safeDevices.indexOf(device))
+            });
         }
-        selectElement.innerHTML = options.join('');
-        selectElement.value = String(selectedId || '');
+        const selected = String(selectedId || '');
+        selectElement.setAttribute('data-options', encodeURIComponent(JSON.stringify(options)));
+        selectElement.setAttribute('data-selected', selected);
+        selectElement.webSkelPresenter?.setOptions?.(options, selected);
+        selectElement.value = selected;
     },
 
     getMediaDeviceDisplayLabel(device, fallbackType, index) {

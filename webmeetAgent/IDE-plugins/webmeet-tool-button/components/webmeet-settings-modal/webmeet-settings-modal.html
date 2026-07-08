@@ -46,7 +46,7 @@
                                   class="webmeet-setting-help-tooltip">Choose which microphone WebMeet sends to the room.</span>
                         </span>
                         </div>
-                        <select id="webmeetAudioInputSelect" class="form-input"></select>
+                        <custom-select id="webmeetAudioInputSelect" data-presenter="custom-select" data-name="audioInputDeviceId"></custom-select>
                     </div>
                     <div class="webmeet-media-settings-row webmeet-media-slider-row">
                         <div class="webmeet-media-slider-label">
@@ -84,7 +84,7 @@
                                   class="webmeet-setting-help-tooltip">Choose where remote meeting audio plays on this device.</span>
                         </span>
                         </div>
-                        <select id="webmeetAudioOutputSelect" class="form-input"></select>
+                        <custom-select id="webmeetAudioOutputSelect" data-presenter="custom-select" data-name="audioOutputDeviceId"></custom-select>
                     </div>
                     <div class="webmeet-media-settings-row webmeet-media-slider-row">
                         <div class="webmeet-media-slider-label">
@@ -131,7 +131,7 @@
                             <span id="webmeetSettingHelpCamera" role="tooltip" class="webmeet-setting-help-tooltip">Choose which camera WebMeet publishes to the room.</span>
                         </span>
                         </div>
-                        <select id="webmeetVideoInputSelect" class="form-input"></select>
+                        <custom-select id="webmeetVideoInputSelect" data-presenter="custom-select" data-name="videoInputDeviceId"></custom-select>
                     </div>
                     <div class="webmeet-media-settings-row">
                         <div class="webmeet-setting-label">
@@ -144,12 +144,10 @@
                                   class="webmeet-setting-help-tooltip">Sets the camera resolution and frame rate tradeoff. Lower quality uses less bandwidth and CPU.</span>
                         </span>
                         </div>
-                        <select id="webmeetCameraQualitySelect" class="form-input">
-                            <option value="h360">360p / 24fps</option>
-                            <option value="h540">540p / 30fps</option>
-                            <option value="h720">720p / 30fps</option>
-                            <option value="h1080">1080p / 30fps</option>
-                        </select>
+                        <custom-select id="webmeetCameraQualitySelect"
+                                       data-presenter="custom-select"
+                                       data-name="cameraQuality"
+                                       data-options="%5B%7B%22value%22%3A%22h360%22%2C%22label%22%3A%22360p%20%2F%2024fps%22%7D%2C%7B%22value%22%3A%22h540%22%2C%22label%22%3A%22540p%20%2F%2030fps%22%7D%2C%7B%22value%22%3A%22h720%22%2C%22label%22%3A%22720p%20%2F%2030fps%22%7D%2C%7B%22value%22%3A%22h1080%22%2C%22label%22%3A%221080p%20%2F%2030fps%22%7D%5D"></custom-select>
                     </div>
                     <div class="webmeet-media-settings-row">
                         <div class="webmeet-setting-label">
@@ -162,12 +160,10 @@
                                   class="webmeet-setting-help-tooltip">Sets the shared screen resolution and frame rate. Higher quality needs more bandwidth and device power.</span>
                         </span>
                         </div>
-                        <select id="webmeetScreenShareQualitySelect" class="form-input">
-                            <option value="h720fps15">720p / 15fps</option>
-                            <option value="h720fps30">720p / 30fps</option>
-                            <option value="h1080fps15">1080p / 15fps</option>
-                            <option value="h1080fps30">1080p / 30fps</option>
-                        </select>
+                        <custom-select id="webmeetScreenShareQualitySelect"
+                                       data-presenter="custom-select"
+                                       data-name="screenShareQuality"
+                                       data-options="%5B%7B%22value%22%3A%22h720fps15%22%2C%22label%22%3A%22720p%20%2F%2015fps%22%7D%2C%7B%22value%22%3A%22h720fps30%22%2C%22label%22%3A%22720p%20%2F%2030fps%22%7D%2C%7B%22value%22%3A%22h1080fps15%22%2C%22label%22%3A%221080p%20%2F%2015fps%22%7D%2C%7B%22value%22%3A%22h1080fps30%22%2C%22label%22%3A%221080p%20%2F%2030fps%22%7D%5D"></custom-select>
                     </div>
                 </section>
 
@@ -187,13 +183,10 @@
                                   class="webmeet-setting-help-tooltip">Voice Focus optimizes speech and reduces keyboard noise, mic vibration, echo, and steady room noise. Manual changes switch to Custom.</span>
                         </span>
                         </div>
-                        <select id="webmeetVoiceProcessingMode" class="form-input">
-                            <option value="auto">Voice Focus, recommended</option>
-                            <option value="custom">Custom manual controls</option>
-                            <option value="standard">Standard browser processing</option>
-                            <option value="enhanced">Enhanced local denoise</option>
-                            <option value="off">Off</option>
-                        </select>
+                        <custom-select id="webmeetVoiceProcessingMode"
+                                       data-presenter="custom-select"
+                                       data-name="voiceProcessingMode"
+                                       data-options="%5B%7B%22value%22%3A%22auto%22%2C%22label%22%3A%22Voice%20Focus%2C%20recommended%22%7D%2C%7B%22value%22%3A%22custom%22%2C%22label%22%3A%22Custom%20manual%20controls%22%7D%2C%7B%22value%22%3A%22standard%22%2C%22label%22%3A%22Standard%20browser%20processing%22%7D%2C%7B%22value%22%3A%22enhanced%22%2C%22label%22%3A%22Enhanced%20local%20denoise%22%7D%2C%7B%22value%22%3A%22off%22%2C%22label%22%3A%22Off%22%7D%5D"></custom-select>
                     </div>
                     <div class="webmeet-media-settings-row">
                         <div class="webmeet-setting-label">
@@ -205,12 +198,10 @@
                                   class="webmeet-setting-help-tooltip">Reduces steady electrical hum. Auto detects whether the room needs 50 Hz or 60 Hz filtering.</span>
                         </span>
                         </div>
-                        <select id="webmeetHumFilter" class="form-input">
-                            <option value="auto">Auto</option>
-                            <option value="off">Off</option>
-                            <option value="50">50 Hz</option>
-                            <option value="60">60 Hz</option>
-                        </select>
+                        <custom-select id="webmeetHumFilter"
+                                       data-presenter="custom-select"
+                                       data-name="humFilter"
+                                       data-options="%5B%7B%22value%22%3A%22auto%22%2C%22label%22%3A%22Auto%22%7D%2C%7B%22value%22%3A%22off%22%2C%22label%22%3A%22Off%22%7D%2C%7B%22value%22%3A%2250%22%2C%22label%22%3A%2250%20Hz%22%7D%2C%7B%22value%22%3A%2260%22%2C%22label%22%3A%2260%20Hz%22%7D%5D"></custom-select>
                     </div>
                     <div class="webmeet-media-settings-flags">
                         <div class="webmeet-media-flag-item">
@@ -371,11 +362,10 @@
                                           class="webmeet-setting-help-tooltip">Choose no effect, background blur, or a virtual image behind you.</span>
                                 </span>
                                 </div>
-                                <select id="webmeetBackgroundEffectSelect" class="form-input">
-                                    <option value="none">No effect</option>
-                                    <option value="blur">Blur background</option>
-                                    <option value="image">Virtual background image</option>
-                                </select>
+                                <custom-select id="webmeetBackgroundEffectSelect"
+                                               data-presenter="custom-select"
+                                               data-name="backgroundMode"
+                                               data-options="%5B%7B%22value%22%3A%22none%22%2C%22label%22%3A%22No%20effect%22%7D%2C%7B%22value%22%3A%22blur%22%2C%22label%22%3A%22Blur%20background%22%7D%2C%7B%22value%22%3A%22image%22%2C%22label%22%3A%22Virtual%20background%20image%22%7D%5D"></custom-select>
                             </div>
                             <div id="webmeetBackgroundBlurRow"
                                  class="webmeet-media-settings-row webmeet-media-slider-row webmeet-hidden">

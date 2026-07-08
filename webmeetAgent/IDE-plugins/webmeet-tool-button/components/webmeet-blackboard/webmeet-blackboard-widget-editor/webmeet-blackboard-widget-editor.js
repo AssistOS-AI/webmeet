@@ -414,18 +414,19 @@ export class WebMeetBlackboardWidgetEditor {
             modeField.className = 'webmeet-form-field webmeet-blackboard-poll-question-field';
             const modeLabel = document.createElement('span');
             modeLabel.textContent = 'Type';
-            const modeSelect = document.createElement('select');
-            modeSelect.className = 'form-input';
-            modeSelect.dataset.role = 'questionPollMode';
-            for (const [value, label] of [['choice', 'Choice'], ['rating', 'Rating']]) {
-                const option = document.createElement('option');
-                option.value = value;
-                option.textContent = label;
-                modeSelect.append(option);
-            }
-            modeSelect.value = normalizePollQuestionMode(question);
+            modeField.append(modeLabel);
+            assistOS.UI.createElement('custom-select', modeField, {
+                options: [
+                    { value: 'choice', label: 'Choice' },
+                    { value: 'rating', label: 'Rating' }
+                ]
+            }, {
+                'data-role': 'questionPollMode',
+                'data-name': 'questionPollMode',
+                'data-selected': normalizePollQuestionMode(question)
+            });
+            const modeSelect = modeField.querySelector('[data-role="questionPollMode"]');
             modeSelect.addEventListener('change', () => this.syncPollQuestionRow(row));
-            modeField.append(modeLabel, modeSelect);
 
             const optionsField = document.createElement('label');
             optionsField.className = 'webmeet-form-field webmeet-blackboard-poll-question-field webmeet-blackboard-poll-question-options';
