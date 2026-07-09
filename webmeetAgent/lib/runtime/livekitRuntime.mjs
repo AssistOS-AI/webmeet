@@ -110,6 +110,23 @@ export async function closeLiveKitRoom(context, roomName, { strict = false } = {
     }
 }
 
+export async function removeLiveKitRoomParticipant(context, roomName, participantIdentity, { strict = false } = {}) {
+    try {
+        if (typeof context.removeLiveKitParticipant === 'function') {
+            return await context.removeLiveKitParticipant(roomName, participantIdentity);
+        }
+        return await callLiveKitRoomApi(context, 'RemoveParticipant', roomName, {
+            room: roomName,
+            identity: participantIdentity
+        });
+    } catch (error) {
+        if (strict) {
+            throw error;
+        }
+        return null;
+    }
+}
+
 export function getParticipantAttributes(participant) {
     return participant?.attributes && typeof participant.attributes === 'object' ? participant.attributes : {};
 }

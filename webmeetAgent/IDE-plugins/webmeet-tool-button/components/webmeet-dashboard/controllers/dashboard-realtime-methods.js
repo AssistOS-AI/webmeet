@@ -70,11 +70,24 @@ export const dashboardRealtimeMethods = {
             const meetingId = String(payload?.meetingId || payload?.roomId || event?.detail?.parsed?.room || '').trim();
             const activeMeetingId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
             const appliesToCurrentRoom = !meetingId || !activeMeetingId || meetingId === activeMeetingId;
-            if (appliesToCurrentRoom) {
-                this.setError('Room was archived by an admin.');
-                void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+            if (!appliesToCurrentRoom) {
+                this.scheduleWorkspaceMeetingsRefresh();
+                return;
             }
-            this.scheduleWorkspaceMeetingsRefresh();
+            const archivedById = String(payload?.archivedById || '').trim();
+            const archivedByName = String(payload?.archivedByName || '').trim();
+            const currentActorId = String(this.webMeetRoom?.getCurrentActorId?.() || '').trim();
+            const archivedByCurrentActor = Boolean(archivedById && currentActorId && archivedById === currentActorId);
+            const message = archivedByCurrentActor
+                ? ''
+                : (archivedByName ? `Room was archived by ${archivedByName}.` : 'Room was archived by an admin.');
+            (async () => {
+                await this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
+                this.scheduleWorkspaceMeetingsRefresh();
+                if (message) {
+                    this.setError(message);
+                }
+            })();
         });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.AVATAR_PROJECTED, (event) => {
             const detail = event?.detail || {};

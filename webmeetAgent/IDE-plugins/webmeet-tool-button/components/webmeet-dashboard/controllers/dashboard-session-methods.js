@@ -120,7 +120,8 @@ export const dashboardSessionMethods = {
             displayName,
             participantId
         });
-        const details = await runWebMeetTool('webmeet_room_get', {
+        const detailsToolName = globalThis.__WEBMEET_GUEST_ENTRY__ ? 'webmeet_room_public_get' : 'webmeet_room_get';
+        const details = await runWebMeetTool(detailsToolName, {
             roomId,
             includeParticipants: true
         }).catch(() => ({}));
@@ -153,13 +154,21 @@ export const dashboardSessionMethods = {
         syncBrowserRoomUrl(roomId, { replace: true });
         await this.loadParticipantsForMeetings();
         await this.loadMeetingDetails({ expectedMeetingId: normalizedMeeting.id });
+        this.setConnectingRoomTransition(normalizedMeeting.title || 'room', { render: false });
         this.renderAll();
-        this.state.skipConnectedAvatarRepublishOnce = true;
-        await this.connectRoom();
-        void this.publishCurrentParticipantAvatar({ force: true }).catch((error) => {
-            const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
-            this.setError(`Joined room, but WebMeet could not publish the avatar: ${message}`);
-        });
+        try {
+            this.state.skipConnectedAvatarRepublishOnce = true;
+            await this.connectRoom();
+            try {
+                await this.publishCurrentParticipantAvatar({ force: true });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
+                this.setError(`WebMeet could not publish the avatar: ${message}`);
+            }
+        } finally {
+            this.clearRoomTransitionMessage({ render: false });
+            this.renderMeetingSummary();
+        }
     },
 
     async prepareGuestRoomEntry(roomId) {
@@ -332,6 +341,10 @@ export const dashboardSessionMethods = {
             || Boolean(String(nextMeeting?.archivedAt || '').trim());
         if (isArchived) {
             await this.selectMeeting(element);
+            return;
+        }
+        if (globalThis.__WEBMEET_GUEST_ENTRY__ && String(nextMeeting?.roomType || '').trim() === 'guest') {
+            await this.showGuestRoomEntry(nextMeetingId, nextMeeting);
             return;
         }
         const currentMeetingId = String(this.state.session?.meeting?.id || '').trim();

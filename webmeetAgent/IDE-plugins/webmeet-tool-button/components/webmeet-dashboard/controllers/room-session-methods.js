@@ -8,6 +8,7 @@ import {
     summarizeVideoElement
 } from '../services/media-diagnostics.js';
 import { isAudioPublication } from '../services/microphone-publication.js';
+import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 export const roomSessionMethods = {
     async connectRoom() {
@@ -540,18 +541,58 @@ export const roomSessionMethods = {
         });
     },
 
+    async resolveExternalDisconnectArchiveMessage(meetingId = '') {
+        const targetMeetingId = String(meetingId || '').trim();
+        if (!targetMeetingId || this.isGuestSession()) return '';
+        try {
+            const result = await this.webMeetRoom.runTool('webmeet_room_events_list', {
+                roomId: 'rooms',
+                afterId: ''
+            });
+            const events = Array.isArray(result?.events) ? result.events : [];
+            for (let index = events.length - 1; index >= 0; index -= 1) {
+                const parsed = this.webMeetRoom.eventCodec.parse(events[index]);
+                if (parsed.type !== WEBMEET_EVENT_TYPES.MEETING_ARCHIVED) continue;
+                const payload = parsed.payload || {};
+                const eventMeetingId = String(payload.meetingId || payload.roomId || '').trim();
+                if (eventMeetingId !== targetMeetingId) continue;
+                const archivedById = String(payload.archivedById || '').trim();
+                const currentActorId = String(this.webMeetRoom?.getCurrentActorId?.() || '').trim();
+                if (archivedById && currentActorId && archivedById === currentActorId) {
+                    return '';
+                }
+                const archivedByName = String(payload.archivedByName || '').trim();
+                return archivedByName ? `Room was archived by ${archivedByName}.` : 'Room was archived by an admin.';
+            }
+        } catch (_) {
+            return '';
+        }
+        return '';
+    },
+
     async handleExternalRoomDisconnect() {
-        this.resetRoomUiState({ forceRenderAll: false, applyVideoFullscreenMode: false });
-        if (!this.isGuestSession()) {
+        const previousMeetingId = String(this.state.session?.meeting?.id || '').trim();
+        const wasGuestSession = this.isGuestSession();
+        const archiveMessage = await this.resolveExternalDisconnectArchiveMessage(previousMeetingId);
+        this.resetRoomUiState({
+            forceRenderAll: false,
+            applyVideoFullscreenMode: false,
+            clearSession: true
+        });
+        if (!wasGuestSession) {
             await this.loadMeetings();
             this.startWorkspaceEvents();
         }
         this.renderAll();
+        if (archiveMessage) {
+            this.setError(archiveMessage);
+        }
     },
 
     resetRoomUiState(options = {}) {
         const forceRenderAll = Boolean(options.forceRenderAll);
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
+        const clearSession = Boolean(options.clearSession);
         this.room = this.roomLiveKit.getRoom();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
@@ -567,6 +608,9 @@ export const roomSessionMethods = {
         this.resetBlackboardUiState?.();
         this.state.audioHealth = 'Good';
         this.state.audioNetworkUnstable = false;
+        if (clearSession) {
+            this.state.session = null;
+        }
         window.clearInterval(this.audioWebRtcStatsTimer);
         this.audioWebRtcStatsTimer = null;
         this.remoteAudioNormalizer?.stopAll?.();

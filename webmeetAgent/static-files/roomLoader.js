@@ -227,7 +227,8 @@ function normalizeComponentDefinition(entry = {}) {
   if (!name) return null;
   const presenterClassName = String(entry.presenter || entry.presenterClassName || '').trim();
   const type = entry.type === 'modal' || entry.type === 'modals' ? 'modals' : 'components';
-  const base = String(entry.path || entry.base || `components/${name}/${name}`).trim();
+  const rawBase = String(entry.baseUrl || entry.path || entry.base || `components/${name}/${name}`).trim();
+  const base = rawBase.startsWith('explorer/') ? `/${rawBase}` : rawBase;
   return {
     name,
     type,
@@ -337,7 +338,8 @@ start().catch((error) => {
   console.error('[WebMeet] Initialization failed:', error);
   closeStartupLoaders();
   const message = error instanceof Error ? error.message : String(error);
-  if (window.__WEBMEET_GUEST_ENTRY__) {
+  const isComponentLoadError = /Failed to load .+ (template|stylesheet)|Failed to fetch dynamically imported module/i.test(message);
+  if (window.__WEBMEET_GUEST_ENTRY__ && !isComponentLoadError) {
     showAccessDenied('This public room link is invalid, expired, archived, or not available to guests.');
     return;
   }

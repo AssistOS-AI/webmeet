@@ -104,7 +104,7 @@ export const meetingActionMethods = {
 
         if (result.archive === true) {
             await runTool('webmeet_room_archive', { roomId: meeting.id });
-            const activeRoomId = String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim();
+            const activeRoomId = String(this.state.session?.meeting?.id || '').trim();
             if (activeRoomId && activeRoomId === String(meeting.id || '').trim()) {
                 void this.leaveMeeting?.({ skipConfirmation: true }).catch(() => {});
             }
@@ -211,6 +211,9 @@ export const meetingActionMethods = {
             await this.primeCurrentParticipantAvatarProjection({ force: true });
             this.state.skipConnectedAvatarRepublishOnce = true;
             await this.webMeetRoom.connectLiveKit();
+            if (!this.isGuestSession()) {
+                this.startWorkspaceEvents();
+            }
             try {
                 const details = await this.webMeetRoom.refreshState();
                 if (Array.isArray(details?.agents)) {
@@ -219,6 +222,16 @@ export const meetingActionMethods = {
                 this.syncParticipantsFromRoom(this.room, window.LivekitClient?.Track || null);
             } catch (_) {
                 // LiveKit is connected; state reconciliation can recover on the next roster refresh.
+            }
+            try {
+                await this.publishCurrentParticipantAvatar({ force: true });
+            } catch (error) {
+                const stillJoined = String(this.state.session?.meeting?.id || '').trim() === String(meeting.id || '').trim()
+                    && Boolean(String(this.state.session?.participantIdentity || '').trim());
+                if (stillJoined) {
+                    const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
+                    this.setError(`WebMeet could not publish the avatar: ${message}`);
+                }
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -232,10 +245,6 @@ export const meetingActionMethods = {
             this.clearRoomTransitionMessage({ render: false });
             this.renderMeetingSummary();
         }
-        void this.publishCurrentParticipantAvatar({ force: true }).catch((error) => {
-            const message = error instanceof Error ? error.message : String(error || 'Avatar publish failed.');
-            this.setError(`Joined room, but WebMeet could not publish the avatar: ${message}`);
-        });
     },
 
     getCurrentAvatarOverrideUserId() {

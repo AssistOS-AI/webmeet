@@ -396,13 +396,20 @@ describe('filesystem lock mechanics', () => {
         await fs.rm(lockPath, { force: true });
     });
 
-    test('archiveMeeting persists WebMeet archive when LiveKit close is denied', async () => {
+    test('archiveMeeting removes LiveKit participants before closing archived room', async () => {
         const { archiveMeeting, listMeetings } = await import('../../lib/webmeetStore.mjs');
         const meeting = await createTestMeeting(context, 'LiveKit Denied Archive Room');
+        const liveKitCalls = [];
+        let liveParticipants = [{ identity: 'participant-admin' }];
         const liveContext = {
             ...context,
-            closeLiveKitRoom: async () => {
-                throw new Error('LiveKit room API failed: permissions denied');
+            listLiveKitParticipants: async () => liveParticipants,
+            removeLiveKitParticipant: async (_roomName, identity) => {
+                liveKitCalls.push(`remove:${identity}`);
+                liveParticipants = liveParticipants.filter((entry) => String(entry.identity || '') !== identity);
+            },
+            closeLiveKitRoom: async (_roomName) => {
+                liveKitCalls.push('delete-room');
             }
         };
 
@@ -412,8 +419,13 @@ describe('filesystem lock mechanics', () => {
 
         assert.equal(result.ok, true);
         assert.equal(result.meeting.status, 'archived');
+        assert.equal(result.archiveEvent.meetingId, meeting.id);
+        assert.equal(result.archiveEvent.roomId, meeting.id);
+        assert.ok(result.archiveEvent.id);
+        assert.ok(result.archiveEvent.archivedById);
         assert.equal(archived.status, 'archived');
         assert.ok(archived.archivedAt);
+        assert.deepEqual(liveKitCalls, ['remove:participant-admin', 'delete-room']);
     });
 });
 
@@ -477,5 +489,36 @@ describe('manifest secret compatibility', () => {
         assert.equal(payload.video.roomAdmin, true);
         assert.equal(payload.video.roomCreate, true);
         assert.equal(payload.video.room, 'room-a');
+    });
+
+    test('LiveKit participant removal calls RemoveParticipant with identity', async () => {
+        const { removeLiveKitRoomParticipant } = await import('../../lib/runtime/livekitRuntime.mjs');
+        const originalFetch = globalThis.fetch;
+        let requestUrl = '';
+        let requestBody = null;
+        globalThis.fetch = async (url, options = {}) => {
+            requestUrl = String(url || '');
+            requestBody = JSON.parse(String(options?.body || '{}'));
+            return {
+                ok: true,
+                text: async () => '{}'
+            };
+        };
+        try {
+            await removeLiveKitRoomParticipant({
+                livekitApiUrl: 'http://livekit.test',
+                livekitApiKey: 'test-key',
+                livekitApiSecret: 'test-secret',
+                agentName: 'WebMeetAgent'
+            }, 'room-a', 'participant-a', { strict: true });
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+
+        assert.match(requestUrl, /RoomService\/RemoveParticipant$/);
+        assert.deepEqual(requestBody, {
+            room: 'room-a',
+            identity: 'participant-a'
+        });
     });
 });
