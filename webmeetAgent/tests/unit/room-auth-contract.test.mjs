@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+
 const ADMIN_AUTH = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
 const USER_AUTH = { user: { id: 'local:user', username: 'user', roles: ['user'] } };
 const GUEST_AUTH = { user: { id: 'guest:test', username: 'guest', roles: ['guest'] } };

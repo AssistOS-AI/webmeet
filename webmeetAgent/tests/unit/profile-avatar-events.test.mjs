@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+
 import {
     decryptPayload,
     deriveMasterKey,

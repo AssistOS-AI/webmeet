@@ -11,6 +11,8 @@ import {
     joinMeeting
 } from '../../lib/webmeetStore.mjs';
 
+process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
 const originalMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;

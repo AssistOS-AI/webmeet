@@ -1,3 +1,8 @@
+import {
+    redactSensitive,
+    redactSensitiveString
+} from './diagnostic-redaction.mjs';
+
 const MEDIA_DIAGNOSTIC_PREFIX = '[webmeet:media]';
 
 function normalizeDebugFlag(value) {
@@ -159,40 +164,18 @@ export function summarizeAudioWebRtcStats(stats = []) {
     return summary;
 }
 
-function redactSensitive(value) {
-    if (Array.isArray(value)) {
-        return value.map((item) => redactSensitive(item));
-    }
-    if (!value || typeof value !== 'object') {
-        return value;
-    }
-    const output = {};
-    for (const [key, item] of Object.entries(value)) {
-        const normalizedKey = key.toLowerCase();
-        if (
-            normalizedKey.includes('token')
-            || normalizedKey.includes('secret')
-            || normalizedKey.includes('password')
-            || normalizedKey.includes('authorization')
-            || normalizedKey.includes('credential')
-            || normalizedKey === 'sdp'
-            || normalizedKey === 'candidate'
-        ) {
-            output[key] = '<redacted>';
-            continue;
-        }
-        output[key] = redactSensitive(item);
-    }
-    return output;
-}
-
 export function logMediaDiagnostic(event, payload = {}) {
     if (!isMediaDiagnosticsEnabled()) return;
     try {
         const consoleRef = globalThis.console || null;
         const logger = typeof consoleRef?.info === 'function' ? consoleRef.info : consoleRef?.log;
         if (typeof logger !== 'function') return;
-        logger.call(consoleRef, MEDIA_DIAGNOSTIC_PREFIX, event, redactSensitive(payload));
+        logger.call(
+            consoleRef,
+            MEDIA_DIAGNOSTIC_PREFIX,
+            redactSensitiveString(event),
+            redactSensitive(payload)
+        );
     } catch (_) {
         // diagnostics must not affect meeting behavior
     }

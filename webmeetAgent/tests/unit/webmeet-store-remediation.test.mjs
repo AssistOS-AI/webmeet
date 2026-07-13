@@ -12,6 +12,8 @@ const MASTER_KEY = crypto.randomBytes(32).toString('base64');
 const ADMIN_AUTH = { id: 'local:admin', username: 'admin', roles: ['admin'] };
 const execFileAsync = promisify(execFile);
 
+process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+
 let tmpRoot;
 let context;
 

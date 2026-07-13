@@ -12,7 +12,7 @@ summary: Defines webmeetAgent as the WebMeet application control plane and keeps
 
 `webmeetAgent` is the Ploinky application agent for WebMeet rooms inside AssistOSExplorer. It owns the application control plane: room records, room-scoped public link access, LiveKit participant token issuance, meeting chat, room resources, blackboard state, Ploinky room-agent metadata, and the Explorer WebMeet plugin.
 
-Live audio, video, screen share, Redis coordination, TURN/STUN, and production TLS termination are adjacent WebMeet runtime components. They are not owned by the `webmeetAgent` process.
+Live audio, video, screen share, Redis coordination, TURN relay, and production TLS termination are adjacent WebMeet runtime components. They are not owned by the `webmeetAgent` process.
 
 ## Core Content
 
@@ -22,7 +22,9 @@ WebMeet is split into explicit responsibility planes:
 | --- | --- | --- |
 | WebMeet control plane | `webmeetAgent` | Durable rooms, members, roomId scopes, chat, resources, blackboard state, Ploinky room-agent metadata, and LiveKit participant JWTs. |
 | Browser meeting UI | `webmeetAgent/IDE-plugins/webmeet-tool-button` | Explorer dashboard and direct room entry UI, LiveKit browser connection, media controls, chat composer, participant rendering, and browser-scoped media/avatar preferences. |
-| Live media plane | `webmeetInfra/liveKitServerAgent` | LiveKit SFU, WebSocket signaling, WebRTC negotiation, RTP/RTCP forwarding, LiveKit data-channel delivery, Redis, Coturn, and production Nginx/Certbot. |
+| Live media plane | `webmeetInfra/liveKitServerAgent` | LiveKit SFU, internal signaling/API service, WebRTC negotiation, RTP/RTCP forwarding, LiveKit data-channel delivery, and Redis. |
+| TURN relay plane | `webmeetInfra/turnServerAgent` plus `liveKitServerAgent` | `turnServerAgent` runs Coturn and enforces REST authentication; `liveKitServerAgent` shares the secret to mint expiring browser credentials. `webmeetAgent` never holds or issues TURN credentials. |
+| Public signaling edge | `basic/web-publishing` | Sole owner of the browser-facing LiveKit URL, trusted TLS edge selection, and the scoped `/rtc` signaling proxy. It never proxies media or TURN relay traffic. |
 | RoboTeam room agent | `webmeetAgent` | Ploinky-managed virtual room agent that appears in WebMeet roster and can update the blackboard through WebMeet tools. |
 
 The central invariant is that WebMeet rooms are discovered, authorized, and persisted by `webmeetAgent`. LiveKit rooms carry the live media session. Redis is infrastructure runtime state for LiveKit; it is not the WebMeet application database.
@@ -57,7 +59,7 @@ The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet
 
 `webmeetAgent` must keep its persistent store under the configured WebMeet data directory, normally the `/data` container mount backed by `.ploinky/data/webmeetAgent/data`.
 
-`webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent`, but it must not launch sibling Ploinky agents or external AI workers. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, or start LiveKit Server.
+`webmeetAgent` must not own infrastructure supervision. Its manifest declares blocking dependencies on `webmeetInfra/liveKitServerAgent` and `webmeetInfra/turnServerAgent`, which Ploinky starts and supervises; the WebMeet process itself must not launch sibling agents or external AI workers. `scripts/startAgent.sh` must only validate required provider output/policy and start the WebMeet MCP AgentServer. It must not start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, LiveKit Server, or Coturn.
 
 ## Decisions & Questions
 
@@ -69,7 +71,7 @@ The WebMeet application needs durable authorization, room discovery, encrypted m
 ### Question #2: Why does this agent depend on `liveKitServerAgent` instead of owning multiple infra agents?
 
 Response:
-The current `webmeetInfra` contract delivers one Ploinky agent, `liveKitServerAgent`, that supervises Redis, Coturn, LiveKit Server, and production Nginx/Certbot inside one image. The older split infra-agent names are retired implementation history. `webmeetAgent` should enable and document the consolidated agent boundary.
+The current `webmeetInfra` contract delivers two Ploinky agents: `liveKitServerAgent`, which supervises Redis and LiveKit Server and mints expiring TURN REST credentials from the shared secret, and the separate `turnServerAgent`, which supervises Coturn and enforces those credentials. `webmeetAgent` enables both as blocking dependencies, while `basic/web-publishing` provides the public and internal signaling topology before they start. `webmeetAgent` must not hold TURN credentials, derive topology, or rebuild the older single-agent boundary.
 
 ### Question #3: Why keep the repository-level WebMeet architecture content inside the DS set?
 

@@ -1,355 +1,233 @@
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
 
 import {
     _buildRtcConfig as buildRtcConfig,
-    _buildStunUrls as buildStunUrls,
-    _isLoopbackUrl as isLoopbackUrl,
-    _dedupeStrings as dedupeStrings,
-    _splitCsvEnv as splitCsvEnv,
 } from '../../lib/webmeetStore.mjs';
 
 import {
     buildRtcConfigForSession,
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/rtc-config.js';
 
-function countIceUrls(config) {
-    if (!config?.iceServers) return 0;
-    return config.iceServers.reduce((sum, server) => {
-        const urls = server?.urls;
-        if (Array.isArray(urls)) return sum + urls.length;
-        return sum + (urls ? 1 : 0);
-    }, 0);
+// This suite locks down the network-hardening contract: webmeetAgent must never
+// hand the browser a TURN URL, TURN username, or TURN credential. The only ICE
+// signal it may ever convey is an explicit iceTransportPolicy ('relay'), and only
+// when the operator has requested it. Invalid policy input fails closed. Everything else (STUN URLs, TURN URLs,
+// usernames, credentials) must be structurally absent from both the server-side
+// builder's output and the browser-side normalizer's output.
+
+const MASTER_KEY = crypto.randomBytes(32).toString('base64');
+const ADMIN_AUTH = { id: 'local:admin', username: 'admin', roles: ['admin'] };
+const tmpDirs = [];
+
+async function freshContext(envOverrides = {}) {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-rtc-test-'));
+    await fs.mkdir(path.join(dir, '.ploinky'), { recursive: true });
+    tmpDirs.push(dir);
+
+    process.env.PLOINKY_WEBMEET_MASTER_KEY = MASTER_KEY;
+    process.env.PLOINKY_WORKSPACE_ROOT = dir;
+    process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+    for (const [key, value] of Object.entries(envOverrides)) {
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
+
+    const { createStoreContext } = await import('../../lib/webmeetStore.mjs');
+    return await createStoreContext(dir);
 }
 
-describe('isLoopbackUrl', () => {
-    test('detects 127.0.0.1 ws URL', () => {
-        assert.equal(isLoopbackUrl('ws://127.0.0.1:7880'), true);
-    });
-
-    test('detects localhost wss URL', () => {
-        assert.equal(isLoopbackUrl('wss://localhost:7880'), true);
-    });
-
-    test('detects [::1] URL', () => {
-        assert.equal(isLoopbackUrl('ws://[::1]:7880'), true);
-    });
-
-    test('rejects public hostname', () => {
-        assert.equal(isLoopbackUrl('wss://livekit-skills.axiologic.dev'), false);
-    });
-
-    test('handles empty string', () => {
-        assert.equal(isLoopbackUrl(''), false);
-    });
-});
-
-describe('dedupeStrings', () => {
-    test('removes duplicates preserving order', () => {
-        assert.deepEqual(dedupeStrings(['a', 'b', 'a', 'c', 'b']), ['a', 'b', 'c']);
-    });
-
-    test('returns empty for empty input', () => {
-        assert.deepEqual(dedupeStrings([]), []);
-    });
-});
-
-describe('splitCsvEnv', () => {
-    test('splits comma-separated values', () => {
-        assert.deepEqual(splitCsvEnv('a, b , c'), ['a', 'b', 'c']);
-    });
-
-    test('drops empty entries', () => {
-        assert.deepEqual(splitCsvEnv('a,,b, ,c'), ['a', 'b', 'c']);
-    });
-
-    test('returns empty for empty string', () => {
-        assert.deepEqual(splitCsvEnv(''), []);
-    });
-});
-
-describe('buildStunUrls', () => {
-    test('returns one default STUN URL for non-loopback public URL', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'wss://livekit-skills.axiologic.dev',
-        });
-        assert.equal(urls.length, 1);
-        assert.ok(urls[0].startsWith('stun:'));
-    });
-
-    test('returns no STUN for loopback public URL when not explicitly set', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-        });
-        assert.equal(urls.length, 0);
-    });
-
-    test('honors explicit WEBMEET_STUN_URLS on loopback', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            stunExplicitUrls: 'stun:custom.example.com:3478',
-        });
-        assert.deepEqual(urls, ['stun:custom.example.com:3478']);
-    });
-
-    test('empty explicit STUN list disables STUN', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'wss://livekit-skills.axiologic.dev',
-            stunExplicitUrls: '',
-        });
-        assert.equal(urls.length, 0);
-    });
-
-    test('deduplicates explicit STUN URLs', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'wss://example.com',
-            stunExplicitUrls: 'stun:a.com:3478, stun:a.com:3478, stun:b.com:3478',
-        });
-        assert.deepEqual(urls, ['stun:a.com:3478', 'stun:b.com:3478']);
-    });
+after(async () => {
+    delete process.env.WEBMEET_ICE_TRANSPORT_POLICY;
+    delete process.env.WEBMEET_PUBLIC_LIVEKIT_URL;
+    delete process.env.WEBMEET_LIVEKIT_URL;
+    delete process.env.WEBMEET_STUN_URLS;
+    delete process.env.WEBMEET_TURN_HOST;
+    delete process.env.WEBMEET_TURN_URLS;
+    await Promise.all(tmpDirs.map((dir) => fs.rm(dir, { recursive: true, force: true }).catch(() => {})));
 });
 
 describe('buildRtcConfig (server-side)', () => {
-    test('production default has at most three ICE URLs', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://livekit-skills.axiologic.dev',
-            turn: {
-                host: 'livekit-skills.axiologic.dev',
-                port: '3478',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        const total = countIceUrls(config);
-        assert.ok(total <= 3, `Expected at most 3 ICE URLs, got ${total}`);
-        assert.ok(total < 5, `Firefox threshold: expected fewer than 5 ICE URLs, got ${total}`);
+    test('rejects a missing ICE transport policy', () => {
+        assert.throws(
+            () => buildRtcConfig({ livekitPublicUrl: 'wss://meet.example.com' }),
+            /must be exactly "all" or "relay"/
+        );
     });
 
-    test('loopback omits implicit STUN but keeps generated TURN when configured', () => {
+    test('returns null for the default "all" policy', () => {
         const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '127.0.0.1',
-                port: '3478',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.equal(countIceUrls(config), 2);
-        assert.deepEqual(config.iceServers, [
-            {
-                urls: [
-                    'turn:127.0.0.1:3478?transport=udp',
-                    'turn:127.0.0.1:3478?transport=tcp',
-                ],
-                username: 'webmeet',
-                credential: 'secret',
-            },
-        ]);
-    });
-
-    test('loopback honors explicit TURN URLs', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '127.0.0.1',
-                port: '3478',
-                explicitUrls: 'turn:127.0.0.1:3478?transport=udp',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.deepEqual(config.iceServers, [
-            {
-                urls: ['turn:127.0.0.1:3478?transport=udp'],
-                username: 'webmeet',
-                credential: 'secret',
-            },
-        ]);
-    });
-
-    test('loopback relay policy can use implicit TURN', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '127.0.0.1',
-                port: '3478',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'relay',
-            },
-        });
-        assert.ok(config);
-        assert.equal(config.iceTransportPolicy, 'relay');
-        assert.deepEqual(config.iceServers[0].urls, [
-            'turn:127.0.0.1:3478?transport=udp',
-            'turn:127.0.0.1:3478?transport=tcp',
-        ]);
-    });
-
-    test('TURN omitted when username missing', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: '',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.equal(config.iceServers.length, 1);
-        const urls = [].concat(config.iceServers[0].urls);
-        assert.ok(urls.every((u) => u.startsWith('stun:')));
-    });
-
-    test('TURN omitted when credential missing', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: 'user',
-                credential: '',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.equal(config.iceServers.length, 1);
-    });
-
-    test('returns null when no useful ICE entries remain', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '',
-                port: '',
-                username: '',
-                credential: '',
-                iceTransportPolicy: 'all',
-            },
+            livekitPublicUrl: 'wss://meet.example.com',
+            iceTransportPolicy: 'all',
         });
         assert.equal(config, null);
     });
 
-    test('preserves iceTransportPolicy relay', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: 'user',
-                credential: 'pass',
-                iceTransportPolicy: 'relay',
-            },
-        });
-        assert.equal(config.iceTransportPolicy, 'relay');
+    test('rejects an unsupported/bogus policy value', () => {
+        assert.throws(
+            () => buildRtcConfig({
+                livekitPublicUrl: 'wss://example.com',
+                iceTransportPolicy: 'bogus',
+            }),
+            /must be exactly "all" or "relay"/
+        );
     });
 
-    test('unsupported iceTransportPolicy falls back to all', () => {
+    test('returns exactly { iceTransportPolicy: "relay" } when relay is requested', () => {
         const config = buildRtcConfig({
             livekitPublicUrl: 'wss://example.com',
+            iceTransportPolicy: 'relay',
+        });
+        assert.deepEqual(config, { iceTransportPolicy: 'relay' });
+        assert.deepEqual(Object.keys(config), ['iceTransportPolicy']);
+    });
+
+    test('never returns iceServers, TURN URLs, usernames, or credentials even if legacy turn fields are present', () => {
+        // Defense in depth: even if a stale/leftover context still carries the
+        // old host/port/username/credential shape (e.g. from an un-migrated
+        // workspace secret store), buildRtcConfig must not resurrect them.
+        const config = buildRtcConfig({
+            livekitPublicUrl: 'wss://example.com',
+            iceTransportPolicy: 'relay',
             turn: {
                 host: 'turn.example.com',
                 port: '3478',
-                username: 'user',
-                credential: 'pass',
-                iceTransportPolicy: 'bogus',
+                explicitUrls: 'turn:turn.example.com:3478?transport=udp',
+                username: 'webmeet',
+                credential: 'super-secret-password',
             },
         });
-        assert.equal(config.iceTransportPolicy, 'all');
+        assert.ok(config);
+        assert.deepEqual(config, { iceTransportPolicy: 'relay' });
+        assert.equal('iceServers' in config, false);
+        assert.equal(JSON.stringify(config).includes('super-secret-password'), false);
+        assert.equal(JSON.stringify(config).includes('turn:'), false);
     });
 });
 
 describe('buildRtcConfigForSession (browser-side)', () => {
-    test('drops empty server entries', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: [] },
-                    { urls: 'stun:stun.l.google.com:19302' },
-                ],
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(result);
-        assert.equal(result.iceServers.length, 1);
-    });
-
-    test('deduplicates URLs across server entries', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: ['stun:a.com:3478', 'stun:b.com:3478'] },
-                    { urls: ['stun:a.com:3478', 'stun:c.com:3478'] },
-                ],
-            },
-        });
-        assert.ok(result);
-        const allUrls = result.iceServers.flatMap((s) => [].concat(s.urls));
-        assert.deepEqual(allUrls, ['stun:a.com:3478', 'stun:b.com:3478', 'stun:c.com:3478']);
-    });
-
-    test('preserves credential-distinct TURN entries with the same URL', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: 'turn:turn.example.com:3478', username: 'old', credential: 'oldpass' },
-                    { urls: 'turn:turn.example.com:3478', username: 'new', credential: 'newpass' },
-                    { urls: 'turn:turn.example.com:3478', username: 'new', credential: 'newpass' },
-                ],
-            },
-        });
-        assert.ok(result);
-        assert.deepEqual(result.iceServers, [
-            { urls: 'turn:turn.example.com:3478', username: 'old', credential: 'oldpass' },
-            { urls: 'turn:turn.example.com:3478', username: 'new', credential: 'newpass' },
-        ]);
-    });
-
-    test('returns undefined for null rtcConfig', () => {
+    test('returns undefined when rtcConfig is absent', () => {
         assert.equal(buildRtcConfigForSession({}), undefined);
+    });
+
+    test('returns undefined when rtcConfig is null', () => {
         assert.equal(buildRtcConfigForSession({ rtcConfig: null }), undefined);
     });
 
-    test('preserves TURN credentials on correct entry', () => {
+    test('rejects a present rtcConfig without iceTransportPolicy', () => {
+        assert.throws(() => buildRtcConfigForSession({ rtcConfig: {} }), /Invalid WebMeet iceTransportPolicy/);
+    });
+
+    test('rejects an unsupported iceTransportPolicy value', () => {
+        assert.throws(
+            () => buildRtcConfigForSession({ rtcConfig: { iceTransportPolicy: 'bogus' } }),
+            /Invalid WebMeet iceTransportPolicy/
+        );
+    });
+
+    test('rejects a non-object rtcConfig payload', () => {
+        assert.throws(() => buildRtcConfigForSession({ rtcConfig: [] }), /Invalid WebMeet rtcConfig payload/);
+    });
+
+    test('returns exactly { iceTransportPolicy: "relay" } when relay is requested', () => {
+        const result = buildRtcConfigForSession({ rtcConfig: { iceTransportPolicy: 'relay' } });
+        assert.deepEqual(result, { iceTransportPolicy: 'relay' });
+        assert.deepEqual(Object.keys(result), ['iceTransportPolicy']);
+    });
+
+    test('returns exactly { iceTransportPolicy: "all" } when all is requested', () => {
+        const result = buildRtcConfigForSession({ rtcConfig: { iceTransportPolicy: 'all' } });
+        assert.deepEqual(result, { iceTransportPolicy: 'all' });
+    });
+
+    test('never forwards iceServers even if the raw session legacy-includes TURN credentials', () => {
+        // Defense in depth: even if a server response somehow still carried the
+        // old iceServers/TURN shape, the browser-side normalizer must not forward
+        // usernames/credentials/URLs from it.
         const result = buildRtcConfigForSession({
             rtcConfig: {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'turn:turn.example.com:3478', username: 'user', credential: 'pass' },
+                    { urls: 'turn:turn.example.com:3478', username: 'user', credential: 'leaked-secret' },
                 ],
+                iceTransportPolicy: 'relay',
             },
         });
         assert.ok(result);
-        const turnEntry = result.iceServers.find((s) =>
-            [].concat(s.urls).some((u) => u.startsWith('turn:'))
-        );
-        assert.ok(turnEntry);
-        assert.equal(turnEntry.username, 'user');
-        assert.equal(turnEntry.credential, 'pass');
-        const stunEntry = result.iceServers.find((s) =>
-            [].concat(s.urls).some((u) => u.startsWith('stun:'))
-        );
-        assert.ok(stunEntry);
-        assert.equal(stunEntry.username, undefined);
+        assert.deepEqual(result, { iceTransportPolicy: 'relay' });
+        assert.equal('iceServers' in result, false);
+        assert.equal(JSON.stringify(result).includes('leaked-secret'), false);
+    });
+});
+
+describe('join flows never leak TURN materials in rtcConfig', () => {
+    test('joinGuestMeeting omits rtcConfig when no relay policy is requested', async () => {
+        const context = await freshContext();
+        const { createMeeting, joinGuestMeeting } = await import('../../lib/webmeetStore.mjs');
+        const meeting = await createMeeting(context, { title: 'Guest Room', roomType: 'guest', authInfo: ADMIN_AUTH });
+        const result = await joinGuestMeeting(context, { meetingId: meeting.id, displayName: 'Guest' });
+        assert.equal('rtcConfig' in result, false);
     });
 
-    test('rejects unsupported iceTransportPolicy', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-                iceTransportPolicy: 'bogus',
-            },
+    test('joinGuestMeeting response contains only iceTransportPolicy when relay is requested', async () => {
+        const context = await freshContext({ WEBMEET_ICE_TRANSPORT_POLICY: 'relay' });
+        const { createMeeting, joinGuestMeeting } = await import('../../lib/webmeetStore.mjs');
+        const meeting = await createMeeting(context, { title: 'Guest Room', roomType: 'guest', authInfo: ADMIN_AUTH });
+        const result = await joinGuestMeeting(context, { meetingId: meeting.id, displayName: 'Guest' });
+        assert.deepEqual(result.rtcConfig, { iceTransportPolicy: 'relay' });
+        assert.equal(JSON.stringify(result).includes('iceServers'), false);
+    });
+
+    test('joinMeeting (authenticated) omits rtcConfig when no relay policy is requested', async () => {
+        const context = await freshContext();
+        const { createMeeting, joinMeeting } = await import('../../lib/webmeetStore.mjs');
+        const meeting = await createMeeting(context, { title: 'Team Room', roomType: 'team', authInfo: ADMIN_AUTH });
+        const result = await joinMeeting(context, {
+            meetingId: meeting.id,
+            displayName: 'Admin',
+            participantId: 'participant-admin',
+            authInfo: ADMIN_AUTH,
         });
-        assert.ok(result);
-        assert.equal(result.iceTransportPolicy, undefined);
+        assert.equal('rtcConfig' in result, false);
+    });
+
+    test('joinMeeting (authenticated) response contains only iceTransportPolicy when relay is requested', async () => {
+        const context = await freshContext({ WEBMEET_ICE_TRANSPORT_POLICY: 'relay' });
+        const { createMeeting, joinMeeting } = await import('../../lib/webmeetStore.mjs');
+        const meeting = await createMeeting(context, { title: 'Team Room', roomType: 'team', authInfo: ADMIN_AUTH });
+        const result = await joinMeeting(context, {
+            meetingId: meeting.id,
+            displayName: 'Admin',
+            participantId: 'participant-admin',
+            authInfo: ADMIN_AUTH,
+        });
+        assert.deepEqual(result.rtcConfig, { iceTransportPolicy: 'relay' });
+        assert.equal(JSON.stringify(result).includes('iceServers'), false);
+    });
+
+    test('store creation rejects a missing or invalid ICE transport policy', async () => {
+        await assert.rejects(freshContext({ WEBMEET_ICE_TRANSPORT_POLICY: undefined }), /must be exactly "all" or "relay"/);
+        await assert.rejects(freshContext({ WEBMEET_ICE_TRANSPORT_POLICY: 'prefer-relay' }), /must be exactly "all" or "relay"/);
+    });
+
+    test('store context ignores retired TURN/STUN inputs and does not fall back to the internal LiveKit URL', async () => {
+        const context = await freshContext({
+            WEBMEET_PUBLIC_LIVEKIT_URL: '',
+            WEBMEET_LIVEKIT_URL: 'http://livekitserveragent:7880',
+            WEBMEET_STUN_URLS: 'stun:stale.example.com',
+            WEBMEET_TURN_HOST: 'turn.stale.example.com',
+            WEBMEET_TURN_URLS: 'turn:turn.stale.example.com',
+        });
+        assert.equal(context.livekitPublicUrl, '');
+        assert.equal(context.livekitApiUrl, 'http://livekitserveragent:7880');
+        assert.equal('stunExplicitUrls' in context, false);
+        assert.equal('turn' in context, false);
     });
 });

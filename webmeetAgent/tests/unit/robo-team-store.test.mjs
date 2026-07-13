@@ -18,6 +18,8 @@ import {
     loadRoomRecord
 } from '../../lib/store/roomRecords.mjs';
 
+process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+
 async function withStore(fn) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-robo-team-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;

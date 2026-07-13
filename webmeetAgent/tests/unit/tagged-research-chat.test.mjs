@@ -12,6 +12,8 @@ import {
 } from '../../lib/webmeetStore.mjs';
 import { dispatch } from '../../tools/webmeet_tool.mjs';
 
+process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+
 const ENV_KEYS = [
     'PLOINKY_WEBMEET_MASTER_KEY',
     'PLOINKY_ROUTER_URL',

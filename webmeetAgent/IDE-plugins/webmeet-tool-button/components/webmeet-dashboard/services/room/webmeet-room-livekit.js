@@ -8,7 +8,6 @@ export class WebMeetRoomLiveKit {
     constructor(options = {}) {
         this.ensureLiveKitClient = options.ensureLiveKitClient;
         this.buildRtcConfigForSession = options.buildRtcConfigForSession;
-        this.installRtcPeerConnectionOverride = options.installRtcPeerConnectionOverride;
         this.getAudioCaptureDefaults = typeof options.getAudioCaptureDefaults === 'function'
             ? options.getAudioCaptureDefaults
             : (() => ({
@@ -23,7 +22,6 @@ export class WebMeetRoomLiveKit {
                 screenShareQuality: 'h1080fps30'
             }));
         this.room = null;
-        this.restoreRtcPeerConnection = null;
     }
 
     getQualityProfile(type, quality) {
@@ -57,8 +55,6 @@ export class WebMeetRoomLiveKit {
         const livekit = await this.ensureLiveKitClient();
         const { Room, RoomEvent, Track } = livekit;
 
-        this.restoreRtcPeerConnection?.();
-        this.restoreRtcPeerConnection = this.installRtcPeerConnectionOverride(session);
         const audioCaptureDefaults = this.getAudioCaptureDefaults();
         const rtcConfig = this.buildRtcConfigForSession(session);
 
@@ -111,8 +107,6 @@ export class WebMeetRoomLiveKit {
                 hooks.onParticipantAttributesChanged?.(changedAttributes, participant, { room, livekit, Track, RoomEvent });
             })
             .on(RoomEvent.Disconnected, () => {
-                this.restoreRtcPeerConnection?.();
-                this.restoreRtcPeerConnection = null;
                 this.room = null;
                 hooks.onDisconnected?.({ livekit, Track, RoomEvent });
             });
@@ -129,19 +123,6 @@ export class WebMeetRoomLiveKit {
                 autoSubscribe: true,
                 ...(rtcConfig ? { rtcConfig } : {})
             };
-            const iceUrlCount = (rtcConfig?.iceServers || []).reduce((sum, s) => {
-                const u = s?.urls;
-                return sum + (Array.isArray(u) ? u.length : (u ? 1 : 0));
-            }, 0);
-            const iceCategories = (rtcConfig?.iceServers || []).reduce((acc, s) => {
-                for (const u of [].concat(s?.urls || [])) {
-                    const lower = String(u || '').toLowerCase();
-                    if (lower.startsWith('stun:')) acc.hasStun = true;
-                    else if (lower.startsWith('turns:')) acc.hasTurns = true;
-                    else if (lower.startsWith('turn:')) acc.hasTurn = true;
-                }
-                return acc;
-            }, { hasStun: false, hasTurn: false, hasTurns: false });
             logMediaDiagnostic('room-connect-start', {
                 livekitHost: (() => {
                     try {
@@ -151,9 +132,6 @@ export class WebMeetRoomLiveKit {
                     }
                 })(),
                 hasRtcConfig: Boolean(rtcConfig),
-                iceServerCount: Number(rtcConfig?.iceServers?.length || 0),
-                iceUrlCount,
-                ...iceCategories,
                 iceTransportPolicy: rtcConfig?.iceTransportPolicy || '',
                 roomOptions: {
                     adaptiveStream: false,
@@ -189,8 +167,6 @@ export class WebMeetRoomLiveKit {
             } catch (_) {
                 // ignore disconnect after failed connect
             }
-            this.restoreRtcPeerConnection?.();
-            this.restoreRtcPeerConnection = null;
             if (this.room === room) {
                 this.room = null;
             }
@@ -206,16 +182,12 @@ export class WebMeetRoomLiveKit {
         } catch (_) {
             // ignore disconnect failures
         }
-        this.restoreRtcPeerConnection?.();
-        this.restoreRtcPeerConnection = null;
         if (this.room === room) {
             this.room = null;
         }
     }
 
     teardown() {
-        this.restoreRtcPeerConnection?.();
-        this.restoreRtcPeerConnection = null;
         this.room = null;
     }
 }

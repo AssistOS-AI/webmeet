@@ -7,10 +7,7 @@
     "protocol": "tcp"
   },
   "network": {
-    "name": "webmeet",
-    "aliases": [
-      "webmeetStt"
-    ]
+    "mode": "default"
   },
   "volumes": {
     ".ploinky/data/webmeetStt": "/data"
