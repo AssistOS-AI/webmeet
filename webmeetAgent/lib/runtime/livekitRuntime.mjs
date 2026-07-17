@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 
+import { resolvePrivateLiveKitCall } from './edgeRuntime.mjs';
+
 export function createLiveKitToken(context, { roomName, identity, name, attributes = null, metadata = '' }) {
     if (!context.livekitApiKey || !context.livekitApiSecret) {
         return null;
@@ -57,30 +59,26 @@ function createLiveKitRoomAdminToken(context, roomName) {
     return `${header}.${payload}.${signature}`;
 }
 
-function normalizeLiveKitHttpUrl(value) {
-    const raw = String(value || '').trim().replace(/\/+$/g, '');
-    if (!raw) return '';
-    if (raw.startsWith('wss://')) return `https://${raw.slice(6)}`;
-    if (raw.startsWith('ws://')) return `http://${raw.slice(5)}`;
-    return raw;
-}
-
 async function callLiveKitRoomApi(context, methodName, roomName, body) {
-    const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
-    if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
+    if (!context.livekitApiKey || !context.livekitApiSecret) {
         throw new Error('LiveKit room API is not configured.');
     }
     const token = createLiveKitRoomAdminToken(context, roomName);
     if (!token) {
         throw new Error('LiveKit admin token could not be created.');
     }
-    const response = await fetch(`${baseUrl}/twirp/livekit.RoomService/${methodName}`, {
+    const requestBody = Buffer.from(JSON.stringify(body || {}));
+    const privateCall = typeof context.resolvePrivateLiveKitCall === 'function'
+        ? await context.resolvePrivateLiveKitCall({ methodName, body: requestBody })
+        : await resolvePrivateLiveKitCall({ methodName, body: requestBody });
+    const response = await fetch(privateCall.url, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Ploinky-Agent-Assertion': privateCall.assertion
         },
-        body: JSON.stringify(body || {})
+        body: requestBody
     });
     const text = await response.text();
     let parsed = null;

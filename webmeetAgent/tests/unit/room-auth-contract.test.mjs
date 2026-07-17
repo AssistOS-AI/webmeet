@@ -4,7 +4,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
+import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
+import {
+    createGuestParticipantAuth,
+    withGuestParticipantOwner
+} from './participant-owner-fixture.mjs';
 
 const ADMIN_AUTH = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
 const USER_AUTH = { user: { id: 'local:user', username: 'user', roles: ['user'] } };
@@ -23,7 +27,7 @@ test('WebMeet room list is dashboard-only and guest join is public-room-only', a
             joinGuestMeeting,
             listMeetings
         } = await import('../../lib/webmeetStore.mjs');
-        const context = await createStoreContext(root);
+        const context = installEdgeJoinFixture(await createStoreContext(root));
         const teamRoom = await createMeeting(context, { title: 'Team room', roomType: 'team', authInfo: ADMIN_AUTH });
         const publicRoom = await createMeeting(context, { title: 'Public room', roomType: 'guest', authInfo: ADMIN_AUTH });
 
@@ -35,10 +39,14 @@ test('WebMeet room list is dashboard-only and guest join is public-room-only', a
             /sign in to view WebMeet rooms/
         );
         await assert.rejects(
-            () => joinGuestMeeting(context, { meetingId: teamRoom.id, displayName: 'Guest' }),
+            () => withGuestParticipantOwner(context, teamRoom.id, () => (
+                joinGuestMeeting(context, { meetingId: teamRoom.id, displayName: 'Guest' })
+            ), 'team-room-guest'),
             /does not support guest access/
         );
-        const joined = await joinGuestMeeting(context, { meetingId: publicRoom.id, displayName: 'Guest' });
+        const joined = await withGuestParticipantOwner(context, publicRoom.id, () => (
+            joinGuestMeeting(context, { meetingId: publicRoom.id, displayName: 'Guest' })
+        ), 'public-room-guest');
         assert.equal(joined.meeting.id, publicRoom.id);
         assert.equal(joined.participant.guest, true);
     } finally {
@@ -69,24 +77,20 @@ test('public room scoped invocation can publish guest participant avatar through
             joinGuestMeeting
         } = await import('../../lib/webmeetStore.mjs');
         const { dispatch } = await import('../../tools/webmeet_tool.mjs');
-        const context = await createStoreContext(root);
+        const context = installEdgeJoinFixture(await createStoreContext(root));
         const publicRoom = await createMeeting(context, {
             title: 'Public avatar room',
             roomType: 'guest',
             authInfo: ADMIN_AUTH
         });
-        const joined = await joinGuestMeeting(context, {
-            meetingId: publicRoom.id,
-            displayName: 'Guest Avatar',
-            participantId: 'guest-avatar-participant'
-        });
-        context.invocation = {
-            iss: 'ploinky-router',
-            sub: 'user:guest:test',
-            aud: 'agent:AchillesIDE/webmeetAgent',
-            tool: 'webmeet_participant_avatar_update',
-            hasUserClaims: false
-        };
+        const joined = await withGuestParticipantOwner(context, publicRoom.id, () => (
+            joinGuestMeeting(context, {
+                meetingId: publicRoom.id,
+                displayName: 'Guest Avatar',
+                participantId: 'guest-avatar-participant'
+            })
+        ), 'avatar-guest');
+        const guestAuth = createGuestParticipantAuth(publicRoom.id, 'avatar-guest');
 
         const updated = await dispatch('webmeet_participant_avatar_update', {
             roomId: publicRoom.id,
@@ -100,7 +104,7 @@ test('public room scoped invocation can publish guest participant avatar through
                     seed: 'guest-avatar-participant'
                 }
             }
-        }, context, null);
+        }, context, guestAuth);
 
         assert.equal(updated.ok, true);
         assert.equal(updated.participantId, joined.participantIdentity);

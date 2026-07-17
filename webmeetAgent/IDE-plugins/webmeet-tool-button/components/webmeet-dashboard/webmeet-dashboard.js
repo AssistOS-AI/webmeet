@@ -31,7 +31,7 @@ import {
     logMediaDiagnostic,
     summarizeAudioMetrics
 } from './services/media-diagnostics.js';
-import { buildRtcConfigForSession } from './services/rtc-config.js';
+import { buildRtcConfigForSession, installRtcPeerConnectionOverride } from './services/rtc-config.js';
 import { WebMeetRoom } from './services/room/webmeet-room.js';
 import { WebMeetRoomEvents } from './services/room/webmeet-room-events.js';
 import { runWebMeetTool } from './services/webmeet-api-client.js';
@@ -227,6 +227,7 @@ export class WebmeetDashboard {
         this.roomLiveKit = new WebMeetRoomLiveKit({
             ensureLiveKitClient,
             buildRtcConfigForSession,
+            installRtcPeerConnectionOverride,
             getAudioCaptureDefaults: () => this.mediaController.getMicrophoneEnableOptions(),
             getMediaQualitySettings: () => ({
                 cameraQuality: this.normalizeCameraQuality(this.state.mediaSettings.cameraQuality),
@@ -630,6 +631,7 @@ export class WebmeetDashboard {
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();
+        this.uninstallJoinMaterialRefreshListeners?.();
         window.clearInterval(this.audioWebRtcStatsTimer);
         this.audioWebRtcStatsTimer = null;
         void this.stopMicrophoneTest?.();

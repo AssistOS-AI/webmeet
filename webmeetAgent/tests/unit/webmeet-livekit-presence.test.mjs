@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
+
 import {
     createMeeting,
     createStoreContext,
     getMeeting,
     joinMeeting
 } from '../../lib/webmeetStore.mjs';
-
-process.env.WEBMEET_ICE_TRANSPORT_POLICY = 'all';
 
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 test('meeting participants include LiveKit participants and pending joined members', async () => {
-    const context = await createStoreContext(tempRoot);
+    const context = installEdgeJoinFixture(await createStoreContext(tempRoot));
     const authInfo = {
         user: {
             id: 'local:admin',
@@ -80,7 +80,10 @@ test('meeting participants include LiveKit participants and pending joined membe
 
     const details = await getMeeting(context, meeting.id, authInfo);
 
-    assert.deepEqual(details.participants.map((entry) => entry.id), ['participant-user', 'participant-admin']);
+    assert.deepEqual(
+        details.participants.map((entry) => entry.id),
+        ['participant-user', 'participant-admin', 'agent_robo_team']
+    );
     assert.equal(details.participants[0].attributes.webmeetUserId, 'local:user');
 });
 

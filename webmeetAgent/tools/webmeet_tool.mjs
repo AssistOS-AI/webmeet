@@ -37,6 +37,7 @@ import {
     updateMeetingParticipantAvatar,
     updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
+import { withVerifiedGuestParticipantOwner } from '../lib/services/roomParticipants.mjs';
 
 async function loadInvocationAuth() {
     const candidates = [
@@ -217,6 +218,13 @@ function isGuestAuthInfo(authInfo = null) {
     return userId.startsWith('guest:') || subject.startsWith('user:guest:');
 }
 
+function isGuestParticipantInvocation(context, authInfo, roomId) {
+    return !authInfo
+        || isGuestAuthInfo(authInfo)
+        || isPublicRoomInvocation(authInfo, roomId)
+        || isGuestInvocation(context);
+}
+
 export async function dispatch(toolName, args, context, authInfo) {
     switch (toolName) {
     case 'webmeet_room_list':
@@ -234,11 +242,13 @@ export async function dispatch(toolName, args, context, authInfo) {
         {
             const roomId = getRequiredString(args, 'roomId');
             if (isPublicRoomInvocation(authInfo, roomId)) {
-                return await joinGuestMeeting(context, {
-                    meetingId: roomId,
-                    displayName: getRequiredString(args, 'displayName'),
-                    participantId: String(args?.participantId || '').trim()
-                });
+                return await withVerifiedGuestParticipantOwner(context, authInfo, roomId, async () => (
+                    await joinGuestMeeting(context, {
+                        meetingId: roomId,
+                        displayName: getRequiredString(args, 'displayName'),
+                        participantId: String(args?.participantId || '').trim()
+                    })
+                ));
             }
             return await joinMeeting(context, {
                 meetingId: roomId,
@@ -251,24 +261,38 @@ export async function dispatch(toolName, args, context, authInfo) {
     case 'webmeet_room_join_guest':
         {
             const roomId = getRequiredString(args, 'roomId');
-            return await joinGuestMeeting(context, {
-                meetingId: roomId,
-                displayName: getRequiredString(args, 'displayName'),
-                participantId: String(args?.participantId || '').trim()
-            });
+            return await withVerifiedGuestParticipantOwner(context, authInfo, roomId, async () => (
+                await joinGuestMeeting(context, {
+                    meetingId: roomId,
+                    displayName: getRequiredString(args, 'displayName'),
+                    participantId: String(args?.participantId || '').trim()
+                })
+            ));
         }
     case 'webmeet_room_leave':
-        return await leaveMeeting(context, {
-            meetingId: getRequiredString(args, 'roomId'),
-            participantId: getRequiredString(args, 'participantId'),
-            authInfo
-        });
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            const operation = async () => await leaveMeeting(context, {
+                meetingId: roomId,
+                participantId: getRequiredString(args, 'participantId'),
+                authInfo
+            });
+            return isGuestParticipantInvocation(context, authInfo, roomId)
+                ? await withVerifiedGuestParticipantOwner(context, authInfo, roomId, operation)
+                : await operation();
+        }
     case 'webmeet_presence_heartbeat':
-        return await heartbeatMeetingPresence(context, {
-            meetingId: getRequiredString(args, 'roomId'),
-            participantId: getRequiredString(args, 'participantId'),
-            authInfo
-        });
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            const operation = async () => await heartbeatMeetingPresence(context, {
+                meetingId: roomId,
+                participantId: getRequiredString(args, 'participantId'),
+                authInfo
+            });
+            return isGuestParticipantInvocation(context, authInfo, roomId)
+                ? await withVerifiedGuestParticipantOwner(context, authInfo, roomId, operation)
+                : await operation();
+        }
     case 'webmeet_participant_list':
         return await listMeetingParticipants(context, getRequiredString(args, 'roomId'), authInfo);
     case 'webmeet_participant_update_role':
@@ -308,12 +332,14 @@ export async function dispatch(toolName, args, context, authInfo) {
         {
             const roomId = getRequiredString(args, 'roomId');
             const participantId = getRequiredString(args, 'participantId');
-            if (!authInfo || isGuestAuthInfo(authInfo) || isPublicRoomInvocation(authInfo, roomId) || isGuestInvocation(context)) {
-                return await updateGuestMeetingParticipantAvatar(context, {
-                    meetingId: roomId,
-                    participantId,
-                    avatar: args?.avatar || null
-                });
+            if (isGuestParticipantInvocation(context, authInfo, roomId)) {
+                return await withVerifiedGuestParticipantOwner(context, authInfo, roomId, async () => (
+                    await updateGuestMeetingParticipantAvatar(context, {
+                        meetingId: roomId,
+                        participantId,
+                        avatar: args?.avatar || null
+                    })
+                ));
             }
             return await updateMeetingParticipantAvatar(context, {
                 meetingId: roomId,

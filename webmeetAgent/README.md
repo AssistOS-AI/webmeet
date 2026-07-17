@@ -10,14 +10,9 @@
   - stores persistent room data under `.ploinky/data/webmeetAgent/data`
   - creates explicit LiveKit AI dispatches for the separate worker
 - `webmeetInfra/liveKitServerAgent`
-  - Ploinky agent that supervises the LiveKit media runtime
-  - includes LiveKit Server and Redis; raw signaling, Redis, Egress, and readiness endpoints remain private
-- `webmeetInfra/turnServerAgent`
-  - separate Ploinky agent that supervises Coturn (TURN relay)
-  - owns Coturn's REST-auth enforcement and protected startup-secret file; `liveKitServerAgent` shares that secret to mint expiring browser TURN credentials, while `webmeetAgent` never holds or issues one
-- `basic/web-publishing`
-  - is the sole owner of browser-facing LiveKit signaling URLs and the trusted TLS edge contract
-  - publishes only the scoped `/rtc` signaling route; it does not proxy LiveKit media or TURN relay traffic
+  - single Ploinky agent that supervises the WebMeet media runtime
+  - includes LiveKit Server, Redis, Egress, and semantic supervisor health inside one pinned container
+  - binds signaling/API only to box loopback `127.0.0.1:7880`, owns the one box UDP mux on `7882`, and contains no local TURN, public TLS proxy, or certificate manager
 - `webmeetLivekitAiAgent`
   - optional separate Ploinky agent for the self-hosted LiveKit Agents worker
   - owns the native `@livekit/agents` dependency tree
@@ -29,13 +24,17 @@ The agent is started through Ploinky, not directly with Docker Compose.
 
 The WebMeet manifest:
 
-- enables `webmeetInfra/liveKitServerAgent` and `webmeetInfra/turnServerAgent` as blocking dependencies
+- enables `webmeetInfra/liveKitServerAgent`
 - starts the MCP `AgentServer`
 - does not start the LiveKit AI worker process
 
-Explorer enables `basic/web-publishing` as its blocking config provider and `webmeetAgent` as a blocking dependency. The provider publishes the internal and browser-facing LiveKit URLs before WebMeet starts; `webmeetAgent` has no topology-detection or URL fallback path.
+Explorer only needs to enable `webmeetAgent` and the `webmeet` plugin for normal rooms, chat, camera, and screen sharing flows.
 
-The explicit rootless topology gives `webmeetAgent` one primary attachment to `webmeet-signaling`. Ploinky derives its DNS identity as `webmeetagent`; the manifest does not declare aliases. `liveKitServerAgent` and `web-publishing` join the same signaling zone, while `liveKitServerAgent` also joins the separate `webmeet-turn` zone with `turnServerAgent`. Browser publishing reaches LiveKit through `http://livekitserveragent:7880`; no WebMeet service uses a fixed host-gateway address.
+Each join resolves the current box-owned topology generation. Public signaling
+uses Router `8080`; server-side LiveKit Twirp uses private Router `8081` with an
+exact current-generation assertion. External TURN supplies UDP and TLS relay,
+and Ploinky core brokers short-lived relay credentials only to allowed current-
+generation consumers. WebMeet keeps no static relay URL or credential fallback.
 
 WebMeet browser settings are user-scoped preferences stored in the browser, not per-room state. Device selection, audio processing, camera quality, screen share quality, and background privacy effects are opened from the dashboard header and apply across every room that the same Explorer user joins from that browser profile.
 
@@ -49,7 +48,7 @@ Background privacy uses a locally bundled LiveKit processor pipeline plus bundle
 
 WebMeet uses self-hosted LiveKit Agents for AI participants. The worker is not simulated in the WebMeet store and is not LiveKit Cloud or LiveKit Inference.
 
-The worker registers with `WEBMEET_LIVEKIT_AGENT_NAME` and is attached to rooms by explicit admin dispatch. A separate worker stack must be running before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
+The optional worker registers with its own worker-name setting and is attached to rooms by explicit admin dispatch. A separate worker stack must be running before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
 
 The WebMeet store persists only dispatch metadata, chat, room resources, and participant state. It does not create fake AI participants.
 
@@ -69,4 +68,4 @@ Room avatar projection is LiveKit-only rendering state, not durable room state. 
 
 ## Runtime Validation
 
-WebMeet no longer ships a dedicated HTTP server. Startup fails if Web Publishing did not provide both LiveKit URLs or if the ICE policy is not exactly `all` or `relay`. Operational checks should then use the Ploinky lifecycle and MCP room tools: verify `ploinky status`, container status, `webmeet_room_list`, and a room join response with a non-empty LiveKit participant token.
+WebMeet no longer ships a dedicated HTTP server or server-side runtime validation script. Runtime checks should use the Ploinky agent lifecycle and the MCP room tools: verify `ploinky status`, container status, `webmeet_room_list`, and a room join response with a non-empty LiveKit participant token.

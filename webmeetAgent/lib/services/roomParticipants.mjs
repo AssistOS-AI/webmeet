@@ -1,9 +1,9 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import {
     sanitizeParticipantAvatarPayload
 } from '../policies/avatarPolicy.mjs';
-import {
-    buildRtcConfig
-} from '../store/rtcConfig.mjs';
+import { resolveEdgeJoinMaterial } from '../runtime/edgeRuntime.mjs';
 import {
     Blackboard
 } from '../blackboard/model.mjs';
@@ -49,8 +49,153 @@ import {
     projectRoboTeamParticipant
 } from '../roboTeam/service.mjs';
 
+const PARTICIPANT_IDENTITY_OWNER_STATE_VERSION = 1;
+const PARTICIPANT_OWNER_KINDS = new Set(['authenticated-user', 'guest-session']);
+const verifiedGuestParticipantOwnerScope = new AsyncLocalStorage();
+
 function nowIso() {
     return new Date().toISOString();
+}
+
+function normalizeParticipantOwner(owner = null) {
+    const kind = String(owner?.kind || '').trim();
+    const id = String(owner?.id || '').trim();
+    if (!PARTICIPANT_OWNER_KINDS.has(kind) || !id) {
+        throw new Error('Participant identity owner state is invalid.');
+    }
+    return { kind, id };
+}
+
+function resolveAuthenticatedParticipantOwner(authInfo = null) {
+    assertAuthenticatedAuthInfo(authInfo);
+    const auth = normalizeAuthInfo(authInfo);
+    const userId = String(auth.id || '').trim();
+    const isGuestRole = auth.roles.some((role) => String(role || '').trim().toLowerCase() === 'guest');
+    const invocationActorKind = String(authInfo?.invocation?.actor?.kind || '').trim().toLowerCase();
+    if (!userId || isGuestRole || invocationActorKind === 'guest') {
+        throw new Error('Access denied: an authenticated user is required to own a participant identity.');
+    }
+    return {
+        kind: 'authenticated-user',
+        id: userId
+    };
+}
+
+function resolveVerifiedGuestParticipantOwner(authInfo = null, meetingId = '') {
+    const targetMeetingId = String(meetingId || '').trim();
+    if (!targetMeetingId || !hasWebmeetRoomScope(authInfo, targetMeetingId)) {
+        throw new Error('Public room join scope does not match this room.');
+    }
+    const invocation = authInfo?.invocation && typeof authInfo.invocation === 'object'
+        ? authInfo.invocation
+        : null;
+    const subject = String(invocation?.subject || '').trim();
+    const actorKind = String(invocation?.actor?.kind || '').trim().toLowerCase();
+    const actorId = String(invocation?.actor?.id || '').trim();
+    const authenticatedUserId = String(normalizeAuthInfo(authInfo).id || '').trim();
+    if (
+        authenticatedUserId
+        || actorKind !== 'guest'
+        || actorId !== subject
+        || !/^user:guest:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(subject)
+    ) {
+        throw new Error('Access denied: guest participant requires a verified guest session owner.');
+    }
+    return {
+        kind: 'guest-session',
+        id: subject
+    };
+}
+
+/**
+ * Carries the already-verified Router invocation owner across the guest facade
+ * without accepting a caller-supplied owner field. AsyncLocalStorage keeps
+ * concurrent guest joins on a shared service context isolated from one another.
+ */
+export async function withVerifiedGuestParticipantOwner(context, authInfo, meetingId, callback) {
+    if (!context || typeof context !== 'object' || typeof callback !== 'function') {
+        throw new Error('Access denied: guest participant requires a verified guest session owner.');
+    }
+    const targetMeetingId = String(meetingId || '').trim();
+    const owner = resolveVerifiedGuestParticipantOwner(authInfo, targetMeetingId);
+    return await verifiedGuestParticipantOwnerScope.run(Object.freeze({
+        context,
+        meetingId: targetMeetingId,
+        owner: Object.freeze(owner)
+    }), callback);
+}
+
+function getVerifiedGuestParticipantOwner(context, meetingId) {
+    const binding = verifiedGuestParticipantOwnerScope.getStore();
+    if (
+        !binding
+        || binding.context !== context
+        || binding.meetingId !== String(meetingId || '').trim()
+    ) {
+        throw new Error('Access denied: guest participant requires a verified guest session owner.');
+    }
+    return normalizeParticipantOwner(binding.owner);
+}
+
+function getParticipantIdentityOwnerBindings(payload) {
+    if (payload.participantIdentityOwners === undefined) {
+        payload.participantIdentityOwners = {
+            version: PARTICIPANT_IDENTITY_OWNER_STATE_VERSION,
+            bindings: []
+        };
+    }
+    const state = payload.participantIdentityOwners;
+    if (
+        !state
+        || typeof state !== 'object'
+        || Array.isArray(state)
+        || state.version !== PARTICIPANT_IDENTITY_OWNER_STATE_VERSION
+        || !Array.isArray(state.bindings)
+    ) {
+        throw new Error('Participant identity owner state is invalid.');
+    }
+    const seenParticipantIds = new Set();
+    for (const binding of state.bindings) {
+        const participantId = String(binding?.participantId || '').trim();
+        normalizeParticipantOwner(binding?.owner);
+        if (!participantId || seenParticipantIds.has(participantId)) {
+            throw new Error('Participant identity owner state is invalid.');
+        }
+        seenParticipantIds.add(participantId);
+    }
+    return state.bindings;
+}
+
+function assertOrBindParticipantIdentity(payload, participantId, owner, existingParticipant = null) {
+    const targetParticipantId = String(participantId || '').trim();
+    if (!targetParticipantId) {
+        throw new Error('Missing participantId.');
+    }
+    const normalizedOwner = normalizeParticipantOwner(owner);
+    const bindings = getParticipantIdentityOwnerBindings(payload);
+    const binding = bindings.find((entry) => String(entry?.participantId || '').trim() === targetParticipantId) || null;
+    if (binding) {
+        const boundOwner = normalizeParticipantOwner(binding.owner);
+        if (boundOwner.kind !== normalizedOwner.kind || boundOwner.id !== normalizedOwner.id) {
+            throw new Error('Access denied: participant identity is already bound to another caller.');
+        }
+        return;
+    }
+    if (existingParticipant) {
+        throw new Error('Access denied: participant identity has no valid owner binding.');
+    }
+    bindings.push({
+        participantId: targetParticipantId,
+        owner: normalizedOwner,
+        boundAt: nowIso()
+    });
+}
+
+export function assertVerifiedGuestParticipantIdentity(context, meetingId, payload, participantId) {
+    const participant = assertGuestParticipant(payload, participantId);
+    const owner = getVerifiedGuestParticipantOwner(context, meetingId);
+    assertOrBindParticipantIdentity(payload, participantId, owner, participant);
+    return participant;
 }
 
 function stringifyStableJson(value) {
@@ -452,6 +597,7 @@ export function assertGuestParticipant(payload, participantId) {
 
 export async function joinGuestRoom(context, { meetingId, displayName, participantId }, deps = {}) {
     const { randomId } = getParticipantDeps(deps);
+    const participantOwner = getVerifiedGuestParticipantOwner(context, meetingId);
     const record = await loadRoomRecord(context, meetingId);
     assertGuestRoomAccess(record);
     const participantIdentity = String(participantId || randomId('participant')).trim();
@@ -463,6 +609,7 @@ export async function joinGuestRoom(context, { meetingId, displayName, participa
         const members = Array.isArray(payload.members) ? payload.members : [];
         payload.members = members;
         participant = members.find((p) => p.id === participantIdentity);
+        assertOrBindParticipantIdentity(payload, participantIdentity, participantOwner, participant);
         if (!participant) {
             participant = {
                 id: participantIdentity,
@@ -481,15 +628,23 @@ export async function joinGuestRoom(context, { meetingId, displayName, participa
         }
         stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participantIdentity, guest: true });
     });
-    const rtcConfig = buildRtcConfig(context);
+    const joinMaterial = await resolveEdgeJoinMaterial(context, {
+        roomName: record.roomName,
+        participantIdentity: participant.id
+    });
+    const participantToken = createLiveKitToken(context, {
+        roomName: record.roomName,
+        identity: participant.id,
+        name: effectiveDisplayName
+    });
+    if (!participantToken) throw new Error('LiveKit participant token could not be created.');
 
     return {
         meeting: buildRoomView(record),
-        ...(rtcConfig ? { rtcConfig } : {}),
         participant,
-        livekitUrl: context.livekitPublicUrl,
+        ...joinMaterial,
         roomName: record.roomName,
-        participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: effectiveDisplayName }),
+        participantToken,
         participantIdentity: participant.id
     };
 }
@@ -498,7 +653,7 @@ export async function getGuestRoomDetails(context, { meetingId, participantId },
     const record = await loadRoomRecord(context, meetingId);
     assertGuestRoomAccess(record);
     const payload = decryptRoomPayload(context, record);
-    assertGuestParticipant(payload, participantId);
+    assertVerifiedGuestParticipantIdentity(context, meetingId, payload, participantId);
     let participants;
     try {
         participants = await getRealtimeRoomParticipants(context, record, payload, {
@@ -517,9 +672,7 @@ export async function getGuestRoomDetails(context, { meetingId, participantId },
 export async function leaveGuestRoom(context, { meetingId, participantId }, deps = {}) {
     const record = await loadRoomRecord(context, meetingId);
     assertGuestRoomAccess(record);
-    const payload = decryptRoomPayload(context, record);
-    assertGuestParticipant(payload, participantId);
-    return leaveRoom(context, { meetingId, participantId, skipAccessCheck: true }, deps);
+    return leaveRoom(context, { meetingId, participantId }, deps);
 }
 
 export async function updateGuestRoomParticipantAvatar(context, {
@@ -539,7 +692,7 @@ export async function updateGuestRoomParticipantAvatar(context, {
     assertGuestRoomAccess(record);
     let profileAvatar = null;
     await mutateRoom(context, targetMeetingId, async (_record, payload) => {
-        assertGuestParticipant(payload, targetParticipantId);
+        assertVerifiedGuestParticipantIdentity(context, targetMeetingId, payload, targetParticipantId);
         profileAvatar = sanitizeParticipantAvatarPayload(avatar, `profile:${targetParticipantId}`);
     });
     return {
@@ -552,7 +705,7 @@ export async function updateGuestRoomParticipantAvatar(context, {
 
 export async function joinRoom(context, { meetingId, displayName, participantId, authInfo = null }, deps = {}) {
     const { randomId } = getParticipantDeps(deps);
-    assertAuthenticatedAuthInfo(authInfo);
+    const participantOwner = resolveAuthenticatedParticipantOwner(authInfo);
     const existingRecord = await loadRoomRecord(context, meetingId);
     if (!canViewMeetingRecord(existingRecord, authInfo)) {
         throw new Error('Room not found.');
@@ -573,7 +726,10 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
     let participant = null;
     const { record } = await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
         cleanupStaleMembers(context, meetingId, payload, stageEvent, deps);
-        participant = payload.members.find((entry) => entry.id === participantIdentity) || null;
+        const members = Array.isArray(payload.members) ? payload.members : [];
+        payload.members = members;
+        participant = members.find((entry) => entry.id === participantIdentity) || null;
+        assertOrBindParticipantIdentity(payload, participantIdentity, participantOwner, participant);
         if (!participant) {
             participant = {
                 id: participantIdentity,
@@ -582,7 +738,7 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
                 lastSeenAt: joinedAt,
                 pendingLiveKit: true
             };
-            payload.members.push(participant);
+            members.push(participant);
             stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participant.id });
         } else {
             participant.displayName = effectiveDisplayName;
@@ -600,21 +756,25 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
             };
         }
     });
-    const rtcConfig = buildRtcConfig(context);
+    const joinMaterial = await resolveEdgeJoinMaterial(context, {
+        roomName: record.roomName,
+        participantIdentity: participant.id
+    });
+    const participantToken = createLiveKitToken(context, {
+        roomName: record.roomName,
+        identity: participant.id,
+        name: effectiveDisplayName,
+        attributes: participantAttributes,
+        metadata: userId ? JSON.stringify({ webmeetUserId: userId }) : ''
+    });
+    if (!participantToken) throw new Error('LiveKit participant token could not be created.');
     return {
         meeting: buildRoomView(record),
         participant,
-        livekitUrl: context.livekitPublicUrl,
+        ...joinMaterial,
         roomName: record.roomName,
-        participantToken: createLiveKitToken(context, {
-            roomName: record.roomName,
-            identity: participant.id,
-            name: effectiveDisplayName,
-            attributes: participantAttributes,
-            metadata: userId ? JSON.stringify({ webmeetUserId: userId }) : ''
-        }),
-        participantIdentity: participant.id,
-        ...(rtcConfig ? { rtcConfig } : {})
+        participantToken,
+        participantIdentity: participant.id
     };
 }
 
@@ -669,7 +829,7 @@ export async function updateRoomParticipantAvatar(context, {
     };
 }
 
-function assertParticipantAccess(payload, participantId, authInfo = null, roomId = '') {
+function assertParticipantAccess(context, payload, participantId, authInfo = null, roomId = '') {
     if (isAdminAuthInfo(authInfo)) {
         return;
     }
@@ -681,6 +841,8 @@ function assertParticipantAccess(payload, participantId, authInfo = null, roomId
                     && entry?.guest === true
             )) || null;
             if (guestParticipant) {
+                const owner = getVerifiedGuestParticipantOwner(context, roomId);
+                assertOrBindParticipantIdentity(payload, participantId, owner, guestParticipant);
                 return;
             }
         }
@@ -693,6 +855,12 @@ function assertParticipantAccess(payload, participantId, authInfo = null, roomId
     if (!participant || participantUserId !== auth.id) {
         throw new Error('Access denied: cannot act as another participant.');
     }
+    assertOrBindParticipantIdentity(
+        payload,
+        participantId,
+        resolveAuthenticatedParticipantOwner(authInfo),
+        participant,
+    );
 }
 
 export async function leaveRoom(context, { meetingId, participantId, authInfo = null, skipAccessCheck = false }, deps = {}) {
@@ -704,7 +872,7 @@ export async function leaveRoom(context, { meetingId, participantId, authInfo = 
     let noHumanParticipantsRemain = false;
     await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
         if (!skipAccessCheck) {
-            assertParticipantAccess(payload, targetParticipantId, authInfo, meetingId);
+            assertParticipantAccess(context, payload, targetParticipantId, authInfo, meetingId);
         }
         const existingMembers = Array.isArray(payload.members) ? payload.members : [];
         const nextMembers = existingMembers.filter((entry) => {
@@ -744,7 +912,7 @@ export async function heartbeatRoomPresence(context, { meetingId, participantId,
         if (!isMeetingRecordOpen(record)) {
             throw new Error('Room not found.');
         }
-        assertParticipantAccess(payload, targetParticipantId, authInfo, meetingId);
+        assertParticipantAccess(context, payload, targetParticipantId, authInfo, meetingId);
         participant = (Array.isArray(payload.members) ? payload.members : [])
             .find((entry) => String(entry?.id || '').trim() === targetParticipantId) || null;
         if (!participant) {

@@ -10,6 +10,71 @@ import {
 import { isAudioPublication } from '../services/microphone-publication.js';
 
 export const roomSessionMethods = {
+    installJoinMaterialRefreshListeners() {
+        if (this.joinMaterialNetworkRefreshHandler) return;
+        this.joinMaterialNetworkRefreshHandler = () => {
+            if (!this.roomLiveKit?.getRoom?.() || navigator.onLine === false) return;
+            void this.refreshJoinMaterialAndReconnect('network-transition');
+        };
+        window.addEventListener('online', this.joinMaterialNetworkRefreshHandler);
+        navigator.connection?.addEventListener?.('change', this.joinMaterialNetworkRefreshHandler);
+    },
+
+    uninstallJoinMaterialRefreshListeners() {
+        window.clearTimeout(this.joinMaterialRefreshTimer);
+        this.joinMaterialRefreshTimer = null;
+        if (!this.joinMaterialNetworkRefreshHandler) return;
+        window.removeEventListener('online', this.joinMaterialNetworkRefreshHandler);
+        navigator.connection?.removeEventListener?.('change', this.joinMaterialNetworkRefreshHandler);
+        this.joinMaterialNetworkRefreshHandler = null;
+    },
+
+    scheduleJoinMaterialRefresh() {
+        window.clearTimeout(this.joinMaterialRefreshTimer);
+        this.joinMaterialRefreshTimer = null;
+        const expiresAtMs = Date.parse(String(this.state.session?.turnExpiresAt || ''));
+        if (!Number.isFinite(expiresAtMs)) {
+            throw new Error('Join material is missing a valid TURN expiry.');
+        }
+        const remainingMs = expiresAtMs - Date.now();
+        if (remainingMs <= 30_000) {
+            throw new Error('Join material expires too soon to establish a supported media session.');
+        }
+        const refreshLeadMs = Math.min(60_000, Math.max(10_000, Math.floor(remainingMs * 0.2)));
+        this.joinMaterialRefreshTimer = window.setTimeout(() => {
+            void this.refreshJoinMaterialAndReconnect('credential-expiry');
+        }, remainingMs - refreshLeadMs);
+    },
+
+    async refreshJoinMaterialAndReconnect(reason = 'credential-refresh') {
+        if (this.joinMaterialRefreshInFlight || !this.state.session?.participantIdentity) return;
+        this.joinMaterialRefreshInFlight = true;
+        const mediaToRestore = { ...this.state.media };
+        try {
+            await this.webMeetRoom.refreshJoinMaterial();
+            await this.disconnectRoom({ stopMediaFirst: false });
+            await this.connectRoom();
+            if (mediaToRestore.microphone && !this.state.media.microphone) await this.toggleMicrophone();
+            if (mediaToRestore.camera && !this.state.media.camera) await this.toggleCamera();
+            if (mediaToRestore.screen) {
+                this.state.roomState = 'Connected. Screen sharing stopped during media credential refresh; use Share screen to resume.';
+                this.setError(this.state.roomState);
+                this.renderMeetingSummary();
+            }
+            logMediaDiagnostic('join-material-recreated', { reason });
+        } catch (error) {
+            window.clearTimeout(this.joinMaterialRefreshTimer);
+            this.joinMaterialRefreshTimer = null;
+            await this.disconnectRoom().catch(() => {});
+            const message = error instanceof Error ? error.message : String(error);
+            this.state.roomState = `Media credentials could not be refreshed: ${message}`;
+            this.setError(this.state.roomState);
+            this.renderMeetingSummary();
+        } finally {
+            this.joinMaterialRefreshInFlight = false;
+        }
+    },
+
     async connectRoom() {
         if (!this.state.session?.participantToken || !this.state.session?.livekitUrl) {
             this.state.roomState = 'Join payload missing media token';
@@ -513,6 +578,8 @@ export const roomSessionMethods = {
             },
             onConnected: ({ room, Track }) => {
                 this.state.roomState = 'Connected';
+                this.installJoinMaterialRefreshListeners();
+                this.scheduleJoinMaterialRefresh();
                 this.syncParticipantsFromRoom(this.room, Track);
                 const skipConnectedAvatarRepublishOnce = Boolean(this.state.skipConnectedAvatarRepublishOnce);
                 this.state.skipConnectedAvatarRepublishOnce = false;
@@ -650,6 +717,8 @@ export const roomSessionMethods = {
     },
 
     async disconnectRoom(options = {}) {
+        window.clearTimeout(this.joinMaterialRefreshTimer);
+        this.joinMaterialRefreshTimer = null;
         const room = this.roomLiveKit.getRoom();
         if (!room) return;
         if (options.stopMediaFirst !== false) {

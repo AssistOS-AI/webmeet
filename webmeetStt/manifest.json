@@ -3,16 +3,17 @@
   "entrypoint": "/bin/sh",
   "start": "/code/scripts/startAgent.sh",
   "about": "WebMeet self-hosted Faster-Whisper speech-to-text service.",
-  "network": {
-    "mode": "default"
+  "readiness": {
+    "protocol": "tcp"
   },
-  "health": {
-    "readiness": {
-      "script": "readiness.sh",
-      "interval": 2,
-      "timeout": 5,
-      "failureThreshold": 90
-    }
+  "network": {
+    "mode": "bridge",
+    "attachments": [
+      {
+        "name": "webmeet",
+        "primary": true
+      }
+    ]
   },
   "volumes": {
     ".ploinky/data/webmeetStt": "/data"
@@ -50,7 +51,8 @@
           "required": false,
           "default": "dtln"
         }
-      ]
+      ],
+      "openPorts": ["127.0.0.1:19000:9000"]
     },
     "dev": {
       "env": [
@@ -84,7 +86,8 @@
           "required": false,
           "default": "dtln"
         }
-      ]
+      ],
+      "openPorts": ["127.0.0.1:19000:9000"]
     },
     "prod": {
       "env": [
@@ -118,7 +121,8 @@
           "required": false,
           "default": "dtln"
         }
-      ]
+      ],
+      "openPorts": ["127.0.0.1:19000:9000"]
     }
   }
 }

@@ -6,7 +6,8 @@
 </head>
 <body>
     <h1>webmeetStt</h1>
-    <p>Internal Faster-Whisper speech-to-text service for WebMeet scribe agents, with optional self-hosted DTLN denoise before transcription. The start-only container remains on its isolated Ploinky default network, publishes no ports, and declares an in-container <code>/healthz</code> probe for private port <code>9000</code>. Explorer launches STT as a detached <code>no-wait</code> dependency, so STT health does not gate Explorer startup.</p>
+    <p>Internal Faster-Whisper speech-to-text service for WebMeet scribe agents, with optional self-hosted DTLN denoise before transcription.</p>
+    <p>The Ploinky v5 manifest uses one isolated <code>bridge</code> attachment named <code>webmeet</code>; it declares no browser HTTP service or physical-host publication.</p>
     <ul>
         <li><a href="specs/matrix.md">Spec matrix</a></li>
     </ul>

@@ -2,10 +2,6 @@ import crypto from 'node:crypto';
 
 import { getWorkspacePaths } from './workspacePaths.mjs';
 import {
-    buildRtcConfig,
-    normalizeIceTransportPolicy
-} from './store/rtcConfig.mjs';
-import {
     assertAdminAuthInfo,
     assertAuthenticatedAuthInfo,
     canViewMeetingRecord,
@@ -265,11 +261,8 @@ export async function createStoreContext(startDir = '') {
         ...paths,
         roomPrefix: String(process.env.WEBMEET_ROOM_PREFIX || 'webmeet').trim() || 'webmeet',
         agentName: String(process.env.WEBMEET_AGENT_NAME || 'WebMeetAgent').trim() || 'WebMeetAgent',
-        livekitPublicUrl: String(process.env.WEBMEET_PUBLIC_LIVEKIT_URL || '').trim(),
-        livekitApiUrl: String(process.env.WEBMEET_LIVEKIT_URL || '').trim(),
-        livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
-        livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
-        iceTransportPolicy: normalizeIceTransportPolicy(process.env.WEBMEET_ICE_TRANSPORT_POLICY)
+        livekitApiKey: String(process.env.LIVEKIT_API_KEY || '').trim(),
+        livekitApiSecret: String(process.env.LIVEKIT_API_SECRET || '').trim()
     };
 }
 
@@ -573,6 +566,5 @@ export async function removeRoomResource(context, { roomId, resourceId, authInfo
 }
 
 export {
-    isAdminAuthInfo,
-    buildRtcConfig as _buildRtcConfig,
+    isAdminAuthInfo
 };

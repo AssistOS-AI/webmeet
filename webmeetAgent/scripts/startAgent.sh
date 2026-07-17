@@ -33,35 +33,17 @@ for name in \
     LLMAgentClient_DEBUG \
     LLMAgentClient_VERBOSE_DELAY \
     PLOINKY_WEBMEET_MASTER_KEY \
-    WEBMEET_PUBLIC_LIVEKIT_URL \
-    WEBMEET_LIVEKIT_URL \
-    WEBMEET_LIVEKIT_API_KEY \
-    WEBMEET_LIVEKIT_API_SECRET \
-    WEBMEET_ICE_TRANSPORT_POLICY \
+    PLOINKY_EDGE_TOPOLOGY_FILE \
+    PLOINKY_INTERNAL_ROUTER_URL \
+    PLOINKY_AGENT_LIB_DIR \
+    LIVEKIT_API_KEY \
+    LIVEKIT_API_SECRET \
     WEBMEET_ROOM_PREFIX \
     WEBMEET_AGENT_NAME \
     WEBMEET_DATA_DIR
 do
     export_if_present "$name"
 done
-
-if [ -z "${WEBMEET_PUBLIC_LIVEKIT_URL:-}" ]; then
-    printf '%s\n' 'WEBMEET_PUBLIC_LIVEKIT_URL must be provided by the Web Publishing config provider.' >&2
-    exit 1
-fi
-
-if [ -z "${WEBMEET_LIVEKIT_URL:-}" ]; then
-    printf '%s\n' 'WEBMEET_LIVEKIT_URL must be provided by the Web Publishing config provider.' >&2
-    exit 1
-fi
-
-case "${WEBMEET_ICE_TRANSPORT_POLICY:-}" in
-    all|relay) ;;
-    *)
-        printf '%s\n' 'WEBMEET_ICE_TRANSPORT_POLICY must be exactly "all" or "relay".' >&2
-        exit 1
-        ;;
-esac
 
 mkdir -p "${WEBMEET_DATA_DIR:-/data}"
 chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null || true

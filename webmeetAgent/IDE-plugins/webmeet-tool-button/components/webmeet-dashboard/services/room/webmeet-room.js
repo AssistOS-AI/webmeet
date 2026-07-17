@@ -244,6 +244,34 @@ export class WebMeetRoom extends EventTarget {
         this.stateModel.setLiveKitState('connected');
     }
 
+    async refreshJoinMaterial() {
+        const state = this.getState();
+        const currentSession = state.session || this.getSession();
+        const meetingId = requireString(
+            state.meetingId || currentSession?.meeting?.id,
+            'meetingId'
+        );
+        const participantId = requireString(
+            state.participantId || currentSession?.participantIdentity,
+            'participantId'
+        );
+        const displayName = requireString(
+            currentSession?.participant?.displayName
+                || currentSession?.participant?.name
+                || currentSession?.participantIdentity,
+            'displayName'
+        );
+        const refreshed = await this.getApi().refreshJoinMaterial({
+            meetingId,
+            participantId,
+            displayName
+        });
+        const nextSession = { ...currentSession, ...refreshed };
+        this.setSession(nextSession);
+        this.stateModel.hydrateFromSession(nextSession, this.isGuestSession());
+        return nextSession;
+    }
+
     async disconnectLiveKit(options = {}) {
         await this.livekit.disconnect(options);
         this.stateModel.setLiveKitState('disconnected');

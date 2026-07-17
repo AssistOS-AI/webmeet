@@ -1,15 +1,14 @@
-export function normalizeIceTransportPolicy(value) {
-    const iceTransportPolicy = String(value ?? '').trim();
-    if (iceTransportPolicy !== 'all' && iceTransportPolicy !== 'relay') {
-        throw new Error('WEBMEET_ICE_TRANSPORT_POLICY must be exactly "all" or "relay".');
+export function buildRtcConfig(turnCredential = {}) {
+    const urls = Array.isArray(turnCredential.urls)
+        ? [...new Set(turnCredential.urls.map((value) => String(value || '').trim()).filter(Boolean))]
+        : [];
+    const username = String(turnCredential.username || '').trim();
+    const credential = String(turnCredential.password || turnCredential.credential || '').trim();
+    if (!urls.length || urls.some((url) => !/^turns?:/i.test(url)) || !username || !credential) {
+        throw new Error('Complete short-lived external TURN credentials are required.');
     }
-    return iceTransportPolicy;
-}
-
-export function buildRtcConfig(context) {
-    const iceTransportPolicy = normalizeIceTransportPolicy(context?.iceTransportPolicy);
-    if (iceTransportPolicy === 'relay') {
-        return { iceTransportPolicy: 'relay' };
-    }
-    return null;
+    return {
+        iceTransportPolicy: 'all',
+        iceServers: [{ urls, username, credential }],
+    };
 }

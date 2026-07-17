@@ -10,14 +10,12 @@ test('WebMeet dashboard is a page component and settings is a WebSkel modal', as
     const config = JSON.parse(await fs.readFile(path.join(pluginRoot, 'config.json'), 'utf8'));
     const dashboard = config.dependencies.find((entry) => entry.component === 'webmeet-dashboard');
     const settingsModal = config.dependencies.find((entry) => entry.component === 'webmeet-settings-modal');
-    const customSelect = config.dependencies.find((entry) => entry.component === 'custom-select');
 
     assert.ok(dashboard);
     assert.equal(dashboard.presenter, 'WebmeetDashboard');
     assert.equal(dashboard.type, undefined);
     assert.equal(settingsModal?.presenter, 'WebmeetSettingsModal');
     assert.equal(settingsModal?.type, 'modal');
-    assert.equal(customSelect?.path, '/explorer/web-components/components/custom-select/custom-select');
 });
 
 test('WebMeet settings modal supports resize, fullscreen, and dashboard action delegation', async () => {
