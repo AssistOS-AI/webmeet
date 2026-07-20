@@ -28,6 +28,8 @@ The local source layout is contract-bearing:
 | `tests/unit/` | Focused regression tests for auth routing, events, media controls, runtime APIs, and UI service helpers. |
 | `docs/specs/` | Authoritative DS contracts. |
 
+The blackboard panel composes small method modules by responsibility. `webmeet-blackboard-rendering.js` owns only the generic render lifecycle and widget dispatch; graphics, Poll/Bullets collaboration, SCRIPTA commands, and SCRIPTA document rendering live in adjacent dedicated modules. Repeated UI structure belongs in inert templates in the WebSkel component HTML. Renderers clone those templates, assign untrusted workspace values through `textContent`, and set live state through properties or `data-*` attributes; they must not interpolate workspace content through `innerHTML`. Click actions use WebSkel `data-local-action` descriptors and presenter methods, with string context carried in descriptor arguments or `dataset`. Explicit DOM listeners are reserved for interactions that are not WebSkel click actions, including pointer gestures, keyboard/blur editing, and semantic custom-component events.
+
 Documentation, specifications, and comments must be written in English. Any source change that affects behavior, interfaces, architecture, security boundaries, route shape, storage, runtime configuration, or validation must update the relevant DS files and the local HTML documentation in the same change set.
 
 `webmeetAgent` must avoid dependency creep in the base meeting service. There is intentionally no `webmeetAgent/package.json` for external AI worker dependencies, and `webmeetAgent/scripts/startAgent.sh` must not run npm install or import `@livekit/agents`.

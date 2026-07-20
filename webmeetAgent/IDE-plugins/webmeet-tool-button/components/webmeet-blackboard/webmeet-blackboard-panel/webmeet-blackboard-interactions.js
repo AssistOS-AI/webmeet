@@ -282,6 +282,7 @@ export const blackboardInteractionMethods = {
         if (!node) return;
         node.focus?.({preventScroll: true});
         const geometry = widget.properties?.geometry || {};
+        const minimumSize = this.getWidgetMinimumSize(widget);
         this.resizeState = {
             widget,
             node,
@@ -293,7 +294,8 @@ export const blackboardInteractionMethods = {
             originX: Number(geometry.x || 0),
             originY: Number(geometry.y || 0),
             originWidth: Number(geometry.width || 120),
-            originHeight: Number(geometry.height || 64)
+            originHeight: Number(geometry.height || 64),
+            ...minimumSize
         };
         node.setPointerCapture?.(event.pointerId);
         node.addEventListener('pointermove', this.handleLocalResize);

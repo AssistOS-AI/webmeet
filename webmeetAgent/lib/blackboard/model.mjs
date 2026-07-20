@@ -6,6 +6,7 @@ export const BLACKBOARD_WIDGET_TYPES = Object.freeze([
     'card',
     'poll',
     'bullets',
+    'scripta-document',
     'embed'
 ]);
 
@@ -94,6 +95,7 @@ function resetThemeStyleProperties(properties = {}, widgetType = '') {
         card: ['fill', 'stroke', 'textColor'],
         poll: ['fill', 'stroke', 'textColor'],
         bullets: ['fill', 'stroke', 'textColor'],
+        'scripta-document': ['fill', 'stroke', 'textColor'],
         embed: ['fill', 'stroke', 'textColor'],
         image: ['stroke']
     };
@@ -246,6 +248,40 @@ function filterPropertiesForViewer(properties = {}, viewerContext = {}) {
     if (!privileged) {
         delete filtered.correctAnswer;
         delete filtered.scoring;
+    }
+
+    const guestViewer = (viewerContext?.roles || []).some((role) => String(role || '').toLowerCase() === 'guest');
+    if (Array.isArray(filtered.documents) && Object.prototype.hasOwnProperty.call(filtered, 'viewMode')) {
+        filtered.canBrowseWorkspace = Boolean(String(viewerContext?.userId || '').trim() && !guestViewer);
+    }
+    if (!String(viewerContext?.userId || '').trim() || guestViewer) {
+        delete filtered.editorUrl;
+        delete filtered.documentId;
+    }
+    if (filtered._viewerVotes && typeof filtered._viewerVotes === 'object') {
+        filtered.viewerVote = participantId ? cloneJson(filtered._viewerVotes[participantId] || null) : null;
+    }
+    delete filtered._viewerVotes;
+    if (filtered.paragraph?._viewerVotes && typeof filtered.paragraph._viewerVotes === 'object') {
+        filtered.paragraph.viewerVote = participantId
+            ? cloneJson(filtered.paragraph._viewerVotes[participantId] || null)
+            : null;
+    }
+    if (filtered.paragraph) delete filtered.paragraph._viewerVotes;
+    if (Array.isArray(filtered.paragraph?.variants)) {
+        const viewerHash = String(viewerContext?.scriptaOwnerHash || '').trim();
+        filtered.paragraph.variants = filtered.paragraph.variants.map((variant) => {
+            const projected = cloneJson(variant) || {};
+            const ownedByViewer = Boolean(
+                viewerHash
+                && String(projected._ownerHash || '').trim() === viewerHash
+            );
+            projected.ownedByViewer = ownedByViewer;
+            projected.canEdit = ownedByViewer;
+            projected.canDelete = ownedByViewer && filtered.paragraph.variants.length > 1;
+            delete projected._ownerHash;
+            return projected;
+        });
     }
 
     return filtered;

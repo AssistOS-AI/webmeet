@@ -33,6 +33,7 @@ import {
     loadRoomRecord as loadMeetingRecord,
     mutateRoom as mutateMeeting,
     purgeExpiredRooms as purgeExpiredMeetings,
+    removeRoomRecord as rollbackMeetingRecord,
     recordWorkspaceEvent
 } from './store/roomRecords.mjs';
 import {
@@ -57,7 +58,8 @@ import {
 import {
     appendGuestRoomChat as appendGuestMeetingChatImpl,
     appendRoomChat as appendMeetingChatImpl,
-    listRoomChat as listMeetingChatImpl
+    listRoomChat as listMeetingChatImpl,
+    updateRoomChat as updateMeetingChatImpl
 } from './services/roomMessages.mjs';
 import {
     archiveRoom as archiveMeetingImpl
@@ -81,8 +83,26 @@ import {
     updateRoboTeamSettings as updateRoboTeamSettingsImpl
 } from './roboTeam/service.mjs';
 import {
+    createScriptaDocument as createScriptaDocumentImpl,
+    ensureScriptaDocuments as ensureScriptaDocumentsImpl,
+    ensureScriptaRoomFolder as ensureScriptaRoomFolderImpl,
+    focusScripta as focusScriptaImpl,
+    getScriptaContext as getScriptaContextImpl,
+    listScriptaWorkspaceEntries as listScriptaWorkspaceEntriesImpl,
+    manageScriptaDocument as manageScriptaDocumentImpl,
+    mutateScripta as mutateScriptaImpl,
+    navigateScripta as navigateScriptaImpl,
+    openScriptaDocument as openScriptaDocumentImpl,
+    openScriptaCollaboration as openScriptaCollaborationImpl,
+    pullScriptaCollaboration as pullScriptaCollaborationImpl,
+    applyScriptaCollaboration as applyScriptaCollaborationImpl,
+    closeScriptaCollaboration as closeScriptaCollaborationImpl,
+    repairScriptaBlackboardProjection as repairScriptaBlackboardProjectionImpl,
+} from './scripta/service.mjs';
+import {
     WEBMEET_EVENT_TYPES,
 } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
+import { authorizeRoomParticipantId } from './store/participantAuthorization.mjs';
 
 const DEFAULT_ROOM_TITLE = 'General';
 
@@ -213,19 +233,33 @@ export async function listWorkspaceEvents(context, workspaceId, { afterId = '' }
 }
 
 export async function getRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    await repairScriptaBlackboardProjectionImpl(context, { roomId, participantId, authInfo });
     return await getRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
-export async function applyRoomBlackboardChange(context, { roomId, boardId = '', change, participantId = '', authInfo = null } = {}) {
-    return await applyRoomBlackboardChangeImpl(context, { roomId, boardId, change, participantId, authInfo });
+export async function authorizeMeetingParticipant(context, {
+    roomId,
+    participantId = '',
+    authInfo = null,
+} = {}) {
+    const record = await loadMeetingRecord(context, roomId);
+    if (!canViewMeetingRecord(record, authInfo)) throw new Error('Meeting not found.');
+    const payload = decryptMeetingPayload(context, record);
+    return {
+        participantId: authorizeRoomParticipantId(payload, authInfo, participantId, record.meetingId),
+    };
 }
 
-export async function undoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
-    return await undoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
+export async function applyRoomBlackboardChange(context, { roomId, boardId = '', change, participantId = '', authInfo = null, expectedBoardVersion = null } = {}) {
+    return await applyRoomBlackboardChangeImpl(context, { roomId, boardId, change, participantId, authInfo, expectedBoardVersion });
 }
 
-export async function redoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
-    return await redoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
+export async function undoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null, expectedBoardVersion = null } = {}) {
+    return await undoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion });
+}
+
+export async function redoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null, expectedBoardVersion = null } = {}) {
+    return await redoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion });
 }
 
 export async function getRoboTeamSettings(context, { roomId, authInfo = null } = {}) {
@@ -324,31 +358,44 @@ export async function createMeeting(context, { title = '', name = '', roomType =
     const roomName = String(name || title || DEFAULT_ROOM_TITLE).trim() || DEFAULT_ROOM_TITLE;
     const validRoomType = roomType === 'guest' ? 'guest' : 'team';
     const record = await createMeetingRecord(context, roomName, validRoomType);
-    await mutateMeeting(context, record.meetingId, (_record, payload, stageEvent) => {
-        ensureRoboTeamSettingsPayload(payload);
-        const agent = ensureRoboTeamAgentPayload(payload, stageEvent, record.meetingId);
-        const demoCreated = ensureRoboTeamDemoBlackboard(payload, record.meetingId);
-        if (demoCreated) {
-            stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
-                meetingId: record.meetingId,
-                blackboardVersion: getRoboTeamBlackboardVersion(payload),
-                changeType: 'create',
-                targetType: 'blackboard',
-                targetRef: '',
-                reason: 'robo_team_demo',
-                objectKind: 'blackboard'
-            });
+    try {
+        await mutateMeeting(context, record.meetingId, (_record, payload, stageEvent) => {
+            ensureRoboTeamSettingsPayload(payload);
+            const agent = ensureRoboTeamAgentPayload(payload, stageEvent, record.meetingId);
+            const demoCreated = ensureRoboTeamDemoBlackboard(payload, record.meetingId);
+            if (demoCreated) {
+                stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+                    meetingId: record.meetingId,
+                    blackboardVersion: getRoboTeamBlackboardVersion(payload),
+                    changeType: 'create',
+                    targetType: 'blackboard',
+                    targetRef: '',
+                    reason: 'robo_team_demo',
+                    objectKind: 'blackboard'
+                });
+            }
+            if (agent && isRoboTeamEnabled(payload.roboTeamSettings)) {
+                stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
+                    meetingId: record.meetingId,
+                    agentId: agent.id,
+                    agentType: ROBO_TEAM_AGENT_TYPE,
+                    mode: ROBO_TEAM_MODE,
+                    runtime: 'ploinky'
+                });
+            }
+        });
+        await ensureScriptaRoomFolderImpl(context, { roomId: record.meetingId, authInfo });
+    } catch (error) {
+        try {
+            await rollbackMeetingRecord(context, record.meetingId);
+        } catch (rollbackError) {
+            throw new AggregateError(
+                [error, rollbackError],
+                `Meeting creation failed and room ${record.meetingId} could not be rolled back.`
+            );
         }
-        if (agent && isRoboTeamEnabled(payload.roboTeamSettings)) {
-            stageEvent('meeting', WEBMEET_EVENT_TYPES.AGENT_DISPATCHED, {
-                meetingId: record.meetingId,
-                agentId: agent.id,
-                agentType: ROBO_TEAM_AGENT_TYPE,
-                mode: ROBO_TEAM_MODE,
-                runtime: 'ploinky'
-            });
-        }
-    });
+        throw error;
+    }
     const meeting = {
         id: record.roomId || record.meetingId,
         roomId: record.roomId || record.meetingId,
@@ -420,8 +467,12 @@ export async function listMeetingChat(context, meetingId, authInfo = null) {
     return await listMeetingChatImpl(context, meetingId, authInfo, messageServiceDeps);
 }
 
-export async function appendMeetingChat(context, { meetingId, authorId, authorName, message, kind = 'user', metadata = null, authInfo = null, skipAccessCheck = false }) {
-    return await appendMeetingChatImpl(context, { meetingId, authorId, authorName, message, kind, metadata, authInfo, skipAccessCheck }, messageServiceDeps);
+export async function appendMeetingChat(context, { meetingId, authorId, authorName, message, kind = 'user', metadata = null, dedupeCommandId = '', authInfo = null, skipAccessCheck = false }) {
+    return await appendMeetingChatImpl(context, { meetingId, authorId, authorName, message, kind, metadata, dedupeCommandId, authInfo, skipAccessCheck }, messageServiceDeps);
+}
+
+export async function updateMeetingChat(context, { meetingId, messageId, message, metadata, authInfo = null, skipAccessCheck = false }) {
+    return await updateMeetingChatImpl(context, { meetingId, messageId, message, metadata, authInfo, skipAccessCheck }, messageServiceDeps);
 }
 
 export async function appendGuestMeetingChat(context, { meetingId, participantId, message }) {
@@ -583,6 +634,58 @@ export async function listRoomResources(context, roomId, authInfo = null) {
 export async function removeRoomResource(context, { roomId, resourceId, authInfo = null }) {
     assertAdminAuthInfo(authInfo);
     return await removeRoomResourceImpl(context, { roomId, resourceId, authInfo }, roomResourceDeps);
+}
+
+export async function ensureScriptaDocuments(context, input = {}) {
+    return await ensureScriptaDocumentsImpl(context, input);
+}
+
+export async function getScriptaContext(context, input = {}) {
+    return await getScriptaContextImpl(context, input);
+}
+
+export async function focusScripta(context, input = {}) {
+    return await focusScriptaImpl(context, input);
+}
+
+export async function mutateScripta(context, input = {}) {
+    return await mutateScriptaImpl(context, input);
+}
+
+export async function createScriptaDocument(context, input = {}) {
+    return await createScriptaDocumentImpl(context, input);
+}
+
+export async function openScriptaDocument(context, input = {}) {
+    return await openScriptaDocumentImpl(context, input);
+}
+
+export async function manageScriptaDocument(context, input = {}) {
+    return await manageScriptaDocumentImpl(context, input);
+}
+
+export async function navigateScripta(context, input = {}) {
+    return await navigateScriptaImpl(context, input);
+}
+
+export async function listScriptaWorkspaceEntries(context, input = {}) {
+    return await listScriptaWorkspaceEntriesImpl(context, input);
+}
+
+export async function openScriptaCollaboration(context, input = {}) {
+    return await openScriptaCollaborationImpl(context, input);
+}
+
+export async function pullScriptaCollaboration(context, input = {}) {
+    return await pullScriptaCollaborationImpl(context, input);
+}
+
+export async function applyScriptaCollaboration(context, input = {}) {
+    return await applyScriptaCollaborationImpl(context, input);
+}
+
+export async function closeScriptaCollaboration(context, input = {}) {
+    return await closeScriptaCollaborationImpl(context, input);
 }
 
 export {

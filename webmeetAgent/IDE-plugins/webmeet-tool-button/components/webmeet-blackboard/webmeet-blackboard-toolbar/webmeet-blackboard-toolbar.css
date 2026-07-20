@@ -1,11 +1,36 @@
 .webmeet-blackboard-toolbar {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 16px;
     flex-wrap: wrap;
-    padding: 8px;
+    min-height: 52px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface));
+}
+
+.webmeet-blackboard-tool-group {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+}
+
+.webmeet-blackboard-tool-group + .webmeet-blackboard-tool-group::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -8px;
+    width: 1px;
+    height: 22px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border-strong) 72%, transparent);
+    transform: translateY(-50%);
+}
+
+.webmeet-blackboard-appearance-group {
+    margin-left: auto;
 }
 
 .webmeet-blackboard-tool-button {
@@ -16,18 +41,34 @@
     height: 32px;
     padding: 0 9px;
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    background: var(--surface-soft);
+    border-radius: 7px;
+    background: var(--surface);
     color: var(--text);
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.webmeet-blackboard-tool-button:hover,
+.webmeet-blackboard-tool-button:focus-visible {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent);
+    outline: none;
 }
 
 .webmeet-blackboard-tool-button.is-active {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--white-text);
+}
+
+.webmeet-blackboard-tool-button[data-local-action~='clear']:hover,
+.webmeet-blackboard-tool-button[data-local-action~='clear']:focus-visible {
+    border-color: color-mix(in srgb, var(--danger) 55%, var(--border-strong));
+    background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+    color: var(--danger);
 }
 
 .webmeet-blackboard-tool-button:disabled {
@@ -139,6 +180,49 @@
     color: inherit;
 }
 
+.webmeet-blackboard-menu-branch {
+    position: relative;
+}
+
+.webmeet-blackboard-submenu {
+    position: absolute;
+    top: -4px;
+    left: calc(100% + 4px);
+    z-index: 22;
+    display: none;
+    min-width: 210px;
+    max-width: 320px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--surface);
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(15, 23, 42, 0.1));
+}
+
+.webmeet-blackboard-menu-branch.is-open > .webmeet-blackboard-submenu {
+    display: grid;
+    gap: 2px;
+}
+
+.webmeet-blackboard-submenu-caret {
+    margin-left: auto;
+    font-size: 16px;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.webmeet-blackboard-submenu-status {
+    display: block;
+    padding: 7px 8px;
+    color: var(--text-muted, var(--text));
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-menu-other {
+    border-top: 1px solid var(--border);
+}
+
 [data-icon-key='rectangle']::before {
     -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/rectangle.svg');
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/rectangle.svg');
@@ -199,6 +283,16 @@
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/bullets.svg');
 }
 
+[data-icon-key='scripta-document']::before {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/scripta-document.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/scripta-document.svg');
+}
+
+[data-icon-key='folder-open']::before {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/folder-open.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/folder-open.svg');
+}
+
 [data-icon-key='undo']::before {
     -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/undo.svg');
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/undo.svg');
@@ -226,6 +320,21 @@
     margin: 0 2px;
 }
 
+@media (max-width: 860px) {
+    .webmeet-blackboard-toolbar {
+        gap: 12px;
+        padding: 7px 8px;
+    }
+
+    .webmeet-blackboard-tool-group + .webmeet-blackboard-tool-group::before {
+        left: -6px;
+    }
+
+    .webmeet-blackboard-appearance-group {
+        margin-left: 0;
+    }
+}
+
 .webmeet-blackboard-theme-trigger {
     gap: 6px;
     min-width: 76px;
@@ -234,7 +343,10 @@
 }
 
 .webmeet-blackboard-theme-dropdown {
+    right: 0;
+    left: auto;
     min-width: 154px;
+    max-width: min(280px, calc(100vw - 24px));
 }
 
 .webmeet-blackboard-theme-item {

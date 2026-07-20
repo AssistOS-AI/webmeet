@@ -305,6 +305,17 @@
       "env": { "TOOL_NAME": "webmeet_resource_remove" }
     },
     {
+      "name": "webmeet_scripta_workspace_list",
+      "title": "WebMeet List SCRIPTA Workspace Paths",
+      "description": "List workspace folders and Markdown files for the authenticated SCRIPTA document picker. Guests are rejected.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_scripta_workspace_list" }
+    },
+    {
       "name": "webmeet_blackboard_get",
       "title": "WebMeet Get Blackboard",
       "description": "Read the filtered blackboard state for a room participant. Use boardId \"agent:agent_robo_team\" for the RoboTeam public blackboard.",
@@ -318,44 +329,93 @@
       "env": { "TOOL_NAME": "webmeet_blackboard_get" }
     },
     {
-      "name": "webmeet_blackboard_apply",
-      "title": "WebMeet Apply Blackboard Change",
-      "description": "Persist one final blackboard change and emit the canonical update data. Use boardId \"agent:agent_robo_team\" for the RoboTeam public blackboard.",
+      "name": "webmeet_scripta_sync_open",
+      "title": "Open SCRIPTA Collaboration Session",
+      "description": "Open an authorized public Automerge SCRIPTA replica for a room participant.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
-        "boardId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false },
+        "clientId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_scripta_sync_open" }
+    },
+    {
+      "name": "webmeet_scripta_sync_pull",
+      "title": "Pull SCRIPTA Collaboration Changes",
+      "description": "Return authorized public SCRIPTA Automerge changes after the caller's heads.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false },
+        "clientId": { "type": "string", "optional": false },
+        "sessionId": { "type": "string", "optional": false },
+        "knownHeads": { "type": "array", "items": { "type": "string" }, "optional": true },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_scripta_sync_pull" }
+    },
+    {
+      "name": "webmeet_scripta_sync_apply",
+      "title": "Apply SCRIPTA Collaboration Changes",
+      "description": "Validate and persist incremental SCRIPTA Automerge changes for the authenticated room participant.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false },
+        "clientId": { "type": "string", "optional": false },
+        "sessionId": { "type": "string", "optional": false },
+        "operation": { "type": "string", "enum": ["p-variant-edit"], "optional": false },
+        "args": {
+          "type": "object",
+          "properties": {
+            "chapterId": { "type": "string" },
+            "paragraphId": { "type": "string" },
+            "variantId": { "type": "string" },
+            "text": { "type": "string" }
+          }
+        },
+        "changesBase64": { "type": "array", "items": { "type": "string" }, "optional": false },
+        "baseHeads": { "type": "array", "items": { "type": "string" }, "optional": true },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_scripta_sync_apply" }
+    },
+    {
+      "name": "webmeet_scripta_sync_close",
+      "title": "Close SCRIPTA Collaboration Session",
+      "description": "Close a browser SCRIPTA collaboration session.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "resourceId": { "type": "string", "optional": false },
+        "clientId": { "type": "string", "optional": false },
+        "sessionId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_scripta_sync_close" }
+    },
+    {
+      "name": "webmeet_event_command",
+      "title": "WebMeet Blackboard Event Command",
+      "description": "Interpret natural-language /event or /robo input, or execute one canonical JSON blackboard event through the sole mutation path.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "event": { "type": "string", "optional": false },
+        "source": { "type": "string", "optional": true, "enum": ["event", "robo", "ui"] },
+        "commandSource": { "type": "string", "optional": true, "enum": ["chat", "voice"] },
         "participantId": { "type": "string", "optional": true },
-        "change": { "type": "string", "optional": false }
+        "selectedWidgetId": { "type": "string", "optional": true },
+        "commandId": { "type": "string", "optional": true }
       },
-      "env": { "TOOL_NAME": "webmeet_blackboard_apply" }
-    },
-    {
-      "name": "webmeet_blackboard_undo",
-      "title": "WebMeet Undo Blackboard Change",
-      "description": "Undo the last authorized final blackboard change. Use boardId \"agent:agent_robo_team\" for the RoboTeam public blackboard.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "roomId": { "type": "string", "optional": false },
-        "boardId": { "type": "string", "optional": false },
-        "participantId": { "type": "string", "optional": true }
-      },
-      "env": { "TOOL_NAME": "webmeet_blackboard_undo" }
-    },
-    {
-      "name": "webmeet_blackboard_redo",
-      "title": "WebMeet Redo Blackboard Change",
-      "description": "Redo the last authorized undone blackboard change. Use boardId \"agent:agent_robo_team\" for the RoboTeam public blackboard.",
-      "command": "tools/webmeet_tool.sh",
-      "cwd": "workspace",
-      "inputSchema": {
-        "roomId": { "type": "string", "optional": false },
-        "boardId": { "type": "string", "optional": false },
-        "participantId": { "type": "string", "optional": true }
-      },
-      "env": { "TOOL_NAME": "webmeet_blackboard_redo" }
+      "env": { "TOOL_NAME": "webmeet_event_command" }
     }
   ]
 }

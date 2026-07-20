@@ -46,6 +46,9 @@ export function buildBlackboardProtocolPayload(input = {}) {
         version: Number.isFinite(input.version) ? input.version : 0,
         visibility: input.visibility || 'all',
         object: input.object || null,
+        presentation: input.presentation && typeof input.presentation === 'object'
+            ? JSON.parse(JSON.stringify(input.presentation))
+            : null,
         timestamp: String(input.timestamp || nowIso()).trim()
     };
 }

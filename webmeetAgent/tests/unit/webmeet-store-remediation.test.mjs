@@ -24,7 +24,15 @@ async function freshContext() {
     process.env.PLOINKY_WORKSPACE_ROOT = dir;
 
     const { createStoreContext } = await import('../../lib/webmeetStore.mjs');
-    return { dir, context: await createStoreContext(dir) };
+    const context = await createStoreContext(dir);
+    context.scriptaExplorerClient = async (tool, args) => {
+        assert.equal(tool, 'scripta_crdt_ensure_folder');
+        return {
+            ok: true,
+            folderPath: args.folderPath,
+        };
+    };
+    return { dir, context };
 }
 
 async function createTestMeeting(ctx, title = 'Test Room', roomType = 'team') {

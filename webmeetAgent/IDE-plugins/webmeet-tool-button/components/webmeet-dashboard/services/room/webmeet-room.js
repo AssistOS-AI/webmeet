@@ -169,6 +169,15 @@ export class WebMeetRoom extends EventTarget {
                 throw new Error('Rejected LiveKit chat event with mismatched sender.');
             }
         }
+        if (
+            parsed.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED
+            && parsed?.payload?.changeType === 'scripta-p-variant-edit-draft'
+        ) {
+            const editorParticipantId = String(parsed?.payload?.editorParticipantId || '').trim();
+            if (!editorParticipantId || editorParticipantId !== senderParticipantId) {
+                throw new Error('Rejected LiveKit SCRIPTA draft with mismatched editor.');
+            }
+        }
         return true;
     }
 

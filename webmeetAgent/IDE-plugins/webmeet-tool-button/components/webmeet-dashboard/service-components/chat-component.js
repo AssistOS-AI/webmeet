@@ -38,6 +38,7 @@ export class ChatComponent {
         this.getSession = options.getSession || (() => null);
         this.renderFeedLists = options.renderFeedLists || (() => {});
         this.publishRealtimePayload = options.publishRealtimePayload || (() => Promise.resolve());
+        this.refreshBlackboard = options.refreshBlackboard || (() => Promise.resolve());
         this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
         this.getRoom = options.getRoom || (() => null);
         this.runTool = typeof options.runTool === 'function' ? options.runTool : runTool;
@@ -221,6 +222,11 @@ export class ChatComponent {
         const message = String(this.elements.chatInput?.value || '').trim();
         if (!message) return;
 
+        if (/^\/(?:robo|event)(?:\s|$)/i.test(message)) {
+            await this._sendEventCommand(meeting, message, session);
+            return;
+        }
+
         if (this.isGuestSession()) {
             await this._sendGuestChat(meeting, message, session);
             return;
@@ -264,6 +270,60 @@ export class ChatComponent {
             void this.loadMeetingDetails().then(() => this.renderFeedLists()).catch(() => {});
         } catch (error) {
             this.setError(`Failed to send message: ${error.message}`);
+        }
+    }
+
+    async _sendEventCommand(meeting, message, session) {
+        try {
+            this.elements.chatInput.value = '';
+            this.updateComposerMentionOverlay();
+            const isRobo = /^\/robo(?:\s|$)/i.test(message);
+            const eventInput = isRobo ? message : message.replace(/^\/event\s*/i, '').trim();
+            const result = await this.runTool('webmeet_event_command', {
+                roomId: meeting.id,
+                event: eventInput,
+                source: isRobo ? 'robo' : 'event',
+                commandSource: 'chat',
+                participantId: session.participantIdentity
+            });
+            if (result?.auditMessage) {
+                const state = this.getState();
+                state.chat = Array.isArray(state.chat) ? state.chat : [];
+                const index = state.chat.findIndex((entry) => entry?.id === result.auditMessage.id);
+                if (index >= 0) state.chat[index] = result.auditMessage;
+                else state.chat.push(result.auditMessage);
+                if (this.getRoom()?.localParticipant) {
+                    await this.publishRealtimePayload({
+                        type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
+                        meetingId: meeting.id,
+                        message: result.auditMessage
+                    }).catch(() => {});
+                }
+            }
+            if (result?.clarificationRequired) {
+                this.setError(result.message || 'The blackboard command needs clarification.');
+                return;
+            }
+            if (result?.ok === false) throw new Error(result?.error?.message || 'Blackboard event failed.');
+            if (result?.visibilityPayload && this.getRoom()?.localParticipant) {
+                await this.publishRealtimePayload(result.visibilityPayload).catch(() => {});
+            }
+            if (result?.blackboard) {
+                await this.refreshBlackboard(result).catch(() => {});
+                if (this.getRoom()?.localParticipant) {
+                    await this.publishRealtimePayload({
+                        type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+                        meetingId: meeting.id,
+                        boardId: 'agent:agent_robo_team',
+                        blackboardVersion: Number(result.blackboard.version || 0),
+                        changeType: 'update'
+                    }).catch(() => {});
+                }
+            }
+            await this.loadMeetingDetails().catch(() => {});
+            this.renderFeedLists();
+        } catch (error) {
+            this.setError(`Failed to run blackboard event: ${error.message}`);
         }
     }
 

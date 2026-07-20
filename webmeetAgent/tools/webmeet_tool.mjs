@@ -4,6 +4,7 @@ import {
     archiveMeeting,
     applyRoomBlackboardChange,
     attachMeetingAgent,
+    authorizeMeetingParticipant,
     appendMeetingChat,
     authorizeResourceDownload,
     authorizeResourceUpload,
@@ -12,6 +13,7 @@ import {
     createStoreContext,
     detachMeetingAgent,
     getRoboTeamSettings,
+    getScriptaContext,
     getRoomBlackboard,
     getMeeting,
     getPublicGuestMeeting,
@@ -22,6 +24,11 @@ import {
     leaveMeeting,
     listMeetingParticipants,
     listRoomResources,
+    listScriptaWorkspaceEntries,
+    openScriptaCollaboration,
+    pullScriptaCollaboration,
+    applyScriptaCollaboration,
+    closeScriptaCollaboration,
     listMeetingAgents,
     listMeetingChat,
     listMeetingEvents,
@@ -31,12 +38,15 @@ import {
     removeRoomResource,
     redoRoomBlackboard,
     undoRoomBlackboard,
+    updateMeetingChat,
     updateRoboTeamSettings,
     updateGuestMeetingParticipantAvatar,
     updateMeetingParticipantRole,
     updateMeetingParticipantAvatar,
     updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
+import { executeBlackboardEvent } from '../lib/blackboard/event-service.mjs';
+import { generateScriptaContent } from '../lib/scripta/content-generator.mjs';
 
 async function loadInvocationAuth() {
     const candidates = [
@@ -119,28 +129,6 @@ function getRequiredString(args, key) {
         throw new Error(`Missing required argument "${key}".`);
     }
     return value;
-}
-
-function getRequiredObject(args, key) {
-    const value = args?.[key];
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-        return value;
-    }
-    if (typeof value === 'string' && value.trim()) {
-        const parsed = safeParseJson(value);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            return parsed;
-        }
-    }
-    throw new Error(`Missing required object argument "${key}".`);
-}
-
-function getRequiredBlackboardChange(args) {
-    const change = getRequiredObject(args, 'change');
-    if (!String(change.changeType || '').trim()) {
-        throw new Error('Missing required blackboard change.changeType.');
-    }
-    return change;
 }
 
 function extractInvocationGrant(envelope) {
@@ -335,28 +323,75 @@ export async function dispatch(toolName, args, context, authInfo) {
             participantId: String(args?.participantId || '').trim(),
             authInfo
         });
-    case 'webmeet_blackboard_apply':
-        return await applyRoomBlackboardChange(context, {
+    case 'webmeet_scripta_workspace_list':
+        return await listScriptaWorkspaceEntries(context, {
             roomId: getRequiredString(args, 'roomId'),
-            boardId: getRequiredString(args, 'boardId'),
-            participantId: String(args?.participantId || '').trim(),
-            change: getRequiredBlackboardChange(args),
-            authInfo
+            authInfo,
         });
-    case 'webmeet_blackboard_undo':
-        return await undoRoomBlackboard(context, {
+    case 'webmeet_scripta_sync_open':
+        return await openScriptaCollaboration(context, {
             roomId: getRequiredString(args, 'roomId'),
-            boardId: getRequiredString(args, 'boardId'),
+            resourceId: getRequiredString(args, 'resourceId'),
             participantId: String(args?.participantId || '').trim(),
-            authInfo
+            clientId: getRequiredString(args, 'clientId'),
+            authInfo,
         });
-    case 'webmeet_blackboard_redo':
-        return await redoRoomBlackboard(context, {
+    case 'webmeet_scripta_sync_pull':
+        return await pullScriptaCollaboration(context, {
             roomId: getRequiredString(args, 'roomId'),
-            boardId: getRequiredString(args, 'boardId'),
+            resourceId: getRequiredString(args, 'resourceId'),
             participantId: String(args?.participantId || '').trim(),
-            authInfo
+            clientId: getRequiredString(args, 'clientId'),
+            sessionId: getRequiredString(args, 'sessionId'),
+            knownHeads: Array.isArray(args?.knownHeads) ? args.knownHeads : [],
+            authInfo,
         });
+    case 'webmeet_scripta_sync_apply':
+        return await applyScriptaCollaboration(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            resourceId: getRequiredString(args, 'resourceId'),
+            participantId: String(args?.participantId || '').trim(),
+            clientId: getRequiredString(args, 'clientId'),
+            sessionId: getRequiredString(args, 'sessionId'),
+            operation: getRequiredString(args, 'operation'),
+            args: args?.args && typeof args.args === 'object' ? args.args : {},
+            changesBase64: Array.isArray(args?.changesBase64) ? args.changesBase64 : [],
+            baseHeads: Array.isArray(args?.baseHeads) ? args.baseHeads : [],
+            authInfo,
+        });
+    case 'webmeet_scripta_sync_close':
+        return await closeScriptaCollaboration(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            resourceId: getRequiredString(args, 'resourceId'),
+            participantId: String(args?.participantId || '').trim(),
+            clientId: getRequiredString(args, 'clientId'),
+            sessionId: getRequiredString(args, 'sessionId'),
+            authInfo,
+        });
+    case 'webmeet_event_command': {
+        const author = assertUserChatAuthor(args, authInfo);
+        return await executeBlackboardEvent(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            event: args?.event,
+            source: String(args?.source || 'event').trim(),
+            commandSource: String(args?.commandSource || 'chat').trim(),
+            participantId: String(args?.participantId || '').trim() || author.authorId,
+            selectedWidgetId: String(args?.selectedWidgetId || '').trim(),
+            commandId: String(args?.commandId || '').trim(),
+            authorName: author.authorName,
+            authInfo
+        }, {
+            authorizeRoomParticipant: authorizeMeetingParticipant,
+            appendMeetingChat,
+            updateMeetingChat,
+            getRoomBlackboard,
+            getScriptaContext,
+            applyRoomBlackboardChange,
+            undoRoomBlackboard,
+            redoRoomBlackboard,
+            reformulate: generateScriptaContent
+        });
+    }
     case 'webmeet_robo_team_get':
         return await getRoboTeamSettings(context, {
             roomId: getRequiredString(args, 'roomId'),

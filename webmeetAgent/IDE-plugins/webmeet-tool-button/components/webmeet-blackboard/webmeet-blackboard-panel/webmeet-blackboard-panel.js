@@ -1,7 +1,11 @@
 import { blackboardActionMethods } from './webmeet-blackboard-actions.js';
 import { blackboardGeometryMethods } from './webmeet-blackboard-geometry.js';
+import { blackboardGraphicsRenderingMethods } from './webmeet-blackboard-graphics-rendering.js';
 import { blackboardInteractionMethods } from './webmeet-blackboard-interactions.js';
 import { blackboardRenderingMethods } from './webmeet-blackboard-rendering.js';
+import { blackboardCollaborationRenderingMethods } from './webmeet-blackboard-collaboration-rendering.js';
+import { blackboardScriptaActionMethods } from './webmeet-blackboard-scripta-actions.js';
+import { blackboardScriptaRenderingMethods } from './webmeet-blackboard-scripta-rendering.js';
 
 export class WebMeetBlackboardPanel {
     constructor(element, invalidate) {
@@ -26,6 +30,10 @@ export class WebMeetBlackboardPanel {
         this.inlineEditCommitPromise = null;
         this.pendingRenderAfterInlineEdit = false;
         this.fullscreenWidgetId = '';
+        this.scriptaDraft = null;
+        this.pendingScriptaDraft = null;
+        this.scriptaDraftTimer = null;
+        this.scriptaEditStartPromise = Promise.resolve();
 
         this.bindPointerHandlers();
         this.handleConnectEvent = (event) => this.connect(event.detail || {});
@@ -37,6 +45,14 @@ export class WebMeetBlackboardPanel {
         this.handleToolbarImageUploadEvent = (event) => {
             void this.addImageWidgetFromFile(event.detail?.file).catch((error) => {
                 console.error('[WebMeetBlackboard] Image upload failed', error);
+            });
+        };
+        this.handleToolbarScriptaDocumentEvent = (event) => {
+            void this.handleScriptaToolbarAction(event.detail || {}).catch((error) => {
+                console.error('[WebMeetBlackboard] SCRIPTA document dialog failed', error);
+                const message = error?.message || 'Could not open the SCRIPTA document dialog.';
+                if (typeof globalThis.assistOS?.showToast === 'function') globalThis.assistOS.showToast(message, 'error', 3000);
+                else globalThis.alert?.(message);
             });
         };
         this.handleToolbarActionEvent = (event) => {
@@ -115,10 +131,12 @@ export class WebMeetBlackboardPanel {
     bindToolbar() {
         this.toolbar?.removeEventListener('blackboard-add-widget', this.handleToolbarAddWidgetEvent);
         this.toolbar?.removeEventListener('blackboard-image-upload', this.handleToolbarImageUploadEvent);
+        this.toolbar?.removeEventListener('blackboard-scripta-document', this.handleToolbarScriptaDocumentEvent);
         this.toolbar?.removeEventListener('blackboard-action', this.handleToolbarActionEvent);
         this.toolbar?.removeEventListener('blackboard-theme', this.handleToolbarThemeEvent);
         this.toolbar?.addEventListener('blackboard-add-widget', this.handleToolbarAddWidgetEvent);
         this.toolbar?.addEventListener('blackboard-image-upload', this.handleToolbarImageUploadEvent);
+        this.toolbar?.addEventListener('blackboard-scripta-document', this.handleToolbarScriptaDocumentEvent);
         this.toolbar?.addEventListener('blackboard-action', this.handleToolbarActionEvent);
         this.toolbar?.addEventListener('blackboard-theme', this.handleToolbarThemeEvent);
     }
@@ -142,11 +160,17 @@ export class WebMeetBlackboardPanel {
                 this.renderWidgets();
             } else if (payload.kind === 'widget') {
                 this.applyWidgetObject(payload.object);
+            } else if (payload.kind === 'scripta-presentation') {
+                this.applyScriptaPresentation(payload.presentation);
             }
         });
     }
 
     applyBlackboardUpdate(detail = {}) {
+        if (detail?.scriptaPresentation) {
+            this.applyScriptaPresentation(detail.scriptaPresentation);
+            return;
+        }
         if (detail?.blackboard) {
             this.applyBlackboard(detail.blackboard);
             return;
@@ -226,6 +250,9 @@ export class WebMeetBlackboardPanel {
     }
 
     cleanup() {
+        if (this.scriptaDraftTimer) clearTimeout(this.scriptaDraftTimer);
+        this.scriptaDraftTimer = null;
+        this.pendingScriptaDraft = null;
         this.unsubscribeAdapter?.();
         this.unsubscribeAdapter = null;
     }
@@ -234,7 +261,11 @@ export class WebMeetBlackboardPanel {
 Object.assign(
     WebMeetBlackboardPanel.prototype,
     blackboardGeometryMethods,
+    blackboardGraphicsRenderingMethods,
     blackboardRenderingMethods,
+    blackboardCollaborationRenderingMethods,
+    blackboardScriptaActionMethods,
+    blackboardScriptaRenderingMethods,
     blackboardInteractionMethods,
     blackboardActionMethods
 );

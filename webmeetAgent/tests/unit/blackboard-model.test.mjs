@@ -45,8 +45,12 @@ const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-panel.js',
     'webmeet-blackboard-actions.js',
     'webmeet-blackboard-geometry.js',
+    'webmeet-blackboard-graphics-rendering.js',
     'webmeet-blackboard-interactions.js',
-    'webmeet-blackboard-rendering.js'
+    'webmeet-blackboard-rendering.js',
+    'webmeet-blackboard-collaboration-rendering.js',
+    'webmeet-blackboard-scripta-actions.js',
+    'webmeet-blackboard-scripta-rendering.js'
 ];
 
 async function readBlackboardPanelSource() {
@@ -678,6 +682,215 @@ test('blackboard network adapter deduplicates and applies final protocol objects
     assert.equal(received[0].object.properties.text, 'Done');
 });
 
+test('SCRIPTA realtime updates reload the authenticated viewer projection', async () => {
+    let resyncCount = 0;
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_other',
+        runTool: async (name) => {
+            assert.equal(name, 'webmeet_blackboard_get');
+            resyncCount += 1;
+            return {
+                blackboard: {
+                    roomId: 'room_1',
+                    version: 5,
+                    widgets: [{
+                        id: 'robo_scripta_document',
+                        type: 'scripta-document',
+                        properties: {
+                            paragraph: {
+                                variants: [{
+                                    id: 'variant_owner',
+                                    canEdit: false,
+                                    canDelete: false,
+                                }],
+                            },
+                        },
+                    }],
+                },
+            };
+        },
+    });
+    const received = [];
+    adapter.subscribe((payload) => received.push(payload));
+    const blackboardMessage = encodeBlackboardProtocolMessage({
+        from: 'user:participant_owner',
+        to: 'ALL',
+        payload: {
+            kind: 'blackboard',
+            roomId: 'room_1',
+            boardId: 'agent:agent_robo_team',
+            messageId: 'bb_scripta_owner_projection',
+            version: 5,
+            object: {
+                roomId: 'room_1',
+                version: 5,
+                widgets: [{
+                    id: 'robo_scripta_document',
+                    type: 'scripta-document',
+                    properties: {
+                        paragraph: {
+                            variants: [{
+                                id: 'variant_owner',
+                                canEdit: true,
+                                canDelete: true,
+                            }],
+                        },
+                    },
+                }],
+            },
+        },
+    });
+    const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+        meetingId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        blackboardVersion: 5,
+        changeType: 'scripta-p-variant-edit',
+        blackboardMessage,
+    });
+
+    assert.equal(await adapter.handleEncodedEvent(encodedEvent), 'applied');
+    assert.equal(resyncCount, 1);
+    const variant = received[0].object.widgets[0].properties.paragraph.variants[0];
+    assert.equal(variant.canEdit, false);
+    assert.equal(variant.canDelete, false);
+});
+
+test('SCRIPTA realtime broadcasts are invalidations without viewer-scoped objects', async () => {
+    let published = null;
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_owner',
+        runTool: async () => ({}),
+        publishRealtimePayload: async (payload) => { published = payload; },
+    });
+
+    await adapter.publishFinalUpdate({
+        blackboard: {
+            roomId: 'room_1',
+            version: 6,
+            widgets: [{
+                id: 'robo_scripta_document',
+                type: 'scripta-document',
+                properties: {
+                    paragraph: {
+                        variants: [{
+                            id: 'variant_owner',
+                            canEdit: true,
+                            canDelete: true,
+                        }],
+                    },
+                },
+            }],
+        },
+    }, 'scripta-p-variant-edit');
+
+    const protocol = parseBlackboardProtocolMessage(published.blackboardMessage);
+    assert.equal(protocol.payload.version, 6);
+    assert.equal(protocol.payload.object, null);
+});
+
+test('SCRIPTA draft text is delivered as transient presentation state', async () => {
+    let published = null;
+    const sender = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_owner',
+        runTool: async () => ({}),
+        publishRealtimePayload: async (payload) => { published = payload; },
+    });
+    sender.currentVersion = 9;
+    await sender.publishScriptaDraft({
+        resourceId: 'resource_1',
+        chapterId: 'chapter_1',
+        paragraphId: 'paragraph_1',
+        variantId: 'variant_1',
+        editorParticipantId: 'participant_owner',
+        text: 'Live draft',
+    });
+
+    const received = [];
+    const receiver = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_other',
+        runTool: async () => {
+            throw new Error('Transient draft delivery must not persist or resync.');
+        },
+    });
+    receiver.subscribe((payload) => received.push(payload));
+    const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, published);
+
+    assert.equal(await receiver.handleEncodedEvent(encodedEvent), 'applied');
+    assert.equal(received[0].kind, 'scripta-presentation');
+    assert.equal(received[0].presentation.text, 'Live draft');
+    assert.equal(received[0].presentation.variantId, 'variant_1');
+});
+
+test('blackboard network adapter maps UI changes to canonical event commands and upserts audit', async () => {
+    let toolCall = null;
+    let auditMessage = null;
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_1',
+        onAuditMessage: (message) => { auditMessage = message; },
+        runTool: async (name, args) => {
+            toolCall = { name, args };
+            return {
+                ok: true,
+                blackboard: { version: 5, widgets: [] },
+                change: { changeType: 'update', targetType: 'widget', targetRef: 'widget_1' },
+                auditMessage: { id: 'chat-event', kind: 'event', metadata: { status: 'success' } }
+            };
+        }
+    });
+    adapter.currentVersion = 4;
+    await adapter.sendChange({
+        changeType: 'update',
+        targetType: 'widget',
+        targetRef: 'widget_1',
+        patch: { properties: { text: 'Changed' } }
+    });
+
+    assert.equal(toolCall.name, 'webmeet_event_command');
+    const event = JSON.parse(toolCall.args.event);
+    assert.equal('version' in event, false);
+    assert.equal(event.expectedBoardVersion, 4);
+    assert.equal(event.target.widgetId, 'widget_1');
+    assert.equal(event.action, 'update');
+    assert.equal(auditMessage.id, 'chat-event');
+});
+
+test('blackboard network adapter resynchronizes its version after a command conflict', async () => {
+    const calls = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_1',
+        runTool: async (name) => {
+            calls.push(name);
+            if (name === 'webmeet_event_command') {
+                const error = new Error('Blackboard version conflict: expected 4, current 5.');
+                error.code = 'version_conflict';
+                error.data = { error: { code: 'version_conflict', currentBoardVersion: 5 } };
+                throw error;
+            }
+            return { blackboard: { roomId: 'room_1', version: 5, widgets: [] } };
+        }
+    });
+    adapter.currentVersion = 4;
+
+    await assert.rejects(() => adapter.sendEvent('scripta-document-view', {}, {
+        widgetId: 'robo_scripta_document'
+    }), /version conflict/i);
+
+    assert.deepEqual(calls, ['webmeet_event_command', 'webmeet_blackboard_get']);
+    assert.equal(adapter.currentVersion, 5);
+});
+
 test('blackboard theme updates are broadcast as full blackboard updates for other participants', async () => {
     const received = [];
     const adapter = new BlackboardNetworkAdapter({
@@ -1146,6 +1359,7 @@ test('blackboard opens as the focused item inside the participant video layout',
     assert.match(participantSource, /this\.applyBlackboardFocusLayout\?\.\(\)/);
     assert.match(dashboardCss, /\.webmeet-video-all\.has-focus \.webmeet-blackboard-surface\.is-focused/);
     assert.match(dashboardCss, /width: clamp\(240px, calc\(100% - 92px\), 100%\)/);
+    assert.match(dashboardCss, /\.webmeet-blackboard-surface webmeet-blackboard-panel[\s\S]*display: flex[\s\S]*overflow: hidden/);
 });
 
 test('blackboard widgets support final resize changes for shape line card text and image', async () => {
@@ -1155,7 +1369,12 @@ test('blackboard widgets support final resize changes for shape line card text a
         'utf8'
     );
 
-    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'bullets'\]\.includes/);
+    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'\]\.includes/);
+    assert.match(source, /getWidgetMinimumSize\(widget\)[\s\S]*widget\?\.type === 'poll'[\s\S]*widget\?\.type === 'bullets'[\s\S]*widget\?\.type === 'scripta-document'/);
+    assert.match(source, /const minimumSize = this\.getWidgetMinimumSize\(widget\)/);
+    assert.match(source, /\.\.\.minimumSize/);
+    assert.match(source, /const minWidth = Number\(state\.minWidth \|\| 48\)/);
+    assert.match(source, /const minHeight = Number\(state\.minHeight \|\| 32\)/);
     assert.match(source, /renderResizeHandles\(node, widget\)/);
     assert.match(source, /data-resize-handle/);
     assert.match(source, /reason: 'resize'/);
@@ -1164,6 +1383,30 @@ test('blackboard widgets support final resize changes for shape line card text a
     assert.match(css, /\.webmeet-blackboard-resize-handle/);
     assert.match(css, /\.webmeet-blackboard-widget\[aria-selected="true"\] \.webmeet-blackboard-resize-handle/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*overflow: auto/);
+    assert.match(css, /\.webmeet-blackboard-board[\s\S]*width: auto[\s\S]*min-width: 0[\s\S]*overflow: auto/);
+    assert.match(css, /\.webmeet-blackboard-board[\s\S]*scrollbar-gutter: stable/);
+    assert.match(css, /\.webmeet-blackboard-board:empty::before[\s\S]*Start collaborating/);
+    assert.match(css, /\.webmeet-blackboard-board:empty::after[\s\S]*Choose a creation tool above/);
+    assert.match(css, /background-image: radial-gradient/);
+    assert.match(css, /\.webmeet-blackboard-widget[\s\S]*margin: 10px 0 0 10px/);
+    assert.match(css, /\.webmeet-blackboard-widget::before[\s\S]*left: 100%[\s\S]*width: 40px[\s\S]*height: max\(100%, 128px\)/);
+    assert.match(css, /\.webmeet-blackboard-widget::after[\s\S]*top: 100%[\s\S]*width: calc\(100% \+ 40px\)[\s\S]*height: 10px/);
+    assert.match(css, /\.webmeet-blackboard-board[\s\S]*min-height: 0/);
+    assert.doesNotMatch(css.match(/\.webmeet-blackboard-board\s*\{[^}]*\}/)?.[0] || '', /height:\s*100%/);
+    assert.match(css, /\.webmeet-blackboard-widget\.scripta-document[\s\S]*overflow: visible/);
+    assert.match(css, /\.webmeet-blackboard-widget\[aria-selected="true"\][\s\S]*overflow: visible/);
+    assert.match(css, /\.webmeet-scripta-document[\s\S]*min-height: 0[\s\S]*overflow: auto/);
+    assert.match(css, /\.webmeet-blackboard-widget\.scripta-document[\s\S]*min-width: 600px[\s\S]*min-height: 400px/);
+    assert.match(source, /widget\.type === 'scripta-document' \? 600 : 1/);
+    assert.match(source, /widget\.type === 'scripta-document' \? 400 : 1/);
+    assert.doesNotMatch(source, /node\.style\.width = 'max\(600px, calc\(100% - 48px\)\)'/);
+    assert.doesNotMatch(source, /node\.style\.height = 'max\(400px, calc\(100% - 48px\)\)'/);
+    assert.match(source, /routeScriptaWheelToBlackboard\(event\)/);
+    assert.match(source, /board\.scrollWidth - board\.clientWidth/);
+    assert.match(source, /board\.scrollHeight - board\.clientHeight/);
+    assert.match(source, /addEventListener\('wheel'[\s\S]*capture: true[\s\S]*passive: false/);
+    assert.doesNotMatch(source, /updateBoardScrollExtent/);
+    assert.doesNotMatch(source, /webmeet-blackboard-scroll-extent/);
     assert.match(source, /scrollLeft/);
     assert.match(source, /scrollTop/);
 });
@@ -1305,6 +1548,10 @@ test('blackboard supports image upload widgets', async () => {
         '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard'
     );
     const panelSource = await readBlackboardPanelSource();
+    const panelCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
+        'utf8'
+    );
     const toolbarHtml = await fs.readFile(
         path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.html'),
         'utf8'
@@ -1313,11 +1560,6 @@ test('blackboard supports image upload widgets', async () => {
         path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.js'),
         'utf8'
     );
-    const panelCss = await fs.readFile(
-        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
-        'utf8'
-    );
-
     assert.match(toolbarHtml, /data-local-action="uploadImageWidget"/);
     assert.match(toolbarHtml, /accept="image\/\*"/);
     assert.match(toolbarSource, /blackboard-image-upload/);
@@ -1326,9 +1568,162 @@ test('blackboard supports image upload widgets', async () => {
     assert.match(panelSource, /widget\.type === 'image'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image-frame'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image'/);
-    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'bullets'\]\.includes/);
+    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'\]\.includes/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame[\s\S]*border: var\(--stroke-width/);
+});
+
+test('blackboard Insert menu opens SCRIPTA create/open through RoboTeam events', async () => {
+    const componentDir = path.resolve(
+        import.meta.dirname,
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard'
+    );
+    const panelSource = await readBlackboardPanelSource();
+    const panelCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
+        'utf8'
+    );
+    const panelHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.html'),
+        'utf8'
+    );
+    const toolbarHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.html'),
+        'utf8'
+    );
+    const toolbarSource = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.js'),
+        'utf8'
+    );
+    const modalSource = await fs.readFile(
+        path.join(componentDir, 'webmeet-scripta-document-modal/webmeet-scripta-document-modal.js'),
+        'utf8'
+    );
+    const modalHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-scripta-document-modal/webmeet-scripta-document-modal.html'),
+        'utf8'
+    );
+    const modalCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-scripta-document-modal/webmeet-scripta-document-modal.css'),
+        'utf8'
+    );
+    const pluginConfig = JSON.parse(await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/config.json'),
+        'utf8'
+    ));
+
+    assert.match(toolbarHtml, /data-local-action="toggleScriptaDocumentMenu"/);
+    assert.match(toolbarHtml, /data-local-action="runScriptaMenuAction create"/);
+    assert.match(toolbarHtml, /data-local-action="toggleScriptaOpenMenu"/);
+    assert.match(toolbarHtml, />SCRIPTA Document</);
+    assert.match(toolbarSource, /blackboard-scripta-document/);
+    assert.match(toolbarSource, /defaultDocuments/);
+    assert.match(toolbarSource, /open-other/);
+    assert.match(panelSource, /handleScriptaToolbarAction/);
+    assert.match(panelSource, /runScriptaEvent\('scripta-document-create'/);
+    assert.match(panelSource, /runScriptaEvent\('scripta-document-open'/);
+    assert.doesNotMatch(modalSource, /manage/);
+    assert.match(modalSource, /filter\(\(documentPath\) => documentPath && \/\\\.md\$\/i\.test\(documentPath\)\)/);
+    assert.match(modalSource, /template === 'vision' \|\| template === 'plan'/);
+    assert.match(modalSource, /this\.documents\.includes\(path\)/);
+    assert.match(modalHtml, /type="search" data-role="pathSearch"/);
+    assert.match(modalHtml, /data-role="pathStatus"/);
+    assert.match(modalHtml, /Used only to generate a Vision or Plan document\./);
+    assert.match(modalCss, /\.webmeet-scripta-document-modal \[hidden\][\s\S]*display: none !important/);
+    assert.doesNotMatch(toolbarHtml, /addWidget scripta-document/);
+    assert.doesNotMatch(panelSource, /scripta-document-detach/);
+    assert.match(panelHtml, /data-template="scripta-document"[\s\S]*class="webmeet-scripta-document-header"[\s\S]*class="webmeet-scripta-document-title"[\s\S]*data-local-action="runScriptaLocalAction scripta-chapter-add"[\s\S]*class="webmeet-scripta-header-action-label">Chapter</);
+    assert.doesNotMatch(panelSource, /createScriptaButton\('Add chapter'/);
+    assert.match(panelCss, /\.webmeet-blackboard-context-button\.webmeet-scripta-header-action\s*\{[\s\S]*width:\s*auto;[\s\S]*height:\s*28px;[\s\S]*border-color:\s*var\(--bb-widget-border\);[\s\S]*background:\s*var\(--bb-context-bg\);[\s\S]*white-space:\s*nowrap;/);
+    assert.deepEqual(
+        pluginConfig.dependencies.find((entry) => entry.component === 'scripta-variants-view'),
+        {
+            component: 'scripta-variants-view',
+            presenter: 'ScriptaVariantsView',
+            baseUrl: '/explorer/shared/ui/scripta-variants-view/scripta-variants-view'
+        }
+    );
+    assert.match(panelHtml, /<scripta-variants-view data-presenter="scripta-variants-view"/);
+    assert.match(panelSource, /await customElements\.whenDefined\('scripta-variants-view'\)/);
+    assert.match(panelSource, /customElements\.upgrade\(variantsView\)/);
+    assert.match(panelSource, /await variantsView\.presenterReadyPromise/);
+    assert.match(panelSource, /this\.busy = false;\s*this\.renderWidgets\(\)/);
+    assert.doesNotMatch(panelSource, /← Back to document/);
+    assert.match(panelHtml, /class="webmeet-scripta-nav-button is-back"[\s\S]*data-local-action="runScriptaLocalAction scripta-document-view"/);
+    assert.match(panelHtml, /class="webmeet-scripta-paragraph-pager"/);
+    assert.match(panelHtml, /class="webmeet-scripta-paragraph-pager-label">Paragraph</);
+    assert.match(panelHtml, /class="webmeet-scripta-paragraph-pager-controls"/);
+    assert.match(panelHtml, /class="webmeet-scripta-context-title" data-role="chapter-title"/);
+    assert.match(panelHtml, /class="webmeet-scripta-document-position webmeet-scripta-context-meta"[\s\S]*data-role="document-position"/);
+    assert.match(panelSource, /documentPosition\.textContent = `Chapter \$\{paragraph\.chapterOrdinal \|\| 1\} - Paragraph \$\{paragraph\.paragraphOrdinal \|\| 1\}`/);
+    assert.doesNotMatch(panelHtml, /data-role="chapter-ordinal"/);
+    assert.doesNotMatch(panelHtml, /data-role="paragraph-ordinal"/);
+    assert.match(panelCss, /\.webmeet-scripta-document-position\s*\{[\s\S]*left:\s*50%;[\s\S]*translate\(-50%, -50%\)/);
+    const contextMetaCss = panelCss.match(/\.webmeet-scripta-context-meta\s*\{[^}]*\}/)?.[0] || '';
+    assert.match(contextMetaCss, /color:\s*color-mix\(in srgb, var\(--bb-widget-text\) 44%, transparent\)/);
+    assert.match(contextMetaCss, /font-family:\s*ui-monospace/);
+    assert.match(contextMetaCss, /font-size:\s*9px/);
+    assert.doesNotMatch(contextMetaCss, /(?:background|border|border-radius|padding|min-height):/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-previous"[\s\S]*<span class="webmeet-scripta-nav-label">Prev</);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-next"[\s\S]*<span class="webmeet-scripta-nav-label">Next</);
+    assert.match(panelSource, /scripta-paragraph-previous"\]'\)\.disabled = paragraphIndex <= 0/);
+    assert.match(panelSource, /scripta-paragraph-next"\]'\)\.disabled = \(\s*paragraphIndex < 0 \|\| paragraphIndex >= paragraphOrder\.length - 1/);
+    assert.match(panelCss, /\.webmeet-scripta-paragraph-pager\s*\{[\s\S]*flex-direction:\s*column/);
+    assert.match(panelCss, /\.webmeet-scripta-paragraph-pager-label\s*\{[\s\S]*font-size:\s*14px/);
+    assert.match(panelCss, /\.webmeet-scripta-paragraph-pager-controls\s*\{[\s\S]*display:\s*inline-flex/);
+    assert.match(panelCss, /\.webmeet-scripta-nav-icon\.is-back::after/);
+    assert.match(panelCss, /\.webmeet-scripta-nav-button\.is-back\s*\{\s*border-radius:\s*6px;\s*\}/);
+    assert.doesNotMatch(panelCss, /\.webmeet-scripta-nav-button\.is-back\s*\{[^}]*background:\s*transparent/);
+    assert.match(panelSource, /Empty paragraph — select to add text\./);
+    assert.doesNotMatch(panelSource, /Paragraph title/);
+    assert.match(panelHtml, /class="webmeet-scripta-paragraph-open"[\s\S]*<p data-role="paragraph-text"><\/p>/);
+    assert.doesNotMatch(panelSource, /createScriptaButton\('Edit'/);
+    assert.doesNotMatch(panelSource, /createScriptaButton\('Rename'/);
+    assert.doesNotMatch(panelSource, /title\.contentEditable/);
+    assert.match(panelHtml, /data-role="chapter-title-input"/);
+    assert.match(panelHtml, /data-local-action="openScriptaChapterTitleEditor"/);
+    assert.match(panelHtml, /data-local-action="cancelScriptaChapterTitleEditor"[\s\S]*data-role="chapter-title-cancel">Cancel/);
+    assert.match(panelHtml, /data-local-action="saveScriptaChapterTitleEditor"[\s\S]*data-role="chapter-title-save">Save/);
+    assert.match(panelSource, /this\.openScriptaChapterTitleEditor\(title\)/);
+    assert.match(panelSource, /this\.cancelScriptaChapterTitleEditor\(input\)/);
+    assert.match(panelSource, /this\.saveScriptaChapterTitleEditor\(input\)/);
+    assert.match(panelSource, /runScriptaEvent\('scripta-chapter-edit'/);
+    assert.match(panelHtml, /runScriptaLocalAction scripta-chapter-add/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-move"\s*data-move-direction="up"/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-move"\s*data-move-direction="down"/);
+    assert.match(panelSource, /payload\.targetIndex = moveDirection === 'up' \? ordinal - 1 : ordinal \+ 1/);
+    assert.doesNotMatch(panelSource, /Target chapter number/);
+    assert.match(panelCss, /\.webmeet-scripta-paragraph-actions/);
+    assert.match(panelHtml, /title="Move paragraph up"[\s\S]*aria-label="Move paragraph up"[\s\S]*webmeet-blackboard-context-icon reorder-up/);
+    assert.match(panelHtml, /title="Move paragraph down"[\s\S]*aria-label="Move paragraph down"[\s\S]*webmeet-blackboard-context-icon reorder-down/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-add"/);
+    assert.match(panelHtml, /class="webmeet-scripta-inline-action-label">Paragraph<\/span>[\s\S]*webmeet-blackboard-context-icon plus/);
+    assert.match(panelHtml, /class="webmeet-scripta-reorder-group"[^>]*aria-label="Reorder chapter"[\s\S]*class="webmeet-scripta-reorder-controls"/);
+    assert.doesNotMatch(panelHtml, /webmeet-scripta-reorder-label/);
+    assert.match(panelHtml, /webmeet-blackboard-context-icon reorder-up/);
+    assert.match(panelHtml, /webmeet-blackboard-context-icon reorder-down/);
+    assert.match(panelHtml, /title="Move chapter up"[\s\S]*aria-label="Move chapter up"/);
+    assert.match(panelHtml, /title="Move chapter down"[\s\S]*aria-label="Move chapter down"/);
+    assert.match(panelCss, /\.webmeet-scripta-chapter-actions \.webmeet-scripta-labeled-action\s*\{[\s\S]*width:\s*auto/);
+    assert.match(panelCss, /\.webmeet-scripta-reorder-group\s*\{[\s\S]*display:\s*inline-flex/);
+    assert.match(panelCss, /icons\/reorder-up\.svg/);
+    assert.match(panelCss, /icons\/reorder-down\.svg/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-chapter-move"\s*data-move-direction="up"/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-chapter-move"\s*data-move-direction="down"/);
+    assert.doesNotMatch(panelSource, /New chapter position/);
+    assert.match(panelCss, /\.webmeet-scripta-chapter-actions/);
+    assert.match(panelCss, /\.webmeet-blackboard-context-icon\.plus/);
+    assert.doesNotMatch(panelCss, /\.webmeet-blackboard-context-icon\.chapter-add/);
+    assert.match(panelSource, /scripta-p-variant-add'[\s\S]*chapterId: paragraph\.chapterId[\s\S]*paragraphId: paragraph\.paragraphId/);
+    assert.match(panelSource, /scripta-p-variant-select'[\s\S]*chapterId: paragraph\.chapterId[\s\S]*paragraphId: paragraph\.paragraphId[\s\S]*variantId: event\.detail\?\.variantId/);
+    assert.match(panelSource, /scripta-p-variant-edit-start/);
+    assert.match(panelSource, /scripta-p-variant-edit-draft/);
+    assert.match(panelSource, /scripta-p-variant-edit-cancel/);
+    assert.match(panelSource, /scripta-p-variant-vote'[\s\S]*chapterId: paragraph\.chapterId[\s\S]*paragraphId: paragraph\.paragraphId/);
+    assert.match(panelSource, /scripta-p-variant-delete'[\s\S]*chapterId: paragraph\.chapterId[\s\S]*paragraphId: paragraph\.paragraphId/);
+    assert.doesNotMatch(panelSource, /className = 'webmeet-scripta-variant'/);
+    assert.match(panelSource, /if \(!this\.adapter\?\.sendEvent \|\| this\.busy\) return null/);
+    assert.match(panelSource, /assistOS\?\.showToast\?\.\(message, 'error'/);
 });
 
 test('blackboard supports shape variants angled lines and arrows', async () => {
@@ -1453,6 +1848,36 @@ test('blackboard toolbar uses themes instead of manual board background controls
     assert.doesNotMatch(panelCss, /--blackboard-background-color/);
 });
 
+test('blackboard toolbar groups controls by CRAP visual hierarchy', async () => {
+    const componentDir = path.resolve(
+        import.meta.dirname,
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard'
+    );
+    const toolbarHtml = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.html'),
+        'utf8'
+    );
+    const toolbarCss = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.css'),
+        'utf8'
+    );
+    const dashboardCss = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.css'),
+        'utf8'
+    );
+
+    for (const label of ['Create', 'Collaborate', 'History', 'Appearance']) {
+        assert.match(toolbarHtml, new RegExp(`webmeet-blackboard-tool-group[^>]+aria-label="${label}"`));
+    }
+    assert.doesNotMatch(toolbarHtml, /webmeet-blackboard-tool-group-label/);
+    assert.match(toolbarCss, /\.webmeet-blackboard-tool-group \+ \.webmeet-blackboard-tool-group::before[\s\S]*width: 1px[\s\S]*height: 22px/);
+    const groupRule = toolbarCss.match(/\.webmeet-blackboard-tool-group\s*\{[^}]*\}/)?.[0] || '';
+    assert.doesNotMatch(groupRule, /border:|background:|box-shadow:/);
+    assert.match(toolbarCss, /\.webmeet-blackboard-appearance-group[\s\S]*margin-left: auto/);
+    assert.match(toolbarCss, /\.webmeet-blackboard-tool-button:hover/);
+    assert.match(dashboardCss, /\.webmeet-blackboard-header > span:first-child::before/);
+});
+
 test('blackboard exposes Leadership theme extracted from the provided palette', () => {
     const options = getBlackboardThemeOptions();
     const theme = getBlackboardTheme('leadership');
@@ -1557,7 +1982,7 @@ test('blackboard panel is a static WebSkel child driven through DOM events', asy
         'utf8'
     );
 
-    assert.match(dashboardHtml, /<webmeet-blackboard-panel data-presenter="webmeet-blackboard-panel"><\/webmeet-blackboard-panel>/);
+    assert.match(dashboardHtml, /<webmeet-blackboard-panel\s+data-presenter="webmeet-blackboard-panel"><\/webmeet-blackboard-panel>/);
     assert.doesNotMatch(source, /webSkel\.createElement/);
     assert.doesNotMatch(source, /waitForBlackboardPanelReady/);
     assert.doesNotMatch(source, /ensureBlackboardPanel/);
@@ -1582,6 +2007,47 @@ test('blackboard panel is a static WebSkel child driven through DOM events', asy
     assert.match(panelSource, /addEventListener\('webmeet-blackboard-disconnect'/);
     assert.doesNotMatch(source, /this\.blackboardSurface\?\.querySelector\('webmeet-blackboard-panel'\)/);
     assert.match(source, /const panel = this\.blackboardPanel/);
+});
+
+test('blackboard rendering is split by responsibility and uses WebSkel SCRIPTA templates safely', async () => {
+    const panelDir = path.resolve(
+        import.meta.dirname,
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel'
+    );
+    const [panel, panelHtml, generic, scriptaActions, scriptaRendering, collaboration, graphics] = await Promise.all([
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-panel.js'), 'utf8'),
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-panel.html'), 'utf8'),
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-rendering.js'), 'utf8'),
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-scripta-actions.js'), 'utf8'),
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-scripta-rendering.js'), 'utf8'),
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-collaboration-rendering.js'), 'utf8'),
+        fs.readFile(path.join(panelDir, 'webmeet-blackboard-graphics-rendering.js'), 'utf8'),
+    ]);
+
+    assert.ok(generic.split('\n').length < 350);
+    assert.match(panel, /blackboardGraphicsRenderingMethods/);
+    assert.match(panel, /blackboardCollaborationRenderingMethods/);
+    assert.match(panel, /blackboardScriptaActionMethods/);
+    assert.match(panel, /blackboardScriptaRenderingMethods/);
+    assert.match(scriptaActions, /runScriptaEvent/);
+    assert.match(scriptaActions, /runScriptaLocalAction\(\s*target,\s*action = '',\s*encodedChapterId/);
+    assert.match(scriptaRendering, /cloneScriptaTemplate\(name\)/);
+    assert.match(scriptaRendering, /focusScriptaDocumentTarget\(node, props\)/);
+    assert.match(scriptaRendering, /scrollIntoView\(\{block: 'nearest', inline: 'nearest'\}\)/);
+    assert.match(scriptaRendering, /focusTarget\?\.focus\?\.\(\{preventScroll: true\}\)/);
+    assert.match(scriptaRendering, /chapterNode\.dataset\.chapterId = chapter\.chapterId/);
+    assert.match(scriptaRendering, /action\.dataset\.localAction = `runScriptaLocalAction \$\{eventAction\} \$\{values\.join\(' '\)\}`/);
+    assert.match(scriptaRendering, /node\.textContent = text/);
+    assert.doesNotMatch(scriptaRendering, /innerHTML/);
+    assert.doesNotMatch(scriptaRendering, /addEventListener\('click'/);
+    assert.match(panelHtml, /<template data-template="scripta-document">/);
+    assert.match(panelHtml, /<template data-template="scripta-chapter">/);
+    assert.match(panelHtml, /<template data-template="scripta-paragraph-card">/);
+    assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-open"/);
+    assert.match(collaboration, /renderPollWidgetContent/);
+    assert.match(collaboration, /renderBulletsWidgetContent/);
+    assert.match(graphics, /createShapeSvg/);
+    assert.match(graphics, /createLineSvg/);
 });
 
 test('blackboard WebSkel components trigger their initial render', async () => {
@@ -1629,6 +2095,10 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
     try {
         const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const context = await createStoreContext(root);
+        context.scriptaExplorerClient = async (tool, args) => {
+            assert.equal(tool, 'scripta_crdt_ensure_folder');
+            return { ok: true, folderPath: args.folderPath };
+        };
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
 
         await applyRoomBlackboardChange(context, {
@@ -1667,6 +2137,18 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.equal(roboTeam.blackboard.metadata.boardOwnerType, 'agent');
         assert.ok(events.some((event) => parseWebMeetEvent(event).type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED));
         assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === 'agent:agent_robo_team'));
+        await assert.rejects(applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            expectedBoardVersion: response.blackboard.version - 1,
+            change: {
+                changeType: 'update',
+                targetType: 'widget',
+                targetRef: 'shape_1',
+                patch: { properties: { label: 'stale' } }
+            }
+        }), (error) => error.code === 'version_conflict' && error.currentBoardVersion === response.blackboard.version);
     } finally {
         if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
         else process.env.WEBMEET_DATA_DIR = previousDataDir;
@@ -1676,7 +2158,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
     }
 });
 
-test('webmeet blackboard tool decodes serialized final change objects from transport', async () => {
+test('webmeet event tool decodes canonical serialized blackboard events from transport', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-tool-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
@@ -1684,6 +2166,10 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
         process.env.WEBMEET_DATA_DIR = path.join(root, 'data');
         process.env.PLOINKY_WEBMEET_MASTER_KEY = '0123456789abcdef0123456789abcdef';
         const context = await createStoreContext(root);
+        context.scriptaExplorerClient = async (tool, args) => {
+            assert.equal(tool, 'scripta_crdt_ensure_folder');
+            return { ok: true, folderPath: args.folderPath };
+        };
         const authInfo = {
             user: {
                 id: 'local:admin',
@@ -1696,11 +2182,35 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
             title: 'Serialized blackboard tool room',
             authInfo
         });
-        await dispatch('webmeet_blackboard_apply', {
-            roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
-            participantId: 'participant-admin',
-            change: JSON.stringify({
+        let sequence = 0;
+        const dispatchChange = async (change) => {
+            const current = await getRoomBlackboard(context, {
+                roomId: meeting.roomId,
+                boardId: 'agent:agent_robo_team',
+                participantId: 'participant-admin',
+                authInfo
+            });
+            sequence += 1;
+            return dispatch('webmeet_event_command', {
+                roomId: meeting.roomId,
+                participantId: 'participant-admin',
+                source: 'ui',
+                commandId: `command-${sequence}`,
+                event: JSON.stringify({
+                    eventId: `event-${sequence}`,
+                    commandId: `command-${sequence}`,
+                    expectedBoardVersion: current.blackboard.version,
+                    target: {
+                        type: change.targetType || 'widget',
+                        boardId: 'agent:agent_robo_team',
+                        ...(change.targetRef || change.widget?.id ? { widgetId: change.targetRef || change.widget.id } : {})
+                    },
+                    action: change.changeType === 'add' ? 'create' : change.changeType,
+                    payload: { change }
+                })
+            }, context, authInfo);
+        };
+        await dispatchChange({
                 changeType: 'create',
                 targetType: 'widget',
                 widget: {
@@ -1711,22 +2221,17 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
                         geometry: { x: 1, y: 2, width: 100, height: 50 }
                     }
                 }
-            })
-        }, context, authInfo);
+            });
 
-        const response = await dispatch('webmeet_blackboard_apply', {
-            roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
-            participantId: 'participant-admin',
-            change: JSON.stringify({
+        const response = await dispatchChange({
                 changeType: 'update',
                 targetType: 'widget',
                 targetRef: 'card_1',
                 reason: 'edit',
                 patch: { properties: { text: 'Updated' } }
-            })
-        }, context, authInfo);
+            });
 
+        assert.equal(response.ok, true, JSON.stringify(response));
         const widget = response.blackboard.widgets.find((entry) => entry.id === 'card_1');
         assert.equal(widget.properties.text, 'Updated');
         assert.equal(response.change.changeType, 'update');
@@ -1745,17 +2250,12 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
             participantId: 'participant-admin'
         }, context, authInfo), /Participant-owned blackboards are not enabled yet/);
 
-        const backgroundResponse = await dispatch('webmeet_blackboard_apply', {
-            roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
-            participantId: 'participant-admin',
-            change: JSON.stringify({
+        const backgroundResponse = await dispatchChange({
                 changeType: 'update',
                 targetType: 'blackboard',
                 reason: 'background',
                 patch: { metadata: { background: { color: '#f8fafc' } } }
-            })
-        }, context, authInfo);
+            });
 
         assert.equal(backgroundResponse.blackboard.metadata.background.color, '#f8fafc');
         assert.equal(backgroundResponse.object.metadata.background.color, '#f8fafc');
@@ -1788,6 +2288,10 @@ test('webmeet blackboard submit derives participant authority from joined partic
         const adminAuth = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const userAuth = { user: { id: 'local:user-1', username: 'user1', roles: ['user'] } };
         const context = await createStoreContext(root);
+        context.scriptaExplorerClient = async (tool, args) => {
+            assert.equal(tool, 'scripta_crdt_ensure_folder');
+            return { ok: true, folderPath: args.folderPath };
+        };
         const meeting = await createMeeting(context, { name: 'Blackboard spoof test', authInfo: adminAuth });
         await joinMeeting(context, {
             meetingId: meeting.roomId,
@@ -1854,6 +2358,10 @@ test('webmeet blackboard strips non-admin visibility authority from final change
         const adminAuth = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const userAuth = { user: { id: 'local:user-1', username: 'user1', roles: ['user'] } };
         const context = await createStoreContext(root);
+        context.scriptaExplorerClient = async (tool, args) => {
+            assert.equal(tool, 'scripta_crdt_ensure_folder');
+            return { ok: true, folderPath: args.folderPath };
+        };
         const meeting = await createMeeting(context, { name: 'Blackboard visibility test', authInfo: adminAuth });
         await joinMeeting(context, {
             meetingId: meeting.roomId,

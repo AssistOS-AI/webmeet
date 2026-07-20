@@ -18,27 +18,68 @@ webmeet-blackboard-panel {
     display: flex;
     flex-direction: column;
     position: relative;
+    width: 100%;
+    min-width: 0;
     min-height: 320px;
     height: 100%;
-    background: var(--bb-panel-bg);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--bb-panel-bg) 84%, var(--bb-grid-color));
     color: var(--bb-widget-text);
     font-family: var(--default-font);
 }
 
 .webmeet-blackboard-board {
-    flex: 1;
+    flex: 1 1 auto;
     position: relative;
-    min-height: inherit;
+    box-sizing: border-box;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--bb-board-border);
+    scrollbar-gutter: stable;
     background-color: var(--bb-board-bg);
-    height: 100%;
+    background-image: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--bb-grid-color) 62%, transparent) 0.8px,
+        transparent 0.9px
+    );
+    background-position: 10px 10px;
+    background-size: 20px 20px;
+    box-shadow: inset 0 1px 2px color-mix(in srgb, var(--bb-widget-text) 5%, transparent);
+}
+
+.webmeet-blackboard-board:empty::before,
+.webmeet-blackboard-board:empty::after {
+    position: absolute;
+    left: 50%;
+    z-index: 1;
+    width: min(420px, calc(100% - 48px));
+    transform: translateX(-50%);
+    color: var(--bb-widget-text);
+    text-align: center;
+    pointer-events: none;
+}
+
+.webmeet-blackboard-board:empty::before {
+    content: 'Start collaborating';
+    top: calc(50% - 28px);
+    font-size: 15px;
+    font-weight: 750;
+}
+
+.webmeet-blackboard-board:empty::after {
+    content: 'Choose a creation tool above, or open a SCRIPTA document.';
+    top: 50%;
+    color: color-mix(in srgb, var(--bb-widget-text) 62%, transparent);
+    font-size: 12px;
+    line-height: 1.45;
 }
 
 .webmeet-blackboard-widget {
     position: absolute;
     box-sizing: border-box;
+    margin: 10px 0 0 10px;
     min-width: 16px;
     min-height: 16px;
     border: 1px solid transparent;
@@ -46,10 +87,25 @@ webmeet-blackboard-panel {
     touch-action: none;
 }
 
-.webmeet-blackboard-widget[aria-selected="true"] {
-    border-color: var(--bb-selection);
-    box-shadow: 0 0 0 2px var(--bb-selection-shadow);
-    overflow: visible;
+.webmeet-blackboard-widget::before,
+.webmeet-blackboard-widget::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.webmeet-blackboard-widget::before {
+    top: 0;
+    left: 100%;
+    width: 40px;
+    height: max(100%, 128px);
+}
+
+.webmeet-blackboard-widget::after {
+    top: 100%;
+    left: 0;
+    width: calc(100% + 40px);
+    height: 10px;
 }
 
 .webmeet-blackboard-create-preview {
@@ -202,6 +258,526 @@ webmeet-blackboard-panel {
 
 .webmeet-blackboard-widget.is-locked {
     opacity: 0.65;
+}
+
+.webmeet-blackboard-widget.scripta-document {
+    min-width: 600px;
+    min-height: 400px;
+    overflow: visible;
+    padding: 16px;
+    border: 1px solid var(--bb-widget-border);
+    border-radius: 12px;
+    background: var(--bb-widget-bg);
+    color: var(--bb-widget-text);
+    user-select: text;
+    touch-action: pan-x pan-y;
+}
+
+.webmeet-scripta-document {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.webmeet-scripta-document-header,
+.webmeet-scripta-inline-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.webmeet-scripta-paragraph-nav {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 52px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--bb-widget-border);
+}
+
+.webmeet-scripta-paragraph-pager {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+}
+
+.webmeet-scripta-paragraph-pager-label {
+    color: var(--bb-context-text);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: center;
+}
+
+.webmeet-scripta-paragraph-pager-controls {
+    display: inline-flex;
+    align-items: center;
+}
+
+.webmeet-scripta-nav-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--bb-widget-border);
+    background: var(--bb-context-bg);
+    color: var(--bb-context-text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.webmeet-scripta-nav-button:hover:not(:disabled),
+.webmeet-scripta-nav-button:focus-visible {
+    z-index: 1;
+    border-color: var(--bb-selection);
+    background: var(--bb-context-hover-bg);
+}
+
+.webmeet-scripta-nav-button:focus-visible {
+    outline: 2px solid var(--bb-selection-shadow);
+    outline-offset: 2px;
+}
+
+.webmeet-scripta-nav-button:disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+
+.webmeet-scripta-nav-button.is-back {
+    border-radius: 6px;
+}
+
+.webmeet-scripta-paragraph-pager-controls .webmeet-scripta-nav-button:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+.webmeet-scripta-paragraph-pager-controls .webmeet-scripta-nav-button:last-child {
+    margin-left: -1px;
+    border-radius: 0 6px 6px 0;
+}
+
+.webmeet-scripta-nav-button.is-next .webmeet-scripta-nav-icon {
+    order: 2;
+}
+
+.webmeet-scripta-nav-icon {
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+}
+
+.webmeet-scripta-nav-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    border-top: 1.5px solid currentColor;
+    border-left: 1.5px solid currentColor;
+}
+
+.webmeet-scripta-nav-icon.is-back::before,
+.webmeet-scripta-nav-icon.is-previous::before {
+    transform: translate(-35%, -50%) rotate(-45deg);
+}
+
+.webmeet-scripta-nav-icon.is-next::before {
+    transform: translate(-65%, -50%) rotate(135deg);
+}
+
+.webmeet-scripta-nav-icon.is-back::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 2px;
+    width: 9px;
+    height: 1.5px;
+    border-radius: 999px;
+    background: currentColor;
+    transform: translateY(-50%);
+}
+
+.webmeet-scripta-document-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    justify-content: space-between;
+    padding-bottom: 10px;
+    background: var(--bb-widget-bg);
+    border-bottom: 1px solid var(--bb-widget-border);
+}
+
+.webmeet-scripta-document-position {
+    position: absolute;
+    top: calc(50% - 5px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.webmeet-scripta-document-header.is-paragraph-mode .webmeet-scripta-document-title {
+    max-width: calc(50% - 24px);
+}
+
+.webmeet-scripta-document-title {
+    min-width: 0;
+    margin: 4px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-context-button.webmeet-scripta-header-action {
+    flex: 0 0 auto;
+    width: auto;
+    height: 28px;
+    min-width: 26px;
+    max-width: none;
+    padding: 0 7px 0 9px;
+    gap: 4px;
+    border-color: var(--bb-widget-border);
+    border-radius: 6px;
+    background: var(--bb-context-bg);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--bb-widget-text) 10%, transparent);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.webmeet-scripta-header-action-label {
+    order: 1;
+    line-height: 1;
+}
+
+.webmeet-scripta-header-action .webmeet-blackboard-context-icon {
+    order: 2;
+    width: 13px;
+    height: 13px;
+}
+
+.webmeet-scripta-document-chapter {
+    margin-bottom: 18px;
+    padding: 12px;
+    border: 1px solid var(--bb-widget-border);
+    border-radius: 10px;
+}
+
+.webmeet-scripta-document-chapter > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.webmeet-scripta-document-chapter h3 {
+    margin: 0;
+    min-width: 0;
+    padding: 5px 7px;
+    border-radius: 6px;
+    outline: none;
+    cursor: text;
+    transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.webmeet-scripta-document-chapter h3:hover,
+.webmeet-scripta-document-chapter h3:focus-visible {
+    background: var(--bb-inline-edit-bg);
+    box-shadow: 0 0 0 2px var(--bb-selection-shadow);
+}
+
+.webmeet-scripta-chapter-title {
+    min-width: 0;
+}
+
+.webmeet-scripta-chapter-title-edit {
+    display: grid;
+    gap: 8px;
+}
+
+.webmeet-scripta-chapter-title-edit[hidden] {
+    display: none;
+}
+
+.webmeet-scripta-chapter-title-edit input {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--bb-widget-border);
+    border-radius: 7px;
+    outline: none;
+    background: var(--bb-inline-edit-bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 650;
+}
+
+.webmeet-scripta-chapter-title-edit input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--bb-selection-shadow);
+}
+
+.webmeet-scripta-chapter-title-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.webmeet-scripta-title-edit-button {
+    min-height: 30px;
+    padding: 5px 12px;
+    border: 1px solid var(--bb-widget-border);
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.webmeet-scripta-title-edit-button:hover {
+    background: var(--bb-inline-edit-bg);
+}
+
+.webmeet-scripta-title-edit-button.is-save {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-contrast, #fff);
+}
+
+.webmeet-scripta-title-edit-button:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+.webmeet-scripta-document-chapter > header.is-title-editing {
+    align-items: start;
+}
+
+.webmeet-scripta-document-chapter > header.is-title-editing .webmeet-scripta-chapter-actions {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.webmeet-scripta-document-paragraph {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 9px;
+    padding: 10px;
+    border: 1px solid var(--bb-widget-border);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+}
+
+.webmeet-scripta-chapter-actions,
+.webmeet-scripta-paragraph-actions {
+    flex: 0 0 auto;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.webmeet-scripta-chapter-actions .webmeet-scripta-labeled-action {
+    width: auto;
+    padding: 0 7px 0 8px;
+    gap: 4px;
+    border-color: var(--bb-widget-border);
+    border-radius: 6px;
+}
+
+.webmeet-scripta-inline-action-label {
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.webmeet-scripta-labeled-action .webmeet-blackboard-context-icon {
+    width: 12px;
+    height: 12px;
+}
+
+.webmeet-scripta-reorder-group {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 3px;
+}
+
+.webmeet-scripta-reorder-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.webmeet-scripta-document-chapter > header:hover .webmeet-scripta-chapter-actions,
+.webmeet-scripta-document-chapter > header:focus-within .webmeet-scripta-chapter-actions,
+.webmeet-scripta-document-paragraph:hover .webmeet-scripta-paragraph-actions,
+.webmeet-scripta-document-paragraph:focus-within .webmeet-scripta-paragraph-actions {
+    opacity: 1;
+}
+
+.webmeet-scripta-chapter-actions .webmeet-blackboard-context-button:disabled,
+.webmeet-scripta-paragraph-actions .webmeet-blackboard-context-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.webmeet-scripta-paragraph-open {
+    display: grid;
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.webmeet-scripta-document-paragraph:hover,
+.webmeet-scripta-document-paragraph:focus-visible {
+    border-color: var(--bb-selection);
+    background: var(--surface-soft);
+}
+
+.webmeet-scripta-document-paragraph p {
+    margin: 6px 0 0;
+    white-space: pre-wrap;
+}
+
+.webmeet-scripta-document-paragraph p.is-placeholder {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.webmeet-scripta-empty {
+    display: grid;
+    flex: 1;
+    place-items: center;
+    color: var(--muted);
+}
+
+.webmeet-scripta-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--bb-widget-border);
+}
+
+.webmeet-scripta-hierarchy {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 7px;
+}
+
+.webmeet-scripta-context-title {
+    min-width: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--bb-widget-text) 64%, transparent);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-scripta-context-meta {
+    color: color-mix(in srgb, var(--bb-widget-text) 44%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.035em;
+    line-height: 1.2;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.webmeet-scripta-section-label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.webmeet-scripta-title {
+    margin: 4px 0 0;
+    color: var(--bb-widget-text);
+    font-size: 17px;
+    line-height: 1.3;
+}
+
+.webmeet-scripta-section-label {
+    margin-top: 12px;
+}
+
+.webmeet-scripta-current {
+    padding: 12px;
+    border-left: 4px solid var(--bb-selection);
+    background: var(--surface-soft);
+}
+
+.webmeet-scripta-chapter-paragraph {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--bb-widget-border);
+    border-radius: 8px;
+}
+
+.webmeet-scripta-chapter-paragraph.is-focused {
+    border-left: 4px solid var(--bb-selection);
+    background: var(--surface-soft);
+}
+
+.webmeet-scripta-chapter-paragraph-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.webmeet-scripta-chapter-paragraph-text {
+    margin: 0;
+    line-height: 1.45;
+}
+
+.webmeet-scripta-focused-badge {
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--bb-selection);
+    color: var(--surface);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+
+.webmeet-scripta-editor-link {
+    display: inline-block;
+    margin-top: 12px;
 }
 
 .webmeet-blackboard-widget.shape {
@@ -586,6 +1162,12 @@ webmeet-blackboard-panel {
     flex-direction: column;
 }
 
+.webmeet-blackboard-widget[aria-selected="true"] {
+    border-color: var(--bb-selection);
+    box-shadow: 0 0 0 2px var(--bb-selection-shadow);
+    overflow: visible;
+}
+
 .webmeet-blackboard-widget[aria-selected="true"] .webmeet-blackboard-context-menu {
     display: inline-flex;
 }
@@ -625,6 +1207,11 @@ webmeet-blackboard-panel {
     color: var(--bb-danger);
 }
 
+.webmeet-blackboard-context-button.webmeet-scripta-header-action:active {
+    box-shadow: none;
+    transform: translateY(1px);
+}
+
 .webmeet-blackboard-context-icon {
     display: block;
     width: 16px;
@@ -656,4 +1243,57 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-context-icon.delete {
     -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/delete.svg');
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/delete.svg');
+}
+
+.webmeet-blackboard-context-icon.arrow-up {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/arrow-up.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/arrow-up.svg');
+}
+
+.webmeet-blackboard-context-icon.arrow-down {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/arrow-down.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/arrow-down.svg');
+}
+
+.webmeet-blackboard-context-icon.reorder-up {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/reorder-up.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/reorder-up.svg');
+}
+
+.webmeet-blackboard-context-icon.reorder-down {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/reorder-down.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/reorder-down.svg');
+}
+
+.webmeet-blackboard-context-icon.plus {
+    position: relative;
+    background: transparent;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.webmeet-blackboard-context-icon.plus::before,
+.webmeet-blackboard-context-icon.plus::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 999px;
+    background: currentColor;
+    transform: translate(-50%, -50%);
+}
+
+.webmeet-blackboard-context-icon.plus::before {
+    width: 11px;
+    height: 1.5px;
+}
+
+.webmeet-blackboard-context-icon.plus::after {
+    width: 1.5px;
+    height: 11px;
+}
+
+@media (hover: none) {
+    .webmeet-scripta-chapter-actions,
+    .webmeet-scripta-paragraph-actions { opacity: 1; }
 }

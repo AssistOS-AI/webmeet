@@ -1,5 +1,4 @@
 import { BlackboardNetworkAdapter } from '../services/blackboard/blackboard-network-adapter.js';
-import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 import { runWebMeetTool } from '../services/webmeet-api-client.js';
 
 function getMeetingId(dashboard) {
@@ -87,6 +86,13 @@ export const blackboardMethods = {
             participantId,
             participantName,
             runTool: runWebMeetTool,
+            onAuditMessage: (message) => {
+                this.state.chat = Array.isArray(this.state.chat) ? this.state.chat : [];
+                const index = this.state.chat.findIndex((entry) => entry?.id === message?.id);
+                if (index >= 0) this.state.chat[index] = message;
+                else this.state.chat.push(message);
+                this.renderFeedLists();
+            },
             publishRealtimePayload: (payload) => this.publishRealtimePayload(payload),
             room: this.webMeetRoom
         });
@@ -101,6 +107,12 @@ export const blackboardMethods = {
             if (payload.kind === 'widget' && panel) {
                 dispatchBlackboardPanelEvent(panel, 'webmeet-blackboard-update', {
                     widget: payload.object
+                });
+                return;
+            }
+            if (payload.kind === 'scripta-presentation' && panel) {
+                dispatchBlackboardPanelEvent(panel, 'webmeet-blackboard-update', {
+                    scriptaPresentation: payload.presentation
                 });
             }
         });
@@ -129,17 +141,11 @@ export const blackboardMethods = {
         const isLocalPresenter = this.state.blackboard?.visible
             && this.state.blackboard?.presenterId === participantId;
         const visible = !isLocalPresenter;
-        await this.applyBlackboardVisibility({
-            meetingId,
-            participantId,
-            visible
+        const adapter = await this.ensureBlackboardAdapter();
+        const response = await adapter.sendEvent(visible ? 'show' : 'hide', {}, {
+            targetType: 'blackboard'
         });
-        await this.publishRealtimePayload({
-            type: WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED,
-            meetingId,
-            participantId,
-            visible
-        });
+        await this.applyBlackboardVisibility(response.visibilityPayload || { meetingId, participantId, visible });
     },
 
     async applyBlackboardVisibility(payload = {}) {

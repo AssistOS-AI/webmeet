@@ -883,10 +883,11 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+    border-radius: 12px;
     background: var(--surface);
     overflow: hidden;
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .webmeet-blackboard-header {
@@ -895,12 +896,28 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    min-height: 38px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-strong);
+    min-height: 42px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface));
     color: var(--text);
     font-size: 0.82rem;
     font-weight: 700;
+}
+
+.webmeet-blackboard-header > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.webmeet-blackboard-header > span:first-child::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .webmeet-blackboard-presenter {
@@ -908,6 +925,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
     color: var(--text-soft);
     font-size: 0.75rem;
     font-weight: 600;
@@ -916,7 +936,9 @@
 .webmeet-blackboard-surface webmeet-blackboard-panel {
     flex: 1 1 auto;
     min-height: 0;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .webmeet-video-empty {
@@ -2006,6 +2028,89 @@ textarea.form-input {
 
 .webmeet-chat-entry.webmeet-chat-entry-self .webmeet-chat-text {
     color: color-mix(in srgb, var(--text) 88%, var(--accent) 12%);
+}
+
+.webmeet-chat-view-mode {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.webmeet-chat-view-mode-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#webmeetChatSidebar .webmeet-panel-header .webmeet-chat-view-mode-label {
+    color: var(--text-soft);
+    font-size: 0.64rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: none;
+    transition: color 160ms ease;
+}
+
+.webmeet-chat-view-mode-track {
+    position: relative;
+    display: block;
+    width: 30px;
+    height: 18px;
+    box-sizing: border-box;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--inactive-element);
+    transition: border-color 160ms ease, background 160ms ease;
+}
+
+.webmeet-chat-view-mode-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 22%, transparent);
+    transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.webmeet-chat-view-mode-input:checked + .webmeet-chat-view-mode-track {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+
+.webmeet-chat-view-mode-input:checked + .webmeet-chat-view-mode-track::after {
+    transform: translateX(12px);
+}
+
+.webmeet-chat-view-mode-input:focus-visible + .webmeet-chat-view-mode-track {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    outline-offset: 2px;
+}
+
+#webmeetChatSidebar .webmeet-panel-header .webmeet-chat-view-mode:hover .webmeet-chat-view-mode-label,
+#webmeetChatSidebar .webmeet-panel-header .webmeet-chat-view-mode:has(.webmeet-chat-view-mode-input:checked) .webmeet-chat-view-mode-label {
+    color: var(--text);
+}
+
+.webmeet-chat-entry.webmeet-chat-entry-event {
+    border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--light-gray-border) 92%);
+}
+
+.webmeet-chat-event-status {
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--bg-active);
+    text-transform: uppercase;
+    font-size: 0.62rem;
 }
 
 .webmeet-chat-empty {

@@ -26,7 +26,7 @@ function buildResourceStoragePath(context, roomId, resourceId, filename) {
 }
 
 function publicResourceView(resource = {}) {
-    const { storagePath: _storagePath, ...publicResource } = resource || {};
+    const { storagePath: _storagePath, path: _privatePath, documentId: _documentId, ...publicResource } = resource || {};
     return publicResource;
 }
 

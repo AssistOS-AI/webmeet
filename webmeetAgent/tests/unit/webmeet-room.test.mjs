@@ -360,3 +360,19 @@ test('WebMeetRoom rejects LiveKit chat events forged for another author', () => 
         /mismatched sender/
     );
 });
+
+test('WebMeetRoom rejects SCRIPTA drafts forged for another editor', () => {
+    const room = new WebMeetRoom(createRoomOptions());
+    const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+        meetingId: 'room_00000000-0000-4000-8000-000000000001',
+        boardId: 'agent:agent_robo_team',
+        blackboardVersion: 3,
+        changeType: 'scripta-p-variant-edit-draft',
+        editorParticipantId: 'participant-b',
+    });
+
+    assert.throws(
+        () => room.handleIncomingEvent('livekit', encoded, { participantId: 'participant-a' }),
+        /mismatched editor/
+    );
+});

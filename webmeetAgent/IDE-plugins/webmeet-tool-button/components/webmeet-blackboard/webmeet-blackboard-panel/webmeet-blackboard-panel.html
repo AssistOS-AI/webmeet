@@ -1,3 +1,174 @@
 <webmeet-blackboard-toolbar data-presenter="webmeet-blackboard-toolbar"></webmeet-blackboard-toolbar>
 <webmeet-blackboard-results-panel data-presenter="webmeet-blackboard-results-panel" hidden></webmeet-blackboard-results-panel>
+
+<template data-template="scripta-document">
+    <article class="webmeet-scripta-document">
+        <header class="webmeet-scripta-document-header">
+            <h2 class="webmeet-scripta-document-title" data-role="document-title"></h2>
+            <span class="webmeet-scripta-document-position webmeet-scripta-context-meta"
+                  data-role="document-position"
+                  hidden></span>
+            <button type="button"
+                    class="webmeet-blackboard-context-button add webmeet-scripta-header-action"
+                    data-local-action="runScriptaLocalAction scripta-chapter-add"
+                    title="Add chapter"
+                    aria-label="Add chapter">
+                <span class="webmeet-scripta-header-action-label">Chapter</span>
+                <span class="webmeet-blackboard-context-icon plus" aria-hidden="true"></span>
+            </button>
+        </header>
+        <div data-role="document-content"></div>
+    </article>
+</template>
+
+<template data-template="scripta-empty">
+    <div class="webmeet-scripta-empty">Create or open a SCRIPTA document.</div>
+</template>
+
+<template data-template="scripta-chapter">
+    <section class="webmeet-scripta-document-chapter">
+        <header>
+            <div class="webmeet-scripta-chapter-title" data-role="chapter-title-editor">
+                <h3 data-role="chapter-title"
+                    role="button"
+                    tabindex="0"
+                    data-local-action="openScriptaChapterTitleEditor"
+                    aria-label="Edit chapter title"></h3>
+                <div class="webmeet-scripta-chapter-title-edit" data-role="chapter-title-edit" hidden>
+                    <input type="text"
+                           data-role="chapter-title-input"
+                           aria-label="Chapter title"
+                           autocomplete="off">
+                    <div class="webmeet-scripta-chapter-title-edit-actions">
+                        <button type="button"
+                                class="webmeet-scripta-title-edit-button is-cancel"
+                                data-local-action="cancelScriptaChapterTitleEditor"
+                                data-role="chapter-title-cancel">Cancel</button>
+                        <button type="button"
+                                class="webmeet-scripta-title-edit-button is-save"
+                                data-local-action="saveScriptaChapterTitleEditor"
+                                data-role="chapter-title-save">Save</button>
+                    </div>
+                </div>
+            </div>
+            <div class="webmeet-scripta-inline-actions webmeet-scripta-chapter-actions"
+                 aria-label="Chapter actions">
+                <button type="button"
+                        class="webmeet-blackboard-context-button add webmeet-scripta-labeled-action"
+                        data-local-action="runScriptaLocalAction scripta-paragraph-add"
+                        title="Add paragraph"
+                        aria-label="Add paragraph">
+                    <span class="webmeet-scripta-inline-action-label">Paragraph</span>
+                    <span class="webmeet-blackboard-context-icon plus" aria-hidden="true"></span>
+                </button>
+                <div class="webmeet-scripta-reorder-group" role="group" aria-label="Reorder chapter">
+                    <div class="webmeet-scripta-reorder-controls">
+                        <button type="button"
+                                class="webmeet-blackboard-context-button move-up"
+                                data-local-action="runScriptaLocalAction scripta-chapter-move"
+                                data-move-direction="up"
+                                title="Move chapter up"
+                                aria-label="Move chapter up">
+                            <span class="webmeet-blackboard-context-icon reorder-up" aria-hidden="true"></span>
+                        </button>
+                        <button type="button"
+                                class="webmeet-blackboard-context-button move-down"
+                                data-local-action="runScriptaLocalAction scripta-chapter-move"
+                                data-move-direction="down"
+                                title="Move chapter down"
+                                aria-label="Move chapter down">
+                            <span class="webmeet-blackboard-context-icon reorder-down" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </div>
+                <button type="button"
+                        class="webmeet-blackboard-context-button delete"
+                        data-local-action="runScriptaLocalAction scripta-chapter-delete"
+                        title="Delete chapter"
+                        aria-label="Delete chapter">
+                    <span class="webmeet-blackboard-context-icon delete" aria-hidden="true"></span>
+                </button>
+            </div>
+        </header>
+        <div data-role="chapter-paragraphs"></div>
+    </section>
+</template>
+
+<template data-template="scripta-paragraph-card">
+    <section class="webmeet-scripta-document-paragraph">
+        <button type="button"
+                class="webmeet-scripta-paragraph-open"
+                data-local-action="runScriptaLocalAction scripta-paragraph-open">
+            <p data-role="paragraph-text"></p>
+        </button>
+        <div class="webmeet-scripta-inline-actions webmeet-scripta-paragraph-actions"
+             aria-label="Paragraph actions">
+            <button type="button"
+                    class="webmeet-blackboard-context-button move-up"
+                    data-local-action="runScriptaLocalAction scripta-paragraph-move"
+                    data-move-direction="up"
+                    title="Move paragraph up"
+                    aria-label="Move paragraph up">
+                <span class="webmeet-blackboard-context-icon reorder-up" aria-hidden="true"></span>
+            </button>
+            <button type="button"
+                    class="webmeet-blackboard-context-button move-down"
+                    data-local-action="runScriptaLocalAction scripta-paragraph-move"
+                    data-move-direction="down"
+                    title="Move paragraph down"
+                    aria-label="Move paragraph down">
+                <span class="webmeet-blackboard-context-icon reorder-down" aria-hidden="true"></span>
+            </button>
+            <button type="button"
+                    class="webmeet-blackboard-context-button delete"
+                    data-local-action="runScriptaLocalAction scripta-paragraph-delete"
+                    title="Delete paragraph"
+                    aria-label="Delete paragraph">
+                <span class="webmeet-blackboard-context-icon delete" aria-hidden="true"></span>
+            </button>
+        </div>
+    </section>
+</template>
+
+<template data-template="scripta-paragraph-mode">
+    <nav class="webmeet-scripta-paragraph-nav" aria-label="Paragraph navigation">
+        <button type="button"
+                class="webmeet-scripta-nav-button is-back"
+                data-local-action="runScriptaLocalAction scripta-document-view"
+                title="Document"
+                aria-label="Document">
+            <span class="webmeet-scripta-nav-icon is-back" aria-hidden="true"></span>
+            <span class="webmeet-scripta-nav-label">Document</span>
+        </button>
+        <div class="webmeet-scripta-paragraph-pager">
+            <span class="webmeet-scripta-paragraph-pager-label">Paragraph</span>
+            <div class="webmeet-scripta-paragraph-pager-controls">
+                <button type="button"
+                        class="webmeet-scripta-nav-button is-previous"
+                        data-local-action="runScriptaLocalAction scripta-paragraph-previous"
+                        title="Prev"
+                        aria-label="Prev">
+                    <span class="webmeet-scripta-nav-icon is-previous" aria-hidden="true"></span>
+                    <span class="webmeet-scripta-nav-label">Prev</span>
+                </button>
+                <button type="button"
+                        class="webmeet-scripta-nav-button is-next"
+                        data-local-action="runScriptaLocalAction scripta-paragraph-next"
+                        title="Next"
+                        aria-label="Next">
+                    <span class="webmeet-scripta-nav-icon is-next" aria-hidden="true"></span>
+                    <span class="webmeet-scripta-nav-label">Next</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+    <header class="webmeet-scripta-heading">
+        <div class="webmeet-scripta-hierarchy">
+            <span class="webmeet-scripta-context-title" data-role="chapter-title"></span>
+        </div>
+    </header>
+    <scripta-variants-view data-presenter="scripta-variants-view"
+                           data-role="variants-view"></scripta-variants-view>
+</template>
+
 <div class="webmeet-blackboard-board" part="board" data-role="board"></div>

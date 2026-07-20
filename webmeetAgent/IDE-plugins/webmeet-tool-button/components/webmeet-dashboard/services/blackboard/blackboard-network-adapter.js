@@ -3,6 +3,31 @@ import {
     encodeBlackboardProtocolMessage,
     parseBlackboardProtocolMessage
 } from './blackboard-protocol.js';
+import { ScriptaCrdtReplica } from './scripta-crdt-replica.js';
+
+const SCRIPTA_DOCUMENT_MUTATION_ACTIONS = new Set([
+    'scripta-p-variant-add',
+    'scripta-p-variant-vote',
+    'scripta-p-variant-vote-withdraw',
+    'scripta-p-variant-reformulate',
+    'scripta-p-variant-edit',
+    'scripta-p-variant-delete',
+    'scripta-undo',
+    'scripta-chapter-add',
+    'scripta-chapter-edit',
+    'scripta-chapter-delete',
+    'scripta-chapter-move',
+    'scripta-paragraph-add',
+    'scripta-paragraph-delete',
+    'scripta-paragraph-move'
+]);
+
+function containsViewerScopedScriptaProjection(object) {
+    if (!object || typeof object !== 'object') return false;
+    if (object.type === 'scripta-document') return true;
+    return Array.isArray(object.widgets)
+        && object.widgets.some((widget) => widget?.type === 'scripta-document');
+}
 
 export class BlackboardNetworkAdapter {
     constructor({
@@ -11,6 +36,7 @@ export class BlackboardNetworkAdapter {
         participantId = '',
         participantName = '',
         runTool,
+        onAuditMessage = null,
         publishRealtimePayload = null,
         room = null
     } = {}) {
@@ -22,12 +48,14 @@ export class BlackboardNetworkAdapter {
         this.participantId = String(participantId || '').trim();
         this.participantName = String(participantName || '').trim();
         this.runTool = runTool;
+        this.onAuditMessage = onAuditMessage;
         this.publishRealtimePayload = publishRealtimePayload;
         this.room = room;
         this.handlers = new Set();
         this.seenMessageIds = new Set();
         this.currentVersion = 0;
         this.unsubscribeRoom = null;
+        this.scriptaReplica = new ScriptaCrdtReplica(this);
     }
 
     async loadInitialBlackboard(roomId = this.roomId) {
@@ -41,22 +69,93 @@ export class BlackboardNetworkAdapter {
     }
 
     async sendChange(change) {
-        const response = await this.runTool('webmeet_blackboard_apply', {
-            roomId: this.roomId,
-            boardId: this.boardId,
-            participantId: this.participantId,
-            change: JSON.stringify(change || {})
+        const targetType = String(change?.targetType || 'widget');
+        const changeType = String(change?.changeType || 'update');
+        const action = changeType === 'add' ? 'create' : changeType;
+        const event = this.createEvent({
+            target: {
+                type: targetType,
+                boardId: this.boardId,
+                ...(change?.targetRef || change?.widget?.id ? { widgetId: String(change.targetRef || change.widget.id) } : {})
+            },
+            action,
+            payload: { change: change || {} }
         });
+        const response = await this.runEvent(event);
+        await this.publishAudit(response);
+        if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard event failed.');
+        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
         await this.publishFinalUpdate(response, change?.changeType || 'update');
         return response;
     }
 
-    async undo() {
-        const response = await this.runTool('webmeet_blackboard_undo', {
+    async sendEvent(action, payload = {}, { widgetId = '', targetType = 'widget' } = {}) {
+        let response;
+        try {
+            response = await this.runEvent(this.createEvent({
+                target: { type: targetType, boardId: this.boardId, ...(widgetId ? { widgetId } : {}) },
+                action,
+                payload
+            }));
+        } catch (error) {
+            const conflict = error?.code === 'version_conflict' || error?.data?.error?.code === 'version_conflict';
+            const currentBoardVersion = Number(error?.data?.error?.currentBoardVersion || 0);
+            if (currentBoardVersion) this.currentVersion = Math.max(this.currentVersion, currentBoardVersion);
+            if (conflict) await this.requestResync('version-conflict').catch(() => {});
+            throw error;
+        }
+        await this.publishAudit(response);
+        if (!response?.ok) throw new Error(response?.error?.message || response?.message || 'Blackboard event failed.');
+        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        if (response?.blackboard) await this.publishFinalUpdate(response, action);
+        if (SCRIPTA_DOCUMENT_MUTATION_ACTIONS.has(String(action || ''))) {
+            // The command response is the authoritative projection and can be
+            // rendered immediately. Keep the browser CRDT replica synchronized
+            // in the background; edits wait for this queue before producing a
+            // local Automerge change.
+            void this.scriptaReplica.schedulePullAll();
+        }
+        if (response?.visibilityPayload && typeof this.publishRealtimePayload === 'function') {
+            await this.publishRealtimePayload(response.visibilityPayload);
+        }
+        return response;
+    }
+
+    async listScriptaWorkspaceEntries() {
+        return this.runTool('webmeet_scripta_workspace_list', { roomId: this.roomId });
+    }
+
+    createEvent({ target, action, payload }) {
+        const uuid = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        return {
+            eventId: `event_${uuid}`,
+            commandId: `command_${uuid}`,
+            expectedBoardVersion: this.currentVersion,
+            target,
+            action,
+            payload
+        };
+    }
+
+    async runEvent(event) {
+        return this.runTool('webmeet_event_command', {
             roomId: this.roomId,
-            boardId: this.boardId,
-            participantId: this.participantId
+            participantId: this.participantId,
+            selectedWidgetId: event.target?.widgetId || '',
+            source: 'ui',
+            commandSource: 'chat',
+            commandId: event.commandId,
+            event: JSON.stringify(event)
         });
+    }
+
+    async undo() {
+        const response = await this.runEvent(this.createEvent({
+            target: { type: 'blackboard', boardId: this.boardId }, action: 'undo', payload: {}
+        }));
+        await this.publishAudit(response);
+        if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard undo failed.');
+        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
         if (response?.changed) {
             await this.publishFinalUpdate(response, 'undo');
         }
@@ -64,11 +163,12 @@ export class BlackboardNetworkAdapter {
     }
 
     async redo() {
-        const response = await this.runTool('webmeet_blackboard_redo', {
-            roomId: this.roomId,
-            boardId: this.boardId,
-            participantId: this.participantId
-        });
+        const response = await this.runEvent(this.createEvent({
+            target: { type: 'blackboard', boardId: this.boardId }, action: 'redo', payload: {}
+        }));
+        await this.publishAudit(response);
+        if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard redo failed.');
+        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
         if (response?.changed) {
             await this.publishFinalUpdate(response, 'redo');
         }
@@ -86,6 +186,32 @@ export class BlackboardNetworkAdapter {
         this.handlers.clear();
         this.unsubscribeRoom?.();
         this.unsubscribeRoom = null;
+        void this.scriptaReplica?.closeAll?.();
+    }
+
+    async openScriptaCollaboration(resourceId) {
+        return this.scriptaReplica.open(resourceId);
+    }
+
+    async applyScriptaVariantEdit(payload = {}) {
+        let response;
+        try {
+            response = await this.scriptaReplica.editVariant(payload);
+        } catch (error) {
+            await this.requestResync('scripta-p-variant-edit-failed').catch(() => {});
+            throw error;
+        }
+        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        if (response?.blackboard) {
+            this.emit({
+                kind: 'blackboard',
+                object: response.blackboard,
+                version: this.currentVersion,
+                reason: 'scripta-crdt-edit'
+            });
+            await this.publishFinalUpdate(response, 'scripta-p-variant-edit');
+        }
+        return response;
     }
 
     async handleEncodedEvent(encodedEvent) {
@@ -130,7 +256,27 @@ export class BlackboardNetworkAdapter {
                 return 'old-version';
             }
             this.currentVersion = Math.max(this.currentVersion, version, protocolVersion);
+            if (protocol.payload.presentation) {
+                this.emit({
+                    kind: 'scripta-presentation',
+                    presentation: protocol.payload.presentation,
+                    version: this.currentVersion,
+                    messageId: protocolMessageId,
+                    from: protocol.from,
+                    to: protocol.to,
+                });
+                return 'applied';
+            }
             if (protocol.payload.object) {
+                if (containsViewerScopedScriptaProjection(protocol.payload.object)) {
+                    // SCRIPTA edit/delete permissions and viewer votes are
+                    // participant-specific. Never apply another participant's
+                    // serialized projection; reload the same board version
+                    // through the authenticated WebMeet boundary instead.
+                    void this.scriptaReplica.schedulePullAll();
+                    await this.requestResync('scripta-viewer-projection');
+                    return 'applied';
+                }
                 this.emit({
                     kind: protocol.payload.kind,
                     object: protocol.payload.object,
@@ -139,9 +285,14 @@ export class BlackboardNetworkAdapter {
                     from: protocol.from,
                     to: protocol.to
                 });
+                // The realtime projection is complete. Synchronize the editing
+                // replica after rendering it, using the same queue as local
+                // events so a subsequent inline edit cannot overtake the pull.
+                void this.scriptaReplica.schedulePullAll();
                 return 'applied';
             }
         }
+        void this.scriptaReplica.schedulePullAll();
         this.currentVersion = Math.max(this.currentVersion, version);
         await this.requestResync('blackboard.updated');
         return 'applied';
@@ -159,12 +310,68 @@ export class BlackboardNetworkAdapter {
         }
     }
 
+    async publishAudit(response) {
+        if (!response?.auditMessage) return;
+        this.onAuditMessage?.(response.auditMessage);
+        if (typeof this.publishRealtimePayload !== 'function') return;
+        await this.publishRealtimePayload({
+            type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
+            meetingId: this.roomId,
+            message: response.auditMessage
+        }).catch(() => {});
+    }
+
+    async publishScriptaDraft(presentation = {}) {
+        if (typeof this.publishRealtimePayload !== 'function') return;
+        const editorParticipantId = String(presentation.editorParticipantId || this.participantId).trim();
+        const blackboardMessage = encodeBlackboardProtocolMessage({
+            from: editorParticipantId ? `user:${editorParticipantId}` : 'user:local',
+            to: 'ALL',
+            payload: {
+                kind: 'widget',
+                roomId: this.roomId,
+                boardId: this.boardId,
+                blackboardId: this.boardId,
+                boardOwnerType: 'agent',
+                boardOwnerId: 'agent_robo_team',
+                boardVisibility: 'room',
+                version: this.currentVersion,
+                visibility: { mode: 'all' },
+                object: null,
+                presentation: {
+                    type: 'scripta-variant-draft',
+                    resourceId: String(presentation.resourceId || ''),
+                    chapterId: String(presentation.chapterId || ''),
+                    paragraphId: String(presentation.paragraphId || ''),
+                    variantId: String(presentation.variantId || ''),
+                    editorParticipantId,
+                    text: String(presentation.text ?? ''),
+                },
+            },
+        });
+        await this.publishRealtimePayload({
+            type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+            meetingId: this.roomId,
+            boardId: this.boardId,
+            boardOwnerType: 'agent',
+            boardOwnerId: 'agent_robo_team',
+            boardVisibility: 'room',
+            blackboardVersion: this.currentVersion,
+            changeType: 'scripta-p-variant-edit-draft',
+            targetType: 'widget',
+            targetRef: 'robo_scripta_document',
+            objectKind: 'widget',
+            editorParticipantId,
+            blackboardMessage,
+        });
+    }
+
     async publishFinalUpdate(response = {}, fallbackChangeType = 'update') {
         if (typeof this.publishRealtimePayload !== 'function') {
             return;
         }
         const version = Number(response?.blackboard?.version || 0);
-        const broadcastPayload = response?.broadcast && typeof response.broadcast === 'object'
+        let broadcastPayload = response?.broadcast && typeof response.broadcast === 'object'
             ? response.broadcast
             : {
                 kind: response?.object?.id ? 'widget' : 'blackboard',
@@ -178,6 +385,14 @@ export class BlackboardNetworkAdapter {
                 visibility: response?.object?.visibility || { mode: 'all' },
                 object: response?.object?.id ? response.object : response?.blackboard
             };
+        if (
+            String(fallbackChangeType || '').startsWith('scripta-')
+            || containsViewerScopedScriptaProjection(broadcastPayload.object)
+        ) {
+            // A realtime SCRIPTA message is an invalidation signal. The
+            // receiver obtains its own authorized projection from WebMeet.
+            broadcastPayload = { ...broadcastPayload, object: null };
+        }
         const from = this.participantId ? `user:${this.participantId}` : 'user:local';
         const blackboardMessage = encodeBlackboardProtocolMessage({
             from,

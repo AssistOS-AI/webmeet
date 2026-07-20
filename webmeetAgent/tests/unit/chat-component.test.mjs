@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ChatComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/service-components/chat-component.js';
+import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 function makeComponent(overrides = {}) {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
@@ -54,6 +55,84 @@ test('sendChat clears the chat input after a successful send', async () => {
     component.elements = { chatInput: { value: 'note' } };
     await component.sendChat();
     assert.equal(component.elements.chatInput.value, '');
+});
+
+test('/robo uses the canonical event command and upserts its audit message', async () => {
+    let chatWasRendered = false;
+    const { component, calls, state } = makeComponent({
+        renderFeedLists: () => {
+            chatWasRendered = state.chat.some((entry) => entry.kind === 'event');
+        }
+    });
+    component.runTool = async (name, args) => {
+        calls.push({ name, args });
+        return {
+            ok: true,
+            auditMessage: { id: 'event-chat-1', kind: 'event', message: '/robo add a SCRIPTA document', metadata: { status: 'success' } }
+        };
+    };
+    component.elements = { chatInput: { value: '/robo add a SCRIPTA document' } };
+
+    await component.sendChat();
+
+    assert.deepEqual(calls.map((entry) => entry.name), ['webmeet_event_command']);
+    assert.equal(calls[0].args.source, 'robo');
+    assert.equal(state.chat.length, 1);
+    assert.equal(state.chat[0].message, '/robo add a SCRIPTA document');
+    assert.equal(chatWasRendered, true);
+    assert.equal(component.elements.chatInput.value, '');
+});
+
+test('/robo event error remains available as an audit message', async () => {
+    const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
+    let errorMessage = '';
+    const component = new ChatComponent({
+        isGuestSession: () => false,
+        getState: () => state,
+        getSelectedMeeting: () => ({ id: 'meeting-1' }),
+        getSession: () => state.session,
+        renderFeedLists: () => {},
+        loadMeetingDetails: async () => {},
+        getRoom: () => null,
+        setError: (message) => { errorMessage = message; },
+        runTool: async () => ({
+            ok: false,
+            error: { message: 'AI unavailable' },
+            auditMessage: { id: 'chat-robo', kind: 'event', message: '/robo do something', metadata: { status: 'error' } }
+        })
+    });
+    component.elements = { chatInput: { value: '/robo do something' } };
+
+    await component.sendChat();
+
+    assert.equal(state.chat[0].message, '/robo do something');
+    assert.match(errorMessage, /AI unavailable/);
+});
+
+test('/robo command refreshes the open blackboard and broadcasts its new version', async () => {
+    const { component, state } = makeComponent();
+    const published = [];
+    let refreshResult = null;
+    component.getRoom = () => ({ localParticipant: { identity: 'p-1' } });
+    component.publishRealtimePayload = async (payload) => { published.push(payload); };
+    component.refreshBlackboard = async (result) => { refreshResult = result; };
+    component.runTool = async (name, args) => {
+        return {
+            ok: true,
+            auditMessage: { id: 'chat-live', kind: 'event', message: args.event, metadata: { status: 'success' } },
+            visibilityPayload: { type: 'blackboard.visibility_changed', visible: true },
+            blackboard: { version: 42, widgets: [] }
+        };
+    };
+    component.elements = { chatInput: { value: '/robo go to next paragraph' } };
+
+    await component.sendChat();
+
+    assert.equal(state.chat[0].message, '/robo go to next paragraph');
+    assert.equal(refreshResult.blackboard.version, 42);
+    const update = published.find((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
+    assert.equal(update.boardId, 'agent:agent_robo_team');
+    assert.equal(update.blackboardVersion, 42);
 });
 
 test('sendChat renders returned store message before detail refresh completes', async () => {

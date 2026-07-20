@@ -51,6 +51,7 @@
                 },
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
+                "WEBMEET_EVENT_MODEL",
                 {
                     "name": "WEBMEET_DATA_DIR",
                     "required": false,
@@ -151,6 +152,7 @@
                 },
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
+                "WEBMEET_EVENT_MODEL",
                 {
                     "name": "WEBMEET_DATA_DIR",
                     "required": false,
@@ -250,6 +252,7 @@
                 },
                 "LLMAgentClient_DEBUG",
                 "LLMAgentClient_VERBOSE_DELAY",
+                "WEBMEET_EVENT_MODEL",
                 {
                     "name": "WEBMEET_DATA_DIR",
                     "required": false,

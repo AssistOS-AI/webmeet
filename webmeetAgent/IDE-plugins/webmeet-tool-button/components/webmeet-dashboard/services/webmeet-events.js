@@ -22,11 +22,15 @@ export const WEBMEET_EVENT_TYPES = Object.freeze({
     PARTICIPANT_AVATAR_REQUEST: 'participant.avatar.request',
     PROFILE_AVATAR_UPDATED: 'profile.avatar.updated',
     CHAT_MESSAGE_CREATED: 'chat.message.created',
+    CHAT_MESSAGE_UPDATED: 'chat.message.updated',
     CHAT_REALTIME: 'chat',
     AGENT_DISPATCHED: 'agent.dispatched',
     AGENT_DETACHED: 'agent.detached',
     RESOURCE_CREATED: 'resource.created',
     RESOURCE_REMOVED: 'resource.removed',
+    SCRIPTA_CONTEXT_CHANGED: 'scripta.context.changed',
+    SCRIPTA_DOCUMENT_CHANGED: 'scripta.document.changed',
+    SCRIPTA_VOTE_CHANGED: 'scripta.vote.changed',
     BLACKBOARD_UPDATED: 'blackboard.updated',
     BLACKBOARD_VISIBILITY_CHANGED: 'blackboard.visibility_changed'
 });
@@ -82,6 +86,11 @@ const EVENT_DEFINITIONS = Object.freeze({
         workspacePersistent: false,
         required: ['meetingId', 'chatMessageId']
     },
+    [WEBMEET_EVENT_TYPES.CHAT_MESSAGE_UPDATED]: {
+        persistent: true,
+        workspacePersistent: false,
+        required: ['meetingId', 'chatMessageId']
+    },
     [WEBMEET_EVENT_TYPES.CHAT_REALTIME]: {
         persistent: false,
         workspacePersistent: false,
@@ -106,6 +115,21 @@ const EVENT_DEFINITIONS = Object.freeze({
         persistent: true,
         workspacePersistent: false,
         required: ['meetingId', 'resourceId']
+    },
+    [WEBMEET_EVENT_TYPES.SCRIPTA_CONTEXT_CHANGED]: {
+        persistent: true,
+        workspacePersistent: false,
+        required: ['meetingId', 'documentId', 'documentRevision']
+    },
+    [WEBMEET_EVENT_TYPES.SCRIPTA_DOCUMENT_CHANGED]: {
+        persistent: true,
+        workspacePersistent: false,
+        required: ['meetingId', 'documentId', 'documentRevision']
+    },
+    [WEBMEET_EVENT_TYPES.SCRIPTA_VOTE_CHANGED]: {
+        persistent: true,
+        workspacePersistent: false,
+        required: ['meetingId', 'documentId', 'documentRevision', 'participantId']
     },
     [WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED]: {
         persistent: true,

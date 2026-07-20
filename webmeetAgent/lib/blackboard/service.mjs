@@ -1,10 +1,10 @@
 import {
     assertAuthenticatedAuthInfo,
     canViewMeetingRecord,
-    hasWebmeetRoomScope,
     isAdminAuthInfo,
     normalizeAuthInfo
 } from '../store/accessPolicy.mjs';
+import { authorizeRoomParticipantId } from '../store/participantAuthorization.mjs';
 import {
     decryptRoomPayload,
     loadRoomRecord,
@@ -20,6 +20,7 @@ import {
     ensureRoboTeamBlackboardPayload,
     getRoboTeamAgentPayload
 } from '../roboTeam/service.mjs';
+import { scriptaOwnerHash } from '../scripta/identity.mjs';
 
 export const DEFAULT_BLACKBOARD_BOARD_ID = ROBO_TEAM_BLACKBOARD_BOARD_ID;
 
@@ -39,40 +40,18 @@ function getParticipantId(authInfo = null, fallback = '') {
     return String(fallback || normalized.id || normalized.principalId || '').trim();
 }
 
-function getAuthorizedParticipantId(payload, authInfo = null, participantId = '', roomId = '') {
-    const targetParticipantId = String(participantId || '').trim();
-    if (!targetParticipantId) {
-        return getParticipantId(authInfo);
-    }
-    if (isAdminAuthInfo(authInfo)) {
-        return targetParticipantId;
-    }
-    const auth = normalizeAuthInfo(authInfo);
-    const members = Array.isArray(payload?.members) ? payload.members : [];
-    const participant = members.find((entry) => String(entry?.id || '').trim() === targetParticipantId) || null;
-    if (!auth.id) {
-        if (hasWebmeetRoomScope(authInfo, roomId) && participant?.guest === true) {
-            return targetParticipantId;
-        }
-        throw new Error('Access denied: participant authentication is required.');
-    }
-    const participantUserId = String(participant?.userId || participant?.attributes?.webmeetUserId || '').trim();
-    if (!participant || participantUserId !== auth.id) {
-        throw new Error('Access denied: cannot act as another participant.');
-    }
-    return targetParticipantId;
-}
-
 function buildViewerContext(authInfo = null, participantId = '') {
     const normalized = normalizeAuthInfo(authInfo);
     const isAdmin = isAdminAuthInfo(authInfo);
+    const viewerParticipantId = getParticipantId(authInfo, participantId);
     return {
-        participantId: getParticipantId(authInfo, participantId),
+        participantId: viewerParticipantId,
         userId: normalized.id,
         roles: normalized.roles,
         kind: normalized.principalId.startsWith('agent:') ? 'agent' : 'human',
         canViewAllParticipantData: isAdmin,
-        canModerateBlackboard: isAdmin
+        canModerateBlackboard: isAdmin,
+        scriptaOwnerHash: scriptaOwnerHash(normalized.id || normalized.principalId || viewerParticipantId),
     };
 }
 
@@ -224,7 +203,8 @@ export async function applyRoomBlackboardChange(context, {
     boardId = '',
     change,
     participantId = '',
-    authInfo = null
+    authInfo = null,
+    expectedBoardVersion = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
     const targetBoardId = assertSupportedBoardId(boardId);
@@ -237,9 +217,10 @@ export async function applyRoomBlackboardChange(context, {
     await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
         assertCanMutateBlackboard(record, authInfo);
         normalizedChange = normalizeChange(change, authInfo);
-        normalizedChange.participantId = getAuthorizedParticipantId(payload, authInfo, participantId, targetRoomId);
+        normalizedChange.participantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
         sanitizeChangeAuthority(normalizedChange, authInfo);
         const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        assertExpectedBoardVersion(blackboard, expectedBoardVersion);
         if (normalizedChange.changeType === 'submit') {
             const targetRef = String(normalizedChange.targetRef || '').trim();
             const targetWidget = blackboard.getWidget(targetRef);
@@ -302,18 +283,20 @@ export async function undoRoomBlackboard(context, {
     roomId,
     boardId = '',
     participantId = '',
-    authInfo = null
+    authInfo = null,
+    expectedBoardVersion = null
 } = {}) {
-    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, direction: 'undo' });
+    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion, direction: 'undo' });
 }
 
 export async function redoRoomBlackboard(context, {
     roomId,
     boardId = '',
     participantId = '',
-    authInfo = null
+    authInfo = null,
+    expectedBoardVersion = null
 } = {}) {
-    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, direction: 'redo' });
+    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion, direction: 'redo' });
 }
 
 async function applyHistoryMove(context, {
@@ -321,7 +304,8 @@ async function applyHistoryMove(context, {
     boardId = '',
     participantId = '',
     authInfo = null,
-    direction
+    direction,
+    expectedBoardVersion = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
     const targetBoardId = assertSupportedBoardId(boardId);
@@ -332,8 +316,9 @@ async function applyHistoryMove(context, {
 
     await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
         assertCanMutateBlackboard(record, authInfo);
-        effectiveParticipantId = getAuthorizedParticipantId(payload, authInfo, participantId, targetRoomId);
+        effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
         const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        assertExpectedBoardVersion(blackboard, expectedBoardVersion);
         const viewerContext = buildViewerContext(authInfo, effectiveParticipantId);
         const result = direction === 'redo' ? blackboard.redo(viewerContext) : blackboard.undo(viewerContext);
         changed = Boolean(result);
@@ -361,4 +346,19 @@ async function applyHistoryMove(context, {
         blackboard: Blackboard.from(serializedBlackboard).serialize(buildViewerContext(authInfo, effectiveParticipantId || participantId)),
         broadcast
     };
+}
+
+function assertExpectedBoardVersion(blackboard, expectedBoardVersion) {
+    if (expectedBoardVersion === null || expectedBoardVersion === undefined || expectedBoardVersion === '') return;
+    const expected = Number(expectedBoardVersion);
+    if (!Number.isInteger(expected) || expected < 0) {
+        throw new Error('expectedBoardVersion must be a non-negative integer.');
+    }
+    if (blackboard.version !== expected) {
+        const error = new Error(`Blackboard version conflict: expected ${expected}, current ${blackboard.version}.`);
+        error.code = 'version_conflict';
+        error.expectedBoardVersion = expected;
+        error.currentBoardVersion = blackboard.version;
+        throw error;
+    }
 }
