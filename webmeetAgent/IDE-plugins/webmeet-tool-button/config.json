@@ -3,6 +3,7 @@
     "id": "webmeet",
     "component": "webmeet-tool-button",
     "location": ["file-exp:toolbar"],
+    "locationOrder": 300,
     "label": "WebMeet",
     "tooltip": "WebMeet collaboration",
     "icon": "./icon.svg",
