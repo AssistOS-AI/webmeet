@@ -43,8 +43,7 @@
         {
             "component": "custom-select",
             "presenter": "CustomSelect",
-            "path": "explorer/web-components/components/custom-select/custom-select",
-            "baseUrl": "explorer/web-components/components/custom-select/custom-select"
+            "path": "explorer/web-components/components/custom-select/custom-select"
         },
         {
             "component": "webmeet-participant-card",
