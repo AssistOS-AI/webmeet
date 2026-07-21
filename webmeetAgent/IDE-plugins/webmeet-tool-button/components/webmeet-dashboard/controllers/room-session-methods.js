@@ -12,7 +12,7 @@ import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 export const roomSessionMethods = {
     async connectRoom() {
-        if (!this.state.session?.participantToken || !this.state.session?.livekitUrl) {
+        if (!this.state.session?.participantToken || !this.state.session?.livekitLocator) {
             this.state.roomState = 'Join payload missing media token';
             this.renderMeetingSummary();
             return;

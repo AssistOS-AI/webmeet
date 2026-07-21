@@ -48,8 +48,7 @@
           "required": false,
           "default": "dtln"
         }
-      ],
-      "openPorts": ["127.0.0.1:19000:9000"]
+      ]
     },
     "dev": {
       "env": [
@@ -83,8 +82,7 @@
           "required": false,
           "default": "dtln"
         }
-      ],
-      "openPorts": ["127.0.0.1:19000:9000"]
+      ]
     },
     "prod": {
       "env": [
@@ -118,8 +116,7 @@
           "required": false,
           "default": "dtln"
         }
-      ],
-      "openPorts": ["127.0.0.1:19000:9000"]
+      ]
     }
   }
 }

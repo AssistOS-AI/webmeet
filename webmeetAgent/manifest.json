@@ -1,5 +1,4 @@
 {
-    "agent": "sh /code/scripts/startAgent.sh",
     "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
     "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and room resources.",
     "guest": true,
@@ -64,6 +63,16 @@
                     "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
                     "required": false,
                     "default": "ws://127.0.0.1:7880"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_AGENT",
+                    "required": false,
+                    "default": "liveKitServerAgent"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_SIGNAL_PORT",
+                    "required": false,
+                    "default": "7880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_URL",
@@ -166,6 +175,16 @@
                     "default": "ws://127.0.0.1:17880"
                 },
                 {
+                    "name": "WEBMEET_LIVEKIT_AGENT",
+                    "required": false,
+                    "default": "liveKitServerAgent"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_SIGNAL_PORT",
+                    "required": false,
+                    "default": "17880"
+                },
+                {
                     "name": "WEBMEET_LIVEKIT_URL",
                     "required": false,
                     "default": "http://liveKitServerAgent:17880"
@@ -236,9 +255,6 @@
             ]
         },
         "prod": {
-            "openPorts": [
-                "127.0.0.1:17001:7000"
-            ],
             "env": [
                 "ASSISTOS_FS_ROOT",
                 "WORKSPACE_ROOT",
@@ -259,6 +275,16 @@
                     "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
                     "required": true,
                     "default": "wss://livekit-skills.axiologic.dev"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_AGENT",
+                    "required": false,
+                    "default": "liveKitServerAgent"
+                },
+                {
+                    "name": "WEBMEET_LIVEKIT_SIGNAL_PORT",
+                    "required": false,
+                    "default": "7880"
                 },
                 {
                     "name": "WEBMEET_LIVEKIT_URL",

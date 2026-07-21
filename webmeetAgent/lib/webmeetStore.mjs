@@ -269,6 +269,10 @@ export async function createStoreContext(startDir = '') {
         roomPrefix: String(process.env.WEBMEET_ROOM_PREFIX || 'webmeet').trim() || 'webmeet',
         agentName: String(process.env.WEBMEET_AGENT_NAME || 'WebMeetAgent').trim() || 'WebMeetAgent',
         livekitPublicUrl: String(process.env.WEBMEET_PUBLIC_LIVEKIT_URL || process.env.WEBMEET_LIVEKIT_URL || '').trim(),
+        livekitBrowserLocator: {
+            agent: String(process.env.WEBMEET_LIVEKIT_AGENT || 'liveKitServerAgent').trim() || 'liveKitServerAgent',
+            port: Number.parseInt(String(process.env.WEBMEET_LIVEKIT_SIGNAL_PORT || '7880'), 10) || 7880,
+        },
         livekitApiUrl: String(process.env.WEBMEET_LIVEKIT_URL || '').trim(),
         livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
         livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),

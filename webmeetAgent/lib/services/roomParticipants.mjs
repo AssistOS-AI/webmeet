@@ -487,7 +487,7 @@ export async function joinGuestRoom(context, { meetingId, displayName, participa
         meeting: buildRoomView(record),
         ...(rtcConfig ? { rtcConfig } : {}),
         participant,
-        livekitUrl: context.livekitPublicUrl,
+        livekitLocator: context.livekitBrowserLocator,
         roomName: record.roomName,
         participantToken: createLiveKitToken(context, { roomName: record.roomName, identity: participant.id, name: effectiveDisplayName }),
         participantIdentity: participant.id
@@ -604,7 +604,7 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
     return {
         meeting: buildRoomView(record),
         participant,
-        livekitUrl: context.livekitPublicUrl,
+        livekitLocator: context.livekitBrowserLocator,
         roomName: record.roomName,
         participantToken: createLiveKitToken(context, {
             roomName: record.roomName,

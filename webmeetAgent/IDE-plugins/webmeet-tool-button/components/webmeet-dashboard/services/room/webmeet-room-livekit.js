@@ -4,6 +4,48 @@ import {
     getMediaQualityProfile
 } from '../../controllers/media-quality-profiles.js';
 
+function normalizeLocator(session = {}) {
+    const agent = String(session?.livekitLocator?.agent || '').trim();
+    const port = Number(session?.livekitLocator?.port);
+    if (!agent || !Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error('Join payload missing media locator');
+    }
+    return { agent, port };
+}
+
+export async function resolveLiveKitSignalingUrl(session, {
+    fetchImpl = globalThis.fetch,
+    location = globalThis.location,
+} = {}) {
+    const locator = normalizeLocator(session);
+    if (typeof fetchImpl !== 'function') {
+        throw new Error('LiveKit signaling locator is unavailable');
+    }
+    const query = new URLSearchParams({
+        agent: locator.agent,
+        port: String(locator.port),
+    });
+    const response = await fetchImpl(`/api/agent-port-locator?${query.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { accept: 'application/json' },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.url) {
+        throw new Error('LiveKit signaling locator is unavailable');
+    }
+
+    const browserOrigin = String(location?.origin || '').trim();
+    const located = new URL(String(payload.url), browserOrigin || undefined);
+    const projected = browserOrigin ? new URL(browserOrigin) : new URL(located.origin);
+    projected.protocol = projected.protocol === 'https:' ? 'wss:' : 'ws:';
+    projected.pathname = located.pathname;
+    projected.search = located.search;
+    projected.hash = '';
+    return projected.toString();
+}
+
 export class WebMeetRoomLiveKit {
     constructor(options = {}) {
         this.ensureLiveKitClient = options.ensureLiveKitClient;
@@ -51,16 +93,18 @@ export class WebMeetRoomLiveKit {
     }
 
     async connect(session, hooks = {}) {
-        if (!session?.participantToken || !session?.livekitUrl) {
+        if (!session?.participantToken || !session?.livekitLocator) {
             throw new Error('Join payload missing media token');
         }
+        const livekitUrl = await resolveLiveKitSignalingUrl(session);
+        const routedSession = { ...session, livekitUrl };
         const livekit = await this.ensureLiveKitClient();
         const { Room, RoomEvent, Track } = livekit;
 
         this.restoreRtcPeerConnection?.();
-        this.restoreRtcPeerConnection = this.installRtcPeerConnectionOverride(session);
+        this.restoreRtcPeerConnection = this.installRtcPeerConnectionOverride(routedSession);
         const audioCaptureDefaults = this.getAudioCaptureDefaults();
-        const rtcConfig = this.buildRtcConfigForSession(session);
+        const rtcConfig = this.buildRtcConfigForSession(routedSession);
 
         const room = new Room({
             adaptiveStream: false,
@@ -145,7 +189,7 @@ export class WebMeetRoomLiveKit {
             logMediaDiagnostic('room-connect-start', {
                 livekitHost: (() => {
                     try {
-                        return new URL(session.livekitUrl).host;
+                        return new URL(livekitUrl).host;
                     } catch (_) {
                         return '';
                     }
@@ -166,7 +210,7 @@ export class WebMeetRoomLiveKit {
                 }
             });
             await room.connect(
-                session.livekitUrl,
+                livekitUrl,
                 session.participantToken,
                 connectOptions
             );

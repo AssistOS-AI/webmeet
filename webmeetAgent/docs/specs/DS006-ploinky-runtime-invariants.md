@@ -16,7 +16,7 @@ The authoritative upstream contracts are Ploinky `docs/specs/DS005-routing-and-w
 
 ## Core Content
 
-`webmeetAgent` must treat the Ploinky router as the browser and MCP trust broker. Browser surfaces, first-party MCP calls, delegated MCP calls, uploads, blobs, and manifest-declared HTTP services are expected to enter through the router so route authentication, session handling, invocation minting, and audit behavior can apply. Direct agent ports are implementation details even when bound to localhost.
+`webmeetAgent` must treat the Ploinky router as the browser and MCP trust broker. Browser surfaces, first-party MCP calls, delegated MCP calls, uploads, blobs, and manifest-declared HTTP services are expected to enter through the router so route authentication, session handling, invocation minting, and audit behavior can apply. Its manifest must not publish listener ports and must use the implicit shared `AgentServer` so primary static, MCP, and readiness routing remains available.
 
 Executable MCP operations must be authorized by router-minted request JWTs. The launcher/router may derive per-agent request secrets from `PLOINKY_MASTER_KEY`, but the agent runtime must receive only its own `PLOINKY_AGENT_ID`, `PLOINKY_AGENT_SECRET`, and compatibility `PLOINKY_AGENT_PRINCIPAL`. Agents must never receive, derive, or require `PLOINKY_MASTER_KEY` or the legacy `PLOINKY_DERIVED_MASTER_KEY`. Code must not invent alternate bearer-token, client-secret, or caller-header authorization paths around the router's secure-wire model.
 
@@ -25,6 +25,8 @@ Ploinky-owned generated secrets are resolved by the launcher before agent code r
 The compact `x-ploinky-auth-info` header is not a secure grant by itself. WebMeet domain authorization must use router-minted invocation identity, roles, and scopes. Caller-supplied copies of identity headers must not become authoritative input.
 
 WebMeet must not expose its own internal HTTP API port as a product surface. The browser UI calls WebMeet through the generic Ploinky MCP route. Direct room links use the agent-owned static loader `/<webmeetAgent>/roomLoader.html?roomId=<roomId>` and whitelisted static assets; they are not backed by a WebMeet-specific router bridge or generated server page.
+
+Room join responses must return a LiveKit router locator, not a private or public direct signaling URL. The authenticated browser resolves that locator through `/api/agent-port-locator` and connects to the returned same-origin `/base-agent-additional-server/liveKitServerAgent/<signaling-port>/...` WebSocket route. The router authenticates first and the confined runtime relay dials LiveKit loopback inside its container.
 
 Guest access must remain scoped to a single room. Public room access is exposed through `/<webmeetAgent>/roomLoader.html?roomId=<roomId>`. Ploinky core owns public-protected routing, anonymous token/session handling, and UI/assets whitelisting; WebMeet receives the verified invocation context and authorizes room operations against the room scope.
 
