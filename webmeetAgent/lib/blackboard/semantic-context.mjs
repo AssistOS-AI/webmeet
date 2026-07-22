@@ -52,6 +52,39 @@ function getAbsoluteFreeLine(widget = {}) {
         : null;
 }
 
+function getScriptaSemanticState(widget = {}) {
+    if (String(widget?.type || '') !== 'scripta-document') return null;
+    const properties = widget?.properties || {};
+    const chapters = (Array.isArray(properties.chapters) ? properties.chapters : []).map((chapter, chapterIndex) => ({
+        chapterId: String(chapter?.chapterId || ''),
+        ordinal: Math.max(1, Number(chapter?.chapterOrdinal || chapterIndex + 1)),
+        title: String(chapter?.chapterTitle || ''),
+        paragraphs: (Array.isArray(chapter?.paragraphs) ? chapter.paragraphs : []).map((paragraph, paragraphIndex) => ({
+            paragraphId: String(paragraph?.paragraphId || ''),
+            ordinal: Math.max(1, Number(paragraph?.paragraphOrdinal || paragraphIndex + 1)),
+        })),
+    }));
+    const focusedParagraphId = String(properties.focusedParagraphId || '');
+    const focusedChapterId = String(properties.focusedChapterId || '')
+        || chapters.find((chapter) => chapter.paragraphs.some((paragraph) => paragraph.paragraphId === focusedParagraphId))?.chapterId
+        || '';
+    const focusedChapter = chapters.find((chapter) => chapter.chapterId === focusedChapterId) || null;
+    const focusedParagraph = focusedChapter?.paragraphs.find((paragraph) => paragraph.paragraphId === focusedParagraphId) || null;
+    return {
+        activeResourceId: String(properties.resourceId || ''),
+        documentTitle: String(properties.documentTitle || ''),
+        view: {
+            mode: String(properties.viewMode || 'document'),
+            focusTargetType: String(properties.focusTargetType || ''),
+            chapterId: focusedChapterId,
+            chapterOrdinal: focusedChapter?.ordinal || null,
+            paragraphId: focusedParagraphId,
+            paragraphOrdinal: focusedParagraph?.ordinal || null,
+        },
+        documentOutline: chapters,
+    };
+}
+
 export function calculateContentBounds(widgets = []) {
     const boxes = (Array.isArray(widgets) ? widgets : []).filter((widget) => {
         const mode = String(widget?.visibility?.mode || widget?.visibility || 'all');
@@ -90,20 +123,24 @@ export function calculateContentBounds(widgets = []) {
 }
 
 export function buildSemanticBoardContext(board = {}) {
-    const widgets = (Array.isArray(board.widgets) ? board.widgets : []).map((widget, index) => ({
-        ordinal: index + 1,
-        id: String(widget.id || ''),
-        type: String(widget.type || ''),
-        label: String(widget.properties?.label || ''),
-        text: String(widget.properties?.text || ''),
-        geometry: cloneJson(widget.properties?.geometry || null),
-        rotation: Number(widget.properties?.rotation ?? widget.properties?.geometry?.rotation ?? 0),
-        line: cloneJson(getAbsoluteFreeLine(widget)),
-        style: cloneJson(widget.properties?.style || null),
-        groupId: String(widget.groupId || ''),
-        connection: cloneJson(widget.properties?.connection || null),
-        capabilities: getWidgetCapabilities(widget),
-    }));
+    const widgets = (Array.isArray(board.widgets) ? board.widgets : []).map((widget, index) => {
+        const scripta = getScriptaSemanticState(widget);
+        return {
+            ordinal: index + 1,
+            id: String(widget.id || ''),
+            type: String(widget.type || ''),
+            label: String(widget.properties?.label || ''),
+            text: String(widget.properties?.text || ''),
+            geometry: cloneJson(widget.properties?.geometry || null),
+            rotation: Number(widget.properties?.rotation ?? widget.properties?.geometry?.rotation ?? 0),
+            line: cloneJson(getAbsoluteFreeLine(widget)),
+            style: cloneJson(widget.properties?.style || null),
+            groupId: String(widget.groupId || ''),
+            connection: cloneJson(widget.properties?.connection || null),
+            capabilities: getWidgetCapabilities(widget),
+            ...(scripta ? { scripta: cloneJson(scripta) } : {}),
+        };
+    });
     return {
         contentBounds: calculateContentBounds(board.widgets),
         focusedWidgetId: String(board.interactionContext?.focusedWidgetId || ''),

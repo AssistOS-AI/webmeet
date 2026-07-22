@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { executeBlackboardEvent } from '../../lib/blackboard/event-service.mjs';
 import {
     BLACKBOARD_CREATABLE_WIDGET_TYPES,
+    BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS,
     BLACKBOARD_WIDGET_EVENT_SCHEMAS,
     assertCanonicalWidgetPatch,
+    getBlackboardScriptaEventSchemaPrompt,
     normalizeBlackboardEvent,
     normalizeBlackboardEventResult,
     parseEventInput,
@@ -70,6 +72,34 @@ test('canonical create is accepted while add, lock, unlock, transport ids, and p
 test('deterministic /event form is parsed locally', () => {
     assert.deepEqual(parseEventInput('clear {"reason":"toolbar"}'), { action: 'clear', payload: { reason: 'toolbar' } });
     assert.equal(parseEventInput('mută forma la dreapta'), null);
+});
+
+test('SCRIPTA event payloads are flat and chapter rename requires a real title', () => {
+    assert.throws(() => normalizeBlackboardEvent({
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { mutation: { chapterOrdinal: 1, title: 'test' } },
+    }), /unsupported fields: mutation/);
+    assert.throws(() => normalizeBlackboardEvent({
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { chapterOrdinal: 1, title: '   ' },
+    }), /requires a non-empty title/);
+    const event = normalizeBlackboardEvent({
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { chapterOrdinal: 1, title: '  test   chapter  ' },
+    });
+    assert.deepEqual(event.payload, { chapterOrdinal: 1, title: 'test chapter' });
+    const structuredActions = getBlackboardStructuredResultSchema()
+        .properties.events.anyOf[0].items.properties.action.enum;
+    assert.deepEqual(
+        new Set(Object.keys(BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS)),
+        new Set(structuredActions.filter((action) => action.startsWith('scripta-')))
+    );
+    const prompt = getBlackboardScriptaEventSchemaPrompt();
+    assert.match(prompt, /scripta-chapter-edit: payload=\{resourceId,chapterId,chapterOrdinal,title\}/);
+    assert.doesNotMatch(prompt, /scripta-chapter-edit:[^\n]*type/);
 });
 
 test('interpreter results support ordered event lists or one natural-language error', () => {
@@ -340,6 +370,101 @@ test('semantic context exposes canonical widget rotation for relative rotation c
         interactionContext: { focusedWidgetId: 'line-1', lastAffectedWidgetIds: ['line-1'] },
     });
     assert.equal(semantic.widgets[0].rotation, 30);
+});
+
+test('SCRIPTA semantic context exposes safe active focus and uses it when no ordinal is supplied', async () => {
+    const semantic = buildSemanticBoardContext({
+        interactionContext: { focusedWidgetId: 'line-1', lastAffectedWidgetIds: ['line-1'] },
+        widgets: [
+            { id: 'line-1', type: 'line', properties: { line: { x1: 0, y1: 0, x2: 100, y2: 0 } } },
+            { id: 'robo_scripta_document', type: 'scripta-document', properties: {
+                resourceId: 'resource-1',
+                documentTitle: 'Draft',
+                viewMode: 'document',
+                focusedChapterId: 'chapter-1',
+                focusedParagraphId: 'paragraph-1',
+                focusTargetType: 'paragraph',
+                chapters: [{
+                    chapterId: 'chapter-1', chapterOrdinal: 1, chapterTitle: 'Chapter 1',
+                    paragraphs: [{ paragraphId: 'paragraph-1', paragraphOrdinal: 1, text: 'private content' }],
+                }],
+            } },
+        ],
+    });
+    const scriptaWidget = semantic.widgets[1];
+    assert.deepEqual(scriptaWidget.scripta, {
+        activeResourceId: 'resource-1',
+        documentTitle: 'Draft',
+        view: {
+            mode: 'document', focusTargetType: 'paragraph',
+            chapterId: 'chapter-1', chapterOrdinal: 1,
+            paragraphId: 'paragraph-1', paragraphOrdinal: 1,
+        },
+        documentOutline: [{
+            chapterId: 'chapter-1', ordinal: 1, title: 'Chapter 1',
+            paragraphs: [{ paragraphId: 'paragraph-1', ordinal: 1 }],
+        }],
+    });
+    assert.equal(JSON.stringify(scriptaWidget.scripta).includes('private content'), false);
+    assert.ok(scriptaWidget.capabilities.domainActions.includes('scripta-chapter-edit'));
+
+    const prompts = [];
+    const renameFocusedChapter = { events: [{
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { title: 'test' },
+    }] };
+    const result = await interpretBlackboardSkill({
+        promptText: 'edit chapter rename it to test',
+        context: { board: semantic },
+        llmAgent: { executePrompt: async (prompt) => {
+            prompts.push(prompt);
+            return renameFocusedChapter;
+        } },
+    });
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[0], /focused paragraph also identifies its containing chapter/);
+    assert.match(prompts[0], /Absence of an ordinal is not ambiguous when a compatible focus exists/);
+    assert.equal(result.events[0].action, 'scripta-chapter-edit');
+    assert.equal(result.events[0].payload.title, 'test');
+});
+
+test('blackboard skill repairs a nested SCRIPTA mutation into the canonical flat payload', async () => {
+    const malformed = { events: [{
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { mutation: { resourceId: 'resource-1', chapterOrdinal: 1, title: 'test' } },
+    }] };
+    const canonical = { events: [{
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { resourceId: 'resource-1', chapterOrdinal: 1, title: 'test' },
+    }] };
+    const wrongOperationField = { events: [{
+        action: 'scripta-chapter-edit',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: { resourceId: 'resource-1', chapterOrdinal: 1, type: 'chapter-rename', title: 'test' },
+    }] };
+    const responses = [malformed, wrongOperationField, canonical, canonical];
+    const prompts = [];
+    const result = await interpretBlackboardSkill({
+        promptText: 'rename chapter 1 to test',
+        context: { board: { widgets: [{
+            id: 'robo_scripta_document', type: 'scripta-document',
+            scripta: { activeResourceId: 'resource-1', view: { chapterId: 'chapter-1', chapterOrdinal: 1 } },
+        }] } },
+        llmAgent: { executePrompt: async (prompt) => {
+            prompts.push(prompt);
+            return responses.shift();
+        } },
+    });
+    assert.equal(prompts.length, 4);
+    assert.match(prompts[1], /unsupported fields: mutation/);
+    assert.match(prompts[2], /unsupported fields: type/);
+    assert.match(prompts[0], /Never put an operation name in payload\.type/);
+    assert.deepEqual(result.events[0].payload, {
+        resourceId: 'resource-1', chapterOrdinal: 1, title: 'test',
+    });
 });
 
 test('blackboard skill repairs a noncanonical circle type using the shared widget schema', async () => {

@@ -1,6 +1,7 @@
 import {
     BLACKBOARD_PUBLIC_ACTIONS,
     getBlackboardWidgetEventSchemaPrompt,
+    getBlackboardScriptaEventSchemaPrompt,
     normalizeBlackboardEventResult,
 } from '../../../lib/blackboard/event-contract.mjs';
 import {
@@ -30,6 +31,25 @@ async function requestCanonicalResult(llmAgent, prompt) {
     return normalizeBlackboardEventResult(normalizeBlackboardStructuredResult(responseValue(response)));
 }
 
+async function requestCanonicalResultWithRepairs(llmAgent, prompt, maxAttempts = 3) {
+    let attemptPrompt = prompt;
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            return await requestCanonicalResult(llmAgent, attemptPrompt);
+        } catch (error) {
+            lastError = error;
+            if (attempt === maxAttempts) break;
+            attemptPrompt = [
+                prompt,
+                `Your previous result was rejected by the canonical validator: ${String(error?.message || error)}`,
+                'Re-evaluate all targets and fields against the exact action schema above. Submit a corrected canonical structured result only. Do not explain the correction.',
+            ].join('\n');
+        }
+    }
+    throw lastError;
+}
+
 export async function action({ promptText, llmAgent, context }) {
     if (!llmAgent?.executePrompt && !llmAgent?.executeStructuredPrompt) throw new Error('Blackboard event interpretation requires an LLM agent.');
     const prompt = [
@@ -54,42 +74,31 @@ export async function action({ promptText, llmAgent, context }) {
         'A free line MUST use payload.widget.properties.line:{x1,y1,x2,y2,markerStart?,markerEnd?}. These create coordinates are absolute blackboard coordinates. Never put x1, y1, x2, or y2 in properties.geometry.',
         'For a free line defined by center, length, and angle, calculate both endpoints deterministically with cosine and sine.',
         'When creating or adding a free line while board.focusedWidgetId identifies a free line, and the participant gives no different origin or center, continue from that focused line: use its absolute line.x2/y2 as the new x1/y1 and extend x2/y2 by cos(angle)*length and sin(angle)*length. An explicit origin, center, target, or instruction not to connect takes priority.',
-        'For SCRIPTA actions, the event action determines intent kind and operation. Put only the remaining fields directly in payload using one of these exact schemas:',
-        '- document: {resourceId, name, path, folderPath, template, objective, visionParagraphs, planParagraphs, chapters, confirmed}.',
+        'For SCRIPTA actions, the event action determines intent kind and operation. Put only the listed fields directly in payload using the exact schema for that action. payload.mutation and every other wrapper object are invalid and must never be emitted. Never put an operation name in payload.type; type is permitted only by the two vote action schemas:',
+        getBlackboardScriptaEventSchemaPrompt(),
         '- Vision, Plan, and General are creation templates. Vision requires at least three generated aspect paragraphs; Plan requires generated chapters; General creates one empty chapter and paragraph.',
-        '- focus: {resourceId, chapterId or chapterOrdinal, paragraphId or paragraphOrdinal, variantId when selecting a variant, mode:"paragraph"|"document"}.',
-        '- navigation and reformulate actions normally use an empty payload.',
-        '- mutation: {resourceId, chapterOrdinal, paragraphOrdinal, targetChapterOrdinal, targetIndex, variantId, variantOrdinal, type, title, text, editing}; include only fields needed by the action.',
+        'scripta-chapter-edit requires a non-empty title. scripta-document-create requires a name or title. scripta-document-open requires a path.',
+        'For a SCRIPTA subelement target, use an explicit chapter/paragraph ordinal or name first. If none is supplied, use the compatible target in widget.scripta.view. A focused paragraph also identifies its containing chapter for chapter operations. Do not return missing_target merely because the instruction omitted a chapter ordinal when the active SCRIPTA view supplies a focused chapter. When the server can resolve the active focus, the event may omit chapterId and paragraphId.',
         'SCRIPTA mutation operations are p-variant-add, p-variant-vote, p-variant-vote-withdraw, p-variant-edit, p-variant-delete, chapter-add, chapter-delete, chapter-rename, chapter-move, paragraph-add, paragraph-delete, paragraph-move, and undo.',
         'Only the participant who added a paragraph variant may edit or delete it. All admitted participants may vote on any variant.',
         'Document operations are document-create, document-open, and document-delete.',
         'Physical document deletion must include confirmed:true only when the participant explicitly confirms deletion; otherwise return error code confirmation_required.',
         'For relative navigation use navigation intent; do not calculate IDs yourself.',
         'For generic widget changes use only the canonical payload schemas; never emit payload.change.',
-        'Resolve targets in this order: explicit ordinal, other explicit mention, board.focusedWidgetId, then board.lastAffectedWidgetIds for plural wording. A named widget kind is an explicit constraint: a request naming a line may target only a line, a shape only a shape, and so on. Never use a focused widget whose type conflicts with the explicit kind. If multiple compatible widgets remain and the instruction does not distinguish one, return ambiguous_target with a precise natural-language cause.',
+        'Resolve targets in this order: explicit ordinal, other explicit mention, a semantically compatible focused element, then board.lastAffectedWidgetIds for plural wording. For generic widgets the focus is board.focusedWidgetId; for SCRIPTA subelements it is widget.scripta.view. Absence of an ordinal is not ambiguous when a compatible focus exists. A named widget kind is an explicit constraint: a request naming a line may target only a line, a shape only a shape, and so on. Never use a focused element whose type conflicts with the explicit kind. If multiple compatible widgets remain and neither the instruction nor focus distinguishes one, return ambiguous_target with a precise natural-language cause.',
         'Use only IDs present in context. Never invent path values.',
         'If a target or operation is genuinely ambiguous, return an error with a concise natural-language cause and do not emit events.',
         `Instruction: ${String(promptText || '')}`,
         `Context: ${JSON.stringify(context || {})}`
     ].join('\n');
-    let canonical;
-    try {
-        canonical = await requestCanonicalResult(llmAgent, prompt);
-    } catch (error) {
-        const correctionPrompt = [
-            prompt,
-            `Your previous result was rejected by the canonical validator: ${String(error?.message || error)}`,
-            'Re-evaluate all targets as well as the invalid fields. Submit a corrected canonical structured result only. Do not explain the correction.',
-        ].join('\n');
-        canonical = await requestCanonicalResult(llmAgent, correctionPrompt);
-    }
+    const canonical = await requestCanonicalResultWithRepairs(llmAgent, prompt);
     if (canonical.error) return canonical;
     const verificationPrompt = [
         prompt,
         `Candidate result: ${JSON.stringify(canonical)}`,
         'Semantically verify the candidate before execution. Every target id must exist in Context and match every explicitly named widget kind and ordinal in the instruction. Explicit references outrank focus; focus is usable only when type-compatible. If multiple compatible widgets remain ambiguous, return an ambiguous_target error with a precise natural-language cause. Also verify action direction, magnitude, property schema, and spatial relation. Return the verified or corrected canonical result only.',
     ].join('\n');
-    return await requestCanonicalResult(llmAgent, verificationPrompt);
+    return await requestCanonicalResultWithRepairs(llmAgent, verificationPrompt);
 }
 
 export default action;

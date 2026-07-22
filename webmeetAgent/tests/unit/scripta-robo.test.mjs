@@ -189,6 +189,9 @@ test('missing SCRIPTA ordinals remain absent while target index zero remains val
     assert.equal(alternative.targetIndex, undefined);
     assert.equal(chapter.targetIndex, undefined);
     assert.equal(move.targetIndex, 0);
+    assert.throws(() => normalizeRoboIntent({
+        kind: 'mutation', operation: 'chapter-rename', chapterOrdinal: 1, title: '   ',
+    }), /requires a non-empty title/);
 });
 
 test('SCRIPTA command intents use only canonical p-variant operations', () => {

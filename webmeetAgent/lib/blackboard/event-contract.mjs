@@ -30,6 +30,40 @@ export const BLACKBOARD_CREATABLE_WIDGET_TYPES = Object.freeze(new Set([
 
 export const BLACKBOARD_SHAPE_KINDS = Object.freeze(['rectangle', 'rounded', 'ellipse', 'diamond', 'triangle']);
 
+const SCRIPTA_TARGET_FIELDS = ['resourceId', 'chapterId', 'chapterOrdinal', 'paragraphId', 'paragraphOrdinal'];
+export const BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS = Object.freeze({
+    'scripta-document-create': Object.freeze(['mode', 'name', 'title', 'path', 'folderPath', 'template', 'objective', 'visionParagraphs', 'planParagraphs', 'chapters']),
+    'scripta-document-open': Object.freeze(['path']),
+    'scripta-document-delete': Object.freeze(['resourceId', 'confirmed']),
+    'scripta-paragraph-open': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'mode', 'editing']),
+    'scripta-document-view': Object.freeze(['resourceId', 'mode']),
+    'scripta-paragraph-next': Object.freeze(['resourceId']),
+    'scripta-paragraph-previous': Object.freeze(['resourceId']),
+    'scripta-p-variant-add': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'text']),
+    'scripta-p-variant-select': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal']),
+    'scripta-p-variant-edit-start': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal']),
+    'scripta-p-variant-edit-cancel': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal']),
+    'scripta-p-variant-edit': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'text']),
+    'scripta-p-variant-delete': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal']),
+    'scripta-p-variant-vote': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'type']),
+    'scripta-p-variant-vote-withdraw': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'type']),
+    'scripta-p-variant-reformulate': Object.freeze([...SCRIPTA_TARGET_FIELDS]),
+    'scripta-undo': Object.freeze(['resourceId']),
+    'scripta-chapter-add': Object.freeze(['resourceId', 'title']),
+    'scripta-chapter-edit': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'title']),
+    'scripta-chapter-delete': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal']),
+    'scripta-chapter-move': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'targetIndex']),
+    'scripta-paragraph-add': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'text']),
+    'scripta-paragraph-delete': Object.freeze([...SCRIPTA_TARGET_FIELDS]),
+    'scripta-paragraph-move': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'targetChapterOrdinal', 'targetIndex']),
+});
+
+export function getBlackboardScriptaEventSchemaPrompt() {
+    return Object.entries(BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS).map(([action, fields]) => (
+        `${action}: payload={${fields.join(',')}}`
+    )).join('\n');
+}
+
 const COMMON_CREATE_PROPERTIES = ['geometry', 'style'];
 export const BLACKBOARD_WIDGET_EVENT_SCHEMAS = Object.freeze({
     shape: Object.freeze({
@@ -68,6 +102,7 @@ export const BLACKBOARD_WIDGET_EVENT_SCHEMAS = Object.freeze({
 });
 
 const COMMON_EDITABLE_PROPERTIES = ['geometry', 'geometryDelta', 'style', 'rotation'];
+const SCRIPTA_DOMAIN_ACTIONS = BLACKBOARD_PUBLIC_ACTIONS.filter((action) => action.startsWith('scripta-'));
 export const BLACKBOARD_WIDGET_CAPABILITIES = Object.freeze({
     shape: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'label', 'shapeKind'], domainActions: [] },
     text: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'text'], domainActions: [] },
@@ -77,7 +112,7 @@ export const BLACKBOARD_WIDGET_CAPABILITIES = Object.freeze({
     embed: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title'], domainActions: [] },
     poll: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'description', 'resultsVisibility', 'questions', 'allowPollChange', 'anonymous', 'durationSeconds'], domainActions: ['submit', 'start', 'close'] },
     bullets: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'items', 'resultsVisibility'], domainActions: ['reorder'] },
-    'scripta-document': { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES], domainActions: ['scripta-document-open', 'scripta-document-delete'] },
+    'scripta-document': { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES], domainActions: [...SCRIPTA_DOMAIN_ACTIONS] },
 });
 
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
@@ -179,6 +214,44 @@ function assertNoAuthorityFields(value, path = 'event') {
         }
         if (key === 'provenance') throw new Error(`${path}.provenance is server-controlled.`);
         assertNoAuthorityFields(entry, `${path}.${key}`);
+    }
+}
+
+function validateScriptaPayload(action, target, payload) {
+    if (target.type !== 'widget') throw new Error(`${action} must target a widget.`);
+    const allowedFields = BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS[action];
+    if (!allowedFields) throw new Error(`Missing canonical payload schema for ${action}.`);
+    assertOnlyKeys(payload, allowedFields, `event.payload for ${action}`);
+
+    for (const key of ['chapterOrdinal', 'paragraphOrdinal', 'targetChapterOrdinal', 'variantOrdinal']) {
+        if (payload[key] === undefined) continue;
+        const value = finiteNumber(payload[key], `event.payload.${key}`);
+        if (!Number.isInteger(value) || value < 1) throw new Error(`event.payload.${key} must be a positive integer.`);
+        payload[key] = value;
+    }
+    if (payload.targetIndex !== undefined) {
+        const value = finiteNumber(payload.targetIndex, 'event.payload.targetIndex');
+        if (!Number.isInteger(value) || value < 0) throw new Error('event.payload.targetIndex must be a non-negative integer.');
+        payload.targetIndex = value;
+    }
+    for (const key of ['confirmed', 'editing']) {
+        if (payload[key] !== undefined && typeof payload[key] !== 'boolean') {
+            throw new Error(`event.payload.${key} must be a boolean.`);
+        }
+    }
+    if (payload.type !== undefined && !['like', 'dislike'].includes(String(payload.type))) {
+        throw new Error('event.payload.type must be "like" or "dislike".');
+    }
+
+    if (action === 'scripta-document-create' && !String(payload.name || payload.title || '').trim()) {
+        throw new Error('scripta-document-create requires a non-empty name or title.');
+    }
+    if (action === 'scripta-document-open' && !String(payload.path || '').trim()) {
+        throw new Error('scripta-document-open requires a non-empty path.');
+    }
+    if (action === 'scripta-chapter-edit') {
+        payload.title = String(payload.title || '').replace(/\s+/g, ' ').trim();
+        if (!payload.title) throw new Error('scripta-chapter-edit requires a non-empty title.');
     }
 }
 
@@ -330,6 +403,8 @@ function validateActionShape(event) {
             throw new Error('group requires at least two distinct widgetIds.');
         }
         payload.widgetIds = ids;
+    } else if (action.startsWith('scripta-')) {
+        validateScriptaPayload(action, target, payload);
     }
 }
 

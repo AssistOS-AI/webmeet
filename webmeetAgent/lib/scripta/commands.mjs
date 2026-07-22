@@ -72,6 +72,9 @@ export function normalizeRoboIntent(value = {}) {
     };
     if (kind === 'document' && !DOCUMENT_OPERATIONS.has(intent.operation)) throw new Error('SCRIPTA AI returned an unsupported document operation.');
     if (kind === 'mutation' && !MUTATION_OPERATIONS.has(intent.operation)) throw new Error('SCRIPTA AI returned an unsupported mutation operation.');
+    if (kind === 'mutation' && intent.operation === 'chapter-rename' && !intent.title) {
+        throw new Error('SCRIPTA chapter rename requires a non-empty title.');
+    }
     if (intent.type && !['like', 'dislike'].includes(intent.type)) throw new Error('SCRIPTA AI returned an unsupported vote type.');
     return intent;
 }
