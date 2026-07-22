@@ -7,9 +7,12 @@
     "protocol": "tcp"
   },
   "network": {
-    "name": "webmeet",
-    "aliases": [
-      "webmeetStt"
+    "mode": "bridge",
+    "attachments": [
+      {
+        "name": "webmeet",
+        "primary": true
+      }
     ]
   },
   "volumes": {

@@ -9,8 +9,8 @@ import {
     mutateRoom
 } from '../store/roomRecords.mjs';
 import {
-    assertGuestParticipant,
-    assertGuestRoomAccess
+    assertGuestRoomAccess,
+    assertVerifiedGuestParticipantIdentity
 } from './roomParticipants.mjs';
 import {
     WEBMEET_EVENT_TYPES
@@ -79,7 +79,7 @@ export async function appendGuestRoomChat(context, { meetingId, participantId, m
     const record = await loadRoomRecord(context, meetingId);
     assertGuestRoomAccess(record);
     const payload = decryptRoomPayload(context, record);
-    const participant = assertGuestParticipant(payload, participantId);
+    const participant = assertVerifiedGuestParticipantIdentity(context, meetingId, payload, participantId);
     return appendRoomChat(context, {
         meetingId,
         authorId: participant.id,

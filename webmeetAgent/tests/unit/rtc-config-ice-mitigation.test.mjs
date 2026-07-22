@@ -1,355 +1,110 @@
-import { test, describe } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-    _buildRtcConfig as buildRtcConfig,
-    _buildStunUrls as buildStunUrls,
-    _isLoopbackUrl as isLoopbackUrl,
-    _dedupeStrings as dedupeStrings,
-    _splitCsvEnv as splitCsvEnv,
-} from '../../lib/webmeetStore.mjs';
+import { _test as edgeRuntimeTest, resolveEdgeJoinMaterial } from '../../lib/runtime/edgeRuntime.mjs';
+import { buildRtcConfig } from '../../lib/store/rtcConfig.mjs';
+import { buildRtcConfigForSession } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/rtc-config.js';
 
-import {
-    buildRtcConfigForSession,
-} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/rtc-config.js';
-
-function countIceUrls(config) {
-    if (!config?.iceServers) return 0;
-    return config.iceServers.reduce((sum, server) => {
-        const urls = server?.urls;
-        if (Array.isArray(urls)) return sum + urls.length;
-        return sum + (urls ? 1 : 0);
-    }, 0);
-}
-
-describe('isLoopbackUrl', () => {
-    test('detects 127.0.0.1 ws URL', () => {
-        assert.equal(isLoopbackUrl('ws://127.0.0.1:7880'), true);
-    });
-
-    test('detects localhost wss URL', () => {
-        assert.equal(isLoopbackUrl('wss://localhost:7880'), true);
-    });
-
-    test('detects [::1] URL', () => {
-        assert.equal(isLoopbackUrl('ws://[::1]:7880'), true);
-    });
-
-    test('rejects public hostname', () => {
-        assert.equal(isLoopbackUrl('wss://livekit-skills.axiologic.dev'), false);
-    });
-
-    test('handles empty string', () => {
-        assert.equal(isLoopbackUrl(''), false);
-    });
-});
-
-describe('dedupeStrings', () => {
-    test('removes duplicates preserving order', () => {
-        assert.deepEqual(dedupeStrings(['a', 'b', 'a', 'c', 'b']), ['a', 'b', 'c']);
-    });
-
-    test('returns empty for empty input', () => {
-        assert.deepEqual(dedupeStrings([]), []);
-    });
-});
-
-describe('splitCsvEnv', () => {
-    test('splits comma-separated values', () => {
-        assert.deepEqual(splitCsvEnv('a, b , c'), ['a', 'b', 'c']);
-    });
-
-    test('drops empty entries', () => {
-        assert.deepEqual(splitCsvEnv('a,,b, ,c'), ['a', 'b', 'c']);
-    });
-
-    test('returns empty for empty string', () => {
-        assert.deepEqual(splitCsvEnv(''), []);
-    });
-});
-
-describe('buildStunUrls', () => {
-    test('returns one default STUN URL for non-loopback public URL', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'wss://livekit-skills.axiologic.dev',
-        });
-        assert.equal(urls.length, 1);
-        assert.ok(urls[0].startsWith('stun:'));
-    });
-
-    test('returns no STUN for loopback public URL when not explicitly set', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-        });
-        assert.equal(urls.length, 0);
-    });
-
-    test('honors explicit WEBMEET_STUN_URLS on loopback', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            stunExplicitUrls: 'stun:custom.example.com:3478',
-        });
-        assert.deepEqual(urls, ['stun:custom.example.com:3478']);
-    });
-
-    test('empty explicit STUN list disables STUN', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'wss://livekit-skills.axiologic.dev',
-            stunExplicitUrls: '',
-        });
-        assert.equal(urls.length, 0);
-    });
-
-    test('deduplicates explicit STUN URLs', () => {
-        const urls = buildStunUrls({
-            livekitPublicUrl: 'wss://example.com',
-            stunExplicitUrls: 'stun:a.com:3478, stun:a.com:3478, stun:b.com:3478',
-        });
-        assert.deepEqual(urls, ['stun:a.com:3478', 'stun:b.com:3478']);
-    });
-});
-
-describe('buildRtcConfig (server-side)', () => {
-    test('production default has at most three ICE URLs', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://livekit-skills.axiologic.dev',
-            turn: {
-                host: 'livekit-skills.axiologic.dev',
-                port: '3478',
-                username: 'webmeet',
+describe('external TURN runtime contract', () => {
+    test('requires complete short-lived external TURN credentials', () => {
+        assert.deepEqual(buildRtcConfig({
+            urls: ['turn:turn.example:3478?transport=udp', 'turns:turn.example:5349?transport=tcp'],
+            username: 'expiring-user',
+            password: 'secret',
+        }), {
+            iceTransportPolicy: 'all',
+            iceServers: [{
+                urls: ['turn:turn.example:3478?transport=udp', 'turns:turn.example:5349?transport=tcp'],
+                username: 'expiring-user',
                 credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
+            }],
         });
-        assert.ok(config);
-        const total = countIceUrls(config);
-        assert.ok(total <= 3, `Expected at most 3 ICE URLs, got ${total}`);
-        assert.ok(total < 5, `Firefox threshold: expected fewer than 5 ICE URLs, got ${total}`);
+        assert.throws(() => buildRtcConfig({ urls: ['turn:turn.example:3478'], username: '', password: 'x' }), /required/i);
+        assert.throws(() => buildRtcConfig({ urls: ['stun:stun.example:3478'], username: 'u', password: 'x' }), /required/i);
     });
 
-    test('loopback omits implicit STUN but keeps generated TURN when configured', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '127.0.0.1',
-                port: '3478',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
+    test('topology requires an exact external TURN broker contract', () => {
+        assert.deepEqual(edgeRuntimeTest.validateTurnTopology({
+            media: { turn: {
+                urls: ['turn:turn.example:3478?transport=udp', 'turns:turn.example:5349?transport=tcp'],
+                credentialMode: 'turn-rest',
+                credentialPath: '/private/media/turn-credentials',
+            } },
+        }), {
+            urls: ['turn:turn.example:3478?transport=udp', 'turns:turn.example:5349?transport=tcp'],
+            credentialPath: '/private/media/turn-credentials',
         });
-        assert.ok(config);
-        assert.equal(countIceUrls(config), 2);
-        assert.deepEqual(config.iceServers, [
-            {
-                urls: [
-                    'turn:127.0.0.1:3478?transport=udp',
-                    'turn:127.0.0.1:3478?transport=tcp',
-                ],
-                username: 'webmeet',
-                credential: 'secret',
+        assert.throws(() => edgeRuntimeTest.validateTurnTopology({ media: { turn: { urls: [], credentialMode: 'turn-rest' } } }), /external TURN/i);
+        assert.throws(() => edgeRuntimeTest.validateTurnTopology({ media: { turn: { urls: ['turn:x'], credentialMode: 'static', credentialPath: '/x' } } }), /turn-rest/i);
+    });
+
+    test('broker credentials must be current and a subset of committed topology URLs', () => {
+        const now = Date.parse('2026-07-15T12:00:00.000Z');
+        const result = edgeRuntimeTest.validateCredentialResponse({
+            urls: ['turns:turn.example:5349?transport=tcp'],
+            username: 'temporary',
+            password: 'secret',
+            expiresAt: '2026-07-15T12:10:00.000Z',
+        }, ['turn:turn.example:3478?transport=udp', 'turns:turn.example:5349?transport=tcp'], now);
+        assert.equal(result.username, 'temporary');
+        assert.throws(() => edgeRuntimeTest.validateCredentialResponse({
+            urls: ['turn:evil.example:3478'], username: 'u', password: 'p', expiresAt: '2026-07-15T12:10:00.000Z',
+        }, ['turn:turn.example:3478'], now), /outside the current topology/i);
+        assert.throws(() => edgeRuntimeTest.validateCredentialResponse({
+            urls: ['turn:turn.example:3478'], username: 'u', password: 'p', expiresAt: '2026-07-15T12:00:10.000Z',
+        }, ['turn:turn.example:3478'], now), /expired|short-lived/i);
+    });
+
+    test('signal URL is derived only from the active Router service', () => {
+        assert.equal(edgeRuntimeTest.normalizeSignalUrl({
+            activeBrowserUrl: 'https://meet.example/',
+            routerPath: '/public-services/livekit-signal/',
+        }), 'wss://meet.example/public-services/livekit-signal/');
+        assert.throws(() => edgeRuntimeTest.normalizeSignalUrl({ activeBrowserUrl: 'file:///tmp/a', routerPath: '/' }), /must use ws/i);
+    });
+
+    test('join material can be supplied through the explicit unit seam without environment fallback', async () => {
+        const material = { livekitUrl: 'wss://meet.example/livekit', rtcConfig: { iceServers: [] } };
+        assert.equal(await resolveEdgeJoinMaterial({
+            async resolveEdgeJoinMaterial(input) {
+                assert.deepEqual(input, { roomName: 'room-1', participantIdentity: 'user-1' });
+                return material;
             },
+        }, { roomName: 'room-1', participantIdentity: 'user-1' }), material);
+    });
+});
+
+describe('browser RTC normalization', () => {
+    test('drops empty entries and deduplicates identical credential bindings', () => {
+        assert.deepEqual(buildRtcConfigForSession({ rtcConfig: {
+            iceServers: [
+                { urls: [] },
+                { urls: 'turn:turn.example:3478', username: 'u', credential: 'p' },
+                { urls: 'turn:turn.example:3478', username: 'u', credential: 'p' },
+            ],
+            iceTransportPolicy: 'all',
+        } }), {
+            iceServers: [{ urls: 'turn:turn.example:3478', username: 'u', credential: 'p' }],
+            iceTransportPolicy: 'all',
+        });
+    });
+
+    test('preserves credential-distinct TURN generations until controlled reconnect', () => {
+        assert.deepEqual(buildRtcConfigForSession({ rtcConfig: { iceServers: [
+            { urls: 'turn:turn.example:3478', username: 'old', credential: 'oldpass' },
+            { urls: 'turn:turn.example:3478', username: 'new', credential: 'newpass' },
+        ] } }).iceServers, [
+            { urls: 'turn:turn.example:3478', username: 'old', credential: 'oldpass' },
+            { urls: 'turn:turn.example:3478', username: 'new', credential: 'newpass' },
         ]);
     });
 
-    test('loopback honors explicit TURN URLs', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '127.0.0.1',
-                port: '3478',
-                explicitUrls: 'turn:127.0.0.1:3478?transport=udp',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.deepEqual(config.iceServers, [
-            {
-                urls: ['turn:127.0.0.1:3478?transport=udp'],
-                username: 'webmeet',
-                credential: 'secret',
-            },
-        ]);
-    });
-
-    test('loopback relay policy can use implicit TURN', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '127.0.0.1',
-                port: '3478',
-                username: 'webmeet',
-                credential: 'secret',
-                iceTransportPolicy: 'relay',
-            },
-        });
-        assert.ok(config);
-        assert.equal(config.iceTransportPolicy, 'relay');
-        assert.deepEqual(config.iceServers[0].urls, [
-            'turn:127.0.0.1:3478?transport=udp',
-            'turn:127.0.0.1:3478?transport=tcp',
-        ]);
-    });
-
-    test('TURN omitted when username missing', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: '',
-                credential: 'secret',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.equal(config.iceServers.length, 1);
-        const urls = [].concat(config.iceServers[0].urls);
-        assert.ok(urls.every((u) => u.startsWith('stun:')));
-    });
-
-    test('TURN omitted when credential missing', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: 'user',
-                credential: '',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(config);
-        assert.equal(config.iceServers.length, 1);
-    });
-
-    test('returns null when no useful ICE entries remain', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'ws://127.0.0.1:7880',
-            turn: {
-                host: '',
-                port: '',
-                username: '',
-                credential: '',
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.equal(config, null);
-    });
-
-    test('preserves iceTransportPolicy relay', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: 'user',
-                credential: 'pass',
-                iceTransportPolicy: 'relay',
-            },
-        });
-        assert.equal(config.iceTransportPolicy, 'relay');
-    });
-
-    test('unsupported iceTransportPolicy falls back to all', () => {
-        const config = buildRtcConfig({
-            livekitPublicUrl: 'wss://example.com',
-            turn: {
-                host: 'turn.example.com',
-                port: '3478',
-                username: 'user',
-                credential: 'pass',
-                iceTransportPolicy: 'bogus',
-            },
-        });
-        assert.equal(config.iceTransportPolicy, 'all');
-    });
-});
-
-describe('buildRtcConfigForSession (browser-side)', () => {
-    test('drops empty server entries', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: [] },
-                    { urls: 'stun:stun.l.google.com:19302' },
-                ],
-                iceTransportPolicy: 'all',
-            },
-        });
-        assert.ok(result);
-        assert.equal(result.iceServers.length, 1);
-    });
-
-    test('deduplicates URLs across server entries', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: ['stun:a.com:3478', 'stun:b.com:3478'] },
-                    { urls: ['stun:a.com:3478', 'stun:c.com:3478'] },
-                ],
-            },
-        });
-        assert.ok(result);
-        const allUrls = result.iceServers.flatMap((s) => [].concat(s.urls));
-        assert.deepEqual(allUrls, ['stun:a.com:3478', 'stun:b.com:3478', 'stun:c.com:3478']);
-    });
-
-    test('preserves credential-distinct TURN entries with the same URL', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: 'turn:turn.example.com:3478', username: 'old', credential: 'oldpass' },
-                    { urls: 'turn:turn.example.com:3478', username: 'new', credential: 'newpass' },
-                    { urls: 'turn:turn.example.com:3478', username: 'new', credential: 'newpass' },
-                ],
-            },
-        });
-        assert.ok(result);
-        assert.deepEqual(result.iceServers, [
-            { urls: 'turn:turn.example.com:3478', username: 'old', credential: 'oldpass' },
-            { urls: 'turn:turn.example.com:3478', username: 'new', credential: 'newpass' },
-        ]);
-    });
-
-    test('returns undefined for null rtcConfig', () => {
+    test('returns undefined for absent RTC material and drops invalid policy', () => {
         assert.equal(buildRtcConfigForSession({}), undefined);
         assert.equal(buildRtcConfigForSession({ rtcConfig: null }), undefined);
-    });
-
-    test('preserves TURN credentials on correct entry', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'turn:turn.example.com:3478', username: 'user', credential: 'pass' },
-                ],
-            },
-        });
-        assert.ok(result);
-        const turnEntry = result.iceServers.find((s) =>
-            [].concat(s.urls).some((u) => u.startsWith('turn:'))
-        );
-        assert.ok(turnEntry);
-        assert.equal(turnEntry.username, 'user');
-        assert.equal(turnEntry.credential, 'pass');
-        const stunEntry = result.iceServers.find((s) =>
-            [].concat(s.urls).some((u) => u.startsWith('stun:'))
-        );
-        assert.ok(stunEntry);
-        assert.equal(stunEntry.username, undefined);
-    });
-
-    test('rejects unsupported iceTransportPolicy', () => {
-        const result = buildRtcConfigForSession({
-            rtcConfig: {
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-                iceTransportPolicy: 'bogus',
-            },
-        });
-        assert.ok(result);
-        assert.equal(result.iceTransportPolicy, undefined);
+        assert.equal(buildRtcConfigForSession({ rtcConfig: {
+            iceServers: [{ urls: 'turn:turn.example:3478', username: 'u', credential: 'p' }],
+            iceTransportPolicy: 'bogus',
+        } }).iceTransportPolicy, undefined);
     });
 });

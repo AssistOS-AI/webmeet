@@ -8,6 +8,8 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
+import { withGuestParticipantOwner } from './participant-owner-fixture.mjs';
+
 const MASTER_KEY = crypto.randomBytes(32).toString('base64');
 const ADMIN_AUTH = { id: 'local:admin', username: 'admin', roles: ['admin'] };
 const execFileAsync = promisify(execFile);
@@ -22,9 +24,26 @@ async function freshContext() {
 
     process.env.PLOINKY_WEBMEET_MASTER_KEY = MASTER_KEY;
     process.env.PLOINKY_WORKSPACE_ROOT = dir;
+    process.env.LIVEKIT_API_KEY = 'test-livekit-api-key';
+    process.env.LIVEKIT_API_SECRET = 'test-livekit-api-secret';
 
     const { createStoreContext } = await import('../../lib/webmeetStore.mjs');
-    return { dir, context: await createStoreContext(dir) };
+    const storeContext = await createStoreContext(dir);
+    storeContext.resolveEdgeJoinMaterial = async () => ({
+        livekitUrl: 'wss://router.test/public-services/livekit-signal/',
+        rtcConfig: {
+            iceTransportPolicy: 'all',
+            iceServers: [{
+                urls: ['turn:turn.test:3478?transport=udp'],
+                username: 'temporary',
+                credential: 'temporary-secret',
+            }],
+        },
+        turnExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        configurationGeneration: 'test-generation',
+        publicationGeneration: 1,
+    });
+    return { dir, context: storeContext };
 }
 
 async function createTestMeeting(ctx, title = 'Test Room', roomType = 'team') {
@@ -35,11 +54,14 @@ async function createTestMeeting(ctx, title = 'Test Room', roomType = 'team') {
 async function createGuestMeetingWithParticipant(ctx, title = 'Guest Room') {
     const { createMeeting, joinGuestMeeting } = await import('../../lib/webmeetStore.mjs');
     const meeting = await createMeeting(ctx, { title, roomType: 'guest', authInfo: ADMIN_AUTH });
-    const joinResult = await joinGuestMeeting(ctx, {
-        meetingId: meeting.id,
-        displayName: 'Test Guest',
-    });
-    return { meeting, joinResult, participantId: joinResult.participantIdentity };
+    const guestId = `fixture-${crypto.randomUUID()}`;
+    const joinResult = await withGuestParticipantOwner(ctx, meeting.id, () => (
+        joinGuestMeeting(ctx, {
+            meetingId: meeting.id,
+            displayName: 'Test Guest',
+        })
+    ), guestId);
+    return { meeting, joinResult, participantId: joinResult.participantIdentity, guestId };
 }
 
 before(async () => {
@@ -197,7 +219,7 @@ describe('event staging — events recorded only after successful payload save',
 describe('guest-state response narrowing', () => {
     test('getGuestMeetingDetails returns only meeting, participants, and chat', async () => {
         const { getGuestMeetingDetails, appendMeetingChat } = await import('../../lib/webmeetStore.mjs');
-        const { meeting, participantId } = await createGuestMeetingWithParticipant(context);
+        const { meeting, participantId, guestId } = await createGuestMeetingWithParticipant(context);
 
         await appendMeetingChat(context, {
             meetingId: meeting.id,
@@ -207,10 +229,12 @@ describe('guest-state response narrowing', () => {
             skipAccessCheck: true,
         });
 
-        const details = await getGuestMeetingDetails(context, {
-            meetingId: meeting.id,
-            participantId,
-        });
+        const details = await withGuestParticipantOwner(context, meeting.id, () => (
+            getGuestMeetingDetails(context, {
+                meetingId: meeting.id,
+                participantId,
+            })
+        ), guestId);
 
         const allowedKeys = new Set(['meeting', 'participants', 'chat']);
         const actualKeys = new Set(Object.keys(details));
@@ -242,13 +266,15 @@ describe('MCP chat schema — author is derived from invocation context', () => 
 describe('guest chat derives author from participant record, not caller-supplied fields', () => {
     test('appendGuestMeetingChat uses participant displayName, not caller-supplied author', async () => {
         const { appendGuestMeetingChat, listMeetingChat } = await import('../../lib/webmeetStore.mjs');
-        const { meeting, participantId } = await createGuestMeetingWithParticipant(context, 'Guest Author Room');
+        const { meeting, participantId, guestId } = await createGuestMeetingWithParticipant(context, 'Guest Author Room');
 
-        await appendGuestMeetingChat(context, {
-            meetingId: meeting.id,
-            participantId,
-            message: 'guest says hello',
-        });
+        await withGuestParticipantOwner(context, meeting.id, () => (
+            appendGuestMeetingChat(context, {
+                meetingId: meeting.id,
+                participantId,
+                message: 'guest says hello',
+            })
+        ), guestId);
 
         const chats = await listMeetingChat(context, meeting.id, ADMIN_AUTH);
         const guestChat = chats.find((c) => c.message === 'guest says hello');
@@ -475,10 +501,13 @@ describe('manifest secret compatibility', () => {
         };
         try {
             await closeLiveKitRoom({
-                livekitApiUrl: 'http://livekit.test',
                 livekitApiKey: 'test-key',
                 livekitApiSecret: 'test-secret',
-                agentName: 'WebMeetAgent'
+                agentName: 'WebMeetAgent',
+                resolvePrivateLiveKitCall: async () => ({
+                    url: new URL('http://127.0.0.1:8081/private/livekit-api/DeleteRoom'),
+                    assertion: 'test-private-router-assertion',
+                }),
             }, 'room-a', { strict: true });
         } finally {
             globalThis.fetch = originalFetch;
@@ -496,9 +525,11 @@ describe('manifest secret compatibility', () => {
         const originalFetch = globalThis.fetch;
         let requestUrl = '';
         let requestBody = null;
+        let routerAssertion = '';
         globalThis.fetch = async (url, options = {}) => {
             requestUrl = String(url || '');
             requestBody = JSON.parse(String(options?.body || '{}'));
+            routerAssertion = String(options?.headers?.['Ploinky-Agent-Assertion'] || '');
             return {
                 ok: true,
                 text: async () => '{}'
@@ -506,16 +537,27 @@ describe('manifest secret compatibility', () => {
         };
         try {
             await removeLiveKitRoomParticipant({
-                livekitApiUrl: 'http://livekit.test',
                 livekitApiKey: 'test-key',
                 livekitApiSecret: 'test-secret',
-                agentName: 'WebMeetAgent'
+                agentName: 'WebMeetAgent',
+                resolvePrivateLiveKitCall: async ({ methodName, body }) => {
+                    assert.equal(methodName, 'RemoveParticipant');
+                    assert.deepEqual(JSON.parse(body.toString('utf8')), {
+                        room: 'room-a',
+                        identity: 'participant-a'
+                    });
+                    return {
+                        url: new URL('http://127.0.0.1:8081/services/livekit-api/RemoveParticipant'),
+                        assertion: 'test-private-router-assertion'
+                    };
+                }
             }, 'room-a', 'participant-a', { strict: true });
         } finally {
             globalThis.fetch = originalFetch;
         }
 
-        assert.match(requestUrl, /RoomService\/RemoveParticipant$/);
+        assert.match(requestUrl, /\/services\/livekit-api\/RemoveParticipant$/);
+        assert.equal(routerAssertion, 'test-private-router-assertion');
         assert.deepEqual(requestBody, {
             room: 'room-a',
             identity: 'participant-a'

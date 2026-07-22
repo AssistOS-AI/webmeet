@@ -631,6 +631,7 @@ export class WebmeetDashboard {
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();
+        this.uninstallJoinMaterialRefreshListeners?.();
         window.clearInterval(this.audioWebRtcStatsTimer);
         this.audioWebRtcStatsTimer = null;
         void this.stopMicrophoneTest?.();

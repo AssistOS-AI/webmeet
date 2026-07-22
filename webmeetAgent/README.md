@@ -11,7 +11,8 @@
   - creates explicit LiveKit AI dispatches for the separate worker
 - `webmeetInfra/liveKitServerAgent`
   - single Ploinky agent that supervises the WebMeet media runtime
-  - includes LiveKit Server, Redis, Coturn, and profile-specific production TLS services (Nginx + Certbot in `prod`) inside one container
+  - includes LiveKit Server, Redis, Egress, and semantic supervisor health inside one pinned container
+  - binds signaling/API only to box loopback `127.0.0.1:7880`, owns the one box UDP mux on `7882`, and contains no local TURN, public TLS proxy, or certificate manager
 - `webmeetLivekitAiAgent`
   - optional separate Ploinky agent for the self-hosted LiveKit Agents worker
   - owns the native `@livekit/agents` dependency tree
@@ -29,6 +30,12 @@ The WebMeet manifest:
 
 Explorer only needs to enable `webmeetAgent` and the `webmeet` plugin for normal rooms, chat, camera, and screen sharing flows.
 
+Each join resolves the current box-owned topology generation. Public signaling
+uses Router `8080`; server-side LiveKit Twirp uses private Router `8081` with an
+exact current-generation assertion. External TURN supplies UDP and TLS relay,
+and Ploinky core brokers short-lived relay credentials only to allowed current-
+generation consumers. WebMeet keeps no static relay URL or credential fallback.
+
 WebMeet browser settings are user-scoped preferences stored in the browser, not per-room state. Device selection, audio processing, camera quality, screen share quality, and background privacy effects are opened from the dashboard header and apply across every room that the same Explorer user joins from that browser profile.
 
 The main WebMeet application is the page component `webmeet-dashboard`, not a modal. WebMeet settings open in the dedicated WebSkel `webmeet-settings-modal`, which supports edge/corner resizing and a fullscreen toggle.
@@ -41,7 +48,7 @@ Background privacy uses a locally bundled LiveKit processor pipeline plus bundle
 
 WebMeet uses self-hosted LiveKit Agents for AI participants. The worker is not simulated in the WebMeet store and is not LiveKit Cloud or LiveKit Inference.
 
-The worker registers with `WEBMEET_LIVEKIT_AGENT_NAME` and is attached to rooms by explicit admin dispatch. A separate worker stack must be running before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
+The optional worker registers with its own worker-name setting and is attached to rooms by explicit admin dispatch. A separate worker stack must be running before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
 
 The WebMeet store persists only dispatch metadata, chat, room resources, and participant state. It does not create fake AI participants.
 

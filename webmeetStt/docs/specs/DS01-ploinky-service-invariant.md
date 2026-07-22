@@ -2,7 +2,14 @@
 
 `webmeetStt` is the Ploinky-managed internal Faster-Whisper service for WebMeet transcript generation. It owns the Python runtime, Faster-Whisper dependency installation, model cache volume, internal port, and readiness.
 
-The service is not a browser surface and must not declare `httpServices`. WebMeet reaches it only through the internal `webmeet` network alias `webmeetStt`.
+The service is not a browser surface and must not declare `httpServices`. Its
+network contract is the strict v5 bridge form with one primary logical
+attachment named `webmeet`; legacy `network.name` and `network.aliases` are
+invalid. Ploinky derives the effective instance alias and keeps the service on
+that isolated bridge. No current WebMeet consumer is confirmed after removal
+of the prior LiveKit AI worker, so retaining or removing this dependency is a
+separate product decision; this networking hard cut does not invent a new
+consumer or expose STT publicly.
 
 Before transcription, the service can run local DTLN denoise on uploaded 16 kHz PCM WAV chunks. `WEBMEET_STT_DENOISE=dtln` enables the self-hosted path and is the default; `WEBMEET_STT_DENOISE=off` skips it. DTLN failures must be logged briefly and fall back to the original audio so transcript generation remains available.
 

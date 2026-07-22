@@ -26,6 +26,7 @@ import {
     joinMeeting,
     listMeetingEvents
 } from '../../lib/webmeetStore.mjs';
+import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
 import {
     decryptRoomPayload,
     loadRoomRecord
@@ -1628,7 +1629,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
     try {
         const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
-        const context = await createStoreContext(root);
+        const context = installEdgeJoinFixture(await createStoreContext(root));
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
 
         await applyRoomBlackboardChange(context, {
@@ -1683,7 +1684,7 @@ test('webmeet blackboard tool decodes serialized final change objects from trans
     try {
         process.env.WEBMEET_DATA_DIR = path.join(root, 'data');
         process.env.PLOINKY_WEBMEET_MASTER_KEY = '0123456789abcdef0123456789abcdef';
-        const context = await createStoreContext(root);
+        const context = installEdgeJoinFixture(await createStoreContext(root));
         const authInfo = {
             user: {
                 id: 'local:admin',
@@ -1787,7 +1788,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
     try {
         const adminAuth = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const userAuth = { user: { id: 'local:user-1', username: 'user1', roles: ['user'] } };
-        const context = await createStoreContext(root);
+        const context = installEdgeJoinFixture(await createStoreContext(root));
         const meeting = await createMeeting(context, { name: 'Blackboard spoof test', authInfo: adminAuth });
         await joinMeeting(context, {
             meetingId: meeting.roomId,
@@ -1853,7 +1854,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
     try {
         const adminAuth = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const userAuth = { user: { id: 'local:user-1', username: 'user1', roles: ['user'] } };
-        const context = await createStoreContext(root);
+        const context = installEdgeJoinFixture(await createStoreContext(root));
         const meeting = await createMeeting(context, { name: 'Blackboard visibility test', authInfo: adminAuth });
         await joinMeeting(context, {
             meetingId: meeting.roomId,

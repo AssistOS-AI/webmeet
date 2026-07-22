@@ -8,11 +8,75 @@ import {
     summarizeVideoElement
 } from '../services/media-diagnostics.js';
 import { isAudioPublication } from '../services/microphone-publication.js';
-import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 export const roomSessionMethods = {
+    installJoinMaterialRefreshListeners() {
+        if (this.joinMaterialNetworkRefreshHandler) return;
+        this.joinMaterialNetworkRefreshHandler = () => {
+            if (!this.roomLiveKit?.getRoom?.() || navigator.onLine === false) return;
+            void this.refreshJoinMaterialAndReconnect('network-transition');
+        };
+        window.addEventListener('online', this.joinMaterialNetworkRefreshHandler);
+        navigator.connection?.addEventListener?.('change', this.joinMaterialNetworkRefreshHandler);
+    },
+
+    uninstallJoinMaterialRefreshListeners() {
+        window.clearTimeout(this.joinMaterialRefreshTimer);
+        this.joinMaterialRefreshTimer = null;
+        if (!this.joinMaterialNetworkRefreshHandler) return;
+        window.removeEventListener('online', this.joinMaterialNetworkRefreshHandler);
+        navigator.connection?.removeEventListener?.('change', this.joinMaterialNetworkRefreshHandler);
+        this.joinMaterialNetworkRefreshHandler = null;
+    },
+
+    scheduleJoinMaterialRefresh() {
+        window.clearTimeout(this.joinMaterialRefreshTimer);
+        this.joinMaterialRefreshTimer = null;
+        const expiresAtMs = Date.parse(String(this.state.session?.turnExpiresAt || ''));
+        if (!Number.isFinite(expiresAtMs)) {
+            throw new Error('Join material is missing a valid TURN expiry.');
+        }
+        const remainingMs = expiresAtMs - Date.now();
+        if (remainingMs <= 30_000) {
+            throw new Error('Join material expires too soon to establish a supported media session.');
+        }
+        const refreshLeadMs = Math.min(60_000, Math.max(10_000, Math.floor(remainingMs * 0.2)));
+        this.joinMaterialRefreshTimer = window.setTimeout(() => {
+            void this.refreshJoinMaterialAndReconnect('credential-expiry');
+        }, remainingMs - refreshLeadMs);
+    },
+
+    async refreshJoinMaterialAndReconnect(reason = 'credential-refresh') {
+        if (this.joinMaterialRefreshInFlight || !this.state.session?.participantIdentity) return;
+        this.joinMaterialRefreshInFlight = true;
+        const mediaToRestore = { ...this.state.media };
+        try {
+            await this.webMeetRoom.refreshJoinMaterial();
+            await this.disconnectRoom({ stopMediaFirst: false });
+            await this.connectRoom();
+            if (mediaToRestore.microphone && !this.state.media.microphone) await this.toggleMicrophone();
+            if (mediaToRestore.camera && !this.state.media.camera) await this.toggleCamera();
+            if (mediaToRestore.screen) {
+                this.state.roomState = 'Connected. Screen sharing stopped during media credential refresh; use Share screen to resume.';
+                this.setError(this.state.roomState);
+                this.renderMeetingSummary();
+            }
+            logMediaDiagnostic('join-material-recreated', { reason });
+        } catch (error) {
+            window.clearTimeout(this.joinMaterialRefreshTimer);
+            this.joinMaterialRefreshTimer = null;
+            await this.disconnectRoom().catch(() => {});
+            const message = error instanceof Error ? error.message : String(error);
+            this.state.roomState = `Media credentials could not be refreshed: ${message}`;
+            this.setError(this.state.roomState);
+            this.renderMeetingSummary();
+        } finally {
+            this.joinMaterialRefreshInFlight = false;
+        }
+    },
+
     async connectRoom() {
-        if (!this.state.session?.participantToken || !this.state.session?.livekitLocator) {
+        if (!this.state.session?.participantToken || !this.state.session?.livekitUrl) {
             this.state.roomState = 'Join payload missing media token';
             this.renderMeetingSummary();
             return;
@@ -514,6 +578,8 @@ export const roomSessionMethods = {
             },
             onConnected: ({ room, Track }) => {
                 this.state.roomState = 'Connected';
+                this.installJoinMaterialRefreshListeners();
+                this.scheduleJoinMaterialRefresh();
                 this.syncParticipantsFromRoom(this.room, Track);
                 const skipConnectedAvatarRepublishOnce = Boolean(this.state.skipConnectedAvatarRepublishOnce);
                 this.state.skipConnectedAvatarRepublishOnce = false;
@@ -541,58 +607,18 @@ export const roomSessionMethods = {
         });
     },
 
-    async resolveExternalDisconnectArchiveMessage(meetingId = '') {
-        const targetMeetingId = String(meetingId || '').trim();
-        if (!targetMeetingId || this.isGuestSession()) return '';
-        try {
-            const result = await this.webMeetRoom.runTool('webmeet_room_events_list', {
-                roomId: 'rooms',
-                afterId: ''
-            });
-            const events = Array.isArray(result?.events) ? result.events : [];
-            for (let index = events.length - 1; index >= 0; index -= 1) {
-                const parsed = this.webMeetRoom.eventCodec.parse(events[index]);
-                if (parsed.type !== WEBMEET_EVENT_TYPES.MEETING_ARCHIVED) continue;
-                const payload = parsed.payload || {};
-                const eventMeetingId = String(payload.meetingId || payload.roomId || '').trim();
-                if (eventMeetingId !== targetMeetingId) continue;
-                const archivedById = String(payload.archivedById || '').trim();
-                const currentActorId = String(this.webMeetRoom?.getCurrentActorId?.() || '').trim();
-                if (archivedById && currentActorId && archivedById === currentActorId) {
-                    return '';
-                }
-                const archivedByName = String(payload.archivedByName || '').trim();
-                return archivedByName ? `Room was archived by ${archivedByName}.` : 'Room was archived by an admin.';
-            }
-        } catch (_) {
-            return '';
-        }
-        return '';
-    },
-
     async handleExternalRoomDisconnect() {
-        const previousMeetingId = String(this.state.session?.meeting?.id || '').trim();
-        const wasGuestSession = this.isGuestSession();
-        const archiveMessage = await this.resolveExternalDisconnectArchiveMessage(previousMeetingId);
-        this.resetRoomUiState({
-            forceRenderAll: false,
-            applyVideoFullscreenMode: false,
-            clearSession: true
-        });
-        if (!wasGuestSession) {
+        this.resetRoomUiState({ forceRenderAll: false, applyVideoFullscreenMode: false });
+        if (!this.isGuestSession()) {
             await this.loadMeetings();
             this.startWorkspaceEvents();
         }
         this.renderAll();
-        if (archiveMessage) {
-            this.setError(archiveMessage);
-        }
     },
 
     resetRoomUiState(options = {}) {
         const forceRenderAll = Boolean(options.forceRenderAll);
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
-        const clearSession = Boolean(options.clearSession);
         this.room = this.roomLiveKit.getRoom();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
@@ -608,9 +634,6 @@ export const roomSessionMethods = {
         this.resetBlackboardUiState?.();
         this.state.audioHealth = 'Good';
         this.state.audioNetworkUnstable = false;
-        if (clearSession) {
-            this.state.session = null;
-        }
         window.clearInterval(this.audioWebRtcStatsTimer);
         this.audioWebRtcStatsTimer = null;
         this.remoteAudioNormalizer?.stopAll?.();
@@ -694,6 +717,8 @@ export const roomSessionMethods = {
     },
 
     async disconnectRoom(options = {}) {
+        window.clearTimeout(this.joinMaterialRefreshTimer);
+        this.joinMaterialRefreshTimer = null;
         const room = this.roomLiveKit.getRoom();
         if (!room) return;
         if (options.stopMediaFirst !== false) {

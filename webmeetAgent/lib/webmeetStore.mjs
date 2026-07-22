@@ -2,13 +2,6 @@ import crypto from 'node:crypto';
 
 import { getWorkspacePaths } from './workspacePaths.mjs';
 import {
-    buildRtcConfig,
-    buildStunUrls,
-    dedupeStrings,
-    isLoopbackUrl,
-    splitCsvEnv
-} from './store/rtcConfig.mjs';
-import {
     assertAdminAuthInfo,
     assertAuthenticatedAuthInfo,
     canViewMeetingRecord,
@@ -268,25 +261,8 @@ export async function createStoreContext(startDir = '') {
         ...paths,
         roomPrefix: String(process.env.WEBMEET_ROOM_PREFIX || 'webmeet').trim() || 'webmeet',
         agentName: String(process.env.WEBMEET_AGENT_NAME || 'WebMeetAgent').trim() || 'WebMeetAgent',
-        livekitPublicUrl: String(process.env.WEBMEET_PUBLIC_LIVEKIT_URL || process.env.WEBMEET_LIVEKIT_URL || '').trim(),
-        livekitBrowserLocator: {
-            agent: String(process.env.WEBMEET_LIVEKIT_AGENT || 'liveKitServerAgent').trim() || 'liveKitServerAgent',
-            port: Number.parseInt(String(process.env.WEBMEET_LIVEKIT_SIGNAL_PORT || '7880'), 10) || 7880,
-        },
-        livekitApiUrl: String(process.env.WEBMEET_LIVEKIT_URL || '').trim(),
-        livekitApiKey: String(process.env.WEBMEET_LIVEKIT_API_KEY || '').trim(),
-        livekitApiSecret: String(process.env.WEBMEET_LIVEKIT_API_SECRET || '').trim(),
-        stunExplicitUrls: process.env.WEBMEET_STUN_URLS !== undefined
-            ? String(process.env.WEBMEET_STUN_URLS || '').trim()
-            : undefined,
-        turn: {
-            host: String(process.env.WEBMEET_TURN_EXTERNAL_IP || process.env.WEBMEET_TURN_HOST || '').trim(),
-            port: String(process.env.WEBMEET_TURN_PORT || '').trim(),
-            explicitUrls: String(process.env.WEBMEET_TURN_URLS || '').trim(),
-            username: String(process.env.WEBMEET_TURN_USER || '').trim(),
-            credential: String(process.env.WEBMEET_TURN_PASSWORD || '').trim(),
-            iceTransportPolicy: String(process.env.WEBMEET_ICE_TRANSPORT_POLICY || '').trim()
-        }
+        livekitApiKey: String(process.env.LIVEKIT_API_KEY || '').trim(),
+        livekitApiSecret: String(process.env.LIVEKIT_API_SECRET || '').trim()
     };
 }
 
@@ -590,10 +566,5 @@ export async function removeRoomResource(context, { roomId, resourceId, authInfo
 }
 
 export {
-    isAdminAuthInfo,
-    buildRtcConfig as _buildRtcConfig,
-    buildStunUrls as _buildStunUrls,
-    isLoopbackUrl as _isLoopbackUrl,
-    dedupeStrings as _dedupeStrings,
-    splitCsvEnv as _splitCsvEnv,
+    isAdminAuthInfo
 };

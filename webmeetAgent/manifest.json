@@ -1,359 +1,144 @@
 {
-    "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
-    "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and room resources.",
-    "guest": true,
-    "network": {
-        "name": "webmeet",
-        "aliases": [
-            "webmeetAgent"
-        ]
-    },
-    "enable": [
-        "webmeetInfra/liveKitServerAgent no-wait"
-    ],
-    "repos": {
-        "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
-    },
-    "routerAccess": {
-        "httpRoutes": [
-            {
-                "path": "/roomLoader.html",
-                "access": "guest"
-            },
-            {
-                "path": "/static-files/*",
-                "access": "public"
-            },
-            {
-                "path": "/IDE-plugins/webmeet-tool-button/*",
-                "access": "public"
-            }
-        ]
-    },
-    "volumes": {
-        ".ploinky/data/webmeetAgent/data": "/data"
-    },
-    "profiles": {
-        "default": {
-            "preinstall": "scripts/hooks/preinstall.sh",
-            "env": [
-                "ASSISTOS_FS_ROOT",
-                "WORKSPACE_ROOT",
-                "PLOINKY_WORKSPACE_ROOT",
-                "PLOINKY_ROUTER_URL",
-                "PLOINKY_ROUTER_HOST",
-                "PLOINKY_ROUTER_PORT",
-                {
-                    "name": "PLOINKY_WEBMEET_MASTER_KEY",
-                    "required": false,
-                    "generatedSecret": true
-                },
-                "LLMAgentClient_DEBUG",
-                "LLMAgentClient_VERBOSE_DELAY",
-                {
-                    "name": "WEBMEET_DATA_DIR",
-                    "required": false,
-                    "default": "/data"
-                },
-                {
-                    "name": "WEBMEET_LOCAL_PUBLIC_HOST",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
-                    "required": false,
-                    "default": "ws://127.0.0.1:7880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT",
-                    "required": false,
-                    "default": "liveKitServerAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_SIGNAL_PORT",
-                    "required": false,
-                    "default": "7880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_URL",
-                    "required": false,
-                    "default": "http://liveKitServerAgent:7880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_API_KEY",
-                    "required": false,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_API_SECRET",
-                    "required": false,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_STUN_URLS",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_EXTERNAL_IP",
-                    "required": false,
-                    "default": "127.0.0.1"
-                },
-                {
-                    "name": "WEBMEET_TURN_HOST",
-                    "required": false,
-                    "default": "127.0.0.1"
-                },
-                {
-                    "name": "WEBMEET_TURN_PORT",
-                    "required": false,
-                    "default": "3478"
-                },
-                {
-                    "name": "WEBMEET_TURN_URLS",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_REALM",
-                    "required": false,
-                    "default": "webmeet.local"
-                },
-                {
-                    "name": "WEBMEET_TURN_USER",
-                    "required": false,
-                    "default": "webmeet"
-                },
-                {
-                    "name": "WEBMEET_TURN_PASSWORD",
-                    "required": false,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_ICE_TRANSPORT_POLICY",
-                    "required": false,
-                    "default": "all"
-                },
-                {
-                    "name": "WEBMEET_ROOM_PREFIX",
-                    "required": false,
-                    "default": "webmeet"
-                },
-                {
-                    "name": "WEBMEET_AGENT_NAME",
-                    "required": false,
-                    "default": "WebMeetAgent"
-                }
-            ]
+  "agent": "sh /code/scripts/startAgent.sh",
+  "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
+  "about": "WebMeet Agent for sovereign collaboration rooms, AI participants, and room resources.",
+  "guest": true,
+  "enable": [
+    "webmeetInfra/liveKitServerAgent no-wait"
+  ],
+  "repos": {
+    "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
+  },
+  "routerAccess": {
+    "httpRoutes": [
+      {
+        "path": "/roomLoader.html",
+        "access": "guest"
+      },
+      {
+        "path": "/static-files/*",
+        "access": "public"
+      },
+      {
+        "path": "/IDE-plugins/webmeet-tool-button/*",
+        "access": "public"
+      }
+    ]
+  },
+  "volumes": {
+    ".ploinky/data/webmeetAgent/data": "/data"
+  },
+  "profiles": {
+    "default": {
+      "env": [
+        "ASSISTOS_FS_ROOT",
+        "WORKSPACE_ROOT",
+        "PLOINKY_WORKSPACE_ROOT",
+        {
+          "name": "PLOINKY_WEBMEET_MASTER_KEY",
+          "required": true,
+          "generatedSecret": true
         },
-        "dev": {
-            "preinstall": "scripts/hooks/preinstall.sh",
-            "env": [
-                "ASSISTOS_FS_ROOT",
-                "WORKSPACE_ROOT",
-                "PLOINKY_WORKSPACE_ROOT",
-                "PLOINKY_ROUTER_URL",
-                "PLOINKY_ROUTER_HOST",
-                "PLOINKY_ROUTER_PORT",
-                {
-                    "name": "PLOINKY_WEBMEET_MASTER_KEY",
-                    "required": false,
-                    "generatedSecret": true
-                },
-                "LLMAgentClient_DEBUG",
-                "LLMAgentClient_VERBOSE_DELAY",
-                {
-                    "name": "WEBMEET_DATA_DIR",
-                    "required": false,
-                    "default": "/data"
-                },
-                {
-                    "name": "WEBMEET_LOCAL_PUBLIC_HOST",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
-                    "required": false,
-                    "default": "ws://127.0.0.1:17880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT",
-                    "required": false,
-                    "default": "liveKitServerAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_SIGNAL_PORT",
-                    "required": false,
-                    "default": "17880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_URL",
-                    "required": false,
-                    "default": "http://liveKitServerAgent:17880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_API_KEY",
-                    "required": false,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_API_SECRET",
-                    "required": false,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_STUN_URLS",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_EXTERNAL_IP",
-                    "required": false,
-                    "default": "127.0.0.1"
-                },
-                {
-                    "name": "WEBMEET_TURN_HOST",
-                    "required": false,
-                    "default": "127.0.0.1"
-                },
-                {
-                    "name": "WEBMEET_TURN_PORT",
-                    "required": false,
-                    "default": "13478"
-                },
-                {
-                    "name": "WEBMEET_TURN_URLS",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_REALM",
-                    "required": false,
-                    "default": "webmeet.local"
-                },
-                {
-                    "name": "WEBMEET_TURN_USER",
-                    "required": false,
-                    "default": "webmeet"
-                },
-                {
-                    "name": "WEBMEET_TURN_PASSWORD",
-                    "required": false,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_ICE_TRANSPORT_POLICY",
-                    "required": false,
-                    "default": "all"
-                },
-                {
-                    "name": "WEBMEET_ROOM_PREFIX",
-                    "required": false,
-                    "default": "webmeet"
-                },
-                {
-                    "name": "WEBMEET_AGENT_NAME",
-                    "required": false,
-                    "default": "WebMeetAgent"
-                }
-            ]
+        {
+          "name": "WEBMEET_DATA_DIR",
+          "required": false,
+          "default": "/data"
         },
-        "prod": {
-            "env": [
-                "ASSISTOS_FS_ROOT",
-                "WORKSPACE_ROOT",
-                "PLOINKY_WORKSPACE_ROOT",
-                {
-                    "name": "PLOINKY_WEBMEET_MASTER_KEY",
-                    "required": true,
-                    "generatedSecret": true
-                },
-                "LLMAgentClient_DEBUG",
-                "LLMAgentClient_VERBOSE_DELAY",
-                {
-                    "name": "WEBMEET_DATA_DIR",
-                    "required": false,
-                    "default": "/data"
-                },
-                {
-                    "name": "WEBMEET_PUBLIC_LIVEKIT_URL",
-                    "required": true,
-                    "default": "wss://livekit-skills.axiologic.dev"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_AGENT",
-                    "required": false,
-                    "default": "liveKitServerAgent"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_SIGNAL_PORT",
-                    "required": false,
-                    "default": "7880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_URL",
-                    "required": true,
-                    "default": "http://host.containers.internal:7880"
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_API_KEY",
-                    "required": true,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_LIVEKIT_API_SECRET",
-                    "required": true,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_STUN_URLS",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_EXTERNAL_IP",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_HOST",
-                    "required": true,
-                    "default": "livekit-skills.axiologic.dev"
-                },
-                {
-                    "name": "WEBMEET_TURN_PORT",
-                    "required": false,
-                    "default": "3478"
-                },
-                {
-                    "name": "WEBMEET_TURN_URLS",
-                    "required": false
-                },
-                {
-                    "name": "WEBMEET_TURN_REALM",
-                    "required": false,
-                    "default": "skills.axiologic.dev"
-                },
-                {
-                    "name": "WEBMEET_TURN_USER",
-                    "required": false,
-                    "default": "webmeet"
-                },
-                {
-                    "name": "WEBMEET_TURN_PASSWORD",
-                    "required": true,
-                    "sharedGeneratedSecret": true
-                },
-                {
-                    "name": "WEBMEET_ICE_TRANSPORT_POLICY",
-                    "required": false,
-                    "default": "all"
-                },
-                {
-                    "name": "WEBMEET_ROOM_PREFIX",
-                    "required": false,
-                    "default": "webmeet"
-                },
-                {
-                    "name": "WEBMEET_AGENT_NAME",
-                    "required": false,
-                    "default": "WebMeetAgent"
-                }
-            ]
+        {
+          "name": "LIVEKIT_API_KEY",
+          "required": true,
+          "sharedGeneratedSecret": true
+        },
+        {
+          "name": "LIVEKIT_API_SECRET",
+          "required": true,
+          "sharedGeneratedSecret": true
+        },
+        {
+          "name": "WEBMEET_ROOM_PREFIX",
+          "required": false,
+          "default": "webmeet"
+        },
+        {
+          "name": "WEBMEET_AGENT_NAME",
+          "required": false,
+          "default": "WebMeetAgent"
         }
+      ]
+    },
+    "dev": {
+      "env": [
+        "ASSISTOS_FS_ROOT",
+        "WORKSPACE_ROOT",
+        "PLOINKY_WORKSPACE_ROOT",
+        {
+          "name": "PLOINKY_WEBMEET_MASTER_KEY",
+          "required": true,
+          "generatedSecret": true
+        },
+        {
+          "name": "WEBMEET_DATA_DIR",
+          "required": false,
+          "default": "/data"
+        },
+        {
+          "name": "LIVEKIT_API_KEY",
+          "required": true,
+          "sharedGeneratedSecret": true
+        },
+        {
+          "name": "LIVEKIT_API_SECRET",
+          "required": true,
+          "sharedGeneratedSecret": true
+        },
+        {
+          "name": "WEBMEET_ROOM_PREFIX",
+          "required": false,
+          "default": "webmeet"
+        },
+        {
+          "name": "WEBMEET_AGENT_NAME",
+          "required": false,
+          "default": "WebMeetAgent"
+        }
+      ]
+    },
+    "prod": {
+      "env": [
+        "ASSISTOS_FS_ROOT",
+        "WORKSPACE_ROOT",
+        "PLOINKY_WORKSPACE_ROOT",
+        {
+          "name": "PLOINKY_WEBMEET_MASTER_KEY",
+          "required": true,
+          "generatedSecret": true
+        },
+        {
+          "name": "WEBMEET_DATA_DIR",
+          "required": false,
+          "default": "/data"
+        },
+        {
+          "name": "LIVEKIT_API_KEY",
+          "required": true,
+          "sharedGeneratedSecret": true
+        },
+        {
+          "name": "LIVEKIT_API_SECRET",
+          "required": true,
+          "sharedGeneratedSecret": true
+        },
+        {
+          "name": "WEBMEET_ROOM_PREFIX",
+          "required": false,
+          "default": "webmeet"
+        },
+        {
+          "name": "WEBMEET_AGENT_NAME",
+          "required": false,
+          "default": "WebMeetAgent"
+        }
+      ]
     }
+  }
 }

@@ -32,6 +32,10 @@ export class AuthenticatedWebMeetRoomApi {
         });
     }
 
+    async refreshJoinMaterial(payload = {}) {
+        return this.joinMeeting(payload);
+    }
+
     async leaveMeeting({ meetingId = '', roomId = '', participantId = '' } = {}) {
         return this.runTool('webmeet_room_leave', {
             roomId: requireString(roomId || meetingId, 'roomId'),
@@ -61,8 +65,16 @@ export class GuestWebMeetRoomApi {
         this.runTool = assertFunction(options.runTool, 'runTool');
     }
 
-    async joinMeeting() {
-        throw new Error('Guest room sessions are created by the room entrypoint.');
+    async joinMeeting(payload = {}) {
+        return this.runTool('webmeet_room_join_guest', {
+            ...payload,
+            roomId: requireString(payload.roomId || payload.meetingId, 'roomId'),
+            displayName: requireString(payload.displayName, 'displayName')
+        });
+    }
+
+    async refreshJoinMaterial(payload = {}) {
+        return this.joinMeeting(payload);
     }
 
     async leaveMeeting({ meetingId = '', roomId = '', participantId = '' } = {}) {

@@ -28,23 +28,30 @@ import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/c
 import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { WEBMEET_AVATAR_PRESETS } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-avatar-override.js';
 import { EMOTIONS } from '../../../explorer/shared/vendor/axi-face/src/state-machine.mjs';
+import { withGuestParticipantOwner } from './participant-owner-fixture.mjs';
 
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
 const originalMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-const originalLivekitApiKey = process.env.WEBMEET_LIVEKIT_API_KEY;
-const originalLivekitApiSecret = process.env.WEBMEET_LIVEKIT_API_SECRET;
+const originalLivekitApiKey = process.env.LIVEKIT_API_KEY;
+const originalLivekitApiSecret = process.env.LIVEKIT_API_SECRET;
 
 async function createWorkspace() {
     return { id: `workspace-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+}
+
+async function joinTestGuest(context, args) {
+    return await withGuestParticipantOwner(context, args.meetingId, () => (
+        joinGuestMeeting(context, args)
+    ), String(args.participantId || '').trim());
 }
 
 beforeEach(() => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'webmeet-avatar-events-'));
     process.env.WEBMEET_DATA_DIR = path.join(tempRoot, 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = '0123456789abcdef0123456789abcdef';
-    process.env.WEBMEET_LIVEKIT_API_KEY = 'devkey';
-    process.env.WEBMEET_LIVEKIT_API_SECRET = 'devsecret';
+    process.env.LIVEKIT_API_KEY = 'devkey';
+    process.env.LIVEKIT_API_SECRET = 'devsecret';
 });
 
 afterEach(() => {
@@ -59,14 +66,14 @@ afterEach(() => {
         process.env.PLOINKY_WEBMEET_MASTER_KEY = originalMasterKey;
     }
     if (originalLivekitApiKey === undefined) {
-        delete process.env.WEBMEET_LIVEKIT_API_KEY;
+        delete process.env.LIVEKIT_API_KEY;
     } else {
-        process.env.WEBMEET_LIVEKIT_API_KEY = originalLivekitApiKey;
+        process.env.LIVEKIT_API_KEY = originalLivekitApiKey;
     }
     if (originalLivekitApiSecret === undefined) {
-        delete process.env.WEBMEET_LIVEKIT_API_SECRET;
+        delete process.env.LIVEKIT_API_SECRET;
     } else {
-        process.env.WEBMEET_LIVEKIT_API_SECRET = originalLivekitApiSecret;
+        process.env.LIVEKIT_API_SECRET = originalLivekitApiSecret;
     }
     if (tempRoot) {
         fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -506,7 +513,7 @@ test("guest meeting join does not publish authenticated avatar identity or proje
         authInfo: adminAuthInfo
     });
 
-    const session = await joinGuestMeeting(context, {
+    const session = await joinTestGuest(context, {
         meetingId: meeting.id,
         displayName: 'Guest Person',
         participantId: 'guest-person-1'
@@ -540,7 +547,7 @@ test('guest participant avatar override is returned for live propagation without
         authInfo: adminAuthInfo
     });
 
-    const session = await joinGuestMeeting(context, {
+    const session = await joinTestGuest(context, {
         meetingId: meeting.id,
         displayName: 'Guest Person',
         participantId: 'guest-person-override'
@@ -591,7 +598,7 @@ test('guest meeting details allow a joined guest before LiveKit presence appears
         authInfo: adminAuthInfo
     });
 
-    const session = await joinGuestMeeting(context, {
+    const session = await joinTestGuest(context, {
         meetingId: meeting.id,
         displayName: 'Guest Bootstrap',
         participantId: 'guest-bootstrap-1'
@@ -624,7 +631,7 @@ test('guest meeting details tolerate stored guest members that lost the guest fl
         authInfo: adminAuthInfo
     });
 
-    const session = await joinGuestMeeting(context, {
+    const session = await joinTestGuest(context, {
         meetingId: meeting.id,
         displayName: 'Guest Degraded',
         participantId: 'guest-degraded-1'
@@ -669,7 +676,7 @@ test('guest meeting details do not wipe stored members when LiveKit roster is te
         authInfo: adminAuthInfo
     });
 
-    const session = await joinGuestMeeting(context, {
+    const session = await joinTestGuest(context, {
         meetingId: meeting.id,
         displayName: 'Guest Empty',
         participantId: 'guest-empty-1'
@@ -1923,7 +1930,7 @@ test('authenticated meeting refresh keeps a just-joined guest until LiveKit expo
         participantId: 'participant-admin-1',
         authInfo: adminAuthInfo
     });
-    const guestSession = await joinGuestMeeting(context, {
+    const guestSession = await joinTestGuest(context, {
         meetingId: meeting.id,
         displayName: 'Guest Pending',
         participantId: 'guest-pending-1'

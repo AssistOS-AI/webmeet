@@ -12,7 +12,10 @@ summary: Defines webmeetAgent as the WebMeet application control plane and keeps
 
 `webmeetAgent` is the Ploinky application agent for WebMeet rooms inside AssistOSExplorer. It owns the application control plane: room records, room-scoped public link access, LiveKit participant token issuance, meeting chat, room resources, blackboard state, Ploinky room-agent metadata, and the Explorer WebMeet plugin.
 
-Live audio, video, screen share, Redis coordination, TURN/STUN, and production TLS termination are adjacent WebMeet runtime components. They are not owned by the `webmeetAgent` process.
+Live audio, video, screen share, Redis coordination, Egress, and external relay
+service are adjacent WebMeet runtime components. They are not owned by the
+`webmeetAgent` process. Ploinky core owns Router transport, box topology, and
+short-lived external TURN credential brokerage.
 
 ## Core Content
 
@@ -22,7 +25,8 @@ WebMeet is split into explicit responsibility planes:
 | --- | --- | --- |
 | WebMeet control plane | `webmeetAgent` | Durable rooms, members, roomId scopes, chat, resources, blackboard state, Ploinky room-agent metadata, and LiveKit participant JWTs. |
 | Browser meeting UI | `webmeetAgent/IDE-plugins/webmeet-tool-button` | Explorer dashboard and direct room entry UI, LiveKit browser connection, media controls, chat composer, participant rendering, and browser-scoped media/avatar preferences. |
-| Live media plane | `webmeetInfra/liveKitServerAgent` | LiveKit SFU, WebSocket signaling, WebRTC negotiation, RTP/RTCP forwarding, LiveKit data-channel delivery, Redis, Coturn, and production Nginx/Certbot. |
+| Live media plane | `webmeetInfra/liveKitServerAgent` | Loopback LiveKit signaling/API, the exact box UDP `7882` mux, RTP/RTCP forwarding, data channels, Redis, Egress template `7980`, and semantic health `7981`; no local TURN or public TLS listener. |
+| Edge and relay control | Ploinky core plus explicitly configured external TURN | Router-mediated public signaling/private Twirp, immutable topology, and current-generation short-lived TURN credentials. |
 | RoboTeam room agent | `webmeetAgent` | Ploinky-managed virtual room agent that appears in WebMeet roster and can update the blackboard through WebMeet tools. |
 
 The central invariant is that WebMeet rooms are discovered, authorized, and persisted by `webmeetAgent`. LiveKit rooms carry the live media session. Redis is infrastructure runtime state for LiveKit; it is not the WebMeet application database.
@@ -69,7 +73,12 @@ The WebMeet application needs durable authorization, room discovery, encrypted m
 ### Question #2: Why does this agent depend on `liveKitServerAgent` instead of owning multiple infra agents?
 
 Response:
-The current `webmeetInfra` contract delivers one Ploinky agent, `liveKitServerAgent`, that supervises Redis, Coturn, LiveKit Server, and production Nginx/Certbot inside one image. The older split infra-agent names are retired implementation history. `webmeetAgent` should enable and document the consolidated agent boundary.
+The current `webmeetInfra` contract delivers one pinned Ploinky agent,
+`liveKitServerAgent`, that supervises Redis, LiveKit Server, Egress, and
+supervisor health. It deliberately contains no Coturn, nginx, certbot, local
+relay range, TCP ICE listener, or public `7880`. External TURN and Router are
+separate box/external boundaries, not sibling infrastructure agents. The older
+split infra-agent names remain retired implementation history.
 
 ### Question #3: Why keep the repository-level WebMeet architecture content inside the DS set?
 
