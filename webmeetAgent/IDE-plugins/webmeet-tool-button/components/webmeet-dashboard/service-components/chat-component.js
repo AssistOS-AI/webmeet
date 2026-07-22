@@ -5,6 +5,7 @@ import {
     createWorkspacePathsProvider,
     renderComposerMentionOverlayHtml
 } from '../services/chat-autocomplete/index.js';
+import { createBrowserRoboSpeechInput } from '../services/browser-robo-speech-input.js';
 import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
@@ -58,6 +59,7 @@ export class ChatComponent {
         this.mentionOverlayInput = null;
         this.mentionOverlayHandlers = null;
         this.selectedMentionTokens = new Set();
+        this.roboSpeechInput = null;
     }
 
     getKnownAgentTokens() {
@@ -72,9 +74,44 @@ export class ChatComponent {
     }
 
     setElements(elements) {
+        this.destroyRoboSpeechInput();
         this.elements = elements;
         this.syncRoboDraftState();
         this.initChatAutocomplete();
+        this.initRoboSpeechInput();
+    }
+
+    initRoboSpeechInput() {
+        const input = this.elements?.chatInput;
+        const button = this.elements?.chatActionButton;
+        if (!input || !button) return;
+        this.roboSpeechInput = createBrowserRoboSpeechInput({
+            input,
+            button,
+            status: this.elements?.chatSpeechStatus || null,
+            onSubmit: () => this.sendChat(),
+            onError: (message) => this.setError(message)
+        });
+    }
+
+    destroyRoboSpeechInput() {
+        this.roboSpeechInput?.destroy?.();
+        this.roboSpeechInput = null;
+    }
+
+    async prepareRoboMicrophonePermission() {
+        const result = await this.roboSpeechInput?.prepareMicrophonePermission?.();
+        if (result?.status === 'denied') {
+            this.setError('Microphone access was not granted. Push-to-talk will remain unavailable until microphone access is allowed.');
+        } else if (result?.status === 'error') {
+            this.setError('WebMeet could not prepare microphone access for push-to-talk. You can still join the room.');
+        }
+        return result || { status: 'unsupported', requested: false };
+    }
+
+    destroy() {
+        this.destroyRoboSpeechInput();
+        this.destroyChatAutocomplete();
     }
 
     syncRoboDraftState() {
@@ -173,6 +210,7 @@ export class ChatComponent {
 
     updateComposerMentionOverlay() {
         this.syncRoboDraftState();
+        this.roboSpeechInput?.sync?.();
         if (!this.mentionOverlay || !this.mentionOverlayInput) return;
         this.pruneSelectedMentionTokens();
         this.mentionOverlay.innerHTML = renderComposerMentionOverlayHtml(

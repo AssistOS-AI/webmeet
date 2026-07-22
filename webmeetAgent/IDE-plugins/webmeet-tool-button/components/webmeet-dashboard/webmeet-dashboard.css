@@ -802,12 +802,60 @@
     position: relative;
     align-self: center;
     box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 24%, transparent 76%);
+    touch-action: none;
+    user-select: none;
 }
 
 #webmeetChatSidebar .webmeet-compose .general-button svg {
     width: 16px;
     height: 16px;
+}
+
+.webmeet-chat-action-button .webmeet-chat-action-icon {
+    display: none;
+}
+
+.webmeet-chat-action-button[data-mode="send"] .webmeet-chat-send-icon {
+    display: block;
     rotate: 45deg;
+}
+
+.webmeet-chat-action-button:not([data-mode="send"]) .webmeet-chat-microphone-icon {
+    display: block;
+}
+
+.webmeet-chat-action-button[data-mode="listening"] {
+    color: #fff;
+    background: #d63b3b;
+    border-color: #d63b3b;
+    box-shadow: 0 0 0 4px color-mix(in srgb, #d63b3b 22%, transparent 78%);
+    animation: webmeet-chat-listening-pulse 1.15s ease-in-out infinite;
+}
+
+.webmeet-chat-action-button[data-mode="finalizing"],
+.webmeet-chat-action-button[data-mode="sending"] {
+    cursor: progress;
+}
+
+.webmeet-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@keyframes webmeet-chat-listening-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.06);
+    }
 }
 
 /* Video grid for live room */

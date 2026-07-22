@@ -50,6 +50,21 @@ test('connected room keeps durable presence alive without roster polling', async
     assert.match(roomSessionMethods, /onDisconnected:[\s\S]*handleExternalLiveKitDisconnect\(\)[\s\S]*handleExternalRoomDisconnect\(\)/);
 });
 
+test('room connection prepares push-to-talk microphone permission before LiveKit connects', async () => {
+    const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
+    const connectRoom = roomSessionMethods.slice(
+        roomSessionMethods.indexOf('async connectRoom'),
+        roomSessionMethods.indexOf('\n        const remoteVideoRecoveryCounts', roomSessionMethods.indexOf('async connectRoom'))
+    );
+
+    assert.match(connectRoom, /await this\.chatComponent\?\.prepareRoboMicrophonePermission\?\.\(\)/);
+    assert.ok(
+        connectRoom.indexOf('await this.disconnectRoom()')
+            < connectRoom.indexOf('prepareRoboMicrophonePermission'),
+        'the previous room microphone must be released before requesting permission for the new room'
+    );
+});
+
 test('workspace event polling is outside the active LiveKit room lifecycle', async () => {
     const actionMethods = await readModalFile('controllers/meeting-action-methods.js');
     const joinMeeting = actionMethods.slice(

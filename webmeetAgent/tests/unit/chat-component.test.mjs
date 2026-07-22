@@ -115,6 +115,21 @@ test('typing the /robo prefix activates widget ordinals before submit', () => {
     assert.deepEqual(draftStates, [true, false]);
 });
 
+test('room entry reports denied push-to-talk microphone permission without throwing', async () => {
+    let errorMessage = '';
+    const { component } = makeComponent({
+        setError: (message) => { errorMessage = message; }
+    });
+    component.roboSpeechInput = {
+        prepareMicrophonePermission: async () => ({ status: 'denied', requested: false })
+    };
+
+    const result = await component.prepareRoboMicrophonePermission();
+
+    assert.equal(result.status, 'denied');
+    assert.match(errorMessage, /Push-to-talk will remain unavailable/);
+});
+
 test('/robo reports the explicit server error as its terminal status', async () => {
     const statuses = [];
     const { component } = makeComponent({

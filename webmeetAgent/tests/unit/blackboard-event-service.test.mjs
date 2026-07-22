@@ -11,6 +11,10 @@ import {
     parseEventInput,
 } from '../../lib/blackboard/event-contract.mjs';
 import { BlackboardCommandInterpreter } from '../../lib/blackboard/blackboard-command-interpreter.mjs';
+import {
+    getBlackboardStructuredResultSchema,
+    normalizeBlackboardStructuredResult,
+} from '../../lib/blackboard/structured-result-schema.mjs';
 import { buildSemanticBoardContext, calculateContentBounds, calculateLineFromCenter } from '../../lib/blackboard/semantic-context.mjs';
 import { Blackboard, BlackboardWidget } from '../../lib/blackboard/model.mjs';
 import { action as interpretBlackboardSkill } from '../../skills/blackboard-event/src/index.mjs';
@@ -78,6 +82,108 @@ test('interpreter results support ordered event lists or one natural-language er
     assert.throws(() => normalizeBlackboardEventResult({ error: { code: 'invented_error', message: 'No.' } }), /Unsupported interpreter error code/);
     assert.throws(() => normalizeBlackboardEventResult({ clarificationRequired: true, question: 'Which Draft?' }), /not supported/);
     assert.throws(() => normalizeBlackboardEventResult({ error: { code: 'ambiguous_target', message: 'Ambiguous.' }, events: [] }), /both an error/);
+});
+
+test('structured result schema covers every public action and both terminal result branches', () => {
+    const schema = getBlackboardStructuredResultSchema();
+    assert.equal(schema.type, 'object');
+    assert.equal(schema.additionalProperties, false);
+    assert.deepEqual(schema.required, ['events', 'error']);
+    const eventSchema = schema.properties.events.anyOf[0].items;
+    assert.deepEqual(eventSchema.properties.action.enum, [...eventSchema.properties.action.enum]);
+    assert.deepEqual(new Set(eventSchema.properties.action.enum), new Set([
+        'create', 'update', 'delete', 'group', 'ungroup', 'clear', 'undo', 'redo', 'show', 'hide',
+        'submit', 'start', 'close', 'reorder',
+        'scripta-document-create', 'scripta-document-open', 'scripta-document-delete',
+        'scripta-paragraph-open', 'scripta-document-view', 'scripta-paragraph-next', 'scripta-paragraph-previous',
+        'scripta-p-variant-add', 'scripta-p-variant-select', 'scripta-p-variant-edit-start',
+        'scripta-p-variant-edit-cancel', 'scripta-p-variant-edit', 'scripta-p-variant-delete',
+        'scripta-p-variant-vote', 'scripta-p-variant-vote-withdraw', 'scripta-p-variant-reformulate',
+        'scripta-undo', 'scripta-chapter-add', 'scripta-chapter-edit', 'scripta-chapter-delete',
+        'scripta-chapter-move', 'scripta-paragraph-add', 'scripta-paragraph-delete', 'scripta-paragraph-move',
+    ]));
+});
+
+test('structured result normalization removes nullable transport fields and restores poll answer maps', () => {
+    assert.deepEqual(normalizeBlackboardStructuredResult({
+        events: [{
+            ref: null,
+            action: 'submit',
+            target: { type: 'widget', widgetId: 'poll-1', ref: null },
+            payload: {
+                widget: null,
+                data: {
+                    answers: [{ questionId: 'q1', answer: 'Yes' }],
+                    participantName: null,
+                },
+            },
+        }],
+        error: null,
+    }), {
+        events: [{
+            action: 'submit',
+            target: { type: 'widget', widgetId: 'poll-1' },
+            payload: { data: { answers: { q1: 'Yes' } } },
+        }],
+    });
+});
+
+test('blackboard skill prefers provider-native structured output with the canonical schema', async () => {
+    const calls = [];
+    const result = await interpretBlackboardSkill({
+        promptText: 'clear the board',
+        context: { board: { widgets: [] } },
+        llmAgent: {
+            executeStructuredPrompt: async (_prompt, options) => {
+                calls.push(options);
+                return {
+                    events: [{ ref: null, action: 'clear', target: { type: 'blackboard', widgetId: null, ref: null }, payload: {} }],
+                    error: null,
+                };
+            },
+        },
+    });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].schemaName, 'webmeet_blackboard_result');
+    assert.equal(calls[0].strict, true);
+    assert.equal(calls[0].schema.additionalProperties, false);
+    assert.equal(result.events[0].action, 'clear');
+});
+
+test('blackboard skill preserves strict structured output on older Achilles prompt APIs', async () => {
+    const calls = [];
+    const result = await interpretBlackboardSkill({
+        promptText: 'clear the board',
+        context: { board: { widgets: [] } },
+        llmAgent: {
+            executePrompt: async (_prompt, options) => {
+                calls.push(options);
+                return { events: [{ action: 'clear', target: { type: 'blackboard' }, payload: {} }], error: null };
+            },
+        },
+    });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].params.response_format.type, 'json_schema');
+    assert.equal(calls[0].params.response_format.json_schema.strict, true);
+    assert.equal(calls[0].params.response_format.json_schema.name, 'webmeet_blackboard_result');
+    assert.equal(result.events[0].action, 'clear');
+});
+
+test('blackboard skill retries one rejected structured result through the same strict channel', async () => {
+    let calls = 0;
+    const result = await interpretBlackboardSkill({
+        promptText: 'clear the board',
+        context: { board: { widgets: [] } },
+        llmAgent: {
+            executeStructuredPrompt: async () => {
+                calls += 1;
+                if (calls === 1) throw new Error('The provider rejected the first structured result.');
+                return { events: [{ action: 'clear', target: { type: 'blackboard' }, payload: {} }], error: null };
+            },
+        },
+    });
+    assert.equal(calls, 3);
+    assert.equal(result.events[0].action, 'clear');
 });
 
 test('widget capability allowlists protect structural and specialized content', () => {
@@ -174,6 +280,7 @@ test('semantic line context exposes absolute endpoints and instructs continuatio
     });
     const semantic = buildSemanticBoardContext(board.serializePrivileged());
     assert.deepEqual(semantic.widgets[0].line, { x1: 500, y1: 400, x2: 700, y2: 400 });
+    assert.equal(semantic.widgets[0].rotation, 0);
     assert.equal(semantic.widgets[0].ordinal, 1);
 
     let prompt = '';
@@ -190,6 +297,49 @@ test('semantic line context exposes absolute endpoints and instructs continuatio
     assert.match(prompt, /properties\.line:\{x1,y1,x2,y2/);
     assert.match(prompt, /continue from that focused line/);
     assert.match(prompt, /x2\/y2 as the new x1\/y1/);
+    assert.match(prompt, /Rotate by N degrees/);
+});
+
+test('blackboard skill gives displayed ordinals priority in compact speech commands', async () => {
+    const prompts = [];
+    const lineOneUpdate = { events: [{
+        action: 'update',
+        target: { type: 'widget', widgetId: 'line-1' },
+        payload: { patch: { properties: { geometryDelta: { x: 0, y: 100 } } } },
+    }] };
+    const result = await interpretBlackboardSkill({
+        promptText: 'move line one hundred pixels down',
+        context: { board: {
+            focusedWidgetId: null,
+            lastAffectedWidgetIds: [],
+            widgets: [
+                { id: 'line-1', ordinal: 1, type: 'line', line: { x1: 0, y1: 0, x2: 100, y2: 0 } },
+                { id: 'line-2', ordinal: 2, type: 'line', line: { x1: 0, y1: 200, x2: 100, y2: 200 } },
+            ],
+        } },
+        llmAgent: {
+            executePrompt: async (prompt) => {
+                prompts.push(prompt);
+                return lineOneUpdate;
+            },
+        },
+    });
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[0], /move line one hundred pixels down.*line ordinal 1 moved down by 100 pixels/);
+    assert.equal(result.events[0].target.widgetId, 'line-1');
+    assert.deepEqual(result.events[0].payload.patch.properties.geometryDelta, { x: 0, y: 100 });
+});
+
+test('semantic context exposes canonical widget rotation for relative rotation commands', () => {
+    const semantic = buildSemanticBoardContext({
+        widgets: [{ id: 'line-1', type: 'line', properties: {
+            rotation: 30,
+            geometry: { x: 10, y: 10, width: 100, height: 2 },
+            line: { x1: 0, y1: 1, x2: 100, y2: 1 },
+        } }],
+        interactionContext: { focusedWidgetId: 'line-1', lastAffectedWidgetIds: ['line-1'] },
+    });
+    assert.equal(semantic.widgets[0].rotation, 30);
 });
 
 test('blackboard skill repairs a noncanonical circle type using the shared widget schema', async () => {

@@ -588,6 +588,8 @@ export class WebmeetDashboard {
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
+        this.chatActionButton = this.element.querySelector('#webmeetChatActionButton');
+        this.chatSpeechStatus = this.element.querySelector('#webmeetChatSpeechStatus');
         this.chatViewMode = this.element.querySelector('#webmeetChatViewMode');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
@@ -637,7 +639,9 @@ export class WebmeetDashboard {
 
         // Set elements on new modular components
         this.chatComponent?.setElements({
-            chatInput: this.chatInput
+            chatInput: this.chatInput,
+            chatActionButton: this.chatActionButton,
+            chatSpeechStatus: this.chatSpeechStatus
         });
 
         this.applyChatSidebarWidth();
@@ -653,7 +657,7 @@ export class WebmeetDashboard {
         this.element.removeEventListener('change', this.handleArchivedRoomsToggleChange);
         this.element.removeEventListener('change', this.handleChatViewModeChange);
         this.element.removeEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
-        this.chatComponent?.destroyChatAutocomplete?.();
+        this.chatComponent?.destroy?.();
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();

@@ -470,10 +470,7 @@ export const dashboardRenderMethods = {
             this.chatInput.disabled = isArchiveReadOnlyView;
             this.chatInput.placeholder = isArchiveReadOnlyView ? 'Archived room chat is read-only.' : 'Type a message...';
         }
-        const sendChatButton = this.element.querySelector('[data-local-action="sendChat"]');
-        if (sendChatButton) {
-            sendChatButton.disabled = isArchiveReadOnlyView;
-        }
+        this.chatComponent?.roboSpeechInput?.sync?.();
 
         // Update icon button states
         if (this.micButton) {

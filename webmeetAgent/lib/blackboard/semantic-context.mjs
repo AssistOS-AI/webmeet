@@ -97,6 +97,7 @@ export function buildSemanticBoardContext(board = {}) {
         label: String(widget.properties?.label || ''),
         text: String(widget.properties?.text || ''),
         geometry: cloneJson(widget.properties?.geometry || null),
+        rotation: Number(widget.properties?.rotation ?? widget.properties?.geometry?.rotation ?? 0),
         line: cloneJson(getAbsoluteFreeLine(widget)),
         style: cloneJson(widget.properties?.style || null),
         groupId: String(widget.groupId || ''),

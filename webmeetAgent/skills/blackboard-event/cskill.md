@@ -6,7 +6,7 @@ Interpret a complete natural-language WebMeet blackboard instruction in any lang
 
 ## Input Format
 
-The prompt is the complete instruction. Runtime context contains only the safe semantic `board` projection. Every projected widget has a transient global `ordinal` matching the number shown by the browser while the command runs. Context never contains viewport, zoom, scroll, paths, participant-private data, audit identifiers, or a board revision.
+The prompt is the complete instruction. Runtime context contains only the safe semantic `board` projection. Every projected widget has a transient global `ordinal` matching the number shown by the browser while the command runs. In compact or speech-transcribed commands, a spoken or numeric integer immediately after a widget kind is interpreted as that widget's ordinal when it matches an existing widget, even if punctuation or words such as `by` are omitted. Context never contains viewport, zoom, scroll, paths, participant-private data, audit identifiers, or a board revision.
 
 ## Output Format
 

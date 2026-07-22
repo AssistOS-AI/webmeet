@@ -3,6 +3,11 @@ import {
     getBlackboardWidgetEventSchemaPrompt,
     normalizeBlackboardEventResult,
 } from '../../../lib/blackboard/event-contract.mjs';
+import {
+    getBlackboardChatResponseFormat,
+    getBlackboardStructuredResultSchema,
+    normalizeBlackboardStructuredResult,
+} from '../../../lib/blackboard/structured-result-schema.mjs';
 
 function responseValue(response) {
     const value = response?.result ?? response?.content ?? response;
@@ -10,13 +15,23 @@ function responseValue(response) {
 }
 
 async function requestCanonicalResult(llmAgent, prompt) {
-    return normalizeBlackboardEventResult(responseValue(
-        await llmAgent.executePrompt(prompt, { responseShape: 'json', model: 'plan' })
-    ));
+    const response = llmAgent.executeStructuredPrompt
+        ? await llmAgent.executeStructuredPrompt(prompt, {
+            model: 'plan',
+            schemaName: 'webmeet_blackboard_result',
+            schema: getBlackboardStructuredResultSchema(),
+            strict: true,
+        })
+        : await llmAgent.executePrompt(prompt, {
+            responseShape: 'json',
+            model: 'plan',
+            params: { response_format: getBlackboardChatResponseFormat() },
+        });
+    return normalizeBlackboardEventResult(normalizeBlackboardStructuredResult(responseValue(response)));
 }
 
 export async function action({ promptText, llmAgent, context }) {
-    if (!llmAgent?.executePrompt) throw new Error('Blackboard event interpretation requires an LLM agent.');
+    if (!llmAgent?.executePrompt && !llmAgent?.executeStructuredPrompt) throw new Error('Blackboard event interpretation requires an LLM agent.');
     const prompt = [
         'Convert the participant instruction into {events:[...]} containing one or more canonical WebMeet blackboard events.',
         'Understand the instruction semantically in any language; never match a hardcoded phrase list.',
@@ -26,6 +41,7 @@ export async function action({ promptText, llmAgent, context }) {
         'create targets {type:"blackboard"} and uses payload.widget:{type,properties}. update targets an existing widgetId or prior local ref and uses payload.patch.',
         'Use a unique event.ref on create when a later event in the same command needs that widget. References are ordered and cannot point forward.',
         'Every existing widget has a transient global ordinal. An explicit ordinal reference such as "line 3" targets board.widgets ordinal 3 and must also match the named widget kind. An ordinal reference outranks labels, focus, and lastAffectedWidgetIds. A kind mismatch returns target_type_mismatch.',
+        'Compact and speech-transcribed commands may omit punctuation and words such as "by". When a widget kind is followed immediately by a spoken or numeric integer that matches an existing ordinal, prefer that integer as the widget ordinal before interpreting a later amount and unit. Thus "move line one hundred pixels down" means line ordinal 1 moved down by 100 pixels, not an unspecified line moved by 100 pixels. Apply the same ordinal-first rule semantically in every language; do not require the participant to say "number" or "by".',
         'Connections are line widgets with properties.connection.from/to; each endpoint has widgetId or ref and anchor left, right, top, bottom, or center.',
         'Use properties.label for text centered inside a shape. Use a text widget only for independent text.',
         'Canonical widget creation schemas (these are exhaustive; semantic names such as circle are not widget types):',
@@ -34,16 +50,16 @@ export async function action({ promptText, llmAgent, context }) {
         'For "right of" a widget, place the new left edge at the target right bound plus the requested gap or 40 px, and align vertical centers. For a free line, its bounds are the min/max of line endpoints.',
         'A circle is shapeKind:"ellipse" with equal width and height; when no diameter is given use 100 by 100. An oval may use unequal width and height.',
         'For relative movement use exactly patch.properties.geometryDelta:{x,y}; never use dx/dy. Down is positive y, up is negative y, right is positive x, and left is negative x. A direction without distance uses 40 px. "larger" without a value means 20 percent.',
+        'Rotation uses patch.properties.rotation in degrees. "Rotate by N degrees" is relative: add N to the target widget rotation from Context. "Rotate to N degrees" is absolute. Preserve the target center and do not rewrite free-line endpoints merely to rotate its rendered widget.',
         'A free line MUST use payload.widget.properties.line:{x1,y1,x2,y2,markerStart?,markerEnd?}. These create coordinates are absolute blackboard coordinates. Never put x1, y1, x2, or y2 in properties.geometry.',
         'For a free line defined by center, length, and angle, calculate both endpoints deterministically with cosine and sine.',
         'When creating or adding a free line while board.focusedWidgetId identifies a free line, and the participant gives no different origin or center, continue from that focused line: use its absolute line.x2/y2 as the new x1/y1 and extend x2/y2 by cos(angle)*length and sin(angle)*length. An explicit origin, center, target, or instruction not to connect takes priority.',
-        'For SCRIPTA actions, payload.intent is required and must use one of these exact schemas:',
-        '- document: {kind:"document", operation, resourceId, name, path, folderPath, template, objective, visionParagraphs, planParagraphs, chapters}.',
+        'For SCRIPTA actions, the event action determines intent kind and operation. Put only the remaining fields directly in payload using one of these exact schemas:',
+        '- document: {resourceId, name, path, folderPath, template, objective, visionParagraphs, planParagraphs, chapters, confirmed}.',
         '- Vision, Plan, and General are creation templates. Vision requires at least three generated aspect paragraphs; Plan requires generated chapters; General creates one empty chapter and paragraph.',
-        '- focus: {kind:"focus", resourceId, chapterId or chapterOrdinal, paragraphId or paragraphOrdinal, variantId when selecting a variant, mode:"paragraph"|"document"}.',
-        '- navigation: {kind:"navigation", direction:"next"|"previous"}.',
-        '- reformulate: {kind:"ai-reformulate"}.',
-        '- mutation: {kind:"mutation", operation, resourceId, chapterOrdinal, paragraphOrdinal, targetChapterOrdinal, variantId, variantOrdinal, type, title, text}; include only fields needed by the operation.',
+        '- focus: {resourceId, chapterId or chapterOrdinal, paragraphId or paragraphOrdinal, variantId when selecting a variant, mode:"paragraph"|"document"}.',
+        '- navigation and reformulate actions normally use an empty payload.',
+        '- mutation: {resourceId, chapterOrdinal, paragraphOrdinal, targetChapterOrdinal, targetIndex, variantId, variantOrdinal, type, title, text, editing}; include only fields needed by the action.',
         'SCRIPTA mutation operations are p-variant-add, p-variant-vote, p-variant-vote-withdraw, p-variant-edit, p-variant-delete, chapter-add, chapter-delete, chapter-rename, chapter-move, paragraph-add, paragraph-delete, paragraph-move, and undo.',
         'Only the participant who added a paragraph variant may edit or delete it. All admitted participants may vote on any variant.',
         'Document operations are document-create, document-open, and document-delete.',
@@ -56,17 +72,14 @@ export async function action({ promptText, llmAgent, context }) {
         `Instruction: ${String(promptText || '')}`,
         `Context: ${JSON.stringify(context || {})}`
     ].join('\n');
-    const response = await llmAgent.executePrompt(prompt, { responseShape: 'json', model: 'plan' });
-    const result = responseValue(response);
     let canonical;
     try {
-        canonical = normalizeBlackboardEventResult(result);
+        canonical = await requestCanonicalResult(llmAgent, prompt);
     } catch (error) {
         const correctionPrompt = [
             prompt,
             `Your previous result was rejected by the canonical validator: ${String(error?.message || error)}`,
-            `Previous result: ${JSON.stringify(result)}`,
-            'Re-evaluate all targets as well as the invalid fields. Return a corrected canonical result only. Do not explain the correction.',
+            'Re-evaluate all targets as well as the invalid fields. Submit a corrected canonical structured result only. Do not explain the correction.',
         ].join('\n');
         canonical = await requestCanonicalResult(llmAgent, correctionPrompt);
     }

@@ -18,6 +18,7 @@ export const roomSessionMethods = {
             return;
         }
         await this.disconnectRoom();
+        await this.chatComponent?.prepareRoboMicrophonePermission?.();
         this.state.activeSpeakerIds = new Set();
 
         const remoteVideoRecoveryCounts = new WeakMap();
