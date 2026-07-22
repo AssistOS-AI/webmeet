@@ -188,6 +188,9 @@ export class WebmeetDashboard {
             }
         };
         this.room = null;
+        this.roboCommandStatuses = new Map();
+        this.roboCommandStatusTimers = new Map();
+        this.roboCommandDraftActive = false;
         this.blackboardPanelReady = false;
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
@@ -393,8 +396,13 @@ export class WebmeetDashboard {
                 }
                 if (!this.state.blackboard?.visible) return;
                 const adapter = await this.ensureBlackboardAdapter();
-                await adapter.requestResync('scripta-command');
+                if (result.blackboard) {
+                    adapter.currentRevision = Number(result.blackboard.revision || adapter.currentRevision);
+                    adapter.emit({ kind: 'blackboard', object: result.blackboard, revision: adapter.currentRevision, reason: 'command-result' });
+                }
             },
+            updateRoboCommandStatus: (status) => this.updateRoboCommandStatus(status, { publish: true }),
+            updateRoboDraftState: (active) => this.setRoboCommandDraftActive(active),
             loadMeetingDetails: () => this.loadMeetingDetails(),
             getRoom: () => this.room
         });
@@ -596,6 +604,7 @@ export class WebmeetDashboard {
         this.blackboardButton = this.element.querySelector('#webmeetBlackboardButton');
         this.blackboardSurface = this.element.querySelector('#webmeetBlackboardSurface');
         this.blackboardPresenter = this.element.querySelector('#webmeetBlackboardPresenter');
+        this.blackboardCommandStatus = this.element.querySelector('#webmeetBlackboardCommandStatus');
         this.blackboardPanel = this.element.querySelector('webmeet-blackboard-panel');
         this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
         this.dashboardRoot = this.element.querySelector('.webmeet-dashboard');

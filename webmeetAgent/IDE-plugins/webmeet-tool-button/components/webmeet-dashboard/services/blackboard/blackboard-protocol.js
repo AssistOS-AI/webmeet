@@ -43,7 +43,7 @@ export function buildBlackboardProtocolPayload(input = {}) {
         boardOwnerId: String(input.boardOwnerId || input.ownerParticipantId || '').trim(),
         boardVisibility: String(input.boardVisibility || '').trim(),
         messageId: String(input.messageId || randomMessageId()).trim(),
-        version: Number.isFinite(input.version) ? input.version : 0,
+        revision: Number.isFinite(input.revision) ? input.revision : 0,
         visibility: input.visibility || 'all',
         object: input.object || null,
         presentation: input.presentation && typeof input.presentation === 'object'

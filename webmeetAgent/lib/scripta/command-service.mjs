@@ -68,12 +68,11 @@ function resolveIds(current, parsed) {
 }
 
 export async function executeRoboCommand(context, {
-    roomId, text, source = 'chat', participantId = '', authInfo = null, expectedBoardVersion = null,
+    roomId, text, source = 'chat', participantId = '', authInfo = null,
 } = {}, { reformulate = null, interpret = null, intent = null } = {}) {
     const normalizedSource = String(source || 'chat').trim().toLowerCase();
     if (!['chat', 'voice'].includes(normalizedSource)) throw new Error('Robo command source must be "chat" or "voice".');
     const command = assertRoboCommand(text);
-    if (command.clarification) return { ok: false, clarificationRequired: true, message: command.clarification, mutated: false };
     if (!intent && typeof interpret !== 'function') throw new Error('SCRIPTA AI command interpreter is unavailable.');
     let preview = null;
     const getPreview = async () => {
@@ -87,7 +86,6 @@ export async function executeRoboCommand(context, {
         participantId,
         context: projectInterpreterContext(await getPreview()),
     }));
-    if (parsed.kind === 'clarification') return { ok: false, clarificationRequired: true, message: parsed.message, mutated: false };
 
     let response;
     if (parsed.kind === 'document') {
@@ -113,18 +111,18 @@ export async function executeRoboCommand(context, {
                     visionParagraphs: parsed.visionParagraphs,
                     planParagraphs: parsed.planParagraphs,
                     chapters: parsed.chapters,
-                }, participantId, authInfo, expectedBoardVersion,
+                }, participantId, authInfo,
             });
         } else if (parsed.operation === 'document-open') {
-            response = await openScriptaDocument(context, { roomId, path: parsed.path, participantId, authInfo, expectedBoardVersion });
+            response = await openScriptaDocument(context, { roomId, path: parsed.path, participantId, authInfo });
         } else {
             response = await manageScriptaDocument(context, {
-                roomId, operation: parsed.operation, resourceId: parsed.resourceId, participantId, authInfo, expectedBoardVersion,
+                roomId, operation: parsed.operation, resourceId: parsed.resourceId, participantId, authInfo,
                 confirmed: parsed.confirmed,
             });
         }
     } else if (parsed.kind === 'navigation') {
-        response = await navigateScripta(context, { roomId, direction: parsed.direction, participantId, authInfo, expectedBoardVersion });
+        response = await navigateScripta(context, { roomId, direction: parsed.direction, participantId, authInfo });
     } else if (parsed.kind === 'focus') {
         const ids = parsed.chapterId && parsed.paragraphId
             ? { chapterId: parsed.chapterId, paragraphId: parsed.paragraphId }
@@ -133,7 +131,7 @@ export async function executeRoboCommand(context, {
             roomId, resourceId: parsed.resourceId, ...ids, mode: parsed.mode || 'paragraph',
             variantId: parsed.variantId,
             editing: parsed.editing,
-            participantId, authInfo, expectedBoardVersion,
+            participantId, authInfo,
         });
     } else {
         let mutation = parsed;
@@ -159,7 +157,7 @@ export async function executeRoboCommand(context, {
             variantId: mutation.variantId, variantOrdinal: mutation.variantOrdinal, type: mutation.type,
             title: mutation.title, text: mutation.text, targetChapterId: parsed.targetChapterId || targetChapter?.chapterId,
             targetIndex: parsed.targetIndex !== 0 && parsed.targetIndex ? parsed.targetIndex - 1 : parsed.targetIndex,
-            authInfo, expectedBoardVersion,
+            authInfo,
         });
     }
     return { ...response, source: normalizedSource, ...presentation(roomId) };

@@ -20,9 +20,12 @@ import {
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/room/webmeet-room-events.js';
 import {
     applyRoomBlackboardChange,
+    applyRoomBlackboardEvents,
+    authorizeMeetingParticipant,
     createMeeting,
     createStoreContext,
     getRoomBlackboard,
+    getRoomBlackboardForCommand,
     joinMeeting,
     listMeetingEvents
 } from '../../lib/webmeetStore.mjs';
@@ -112,12 +115,12 @@ test('blackboard applies final background changes to board metadata', () => {
         }
     });
 
-    assert.deepEqual(blackboard.serialize().metadata.background, {
+    assert.deepEqual(blackboard.metadata.background, {
         color: '#f8fafc',
         gridColor: '#dbe4ef',
         gridSize: 20
     });
-    assert.equal(blackboard.version, 1);
+    assert.equal(blackboard.revision, 1);
 });
 
 test('blackboard theme changes reset only widget color style fields', () => {
@@ -591,7 +594,7 @@ test('blackboard undo and redo keep a bounded final-operation history', () => {
 test('blackboard.updated uses the canonical WebMeet event format', () => {
     const encoded = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_1',
-        blackboardVersion: 7,
+        blackboardRevision: 7,
         changeType: 'update',
         targetType: 'widget',
         targetRef: 'shape_1',
@@ -601,7 +604,7 @@ test('blackboard.updated uses the canonical WebMeet event format', () => {
 
     assert.equal(parsed.room, 'room_1');
     assert.equal(parsed.type, WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
-    assert.equal(parsed.payload.blackboardVersion, 7);
+    assert.equal(parsed.payload.blackboardRevision, 7);
 });
 
 test('blackboard realtime events are routed to dashboard room handlers', () => {
@@ -625,9 +628,9 @@ test('blackboard protocol serializes final filtered objects with actor addresses
             kind: 'widget',
             roomId: 'room_1',
             boardId: 'agent:agent_robo_team',
-            version: 3,
+            revision: 3,
             visibility: { mode: 'all' },
-            object: { id: 'widget_1', version: 3 }
+            object: { id: 'widget_1' }
         }
     });
     const parsed = parseBlackboardProtocolMessage(encoded);
@@ -648,7 +651,7 @@ test('blackboard network adapter deduplicates and applies final protocol objects
         participantId: 'participant_1',
         runTool: async () => {
             resyncCount += 1;
-            return { blackboard: { roomId: 'room_1', version: 1, widgets: [] } };
+            return { blackboard: { boardId: 'agent:agent_robo_team', revision: 1, widgets: [] } };
         }
     });
     const received = [];
@@ -661,15 +664,15 @@ test('blackboard network adapter deduplicates and applies final protocol objects
             roomId: 'room_1',
             boardId: 'agent:agent_robo_team',
             messageId: 'bb_msg_1',
-            version: 4,
+            revision: 4,
             visibility: { mode: 'all' },
-            object: { id: 'widget_1', type: 'text', version: 4, properties: { text: 'Done' } }
+            object: { id: 'widget_1', type: 'text', properties: { text: 'Done' } }
         }
     });
     const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_1',
         boardId: 'agent:agent_robo_team',
-        blackboardVersion: 4,
+        blackboardRevision: 4,
         changeType: 'update',
         objectKind: 'widget',
         blackboardMessage
@@ -693,8 +696,8 @@ test('SCRIPTA realtime updates reload the authenticated viewer projection', asyn
             resyncCount += 1;
             return {
                 blackboard: {
-                    roomId: 'room_1',
-                    version: 5,
+                    boardId: 'agent:agent_robo_team',
+                    revision: 5,
                     widgets: [{
                         id: 'robo_scripta_document',
                         type: 'scripta-document',
@@ -722,10 +725,10 @@ test('SCRIPTA realtime updates reload the authenticated viewer projection', asyn
             roomId: 'room_1',
             boardId: 'agent:agent_robo_team',
             messageId: 'bb_scripta_owner_projection',
-            version: 5,
+            revision: 5,
             object: {
-                roomId: 'room_1',
-                version: 5,
+                boardId: 'agent:agent_robo_team',
+                revision: 5,
                 widgets: [{
                     id: 'robo_scripta_document',
                     type: 'scripta-document',
@@ -745,7 +748,7 @@ test('SCRIPTA realtime updates reload the authenticated viewer projection', asyn
     const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_1',
         boardId: 'agent:agent_robo_team',
-        blackboardVersion: 5,
+        blackboardRevision: 5,
         changeType: 'scripta-p-variant-edit',
         blackboardMessage,
     });
@@ -769,8 +772,8 @@ test('SCRIPTA realtime broadcasts are invalidations without viewer-scoped object
 
     await adapter.publishFinalUpdate({
         blackboard: {
-            roomId: 'room_1',
-            version: 6,
+            boardId: 'agent:agent_robo_team',
+            revision: 6,
             widgets: [{
                 id: 'robo_scripta_document',
                 type: 'scripta-document',
@@ -788,7 +791,7 @@ test('SCRIPTA realtime broadcasts are invalidations without viewer-scoped object
     }, 'scripta-p-variant-edit');
 
     const protocol = parseBlackboardProtocolMessage(published.blackboardMessage);
-    assert.equal(protocol.payload.version, 6);
+    assert.equal(protocol.payload.revision, 6);
     assert.equal(protocol.payload.object, null);
 });
 
@@ -801,7 +804,7 @@ test('SCRIPTA draft text is delivered as transient presentation state', async ()
         runTool: async () => ({}),
         publishRealtimePayload: async (payload) => { published = payload; },
     });
-    sender.currentVersion = 9;
+    sender.currentRevision = 9;
     await sender.publishScriptaDraft({
         resourceId: 'resource_1',
         chapterId: 'chapter_1',
@@ -841,13 +844,13 @@ test('blackboard network adapter maps UI changes to canonical event commands and
             toolCall = { name, args };
             return {
                 ok: true,
-                blackboard: { version: 5, widgets: [] },
+                blackboard: { boardId: 'agent:agent_robo_team', revision: 5, widgets: [] },
                 change: { changeType: 'update', targetType: 'widget', targetRef: 'widget_1' },
                 auditMessage: { id: 'chat-event', kind: 'event', metadata: { status: 'success' } }
             };
         }
     });
-    adapter.currentVersion = 4;
+    adapter.currentRevision = 4;
     await adapter.sendChange({
         changeType: 'update',
         targetType: 'widget',
@@ -858,13 +861,36 @@ test('blackboard network adapter maps UI changes to canonical event commands and
     assert.equal(toolCall.name, 'webmeet_event_command');
     const event = JSON.parse(toolCall.args.event);
     assert.equal('version' in event, false);
-    assert.equal(event.expectedBoardVersion, 4);
+    assert.equal('expectedBoardVersion' in event, false);
     assert.equal(event.target.widgetId, 'widget_1');
     assert.equal(event.action, 'update');
     assert.equal(auditMessage.id, 'chat-event');
+
+    await adapter.sendChange({
+        changeType: 'create', targetType: 'blackboard',
+        widget: { id: 'local-id', type: 'shape', locked: true, visibility: { mode: 'private' }, properties: { label: 'Safe' } },
+    });
+    const createEvent = JSON.parse(toolCall.args.event);
+    assert.deepEqual(createEvent.payload.widget, { type: 'shape', properties: { label: 'Safe' } });
 });
 
-test('blackboard network adapter resynchronizes its version after a command conflict', async () => {
+test('blackboard undo and redo publish changed projections to realtime peers', async () => {
+    const published = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1', boardId: 'agent:agent_robo_team', participantId: 'participant_1',
+        runTool: async () => ({
+            ok: true, changed: true,
+            blackboard: { boardId: 'agent:agent_robo_team', revision: 7, widgets: [], interactionContext: {} },
+            broadcast: { kind: 'blackboard', roomId: 'room_1', boardId: 'agent:agent_robo_team', revision: 7, object: { boardId: 'agent:agent_robo_team', revision: 7, widgets: [] } },
+        }),
+        publishRealtimePayload: async (payload) => { published.push(payload); },
+    });
+    await adapter.undo();
+    await adapter.redo();
+    assert.equal(published.filter((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED).length, 2);
+});
+
+test('blackboard network adapter applies last-edit-wins without a conflict resync', async () => {
     const calls = [];
     const adapter = new BlackboardNetworkAdapter({
         roomId: 'room_1',
@@ -872,23 +898,17 @@ test('blackboard network adapter resynchronizes its version after a command conf
         participantId: 'participant_1',
         runTool: async (name) => {
             calls.push(name);
-            if (name === 'webmeet_event_command') {
-                const error = new Error('Blackboard version conflict: expected 4, current 5.');
-                error.code = 'version_conflict';
-                error.data = { error: { code: 'version_conflict', currentBoardVersion: 5 } };
-                throw error;
-            }
-            return { blackboard: { roomId: 'room_1', version: 5, widgets: [] } };
+            return { ok: true, blackboard: { boardId: 'agent:agent_robo_team', revision: 5, widgets: [] } };
         }
     });
-    adapter.currentVersion = 4;
+    adapter.currentRevision = 4;
 
-    await assert.rejects(() => adapter.sendEvent('scripta-document-view', {}, {
+    await adapter.sendEvent('scripta-document-view', {}, {
         widgetId: 'robo_scripta_document'
-    }), /version conflict/i);
+    });
 
-    assert.deepEqual(calls, ['webmeet_event_command', 'webmeet_blackboard_get']);
-    assert.equal(adapter.currentVersion, 5);
+    assert.deepEqual(calls, ['webmeet_event_command']);
+    assert.equal(adapter.currentRevision, 5);
 });
 
 test('blackboard theme updates are broadcast as full blackboard updates for other participants', async () => {
@@ -911,12 +931,11 @@ test('blackboard theme updates are broadcast as full blackboard updates for othe
             roomId: 'room_1',
             boardId: 'agent:agent_robo_team',
             messageId: 'bb_theme_1',
-            version: 8,
+            revision: 8,
             visibility: { mode: 'all' },
             object: {
-                roomId: 'room_1',
                 boardId: 'agent:agent_robo_team',
-                version: 8,
+                revision: 8,
                 metadata: { theme: { id: 'leadership' } },
                 widgets: []
             }
@@ -925,7 +944,7 @@ test('blackboard theme updates are broadcast as full blackboard updates for othe
     const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_1',
         boardId: 'agent:agent_robo_team',
-        blackboardVersion: 8,
+        blackboardRevision: 8,
         changeType: 'update',
         targetType: 'blackboard',
         objectKind: 'blackboard',
@@ -1037,6 +1056,29 @@ test('blackboard realtime widget updates refresh the rendered panel', async () =
     assert.match(panelSource, /applyBlackboardUpdate\(detail = \{\}\)[\s\S]*detail\?\.widget[\s\S]*this\.applyWidgetObject\(detail\.widget\)/);
     assert.match(panelSource, /adapter && adapter !== this\.adapter[\s\S]*this\.unsubscribeAdapter\?\.\(\)/);
     assert.match(controllerSource, /payload\.kind === 'widget'[\s\S]*webmeet-blackboard-update[\s\S]*widget: payload\.object/);
+});
+
+test('Robo widget ordinals are transient overlays controlled by command status', async () => {
+    const panelSource = await readBlackboardPanelSource();
+    const semanticSource = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../lib/blackboard/semantic-context.mjs'),
+        'utf8'
+    );
+    const dashboardHtml = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.html'),
+        'utf8'
+    );
+    const config = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/config.json'),
+        'utf8'
+    );
+
+    assert.match(panelSource, /this\.roboOrdinalMode/);
+    assert.match(panelSource, /webmeet-blackboard-widget-ordinal/);
+    assert.match(panelSource, /renderWidget\(widget, index \+ 1\)/);
+    assert.match(semanticSource, /ordinal: index \+ 1/);
+    assert.match(dashboardHtml, /webmeetBlackboardCommandStatus/);
+    assert.doesNotMatch(config, /webmeet-robo-clarification-modal/);
 });
 
 test('blackboard panel addWidget uses connected adapter', async () => {
@@ -2101,6 +2143,22 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         };
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
 
+        let beforeEmptyUndo = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+        });
+        let emptyUndo;
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            emptyUndo = await applyRoomBlackboardEvents(context, {
+                roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+                events: [{ action: 'undo', target: { type: 'blackboard' }, payload: {} }],
+            });
+            if (!emptyUndo.changed) break;
+            beforeEmptyUndo = emptyUndo;
+        }
+        assert.equal(emptyUndo.changed, false);
+        assert.equal(emptyUndo.blackboard.revision, beforeEmptyUndo.blackboard.revision);
+        assert.equal(emptyUndo.broadcast, null);
+
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
             boardId: 'agent:agent_robo_team',
@@ -2116,11 +2174,33 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             }
         });
 
+        const lineCreated = await applyRoomBlackboardEvents(context, {
+            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
+            events: [{
+                ref: 'line', action: 'create', target: { type: 'blackboard' },
+                payload: { widget: { type: 'line', properties: { line: { x1: 100, y1: 200, x2: 300, y2: 200, markerEnd: 'arrow' } } } },
+            }],
+        });
+        const lineWidget = lineCreated.blackboard.widgets.find((widget) => widget.type === 'line');
+        assert.deepEqual(lineWidget.properties.geometry, { x: 98, y: 198, width: 204, height: 4, rotation: 0 });
+        assert.deepEqual(lineWidget.properties.line, { x1: 2, y1: 2, x2: 202, y2: 2, markerEnd: 'arrow' });
+        const lineMoved = await applyRoomBlackboardEvents(context, {
+            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
+            events: [{ action: 'update', target: { type: 'widget', widgetId: lineWidget.id }, payload: { patch: { properties: { geometryDelta: { x: 0, y: -50 } } } } }],
+        });
+        const movedLine = lineMoved.blackboard.widgets.find((widget) => widget.id === lineWidget.id);
+        assert.equal(movedLine.properties.geometry.y, 148);
+        assert.deepEqual(movedLine.properties.line, lineWidget.properties.line);
+
         const response = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
             boardId: 'agent:agent_robo_team',
             authInfo
         });
+        const commandProjection = await getRoomBlackboardForCommand(context, {
+            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+        });
+        assert.equal('clarification' in commandProjection, false);
         const events = await listMeetingEvents(context, meeting.roomId);
         const record = await loadRoomRecord(context, meeting.roomId);
         const payload = decryptRoomPayload(context, record);
@@ -2128,27 +2208,26 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         assert.ok(response.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
         assert.equal(response.blackboard.boardId, 'agent:agent_robo_team');
-        assert.equal(response.blackboard.boardOwnerType, 'agent');
-        assert.equal(response.blackboard.boardOwnerId, 'agent_robo_team');
-        assert.equal(response.blackboard.boardVisibility, 'room');
+        assert.equal('privateRoboContext' in response.blackboard, false);
         assert.equal(payload.blackboard, undefined);
         assert.ok(roboTeam.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
         assert.equal(roboTeam.blackboard.boardId, 'agent:agent_robo_team');
         assert.equal(roboTeam.blackboard.metadata.boardOwnerType, 'agent');
         assert.ok(events.some((event) => parseWebMeetEvent(event).type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED));
         assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === 'agent:agent_robo_team'));
-        await assert.rejects(applyRoomBlackboardChange(context, {
+        const later = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
             boardId: 'agent:agent_robo_team',
             authInfo,
-            expectedBoardVersion: response.blackboard.version - 1,
             change: {
                 changeType: 'update',
                 targetType: 'widget',
                 targetRef: 'shape_1',
                 patch: { properties: { label: 'stale' } }
             }
-        }), (error) => error.code === 'version_conflict' && error.currentBoardVersion === response.blackboard.version);
+        });
+        assert.equal(later.blackboard.widgets.find((widget) => widget.id === 'shape_1').properties.label, 'stale');
+        assert.ok(later.blackboard.revision > response.blackboard.revision);
     } finally {
         if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
         else process.env.WEBMEET_DATA_DIR = previousDataDir;
@@ -2182,67 +2261,57 @@ test('webmeet event tool decodes canonical serialized blackboard events from tra
             title: 'Serialized blackboard tool room',
             authInfo
         });
+        await assert.rejects(
+            authorizeMeetingParticipant(context, { roomId: meeting.roomId, participantId: 'admin', authInfo }),
+            (error) => error?.code === 'participant_not_joined',
+        );
+        await joinMeeting(context, {
+            meetingId: meeting.roomId, participantId: 'admin', displayName: 'Admin', authInfo,
+        });
         let sequence = 0;
-        const dispatchChange = async (change) => {
-            const current = await getRoomBlackboard(context, {
-                roomId: meeting.roomId,
-                boardId: 'agent:agent_robo_team',
-                participantId: 'participant-admin',
-                authInfo
-            });
+        const dispatchEvent = async (event) => {
             sequence += 1;
             return dispatch('webmeet_event_command', {
                 roomId: meeting.roomId,
-                participantId: 'participant-admin',
+                participantId: 'admin',
                 source: 'ui',
                 commandId: `command-${sequence}`,
-                event: JSON.stringify({
-                    eventId: `event-${sequence}`,
-                    commandId: `command-${sequence}`,
-                    expectedBoardVersion: current.blackboard.version,
-                    target: {
-                        type: change.targetType || 'widget',
-                        boardId: 'agent:agent_robo_team',
-                        ...(change.targetRef || change.widget?.id ? { widgetId: change.targetRef || change.widget.id } : {})
-                    },
-                    action: change.changeType === 'add' ? 'create' : change.changeType,
-                    payload: { change }
-                })
+                event: JSON.stringify(event),
             }, context, authInfo);
         };
-        await dispatchChange({
-                changeType: 'create',
-                targetType: 'widget',
+        const created = await dispatchEvent({
+            ref: 'card',
+            target: { type: 'blackboard' },
+            action: 'create',
+            payload: {
                 widget: {
-                    id: 'card_1',
                     type: 'card',
                     properties: {
                         text: 'Initial',
                         geometry: { x: 1, y: 2, width: 100, height: 50 }
                     }
-                }
-            });
+                },
+            },
+        });
+        const cardId = created.blackboard.interactionContext.focusedWidgetId;
 
-        const response = await dispatchChange({
-                changeType: 'update',
-                targetType: 'widget',
-                targetRef: 'card_1',
-                reason: 'edit',
-                patch: { properties: { text: 'Updated' } }
-            });
+        const response = await dispatchEvent({
+            target: { type: 'widget', widgetId: cardId },
+            action: 'update',
+            payload: { patch: { properties: { text: 'Updated' } } },
+        });
 
         assert.equal(response.ok, true, JSON.stringify(response));
-        const widget = response.blackboard.widgets.find((entry) => entry.id === 'card_1');
+        const widget = response.blackboard.widgets.find((entry) => entry.id === cardId);
         assert.equal(widget.properties.text, 'Updated');
-        assert.equal(response.change.changeType, 'update');
-        assert.equal(response.broadcast.version, response.blackboard.version);
+        assert.equal(response.events[0].action, 'update');
+        assert.equal(response.broadcast.revision, response.blackboard.revision);
         assert.equal(response.broadcast.ownerParticipantId, 'agent_robo_team');
-        assert.equal(response.broadcast.blackboardId, response.blackboard.id);
+        assert.ok(response.broadcast.blackboardId);
         assert.equal(response.broadcast.boardId, 'agent:agent_robo_team');
         assert.equal(response.broadcast.boardOwnerType, 'agent');
         assert.equal(response.broadcast.boardOwnerId, 'agent_robo_team');
         assert.equal(response.broadcast.boardVisibility, 'room');
-        assert.notEqual(response.broadcast.version, response.object.version);
 
         await assert.rejects(dispatch('webmeet_blackboard_get', {
             roomId: meeting.roomId,
@@ -2250,17 +2319,14 @@ test('webmeet event tool decodes canonical serialized blackboard events from tra
             participantId: 'participant-admin'
         }, context, authInfo), /Participant-owned blackboards are not enabled yet/);
 
-        const backgroundResponse = await dispatchChange({
-                changeType: 'update',
-                targetType: 'blackboard',
-                reason: 'background',
-                patch: { metadata: { background: { color: '#f8fafc' } } }
-            });
+        const backgroundResponse = await dispatchEvent({
+            action: 'update',
+            target: { type: 'blackboard' },
+            payload: { patch: { metadata: { background: { color: '#f8fafc' } } } },
+        });
 
-        assert.equal(backgroundResponse.blackboard.metadata.background.color, '#f8fafc');
-        assert.equal(backgroundResponse.object.metadata.background.color, '#f8fafc');
+        assert.ok(backgroundResponse.blackboard.revision > response.blackboard.revision);
         assert.equal(backgroundResponse.broadcast.kind, 'blackboard');
-        assert.equal(backgroundResponse.broadcast.object.metadata.background.color, '#f8fafc');
     } finally {
         if (previousDataDir === undefined) {
             delete process.env.WEBMEET_DATA_DIR;

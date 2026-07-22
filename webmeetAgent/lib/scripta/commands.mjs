@@ -1,4 +1,4 @@
-const INTENT_KINDS = new Set(['clarification', 'document', 'focus', 'navigation', 'mutation', 'ai-reformulate']);
+const INTENT_KINDS = new Set(['document', 'focus', 'navigation', 'mutation', 'ai-reformulate']);
 const DOCUMENT_OPERATIONS = new Set(['document-create', 'document-open', 'document-delete']);
 const MUTATION_OPERATIONS = new Set([
     'p-variant-add', 'p-variant-vote', 'p-variant-vote-withdraw', 'p-variant-edit',
@@ -30,15 +30,18 @@ export function assertRoboCommand(input = '') {
     const text = String(input || '').trim();
     if (!/^\/robo(?:\s|$)/i.test(text)) throw new Error('Robo commands must start with /robo.');
     const command = text.replace(/^\/robo\s*/i, '').trim();
-    if (!command) return { command, clarification: 'Spune-mi ce vrei să fac în documentul SCRIPTA.' };
-    return { command, clarification: '' };
+    if (!command) {
+        const error = new Error('Comanda /robo nu conține nicio instrucțiune.');
+        error.code = 'missing_instruction';
+        throw error;
+    }
+    return { command };
 }
 
 export function normalizeRoboIntent(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('SCRIPTA AI returned an invalid command intent.');
     const kind = optionalString(value.kind).toLowerCase();
     if (!INTENT_KINDS.has(kind)) throw new Error('SCRIPTA AI returned an unsupported command kind.');
-    if (kind === 'clarification') return { kind, message: optionalString(value.message) || 'Te rog să clarifici acțiunea SCRIPTA dorită.' };
     const intent = {
         kind,
         operation: optionalString(value.operation).toLowerCase(),

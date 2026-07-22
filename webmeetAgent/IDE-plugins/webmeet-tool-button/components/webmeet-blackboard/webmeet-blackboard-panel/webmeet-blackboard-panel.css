@@ -94,6 +94,28 @@ webmeet-blackboard-panel {
     pointer-events: none;
 }
 
+.webmeet-blackboard-widget-ordinal {
+    position: absolute;
+    z-index: 20;
+    top: -5px;
+    left: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--bb-selection) 42%, var(--bb-widget-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bb-widget-bg) 88%, var(--bb-selection));
+    color: var(--bb-widget-text);
+    font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--bb-widget-text) 18%, transparent);
+    pointer-events: none;
+    transform: rotate(var(--widget-counter-rotation));
+}
+
 .webmeet-blackboard-widget::before {
     top: 0;
     left: 100%;

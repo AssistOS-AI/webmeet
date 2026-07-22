@@ -32,7 +32,8 @@ export const WEBMEET_EVENT_TYPES = Object.freeze({
     SCRIPTA_DOCUMENT_CHANGED: 'scripta.document.changed',
     SCRIPTA_VOTE_CHANGED: 'scripta.vote.changed',
     BLACKBOARD_UPDATED: 'blackboard.updated',
-    BLACKBOARD_VISIBILITY_CHANGED: 'blackboard.visibility_changed'
+    BLACKBOARD_VISIBILITY_CHANGED: 'blackboard.visibility_changed',
+    BLACKBOARD_COMMAND_STATUS: 'blackboard.command_status'
 });
 
 const EVENT_DEFINITIONS = Object.freeze({
@@ -134,12 +135,17 @@ const EVENT_DEFINITIONS = Object.freeze({
     [WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED]: {
         persistent: true,
         workspacePersistent: false,
-        required: ['meetingId', 'blackboardVersion', 'changeType']
+        required: ['meetingId', 'blackboardRevision', 'changeType']
     },
     [WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED]: {
         persistent: false,
         workspacePersistent: false,
         required: ['meetingId', 'participantId', 'visible']
+    },
+    [WEBMEET_EVENT_TYPES.BLACKBOARD_COMMAND_STATUS]: {
+        persistent: false,
+        workspacePersistent: false,
+        required: ['meetingId', 'boardId', 'commandId', 'participantId', 'state']
     }
 });
 
@@ -193,6 +199,14 @@ export function assertWebMeetEventPayload(type, payload = {}) {
     for (const field of definition.required || []) {
         if (payload[field] === undefined || payload[field] === null || String(payload[field]).trim() === '') {
             throw new Error(`Missing WebMeet event payload field "${field}" for ${eventType}.`);
+        }
+    }
+    if (eventType === WEBMEET_EVENT_TYPES.BLACKBOARD_COMMAND_STATUS) {
+        if (!['started', 'success', 'error'].includes(String(payload.state || ''))) {
+            throw new Error('Invalid blackboard command status state.');
+        }
+        if (String(payload.errorMessage || '').length > 500) {
+            throw new Error('Blackboard command status error message is too long.');
         }
     }
     return true;

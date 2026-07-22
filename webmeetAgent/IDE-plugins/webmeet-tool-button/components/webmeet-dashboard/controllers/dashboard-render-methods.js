@@ -40,7 +40,7 @@ function safeEventValue(value) {
     if (!value || typeof value !== 'object') return value;
     return Object.fromEntries(Object.entries(value)
         .filter(([key]) => !/(?:^id$|(?:event|command|resource|chapter|paragraph|variant|widget|board|participant|meeting|room)Id$)/i.test(key)
-            && !['targetRef', 'version', 'expectedBoardVersion', 'path', 'folderPath', 'editorUrl'].includes(key))
+            && !['targetRef', 'revision', 'path', 'folderPath', 'editorUrl'].includes(key))
         .map(([key, entry]) => [key, safeEventValue(entry)]));
 }
 

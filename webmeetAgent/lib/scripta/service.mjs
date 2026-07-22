@@ -204,12 +204,17 @@ function updateBlackboardProjection(record, payload) {
     const entry = activeEntry(scripta);
     const agent = ensureRoboTeamAgentPayload(payload, null, record.meetingId);
     const blackboard = Blackboard.from({ ...ensureRoboTeamBlackboardPayload(agent, record.meetingId), roomId: record.meetingId });
+    const initialRevision = blackboard.revision;
     if (!entry) {
-        blackboard.removeWidget(SCRIPTA_DOCUMENT_WIDGET_ID, {
-            participantId: ROBO_TEAM_PARTICIPANT_ID,
-            canModerateBlackboard: true,
-            record: false,
-        });
+        if (blackboard.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID)) {
+            blackboard.removeWidget(SCRIPTA_DOCUMENT_WIDGET_ID, {
+                participantId: ROBO_TEAM_PARTICIPANT_ID,
+                canModerateBlackboard: true,
+                record: false,
+            });
+            blackboard.revision = initialRevision;
+            blackboard.bumpRevision();
+        }
         agent.blackboard = blackboard.serializePrivileged();
         return blackboard;
     }
@@ -237,7 +242,6 @@ function updateBlackboardProjection(record, payload) {
         existing.type = widget.type;
         existing.properties = widget.properties;
         existing.updatedAt = nowIso();
-        existing.version += 1;
     } else {
         blackboard.applyFinalChange({ changeType: 'create', targetType: 'widget', widget }, {
             participantId: ROBO_TEAM_PARTICIPANT_ID,
@@ -245,28 +249,13 @@ function updateBlackboardProjection(record, payload) {
             canManagePoll: true,
         });
     }
-    blackboard.version += 1;
+    blackboard.revision = initialRevision;
+    blackboard.bumpRevision();
     agent.blackboard = blackboard.serializePrivileged();
     return blackboard;
 }
 
-function assertProjectionVersion(payload, roomId, expectedBoardVersion) {
-    if (expectedBoardVersion === null || expectedBoardVersion === undefined || expectedBoardVersion === '') return;
-    const blackboard = Blackboard.from(ensureRoboTeamBlackboardPayload(
-        ensureRoboTeamAgentPayload(payload, null, roomId),
-        roomId,
-    ));
-    const expected = Number(expectedBoardVersion);
-    if (!Number.isInteger(expected) || expected < 0) throw new Error('expectedBoardVersion must be a non-negative integer.');
-    if (blackboard.version !== expected) {
-        const error = new Error(`Blackboard version conflict: expected ${expected}, current ${blackboard.version}.`);
-        error.code = 'version_conflict';
-        error.currentBoardVersion = blackboard.version;
-        throw error;
-    }
-}
-
-function stageEvents(stageEvent, record, entry, participant, operation, blackboardVersion) {
+function stageEvents(stageEvent, record, entry, participant, operation, blackboardRevision) {
     const base = {
         meetingId: record.meetingId,
         resourceId: entry?.resourceId || '',
@@ -284,7 +273,7 @@ function stageEvents(stageEvent, record, entry, participant, operation, blackboa
     stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         ...base,
         boardId: ROBO_TEAM_BLACKBOARD_BOARD_ID,
-        blackboardVersion,
+        blackboardRevision,
         changeType: 'update',
     });
 }
@@ -339,7 +328,6 @@ async function createScriptaDocumentImpl(context, {
     initialization = {},
     participantId = '',
     authInfo = null,
-    expectedBoardVersion = null,
 } = {}) {
     const safeName = slugify(String(name || '').replace(/\.md$/i, ''));
     if (!safeName) throw new Error('SCRIPTA document name is required.');
@@ -349,7 +337,6 @@ async function createScriptaDocumentImpl(context, {
         await mutateRoom(context, roomId, async (record, payload, stageEvent) => {
             if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
             const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-            assertProjectionVersion(payload, record.meetingId, expectedBoardVersion);
             const scripta = ensureScriptaPayload(record, payload);
             const selectedFolder = isGuestAuthInfo(authInfo) ? scripta.folderPath : String(folderPath || scripta.folderPath);
             const documentPath = `${selectedFolder.replace(/\/$/, '')}/${safeName}.md`;
@@ -384,7 +371,7 @@ async function createScriptaDocumentImpl(context, {
             scripta.view = view;
             projectStoredView(entry, view);
             const blackboard = updateBlackboardProjection(record, payload);
-            stageEvents(stageEvent, record, entry, participant, 'document-create', blackboard.version);
+            stageEvents(stageEvent, record, entry, participant, 'document-create', blackboard.revision);
             output = {
                 ok: true,
                 resourceId,
@@ -450,13 +437,11 @@ async function openScriptaDocumentImpl(context, {
     path: documentPath,
     participantId = '',
     authInfo = null,
-    expectedBoardVersion = null,
 } = {}) {
     let output;
     await mutateRoom(context, roomId, async (record, payload, stageEvent) => {
         if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-        assertProjectionVersion(payload, record.meetingId, expectedBoardVersion);
         const scripta = ensureScriptaPayload(record, payload);
         const resolvedDocumentPath = isGuestAuthInfo(authInfo)
             ? await resolveGuestDocumentPath(context, scripta, documentPath)
@@ -484,7 +469,7 @@ async function openScriptaDocumentImpl(context, {
         scripta.view = view;
         projectStoredView(entry, view);
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, 'document-open', blackboard.version);
+        stageEvents(stageEvent, record, entry, participant, 'document-open', blackboard.revision);
         output = { ok: true, resourceId, blackboard: serializeBlackboard(blackboard, participant, authInfo) };
     });
     return output;
@@ -512,7 +497,6 @@ async function manageScriptaDocumentImpl(context, {
     confirmed = false,
     participantId = '',
     authInfo = null,
-    expectedBoardVersion = null,
 } = {}) {
     if (operation !== 'document-delete') throw new Error(`Unsupported SCRIPTA document operation "${operation}".`);
     if (confirmed !== true) throw new Error('Physical document deletion requires explicit confirmation.');
@@ -520,7 +504,6 @@ async function manageScriptaDocumentImpl(context, {
     if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
     const currentPayload = decryptRoomPayload(context, record);
     const participant = participantIdentity(currentPayload, authInfo, participantId, record.meetingId);
-    assertProjectionVersion(currentPayload, record.meetingId, expectedBoardVersion);
     const currentScripta = ensureScriptaPayload(record, currentPayload);
     const id = String(resourceId || currentScripta.activeResourceId);
     const currentEntry = currentScripta.documents[id];
@@ -538,14 +521,13 @@ async function manageScriptaDocumentImpl(context, {
     try {
         await mutateRoom(context, roomId, async (freshRecord, payload, stageEvent) => {
             if (!canViewMeetingRecord(freshRecord, authInfo)) throw new Error('Room not found.');
-            assertProjectionVersion(payload, freshRecord.meetingId, expectedBoardVersion);
             const scripta = ensureScriptaPayload(freshRecord, payload);
             const entry = scripta.documents[id];
             if (!entry) throw new Error('SCRIPTA document was not found in this room.');
             replaceActiveDocument(scripta, payload, null);
             scripta.view = { mode: 'document', chapterId: '', paragraphId: '' };
             const blackboard = updateBlackboardProjection(freshRecord, payload);
-            stageEvents(stageEvent, freshRecord, originalEntry, participant, operation, blackboard.version);
+            stageEvents(stageEvent, freshRecord, originalEntry, participant, operation, blackboard.revision);
             output = { ok: true, resourceId: id, blackboard: serializeBlackboard(blackboard, participant, authInfo) };
         });
     } catch (error) {
@@ -761,7 +743,7 @@ export async function applyScriptaCollaboration(context, {
         });
         updateEntryFromCrdt(entry, result);
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, operation, blackboard.version);
+        stageEvents(stageEvent, record, entry, participant, operation, blackboard.revision);
         output = {
             ...publicCollaborationResult(result, expectedSessionId, entry.resourceId),
             blackboard: serializeBlackboard(blackboard, participant, authInfo),
@@ -828,13 +810,11 @@ export async function focusScripta(context, {
     mode = 'paragraph',
     participantId = '',
     authInfo = null,
-    expectedBoardVersion = null,
 } = {}) {
     let output;
     await mutateRoom(context, roomId, async (record, payload, stageEvent) => {
         if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-        assertProjectionVersion(payload, record.meetingId, expectedBoardVersion);
         const scripta = ensureScriptaPayload(record, payload);
         if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
         const entry = activeEntry(scripta);
@@ -934,7 +914,7 @@ export async function focusScripta(context, {
             projectStoredView(entry, paragraphView);
         }
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, 'focus', blackboard.version);
+        stageEvents(stageEvent, record, entry, participant, 'focus', blackboard.revision);
         output = {
             ok: true,
             focus: structuredClone(scripta.view),
@@ -949,7 +929,6 @@ export async function navigateScripta(context, {
     direction = 'next',
     participantId = '',
     authInfo = null,
-    expectedBoardVersion = null,
 } = {}) {
     return focusScripta(context, {
         roomId,
@@ -957,7 +936,6 @@ export async function navigateScripta(context, {
         mode: 'paragraph',
         participantId,
         authInfo,
-        expectedBoardVersion,
     });
 }
 
@@ -970,14 +948,12 @@ export async function mutateScripta(context, {
     participantId = '',
     command = '',
     authInfo = null,
-    expectedBoardVersion = null,
     ...args
 } = {}) {
     let output;
     await mutateRoom(context, roomId, async (record, payload, stageEvent) => {
         if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-        assertProjectionVersion(payload, record.meetingId, expectedBoardVersion);
         const scripta = ensureScriptaPayload(record, payload);
         scripta.participants[participant.hash] = participant.viewId;
         if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
@@ -1023,7 +999,7 @@ export async function mutateScripta(context, {
         });
         scripta.audit = scripta.audit.slice(-MAX_AUDIT_ENTRIES);
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, operation, blackboard.version);
+        stageEvents(stageEvent, record, entry, participant, operation, blackboard.revision);
         output = {
             ok: true,
             operation,

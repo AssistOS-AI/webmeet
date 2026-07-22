@@ -17,9 +17,9 @@ test('WebMeet API client preserves structured tool error messages and codes', as
                                     text: JSON.stringify({
                                         ok: false,
                                         error: {
-                                            code: 'version_conflict',
-                                            message: 'Blackboard version conflict: expected 4, current 5.',
-                                            currentBoardVersion: 5
+                                            code: 'event_failed',
+                                            message: 'Blackboard event failed.',
+                                            details: { action: 'update' }
                                         }
                                     })
                                 }]
@@ -35,9 +35,9 @@ test('WebMeet API client preserves structured tool error messages and codes', as
             () => runWebMeetTool('webmeet_event_command', {}),
             (error) => {
                 assert.ok(error instanceof WebMeetToolError);
-                assert.equal(error.code, 'version_conflict');
-                assert.equal(error.message, 'Blackboard version conflict: expected 4, current 5.');
-                assert.equal(error.data.error.currentBoardVersion, 5);
+                assert.equal(error.code, 'event_failed');
+                assert.equal(error.message, 'Blackboard event failed.');
+                assert.equal(error.data.error.details.action, 'update');
                 return true;
             }
         );

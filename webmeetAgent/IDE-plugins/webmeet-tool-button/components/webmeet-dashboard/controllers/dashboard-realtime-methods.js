@@ -133,6 +133,9 @@ export const dashboardRealtimeMethods = {
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED, (event) => {
             void this.applyBlackboardVisibility?.(event?.detail?.payload || {});
         });
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_COMMAND_STATUS, (event) => {
+            void this.updateRoboCommandStatus?.(event?.detail?.payload || {}, { publish: false });
+        });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.TRANSCRIPT, () => {
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());
         });

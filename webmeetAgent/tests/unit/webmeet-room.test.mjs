@@ -45,11 +45,13 @@ test('room API routes authenticated room actions through protected WebMeet tools
     });
 
     await api.joinMeeting({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'participant-a' });
+    await api.heartbeat({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'participant-a' });
     await api.publishAvatar({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'participant-a', avatar: { enabled: true } });
     await api.leaveMeeting({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'participant-a' });
 
     assert.deepEqual(calls.map((entry) => entry.name), [
         'webmeet_room_join',
+        'webmeet_presence_heartbeat',
         'webmeet_participant_avatar_update',
         'webmeet_room_leave'
     ]);
@@ -65,6 +67,7 @@ test('room API routes guest room actions through scoped room tools', async () =>
     });
 
     await api.publishAvatar({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a', avatar: { enabled: true } });
+    await api.heartbeat({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' });
     await api.sendChat({ roomId: 'room_00000000-0000-4000-8000-000000000001', message: 'hello' });
     await api.leaveMeeting({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' });
 
@@ -72,6 +75,10 @@ test('room API routes guest room actions through scoped room tools', async () =>
         {
             name: 'webmeet_participant_avatar_update',
             args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a', avatar: { enabled: true } }
+        },
+        {
+            name: 'webmeet_presence_heartbeat',
+            args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' }
         },
         {
             name: 'webmeet_chat_send',
@@ -203,6 +210,36 @@ test('WebMeetRoom owns join, connectLiveKit, leave and session mutation', async 
             args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'participant-a' }
         }
     ]);
+});
+
+test('WebMeetRoom heartbeats the joined participant while LiveKit is connected', async () => {
+    const calls = [];
+    const room = new WebMeetRoom(createRoomOptions({
+        runTool: async (name, args) => { calls.push({ name, args }); return { ok: true }; },
+    }));
+    await room.connectLiveKit();
+    await room.sendPresenceHeartbeat();
+    await room.disconnectLiveKit();
+    assert.deepEqual(calls, [{
+        name: 'webmeet_presence_heartbeat',
+        args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'participant-a' },
+    }]);
+});
+
+test('WebMeetRoom stops heartbeats after an external LiveKit disconnect', async () => {
+    const calls = [];
+    const room = new WebMeetRoom(createRoomOptions({
+        runTool: async (name, args) => { calls.push({ name, args }); return { ok: true }; },
+    }));
+    await room.connectLiveKit();
+    assert.notEqual(room.presenceHeartbeatTimer, null);
+
+    room.handleExternalLiveKitDisconnect();
+
+    assert.equal(room.presenceHeartbeatTimer, null);
+    assert.equal(room.getState().livekitState, 'disconnected');
+    assert.equal(await room.sendPresenceHeartbeat(), null);
+    assert.deepEqual(calls, []);
 });
 
 test('WebMeet avatar fallback profile responses render as initials, not generated room avatars', async () => {
@@ -361,12 +398,28 @@ test('WebMeetRoom rejects LiveKit chat events forged for another author', () => 
     );
 });
 
+test('WebMeetRoom rejects blackboard command status forged for another participant', () => {
+    const room = new WebMeetRoom(createRoomOptions());
+    const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.BLACKBOARD_COMMAND_STATUS, {
+        meetingId: 'room_00000000-0000-4000-8000-000000000001',
+        boardId: 'agent:agent_robo_team',
+        commandId: 'command-1',
+        participantId: 'participant-b',
+        state: 'started'
+    });
+
+    assert.throws(
+        () => room.handleIncomingEvent('livekit', encoded, { participantId: 'participant-a' }),
+        /mismatched sender/
+    );
+});
+
 test('WebMeetRoom rejects SCRIPTA drafts forged for another editor', () => {
     const room = new WebMeetRoom(createRoomOptions());
     const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         meetingId: 'room_00000000-0000-4000-8000-000000000001',
         boardId: 'agent:agent_robo_team',
-        blackboardVersion: 3,
+        blackboardRevision: 3,
         changeType: 'scripta-p-variant-edit-draft',
         editorParticipantId: 'participant-b',
     });

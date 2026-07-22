@@ -39,6 +39,13 @@ export class AuthenticatedWebMeetRoomApi {
         });
     }
 
+    async heartbeat({ meetingId = '', roomId = '', participantId = '' } = {}) {
+        return this.runTool('webmeet_presence_heartbeat', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
+            participantId: requireString(participantId, 'participantId')
+        });
+    }
+
     async publishAvatar({ meetingId = '', roomId = '', participantId = '', avatar = null } = {}) {
         return this.runTool('webmeet_participant_avatar_update', {
             roomId: requireString(roomId || meetingId, 'roomId'),
@@ -67,6 +74,13 @@ export class GuestWebMeetRoomApi {
 
     async leaveMeeting({ meetingId = '', roomId = '', participantId = '' } = {}) {
         return this.runTool('webmeet_room_leave', {
+            roomId: requireString(roomId || meetingId, 'roomId'),
+            participantId: requireString(participantId, 'participantId')
+        });
+    }
+
+    async heartbeat({ meetingId = '', roomId = '', participantId = '' } = {}) {
+        return this.runTool('webmeet_presence_heartbeat', {
             roomId: requireString(roomId || meetingId, 'roomId'),
             participantId: requireString(participantId, 'participantId')
         });

@@ -49,7 +49,106 @@ function dispatchBlackboardPanelEvent(panel, type, detail = {}) {
     }));
 }
 
+const ROBO_STATUS_SUCCESS_MS = 4_000;
+const ROBO_STATUS_ERROR_MS = 10_000;
+const ROBO_STATUS_STARTED_TIMEOUT_MS = 75_000;
+
 export const blackboardMethods = {
+    setRoboCommandDraftActive(active) {
+        const next = active === true;
+        if (next === this.roboCommandDraftActive) return;
+        this.roboCommandDraftActive = next;
+        this.renderRoboCommandStatus();
+    },
+
+    resolveRoboStatusParticipantName(participantId = '') {
+        const id = String(participantId || '').trim();
+        const participant = this.state.participants?.find?.((entry) => String(entry?.identity || entry?.participantId || entry?.id || '').trim() === id);
+        const localId = getParticipantId(this);
+        const localName = id && id === localId ? getParticipantName(this, id) : '';
+        return String(participant?.name || participant?.displayName || localName || id || 'Participant').trim();
+    },
+
+    async updateRoboCommandStatus(input = {}, { publish = false } = {}) {
+        const meetingId = String(input.meetingId || getMeetingId(this)).trim();
+        const selectedMeetingId = getMeetingId(this);
+        const boardId = String(input.boardId || getRoboTeamBlackboardBoardId()).trim();
+        const commandId = String(input.commandId || '').trim();
+        const participantId = String(input.participantId || '').trim();
+        const state = String(input.state || '').trim();
+        if (!meetingId || meetingId !== selectedMeetingId || boardId !== getRoboTeamBlackboardBoardId()) return;
+        if (!commandId || !participantId || !['started', 'success', 'error'].includes(state)) return;
+
+        if (state === 'started') {
+            for (const [id, entry] of this.roboCommandStatuses) {
+                if (entry.state !== 'started') {
+                    this.roboCommandStatuses.delete(id);
+                    globalThis.clearTimeout(this.roboCommandStatusTimers.get(id));
+                    this.roboCommandStatusTimers.delete(id);
+                }
+            }
+        }
+        globalThis.clearTimeout(this.roboCommandStatusTimers.get(commandId));
+        const participantName = this.resolveRoboStatusParticipantName(participantId);
+        const errorMessage = String(input.errorMessage || '').trim().slice(0, 500);
+        this.roboCommandStatuses.set(commandId, { commandId, participantId, participantName, state, errorMessage });
+
+        const duration = state === 'started'
+            ? ROBO_STATUS_STARTED_TIMEOUT_MS
+            : state === 'success' ? ROBO_STATUS_SUCCESS_MS : ROBO_STATUS_ERROR_MS;
+        const timer = globalThis.setTimeout(() => {
+            if (state === 'started' && this.roboCommandStatuses.get(commandId)?.state === 'started') {
+                this.roboCommandStatuses.set(commandId, {
+                    commandId, participantId, participantName, state: 'error',
+                    errorMessage: 'Blackboard command status expired before a result was received.'
+                });
+                this.renderRoboCommandStatus();
+                this.roboCommandStatusTimers.set(commandId, globalThis.setTimeout(() => {
+                    this.roboCommandStatuses.delete(commandId);
+                    this.roboCommandStatusTimers.delete(commandId);
+                    this.renderRoboCommandStatus();
+                }, ROBO_STATUS_ERROR_MS));
+                return;
+            }
+            this.roboCommandStatuses.delete(commandId);
+            this.roboCommandStatusTimers.delete(commandId);
+            this.renderRoboCommandStatus();
+        }, duration);
+        this.roboCommandStatusTimers.set(commandId, timer);
+        this.renderRoboCommandStatus();
+
+        if (publish) {
+            await this.publishRealtimePayload({
+                type: 'blackboard.command_status', meetingId, boardId, commandId, participantId, state,
+                ...(state === 'error' && errorMessage ? { errorMessage } : {})
+            }).catch(() => {});
+        }
+    },
+
+    renderRoboCommandStatus() {
+        const entries = [...this.roboCommandStatuses.values()];
+        const active = entries.some((entry) => entry.state === 'started');
+        dispatchBlackboardPanelEvent(this.blackboardPanel, 'webmeet-blackboard-robo-status', {
+            active: active || this.roboCommandDraftActive === true
+        });
+        if (!this.blackboardCommandStatus) return;
+        this.blackboardCommandStatus.replaceChildren();
+        this.blackboardCommandStatus.hidden = entries.length === 0;
+        this.blackboardCommandStatus.dataset.state = active
+            ? 'started'
+            : entries.some((entry) => entry.state === 'error') ? 'error' : 'success';
+        for (const entry of entries) {
+            const row = document.createElement('div');
+            row.className = 'webmeet-blackboard-command-status-row';
+            row.textContent = entry.state === 'started'
+                ? `${entry.participantName} is editing now`
+                : entry.state === 'success'
+                    ? `${entry.participantName} finished editing`
+                    : (entry.errorMessage || 'The blackboard command failed.');
+            this.blackboardCommandStatus.append(row);
+        }
+    },
+
     async handleBlackboardPanelReady(event = null) {
         if (event?.target && event.target !== this.blackboardPanel) {
             return;
@@ -273,7 +372,12 @@ export const blackboardMethods = {
         };
         this.blackboardAdapter?.unsubscribe?.();
         this.blackboardAdapter = null;
+        for (const timer of this.roboCommandStatusTimers.values()) globalThis.clearTimeout(timer);
+        this.roboCommandStatusTimers.clear();
+        this.roboCommandStatuses.clear();
+        this.roboCommandDraftActive = false;
         dispatchBlackboardPanelEvent(this.blackboardPanel, 'webmeet-blackboard-disconnect');
+        this.renderRoboCommandStatus();
         this.renderBlackboardSurface();
     }
 };

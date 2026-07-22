@@ -57,6 +57,8 @@ function resolveLiveKitAdapter(options = {}) {
     };
 }
 
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 10_000;
+
 export class WebMeetRoom extends EventTarget {
     constructor(options = {}) {
         super();
@@ -86,6 +88,8 @@ export class WebMeetRoom extends EventTarget {
             : new WebMeetRoomEvents();
         this.stateModel = new WebMeetRoomState(options.initialState);
         this.workspaceEventsPollTimer = null;
+        this.presenceHeartbeatTimer = null;
+        this.presenceHeartbeatInFlight = false;
         this.lastWorkspaceEventId = '';
         this.workspacePollInitialized = false;
         this.syncStateFromCurrentSession();
@@ -167,6 +171,12 @@ export class WebMeetRoom extends EventTarget {
             const authorId = String(parsed?.payload?.message?.authorId || '').trim();
             if (!authorId || authorId !== senderParticipantId) {
                 throw new Error('Rejected LiveKit chat event with mismatched sender.');
+            }
+        }
+        if (parsed.type === WEBMEET_EVENT_TYPES.BLACKBOARD_COMMAND_STATUS) {
+            const statusParticipantId = String(parsed?.payload?.participantId || '').trim();
+            if (!statusParticipantId || statusParticipantId !== senderParticipantId) {
+                throw new Error('Rejected LiveKit blackboard command status with mismatched sender.');
             }
         }
         if (
@@ -251,10 +261,17 @@ export class WebMeetRoom extends EventTarget {
     async connectLiveKit() {
         await this.livekit.connect();
         this.stateModel.setLiveKitState('connected');
+        this.startPresenceHeartbeat();
     }
 
     async disconnectLiveKit(options = {}) {
+        this.stopPresenceHeartbeat();
         await this.livekit.disconnect(options);
+        this.stateModel.setLiveKitState('disconnected');
+    }
+
+    handleExternalLiveKitDisconnect() {
+        this.stopPresenceHeartbeat();
         this.stateModel.setLiveKitState('disconnected');
     }
 
@@ -264,6 +281,40 @@ export class WebMeetRoom extends EventTarget {
             meetingId: requireString(state.meetingId, 'meetingId'),
             participantId: requireString(state.participantId, 'participantId')
         });
+    }
+
+    startPresenceHeartbeat() {
+        this.stopPresenceHeartbeat();
+        const schedule = () => {
+            this.presenceHeartbeatTimer = globalThis.setTimeout(async () => {
+                try {
+                    await this.sendPresenceHeartbeat();
+                } catch (_) {
+                    // The command path reconciles against LiveKit as a fallback;
+                    // a transient heartbeat failure must not stop future beats.
+                } finally {
+                    if (this.stateModel.getSnapshot().livekitState === 'connected') schedule();
+                }
+            }, PRESENCE_HEARTBEAT_INTERVAL_MS);
+        };
+        schedule();
+    }
+
+    stopPresenceHeartbeat() {
+        if (this.presenceHeartbeatTimer !== null) globalThis.clearTimeout(this.presenceHeartbeatTimer);
+        this.presenceHeartbeatTimer = null;
+    }
+
+    async sendPresenceHeartbeat() {
+        if (this.presenceHeartbeatInFlight) return null;
+        const state = this.getState();
+        if (!state.meetingId || !state.participantId || state.livekitState !== 'connected') return null;
+        this.presenceHeartbeatInFlight = true;
+        try {
+            return await this.getApi().heartbeat({ meetingId: state.meetingId, participantId: state.participantId });
+        } finally {
+            this.presenceHeartbeatInFlight = false;
+        }
     }
 
     async leave(options = {}) {
@@ -303,6 +354,7 @@ export class WebMeetRoom extends EventTarget {
     }
 
     async destroy() {
+        this.stopPresenceHeartbeat();
         this.stopWorkspaceEvents();
         this.stateModel.clear();
     }

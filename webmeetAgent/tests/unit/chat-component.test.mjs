@@ -83,6 +83,54 @@ test('/robo uses the canonical event command and upserts its audit message', asy
     assert.equal(component.elements.chatInput.value, '');
 });
 
+test('/robo reports started and success with one stable command id', async () => {
+    const statuses = [];
+    const { component, calls } = makeComponent({
+        updateRoboCommandStatus: async (status) => { statuses.push(status); }
+    });
+    component.runTool = async (name, args) => {
+        calls.push({ name, args });
+        return { ok: true, auditMessage: { id: 'audit-status', kind: 'event', message: args.event, metadata: { status: 'success' } } };
+    };
+    component.elements = { chatInput: { value: '/robo move line 3 right' } };
+
+    await component.sendChat();
+    await Promise.resolve();
+
+    assert.deepEqual(statuses.map((entry) => entry.state), ['started', 'success']);
+    assert.equal(statuses[0].commandId, statuses[1].commandId);
+    assert.equal(calls[0].args.commandId, statuses[0].commandId);
+});
+
+test('typing the /robo prefix activates widget ordinals before submit', () => {
+    const draftStates = [];
+    const { component } = makeComponent({
+        updateRoboDraftState: (active) => draftStates.push(active)
+    });
+    component.elements = { chatInput: { value: '/robo' } };
+    component.updateComposerMentionOverlay();
+    component.elements.chatInput.value = '/robot';
+    component.updateComposerMentionOverlay();
+
+    assert.deepEqual(draftStates, [true, false]);
+});
+
+test('/robo reports the explicit server error as its terminal status', async () => {
+    const statuses = [];
+    const { component } = makeComponent({
+        setError: () => {},
+        updateRoboCommandStatus: async (status) => { statuses.push(status); },
+        runTool: async () => ({ ok: false, error: { code: 'ambiguous_target', message: 'There are multiple lines.' } })
+    });
+    component.elements = { chatInput: { value: '/robo move the line' } };
+
+    await component.sendChat();
+    await Promise.resolve();
+
+    assert.deepEqual(statuses.map((entry) => entry.state), ['started', 'error']);
+    assert.equal(statuses[1].errorMessage, 'There are multiple lines.');
+});
+
 test('/robo event error remains available as an audit message', async () => {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
     let errorMessage = '';
@@ -109,7 +157,7 @@ test('/robo event error remains available as an audit message', async () => {
     assert.match(errorMessage, /AI unavailable/);
 });
 
-test('/robo command refreshes the open blackboard and broadcasts its new version', async () => {
+test('/robo command applies the open blackboard and broadcasts its revision', async () => {
     const { component, state } = makeComponent();
     const published = [];
     let refreshResult = null;
@@ -121,7 +169,7 @@ test('/robo command refreshes the open blackboard and broadcasts its new version
             ok: true,
             auditMessage: { id: 'chat-live', kind: 'event', message: args.event, metadata: { status: 'success' } },
             visibilityPayload: { type: 'blackboard.visibility_changed', visible: true },
-            blackboard: { version: 42, widgets: [] }
+            blackboard: { boardId: 'agent:agent_robo_team', revision: 42, widgets: [] }
         };
     };
     component.elements = { chatInput: { value: '/robo go to next paragraph' } };
@@ -129,10 +177,10 @@ test('/robo command refreshes the open blackboard and broadcasts its new version
     await component.sendChat();
 
     assert.equal(state.chat[0].message, '/robo go to next paragraph');
-    assert.equal(refreshResult.blackboard.version, 42);
+    assert.equal(refreshResult.blackboard.revision, 42);
     const update = published.find((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
     assert.equal(update.boardId, 'agent:agent_robo_team');
-    assert.equal(update.blackboardVersion, 42);
+    assert.equal(update.blackboardRevision, 42);
 });
 
 test('sendChat renders returned store message before detail refresh completes', async () => {

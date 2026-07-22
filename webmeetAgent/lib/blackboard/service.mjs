@@ -11,7 +11,8 @@ import {
     mutateRoom
 } from '../store/roomRecords.mjs';
 import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
-import { Blackboard, cloneJson } from './model.mjs';
+import { Blackboard, BlackboardWidget, cloneJson, normalizeFreeLineProperties } from './model.mjs';
+import { assertCanonicalWidgetPatch, newEventId } from './event-contract.mjs';
 import { buildBlackboardProtocolPayload } from './protocol.mjs';
 import {
     ROBO_TEAM_BLACKBOARD_BOARD_ID,
@@ -38,6 +39,19 @@ function assertSupportedBoardId(boardId = '') {
 function getParticipantId(authInfo = null, fallback = '') {
     const normalized = normalizeAuthInfo(authInfo);
     return String(fallback || normalized.id || normalized.principalId || '').trim();
+}
+
+function authorizeOwnParticipantId(payload, authInfo = null, participantId = '', roomId = '') {
+    const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
+    if (!isAdminAuthInfo(authInfo)) return effectiveParticipantId;
+    const auth = normalizeAuthInfo(authInfo);
+    const member = (Array.isArray(payload?.members) ? payload.members : [])
+        .find((entry) => String(entry?.id || '').trim() === effectiveParticipantId) || null;
+    const memberUserId = String(member?.userId || member?.attributes?.webmeetUserId || '').trim();
+    const authenticatedIds = new Set([auth.id, auth.principalId, auth.username, auth.email]
+        .map((value) => String(value || '').trim()).filter(Boolean));
+    if (authenticatedIds.has(effectiveParticipantId) || authenticatedIds.has(memberUserId)) return effectiveParticipantId;
+    throw new Error('Access denied: cannot read another participant private blackboard context.');
 }
 
 function buildViewerContext(authInfo = null, participantId = '') {
@@ -132,7 +146,7 @@ function buildBroadcastPayload(roomId, blackboard, object, objectKind) {
         boardOwnerType: blackboard.boardOwnerType,
         boardOwnerId: blackboard.boardOwnerId,
         boardVisibility: blackboard.boardVisibility,
-        version: blackboard.version,
+        revision: blackboard.revision,
         visibility: publicObject?.visibility || { mode: 'all' },
         object: publicObject
     });
@@ -164,7 +178,7 @@ function buildBlackboardEventData(roomId, blackboard, change, object) {
         boardOwnerType: blackboard.boardOwnerType,
         boardOwnerId: blackboard.boardOwnerId,
         boardVisibility: blackboard.boardVisibility,
-        blackboardVersion: blackboard.version,
+        blackboardRevision: blackboard.revision,
         changeType: change.changeType,
         targetType: change.targetType,
         targetRef: change.targetRef || object?.id || '',
@@ -181,11 +195,11 @@ function isExpiredPollWidget(widget) {
     return Boolean(closesAt && Number.isFinite(closesAtTime) && Date.now() >= closesAtTime);
 }
 
-export async function getRoomBlackboard(context, {
+async function readRoomBlackboard(context, {
     roomId,
     boardId = '',
     participantId = '',
-    authInfo = null
+    authInfo = null,
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
     const targetBoardId = assertSupportedBoardId(boardId);
@@ -193,8 +207,195 @@ export async function getRoomBlackboard(context, {
     assertCanAccessBlackboard(record, authInfo);
     const payload = decryptRoomPayload(context, record);
     const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+    if (blackboard.interactionContext.focusedWidgetId && !blackboard.getWidget(blackboard.interactionContext.focusedWidgetId)) {
+        blackboard.interactionContext.focusedWidgetId = '';
+    }
+    const effectiveParticipantId = authorizeOwnParticipantId(payload, authInfo, participantId, targetRoomId);
     return {
-        blackboard: blackboard.serialize(buildViewerContext(authInfo, participantId))
+        blackboard: blackboard.serialize(buildViewerContext(authInfo, effectiveParticipantId)),
+    };
+}
+
+export async function getRoomBlackboard(context, input = {}) {
+    return readRoomBlackboard(context, input);
+}
+
+export async function getRoomBlackboardForCommand(context, input = {}) {
+    return readRoomBlackboard(context, input);
+}
+
+function resolveEndpoint(endpoint = {}, refs = new Map()) {
+    if (!endpoint.ref) return endpoint;
+    const widgetId = refs.get(String(endpoint.ref));
+    if (!widgetId) throw new Error(`Unknown or forward local widget ref "${endpoint.ref}".`);
+    return { widgetId, anchor: endpoint.anchor };
+}
+
+function resolveEvent(event, refs) {
+    const resolved = cloneJson(event);
+    if (resolved.target?.ref) {
+        const widgetId = refs.get(String(resolved.target.ref));
+        if (!widgetId) throw new Error(`Unknown or forward local widget ref "${resolved.target.ref}".`);
+        resolved.target = { type: 'widget', widgetId };
+    }
+    const properties = resolved.action === 'create'
+        ? resolved.payload?.widget?.properties
+        : resolved.payload?.patch?.properties;
+    if (properties?.connection) {
+        properties.connection.from = resolveEndpoint(properties.connection.from, refs);
+        properties.connection.to = resolveEndpoint(properties.connection.to, refs);
+    }
+    return resolved;
+}
+
+function changeForEvent(event) {
+    if (event.action === 'create') {
+        return { changeType: 'create', targetType: 'blackboard', widget: event.payload.widget };
+    }
+    if (event.action === 'group') {
+        return { changeType: 'group', targetType: 'blackboard', widgetIds: event.payload.widgetIds };
+    }
+    return {
+        changeType: event.action,
+        targetType: event.target.type,
+        targetRef: event.target.widgetId || '',
+        patch: event.payload.patch,
+        data: event.payload.data,
+        reason: event.payload.reason || 'event',
+    };
+}
+
+function eventAffectedIds(event, result) {
+    if (event.action === 'clear') return [];
+    if (event.action === 'group') return event.payload.widgetIds;
+    if (event.action === 'ungroup') return result?.id ? [result.id] : [];
+    if (result instanceof BlackboardWidget) return [result.id];
+    return event.target?.widgetId ? [event.target.widgetId] : [];
+}
+
+function normalizeCreatedWidget(widget = {}) {
+    const normalized = cloneJson(widget);
+    if (normalized.type === 'line') normalized.properties = normalizeFreeLineProperties(normalized.properties || {});
+    return normalized;
+}
+
+export async function applyRoomBlackboardEvents(context, {
+    roomId,
+    boardId = '',
+    events = [],
+    participantId = '',
+    authInfo = null,
+    source = 'ui',
+} = {}) {
+    const targetRoomId = String(roomId || '').trim();
+    const targetBoardId = assertSupportedBoardId(boardId);
+    if (!Array.isArray(events) || !events.length) throw new Error('At least one blackboard event is required.');
+    if (events.some((event) => ['show', 'hide'].includes(event.action))) {
+        throw new Error('show and hide cannot be combined with persistent blackboard events.');
+    }
+    let serializedBlackboard;
+    let broadcast;
+    let effectiveParticipantId = '';
+    let changed = true;
+    const appliedEvents = [];
+
+    await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
+        assertCanMutateBlackboard(record, authInfo);
+        effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
+        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        const before = blackboard.serializePrivileged();
+        const initialRevision = blackboard.revision;
+        const refs = new Map();
+        const affectedIds = [];
+        const provenance = source === 'robo'
+            ? { executor: ROBO_TEAM_PARTICIPANT_ID, requestedBy: effectiveParticipantId, source: 'robo' }
+            : { executor: effectiveParticipantId, requestedBy: effectiveParticipantId, source: 'ui' };
+        const actorId = source === 'robo' ? ROBO_TEAM_PARTICIPANT_ID : effectiveParticipantId;
+
+        for (const rawEvent of events) {
+            const event = resolveEvent(rawEvent, refs);
+            if (event.action === 'undo' || event.action === 'redo') {
+                if (events.length !== 1) throw new Error(`${event.action} cannot be combined with other events.`);
+                const result = event.action === 'undo' ? blackboard.undo() : blackboard.redo();
+                appliedEvents.push(event);
+                if (!result) {
+                    changed = false;
+                    break;
+                }
+                continue;
+            }
+            if (['show', 'hide'].includes(event.action)) {
+                appliedEvents.push(event);
+                continue;
+            }
+            let change = changeForEvent(event);
+            if (event.action === 'submit') change.participantId = effectiveParticipantId;
+            if (event.action === 'create') {
+                const id = newEventId('widget');
+                change.widget = { ...normalizeCreatedWidget(change.widget), id };
+                if (rawEvent.ref) {
+                    if (refs.has(rawEvent.ref)) throw new Error(`Duplicate local widget ref "${rawEvent.ref}".`);
+                    refs.set(rawEvent.ref, id);
+                }
+            }
+            if (event.action === 'update' && event.target.type === 'widget') {
+                const targetWidget = blackboard.getWidget(event.target.widgetId);
+                if (!targetWidget) {
+                    const error = new Error(`Blackboard widget "${event.target.widgetId}" was not found.`);
+                    error.code = 'widget_not_found';
+                    throw error;
+                }
+                assertCanonicalWidgetPatch(targetWidget, change.patch);
+            }
+            const result = blackboard.applyFinalChange(change, {
+                participantId: actorId,
+                permissionParticipantId: effectiveParticipantId,
+                ownerParticipantId: effectiveParticipantId,
+                provenance,
+                record: false,
+                moveGroup: change.reason === 'drag',
+                canManagePoll: isAdminAuthInfo(authInfo),
+                canModerateBlackboard: isAdminAuthInfo(authInfo),
+            });
+            affectedIds.push(...eventAffectedIds(event, result));
+            appliedEvents.push({ ...event, ...(rawEvent.ref ? { ref: rawEvent.ref } : {}) });
+        }
+        blackboard.revision = initialRevision;
+        if (!changed) {
+            serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+            broadcast = null;
+            return;
+        }
+        blackboard.bumpRevision();
+        if (!['undo', 'redo'].includes(events[0].action)) {
+            if (events.at(-1).action === 'clear' && !affectedIds.length) {
+                blackboard.interactionContext = { focusedWidgetId: '', lastAffectedWidgetIds: [], updatedBy: '', updatedAt: '' };
+            } else {
+                blackboard.updateInteractionContext(affectedIds, { participantId: actorId });
+            }
+            if (!events.every((event) => event.action === 'focus')) {
+                blackboard.history.record('command', before, blackboard.serializePrivileged());
+            }
+        }
+        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+        broadcast = buildBroadcastPayload(targetRoomId, blackboard, blackboard.serializePrivileged(), 'blackboard');
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+            meetingId: targetRoomId,
+            boardId: blackboard.boardId,
+            blackboardRevision: blackboard.revision,
+            changeType: events.length > 1 ? 'command' : events[0].action,
+            targetType: 'blackboard',
+            targetRef: blackboard.interactionContext.focusedWidgetId,
+            objectKind: 'blackboard',
+        });
+    });
+
+    return {
+        ok: true,
+        changed,
+        events: appliedEvents,
+        blackboard: Blackboard.from(serializedBlackboard).serialize(buildViewerContext(authInfo, effectiveParticipantId)),
+        broadcast,
     };
 }
 
@@ -203,8 +404,7 @@ export async function applyRoomBlackboardChange(context, {
     boardId = '',
     change,
     participantId = '',
-    authInfo = null,
-    expectedBoardVersion = null
+    authInfo = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
     const targetBoardId = assertSupportedBoardId(boardId);
@@ -220,7 +420,6 @@ export async function applyRoomBlackboardChange(context, {
         normalizedChange.participantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
         sanitizeChangeAuthority(normalizedChange, authInfo);
         const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
-        assertExpectedBoardVersion(blackboard, expectedBoardVersion);
         if (normalizedChange.changeType === 'submit') {
             const targetRef = String(normalizedChange.targetRef || '').trim();
             const targetWidget = blackboard.getWidget(targetRef);
@@ -283,20 +482,18 @@ export async function undoRoomBlackboard(context, {
     roomId,
     boardId = '',
     participantId = '',
-    authInfo = null,
-    expectedBoardVersion = null
+    authInfo = null
 } = {}) {
-    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion, direction: 'undo' });
+    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, direction: 'undo' });
 }
 
 export async function redoRoomBlackboard(context, {
     roomId,
     boardId = '',
     participantId = '',
-    authInfo = null,
-    expectedBoardVersion = null
+    authInfo = null
 } = {}) {
-    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion, direction: 'redo' });
+    return await applyHistoryMove(context, { roomId, boardId, participantId, authInfo, direction: 'redo' });
 }
 
 async function applyHistoryMove(context, {
@@ -304,8 +501,7 @@ async function applyHistoryMove(context, {
     boardId = '',
     participantId = '',
     authInfo = null,
-    direction,
-    expectedBoardVersion = null
+    direction
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
     const targetBoardId = assertSupportedBoardId(boardId);
@@ -318,7 +514,6 @@ async function applyHistoryMove(context, {
         assertCanMutateBlackboard(record, authInfo);
         effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
         const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
-        assertExpectedBoardVersion(blackboard, expectedBoardVersion);
         const viewerContext = buildViewerContext(authInfo, effectiveParticipantId);
         const result = direction === 'redo' ? blackboard.redo(viewerContext) : blackboard.undo(viewerContext);
         changed = Boolean(result);
@@ -331,7 +526,7 @@ async function applyHistoryMove(context, {
                 boardOwnerType: blackboard.boardOwnerType,
                 boardOwnerId: blackboard.boardOwnerId,
                 boardVisibility: blackboard.boardVisibility,
-                blackboardVersion: blackboard.version,
+                blackboardRevision: blackboard.revision,
                 changeType: direction,
                 targetType: 'blackboard',
                 targetRef: '',
@@ -346,19 +541,4 @@ async function applyHistoryMove(context, {
         blackboard: Blackboard.from(serializedBlackboard).serialize(buildViewerContext(authInfo, effectiveParticipantId || participantId)),
         broadcast
     };
-}
-
-function assertExpectedBoardVersion(blackboard, expectedBoardVersion) {
-    if (expectedBoardVersion === null || expectedBoardVersion === undefined || expectedBoardVersion === '') return;
-    const expected = Number(expectedBoardVersion);
-    if (!Number.isInteger(expected) || expected < 0) {
-        throw new Error('expectedBoardVersion must be a non-negative integer.');
-    }
-    if (blackboard.version !== expected) {
-        const error = new Error(`Blackboard version conflict: expected ${expected}, current ${blackboard.version}.`);
-        error.code = 'version_conflict';
-        error.expectedBoardVersion = expected;
-        error.currentBoardVersion = blackboard.version;
-        throw error;
-    }
 }

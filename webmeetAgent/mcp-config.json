@@ -408,7 +408,7 @@
       "cwd": "workspace",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
-        "event": { "type": "string", "optional": false },
+        "event": { "type": "string", "optional": true },
         "source": { "type": "string", "optional": true, "enum": ["event", "robo", "ui"] },
         "commandSource": { "type": "string", "optional": true, "enum": ["chat", "voice"] },
         "participantId": { "type": "string", "optional": true },

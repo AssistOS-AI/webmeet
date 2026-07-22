@@ -40,7 +40,7 @@ export function buildBlackboardProtocolPayload({
     boardOwnerId = '',
     boardVisibility = '',
     messageId = '',
-    version = 0,
+    revision = 0,
     visibility = 'all',
     object = null,
     timestamp = ''
@@ -64,7 +64,7 @@ export function buildBlackboardProtocolPayload({
         boardOwnerId: String(boardOwnerId || ownerParticipantId || '').trim(),
         boardVisibility: String(boardVisibility || '').trim(),
         messageId: String(messageId || randomMessageId()).trim(),
-        version: Number.isFinite(version) ? version : 0,
+        revision: Number.isFinite(revision) ? revision : 0,
         visibility,
         object,
         timestamp: String(timestamp || nowIso()).trim()

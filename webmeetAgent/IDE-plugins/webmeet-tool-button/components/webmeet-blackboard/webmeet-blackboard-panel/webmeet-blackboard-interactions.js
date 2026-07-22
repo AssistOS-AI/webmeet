@@ -34,6 +34,9 @@ export const blackboardInteractionMethods = {
             }
         }
         this.updateToolbarState();
+        if (this.selection && this.adapter?.sendEvent) {
+            void this.adapter.sendEvent('focus', {}, { widgetId: this.selection }).catch(() => {});
+        }
     },
 
     canDrawPendingWidget(type = '') {

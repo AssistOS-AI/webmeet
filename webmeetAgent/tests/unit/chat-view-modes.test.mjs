@@ -37,7 +37,7 @@ test('Full event rendering hides transport metadata and opaque identifiers', () 
         kind: 'event',
         message: '/event raw',
         metadata: { event: {
-            eventId: 'event-secret', commandId: 'command-secret', expectedBoardVersion: 108,
+            eventId: 'event-secret', commandId: 'command-secret', revision: 108,
             target: { type: 'widget', boardId: 'board-secret', widgetId: 'widget-secret' },
             action: 'scripta-document-delete',
             payload: { resourceId: 'resource-secret', confirmed: true }

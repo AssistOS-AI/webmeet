@@ -42,6 +42,20 @@ export const blackboardGraphicsRenderingMethods = {
         shape.setAttribute('stroke', stroke);
         shape.setAttribute('stroke-width', String(strokeWidth));
         svg.append(shape);
+        const label = String(widget.properties?.label || '').trim();
+        if (label) {
+            const text = this.createSvgElement('text');
+            text.setAttribute('x', '50');
+            text.setAttribute('y', '50');
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('dominant-baseline', 'middle');
+            text.setAttribute('fill', String(style.textColor || defaults.textColor || '#172033'));
+            text.setAttribute('font-size', String(Number(style.fontSize || 16) || 16));
+            text.setAttribute('font-family', String(style.fontFamily || 'system-ui, sans-serif'));
+            text.setAttribute('pointer-events', 'none');
+            text.textContent = label;
+            svg.append(text);
+        }
         return svg;
     },
 

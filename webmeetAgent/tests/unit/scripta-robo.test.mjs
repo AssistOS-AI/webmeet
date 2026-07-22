@@ -386,11 +386,12 @@ test('Vision and Plan are creation templates, not persistent document roles', as
 test('semantic /event SCRIPTA command executes directly and finalizes its audit', async () => {
     await withStore(async (context) => {
         const meeting = await createMeeting(context, { name: 'Semantic event', authInfo: ADMIN });
+        await joinMeeting(context, { meetingId: meeting.roomId, participantId: 'admin', displayName: 'Admin', authInfo: ADMIN });
         await createScriptaDocument(context, {
             roomId: meeting.roomId,
             name: 'Draft',
             template: 'general',
-            participantId: 'participant-admin',
+            participantId: 'admin',
             authInfo: ADMIN,
         });
 
@@ -399,7 +400,7 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
             event: 'scripta-chapter-edit {"title":"Chapter 1 test zzzzzzz"}',
             source: 'event',
             commandSource: 'chat',
-            participantId: 'participant-admin',
+            participantId: 'admin',
         }, context, ADMIN);
 
         assert.equal(result.ok, true, JSON.stringify(result));
@@ -408,7 +409,7 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
         assert.equal(widget.properties.chapters[0].chapterTitle, 'Chapter 1 test zzzzzzz');
         const current = await getScriptaContext(context, {
             roomId: meeting.roomId,
-            participantId: 'participant-admin',
+            participantId: 'admin',
             authInfo: ADMIN,
         });
         assert.equal(current.document.chapters[0].chapterTitle, 'Chapter 1 test zzzzzzz');
@@ -844,19 +845,12 @@ test('SCRIPTA content projections preserve user-resized widget geometry', async 
             participantId: 'admin',
             authInfo: ADMIN,
         });
-        const initialBoard = await getRoomBlackboard(context, {
-            roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
-            participantId: 'admin',
-            authInfo: ADMIN,
-        });
         const resizedGeometry = { x: 72, y: 56, width: 840, height: 560 };
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
             boardId: 'agent:agent_robo_team',
             participantId: 'admin',
             authInfo: ADMIN,
-            expectedBoardVersion: initialBoard.blackboard.version,
             change: {
                 changeType: 'update',
                 targetType: 'widget',

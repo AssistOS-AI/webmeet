@@ -43,7 +43,7 @@ import {
     ensureRoboTeamDemoBlackboard,
     ensureRoboTeamSettingsPayload,
     getRoboTeamAgentPayload,
-    getRoboTeamBlackboardVersion,
+    getRoboTeamBlackboardRevision,
     isRoboTeamEnabled,
     normalizeRoboTeamSettings,
     projectRoboTeamParticipant
@@ -153,7 +153,7 @@ function normalizeRoboTeamPayload(payload, meetingId, stageEvent = null) {
     if (demoCreated && stageEvent) {
         stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
             meetingId,
-            blackboardVersion: getRoboTeamBlackboardVersion(payload),
+            blackboardRevision: getRoboTeamBlackboardRevision(payload),
             changeType: 'create',
             targetType: 'blackboard',
             targetRef: '',
@@ -353,7 +353,7 @@ function projectRoomAgentForDetails(agent = {}) {
         ? {
             id: String(agent.blackboard.id || '').trim(),
             roomId: String(agent.blackboard.roomId || '').trim(),
-            version: Number(agent.blackboard.version || 0),
+            revision: Number(agent.blackboard.revision || 0),
             widgetCount: Array.isArray(agent.blackboard.widgets) ? agent.blackboard.widgets.length : 0
         }
         : null;

@@ -39,6 +39,8 @@ export class ChatComponent {
         this.renderFeedLists = options.renderFeedLists || (() => {});
         this.publishRealtimePayload = options.publishRealtimePayload || (() => Promise.resolve());
         this.refreshBlackboard = options.refreshBlackboard || (() => Promise.resolve());
+        this.updateRoboCommandStatus = options.updateRoboCommandStatus || (() => Promise.resolve());
+        this.updateRoboDraftState = options.updateRoboDraftState || (() => {});
         this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
         this.getRoom = options.getRoom || (() => null);
         this.runTool = typeof options.runTool === 'function' ? options.runTool : runTool;
@@ -71,7 +73,13 @@ export class ChatComponent {
 
     setElements(elements) {
         this.elements = elements;
+        this.syncRoboDraftState();
         this.initChatAutocomplete();
+    }
+
+    syncRoboDraftState() {
+        const value = String(this.elements?.chatInput?.value || '');
+        this.updateRoboDraftState(/^\s*\/robo(?:\s|$)/i.test(value));
     }
 
     initChatAutocomplete() {
@@ -164,6 +172,7 @@ export class ChatComponent {
     }
 
     updateComposerMentionOverlay() {
+        this.syncRoboDraftState();
         if (!this.mentionOverlay || !this.mentionOverlayInput) return;
         this.pruneSelectedMentionTokens();
         this.mentionOverlay.innerHTML = renderComposerMentionOverlayHtml(
@@ -274,17 +283,34 @@ export class ChatComponent {
     }
 
     async _sendEventCommand(meeting, message, session) {
+        const isRobo = /^\/robo(?:\s|$)/i.test(message);
+        const commandId = `command_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`}`;
+        const participantId = String(session.participantIdentity || '').trim();
+        const notifyStatus = (state, errorMessage = '') => {
+            if (!isRobo) return;
+            try {
+                void Promise.resolve(this.updateRoboCommandStatus({
+                    meetingId: meeting.id,
+                    boardId: 'agent:agent_robo_team',
+                    commandId,
+                    participantId,
+                    state,
+                    ...(errorMessage ? { errorMessage } : {})
+                })).catch(() => {});
+            } catch (_) {}
+        };
+        notifyStatus('started');
         try {
             this.elements.chatInput.value = '';
             this.updateComposerMentionOverlay();
-            const isRobo = /^\/robo(?:\s|$)/i.test(message);
             const eventInput = isRobo ? message : message.replace(/^\/event\s*/i, '').trim();
             const result = await this.runTool('webmeet_event_command', {
                 roomId: meeting.id,
                 event: eventInput,
                 source: isRobo ? 'robo' : 'event',
                 commandSource: 'chat',
-                participantId: session.participantIdentity
+                participantId,
+                commandId
             });
             if (result?.auditMessage) {
                 const state = this.getState();
@@ -300,10 +326,6 @@ export class ChatComponent {
                     }).catch(() => {});
                 }
             }
-            if (result?.clarificationRequired) {
-                this.setError(result.message || 'The blackboard command needs clarification.');
-                return;
-            }
             if (result?.ok === false) throw new Error(result?.error?.message || 'Blackboard event failed.');
             if (result?.visibilityPayload && this.getRoom()?.localParticipant) {
                 await this.publishRealtimePayload(result.visibilityPayload).catch(() => {});
@@ -315,14 +337,15 @@ export class ChatComponent {
                         type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
                         meetingId: meeting.id,
                         boardId: 'agent:agent_robo_team',
-                        blackboardVersion: Number(result.blackboard.version || 0),
+                        blackboardRevision: Number(result.blackboard.revision || 0),
                         changeType: 'update'
                     }).catch(() => {});
                 }
             }
-            await this.loadMeetingDetails().catch(() => {});
             this.renderFeedLists();
+            notifyStatus('success');
         } catch (error) {
+            notifyStatus('error', error?.message || 'The blackboard command failed.');
             this.setError(`Failed to run blackboard event: ${error.message}`);
         }
     }

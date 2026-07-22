@@ -16,8 +16,8 @@ export const blackboardRenderingMethods = {
         if (this.fullscreenWidgetId && !widgets.some((widget) => String(widget.id || '') === String(this.fullscreenWidgetId))) {
             this.fullscreenWidgetId = '';
         }
-        for (const widget of widgets) {
-            const node = this.renderWidget(widget);
+        for (const [index, widget] of widgets.entries()) {
+            const node = this.renderWidget(widget, index + 1);
             fragment.append(node);
             this.widgetNodes.set(widget.id, node);
         }
@@ -25,7 +25,8 @@ export const blackboardRenderingMethods = {
         this.updateToolbarState();
     },
 
-    renderWidget(widget) {
+    renderWidget(widget, ordinal = 0) {
+        widget = this.projectAttachedConnection(widget);
         const node = document.createElement('div');
         const geometry = widget.properties?.geometry || {};
         const style = widget.properties?.style || {};
@@ -62,6 +63,13 @@ export const blackboardRenderingMethods = {
         node.style.setProperty('--stroke-width', `${cssStrokeWidth}px`);
         node.style.setProperty('--text-color', style.textColor || textDefaults.textColor || 'var(--bb-widget-text)');
         this.renderWidgetContent(node, widget);
+        if (this.roboOrdinalMode && ordinal > 0) {
+            const badge = document.createElement('span');
+            badge.className = 'webmeet-blackboard-widget-ordinal';
+            badge.textContent = String(ordinal);
+            badge.setAttribute('aria-hidden', 'true');
+            node.append(badge);
+        }
         if (!isFullscreen) this.renderResizeHandles(node, widget);
         if (!isFullscreen) this.renderContextMenu(node, widget);
         if (!isFullscreen && this.canMoveWidget(widget)) {
@@ -75,6 +83,45 @@ export const blackboardRenderingMethods = {
             void this.editWidget(widget);
         });
         return node;
+    },
+
+    projectAttachedConnection(widget) {
+        const connection = widget?.properties?.connection;
+        if (widget?.type !== 'line' || !connection) return widget;
+        const widgets = this.blackboard?.widgets || [];
+        const anchorPoint = (endpoint) => {
+            const target = widgets.find((entry) => String(entry.id) === String(endpoint?.widgetId));
+            if (!target) return null;
+            const geometry = target.properties?.geometry || {};
+            const x = Number(geometry.x || 0);
+            const y = Number(geometry.y || 0);
+            const width = Number(geometry.width || 0);
+            const height = Number(geometry.height || 0);
+            const points = {
+                left: { x, y: y + height / 2 },
+                right: { x: x + width, y: y + height / 2 },
+                top: { x: x + width / 2, y },
+                bottom: { x: x + width / 2, y: y + height },
+                center: { x: x + width / 2, y: y + height / 2 },
+            };
+            return points[String(endpoint.anchor || 'center')] || points.center;
+        };
+        const from = anchorPoint(connection.from);
+        const to = anchorPoint(connection.to);
+        if (!from || !to) return widget;
+        const padding = 2;
+        const x = Math.min(from.x, to.x) - padding;
+        const y = Math.min(from.y, to.y) - padding;
+        const width = Math.max(4, Math.abs(to.x - from.x) + padding * 2);
+        const height = Math.max(4, Math.abs(to.y - from.y) + padding * 2);
+        return {
+            ...widget,
+            properties: {
+                ...widget.properties,
+                geometry: { x, y, width, height, rotation: 0 },
+                line: { ...(widget.properties.line || {}), x1: from.x - x, y1: from.y - y, x2: to.x - x, y2: to.y - y },
+            },
+        };
     },
 
     renderContextMenu(node, widget) {

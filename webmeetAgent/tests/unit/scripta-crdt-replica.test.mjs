@@ -149,7 +149,7 @@ test('wrong-board updates do not pull SCRIPTA replicas', async () => {
         {
             meetingId: 'room-1',
             boardId: 'agent:another_agent',
-            blackboardVersion: 3,
+            blackboardRevision: 3,
             changeType: 'update',
         }
     ));

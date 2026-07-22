@@ -29,6 +29,7 @@ export class WebMeetBlackboardPanel {
         this.inlineEditState = null;
         this.inlineEditCommitPromise = null;
         this.pendingRenderAfterInlineEdit = false;
+        this.roboOrdinalMode = false;
         this.fullscreenWidgetId = '';
         this.scriptaDraft = null;
         this.pendingScriptaDraft = null;
@@ -39,6 +40,12 @@ export class WebMeetBlackboardPanel {
         this.handleConnectEvent = (event) => this.connect(event.detail || {});
         this.handleUpdateEvent = (event) => this.applyBlackboardUpdate(event.detail || {});
         this.handleDisconnectEvent = () => this.cleanup();
+        this.handleRoboStatusEvent = (event) => {
+            const active = event.detail?.active === true;
+            if (active === this.roboOrdinalMode) return;
+            this.roboOrdinalMode = active;
+            this.renderWidgets();
+        };
         this.handleToolbarAddWidgetEvent = (event) => {
             this.setPendingWidgetType(event.detail?.type);
         };
@@ -111,6 +118,7 @@ export class WebMeetBlackboardPanel {
         this.element.removeEventListener('webmeet-blackboard-connect', this.handleConnectEvent);
         this.element.removeEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
         this.element.removeEventListener('webmeet-blackboard-disconnect', this.handleDisconnectEvent);
+        this.element.removeEventListener('webmeet-blackboard-robo-status', this.handleRoboStatusEvent);
         this.element.removeEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.removeEventListener('keydown', this.handleDocumentKeydownEvent, true);
@@ -118,6 +126,7 @@ export class WebMeetBlackboardPanel {
         this.element.addEventListener('webmeet-blackboard-connect', this.handleConnectEvent);
         this.element.addEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
         this.element.addEventListener('webmeet-blackboard-disconnect', this.handleDisconnectEvent);
+        this.element.addEventListener('webmeet-blackboard-robo-status', this.handleRoboStatusEvent);
         this.element.addEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.addEventListener('keydown', this.handleDocumentKeydownEvent, true);
@@ -156,8 +165,7 @@ export class WebMeetBlackboardPanel {
         if (!this.adapter || this.unsubscribeAdapter) return;
         this.unsubscribeAdapter = this.adapter.subscribe((payload) => {
             if (payload.kind === 'blackboard') {
-                this.blackboard = payload.object || {widgets: []};
-                this.renderWidgets();
+                this.applyBlackboard(payload.object || {widgets: []});
             } else if (payload.kind === 'widget') {
                 this.applyWidgetObject(payload.object);
             } else if (payload.kind === 'scripta-presentation') {
@@ -189,7 +197,10 @@ export class WebMeetBlackboardPanel {
     }
 
     applyBlackboard(blackboard) {
-        if (blackboard) this.blackboard = blackboard;
+        if (blackboard) {
+            this.blackboard = blackboard;
+            this.selection = String(blackboard.interactionContext?.focusedWidgetId || '').trim();
+        }
         this.renderWidgets();
     }
 

@@ -53,7 +53,7 @@ export class BlackboardNetworkAdapter {
         this.room = room;
         this.handlers = new Set();
         this.seenMessageIds = new Set();
-        this.currentVersion = 0;
+        this.currentRevision = 0;
         this.unsubscribeRoom = null;
         this.scriptaReplica = new ScriptaCrdtReplica(this);
     }
@@ -64,49 +64,49 @@ export class BlackboardNetworkAdapter {
             boardId: this.boardId,
             participantId: this.participantId
         });
-        this.currentVersion = Number(response?.blackboard?.version || 0);
-        return response?.blackboard || { roomId, version: 0, widgets: [] };
+        this.currentRevision = Number(response?.blackboard?.revision || 0);
+        return response?.blackboard || { roomId, revision: 0, widgets: [] };
     }
 
     async sendChange(change) {
         const targetType = String(change?.targetType || 'widget');
-        const changeType = String(change?.changeType || 'update');
-        const action = changeType === 'add' ? 'create' : changeType;
+        const action = String(change?.changeType || 'update');
+        if (action === 'add') throw new Error('Unsupported blackboard event action "add".');
+        const target = action === 'create' || ['clear', 'group'].includes(action)
+            ? { type: 'blackboard' }
+            : { type: targetType, ...(change?.targetRef ? { widgetId: String(change.targetRef) } : {}) };
+        let payload = {};
+        if (action === 'create') {
+            const inputWidget = JSON.parse(JSON.stringify(change.widget || change.object || {}));
+            const widget = { type: inputWidget.type, properties: inputWidget.properties || {} };
+            payload = { widget };
+        } else if (action === 'update') payload = { patch: change.patch || {}, ...(change.reason ? { reason: change.reason } : {}) };
+        else if (action === 'group') payload = { widgetIds: change.widgetIds || change.data?.widgetIds || [] };
+        else if (action === 'submit') payload = { data: change.data || {} };
         const event = this.createEvent({
-            target: {
-                type: targetType,
-                boardId: this.boardId,
-                ...(change?.targetRef || change?.widget?.id ? { widgetId: String(change.targetRef || change.widget.id) } : {})
-            },
+            target,
             action,
-            payload: { change: change || {} }
+            payload,
         });
         const response = await this.runEvent(event);
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard event failed.');
-        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
+        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: action });
         await this.publishFinalUpdate(response, change?.changeType || 'update');
         return response;
     }
 
     async sendEvent(action, payload = {}, { widgetId = '', targetType = 'widget' } = {}) {
-        let response;
-        try {
-            response = await this.runEvent(this.createEvent({
-                target: { type: targetType, boardId: this.boardId, ...(widgetId ? { widgetId } : {}) },
+        const response = await this.runEvent(this.createEvent({
+                target: { type: targetType, ...(widgetId ? { widgetId } : {}) },
                 action,
                 payload
             }));
-        } catch (error) {
-            const conflict = error?.code === 'version_conflict' || error?.data?.error?.code === 'version_conflict';
-            const currentBoardVersion = Number(error?.data?.error?.currentBoardVersion || 0);
-            if (currentBoardVersion) this.currentVersion = Math.max(this.currentVersion, currentBoardVersion);
-            if (conflict) await this.requestResync('version-conflict').catch(() => {});
-            throw error;
-        }
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || response?.message || 'Blackboard event failed.');
-        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
+        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: action });
         if (response?.blackboard) await this.publishFinalUpdate(response, action);
         if (SCRIPTA_DOCUMENT_MUTATION_ACTIONS.has(String(action || ''))) {
             // The command response is the authoritative projection and can be
@@ -126,15 +126,7 @@ export class BlackboardNetworkAdapter {
     }
 
     createEvent({ target, action, payload }) {
-        const uuid = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        return {
-            eventId: `event_${uuid}`,
-            commandId: `command_${uuid}`,
-            expectedBoardVersion: this.currentVersion,
-            target,
-            action,
-            payload
-        };
+        return { target, action, payload };
     }
 
     async runEvent(event) {
@@ -144,18 +136,19 @@ export class BlackboardNetworkAdapter {
             selectedWidgetId: event.target?.widgetId || '',
             source: 'ui',
             commandSource: 'chat',
-            commandId: event.commandId,
+            commandId: `command_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`}`,
             event: JSON.stringify(event)
         });
     }
 
     async undo() {
         const response = await this.runEvent(this.createEvent({
-            target: { type: 'blackboard', boardId: this.boardId }, action: 'undo', payload: {}
+            target: { type: 'blackboard' }, action: 'undo', payload: {}
         }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard undo failed.');
-        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
+        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: 'undo' });
         if (response?.changed) {
             await this.publishFinalUpdate(response, 'undo');
         }
@@ -164,11 +157,12 @@ export class BlackboardNetworkAdapter {
 
     async redo() {
         const response = await this.runEvent(this.createEvent({
-            target: { type: 'blackboard', boardId: this.boardId }, action: 'redo', payload: {}
+            target: { type: 'blackboard' }, action: 'redo', payload: {}
         }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard redo failed.');
-        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
+        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: 'redo' });
         if (response?.changed) {
             await this.publishFinalUpdate(response, 'redo');
         }
@@ -201,12 +195,12 @@ export class BlackboardNetworkAdapter {
             await this.requestResync('scripta-p-variant-edit-failed').catch(() => {});
             throw error;
         }
-        this.currentVersion = Number(response?.blackboard?.version || this.currentVersion);
+        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
         if (response?.blackboard) {
             this.emit({
                 kind: 'blackboard',
                 object: response.blackboard,
-                version: this.currentVersion,
+                revision: this.currentRevision,
                 reason: 'scripta-crdt-edit'
             });
             await this.publishFinalUpdate(response, 'scripta-p-variant-edit');
@@ -226,13 +220,13 @@ export class BlackboardNetworkAdapter {
         if (messageId) {
             this.seenMessageIds.add(messageId);
         }
-        const version = Number(parsed.payload?.blackboardVersion || 0);
+        const revision = Number(parsed.payload?.blackboardRevision || 0);
         const eventBoardId = String(parsed.payload?.boardId || '').trim();
         if (!eventBoardId || eventBoardId !== this.boardId) {
             return 'wrong-board';
         }
-        if (version && version < this.currentVersion) {
-            return 'old-version';
+        if (revision && revision < this.currentRevision) {
+            return 'old-revision';
         }
         const blackboardMessage = String(parsed.payload?.blackboardMessage || '').trim();
         if (blackboardMessage) {
@@ -251,16 +245,16 @@ export class BlackboardNetworkAdapter {
             if (protocolMessageId) {
                 this.seenMessageIds.add(protocolMessageId);
             }
-            const protocolVersion = Number(protocol.payload.version || 0);
-            if (protocolVersion && protocolVersion < this.currentVersion) {
-                return 'old-version';
+            const protocolRevision = Number(protocol.payload.revision || 0);
+            if (protocolRevision && protocolRevision < this.currentRevision) {
+                return 'old-revision';
             }
-            this.currentVersion = Math.max(this.currentVersion, version, protocolVersion);
+            this.currentRevision = Math.max(this.currentRevision, revision, protocolRevision);
             if (protocol.payload.presentation) {
                 this.emit({
                     kind: 'scripta-presentation',
                     presentation: protocol.payload.presentation,
-                    version: this.currentVersion,
+                    revision: this.currentRevision,
                     messageId: protocolMessageId,
                     from: protocol.from,
                     to: protocol.to,
@@ -271,7 +265,7 @@ export class BlackboardNetworkAdapter {
                 if (containsViewerScopedScriptaProjection(protocol.payload.object)) {
                     // SCRIPTA edit/delete permissions and viewer votes are
                     // participant-specific. Never apply another participant's
-                    // serialized projection; reload the same board version
+                    // serialized projection; reload the same board revision
                     // through the authenticated WebMeet boundary instead.
                     void this.scriptaReplica.schedulePullAll();
                     await this.requestResync('scripta-viewer-projection');
@@ -280,7 +274,7 @@ export class BlackboardNetworkAdapter {
                 this.emit({
                     kind: protocol.payload.kind,
                     object: protocol.payload.object,
-                    version: this.currentVersion,
+                    revision: this.currentRevision,
                     messageId: protocolMessageId,
                     from: protocol.from,
                     to: protocol.to
@@ -293,14 +287,14 @@ export class BlackboardNetworkAdapter {
             }
         }
         void this.scriptaReplica.schedulePullAll();
-        this.currentVersion = Math.max(this.currentVersion, version);
+        this.currentRevision = Math.max(this.currentRevision, revision);
         await this.requestResync('blackboard.updated');
         return 'applied';
     }
 
     async requestResync(reason = 'manual') {
         const blackboard = await this.loadInitialBlackboard(this.roomId);
-        this.emit({ kind: 'blackboard', object: blackboard, version: blackboard.version, reason });
+        this.emit({ kind: 'blackboard', object: blackboard, revision: blackboard.revision, reason });
         return blackboard;
     }
 
@@ -335,7 +329,7 @@ export class BlackboardNetworkAdapter {
                 boardOwnerType: 'agent',
                 boardOwnerId: 'agent_robo_team',
                 boardVisibility: 'room',
-                version: this.currentVersion,
+                revision: this.currentRevision,
                 visibility: { mode: 'all' },
                 object: null,
                 presentation: {
@@ -356,7 +350,7 @@ export class BlackboardNetworkAdapter {
             boardOwnerType: 'agent',
             boardOwnerId: 'agent_robo_team',
             boardVisibility: 'room',
-            blackboardVersion: this.currentVersion,
+            blackboardRevision: this.currentRevision,
             changeType: 'scripta-p-variant-edit-draft',
             targetType: 'widget',
             targetRef: 'robo_scripta_document',
@@ -370,7 +364,7 @@ export class BlackboardNetworkAdapter {
         if (typeof this.publishRealtimePayload !== 'function') {
             return;
         }
-        const version = Number(response?.blackboard?.version || 0);
+        const revision = Number(response?.blackboard?.revision || 0);
         let broadcastPayload = response?.broadcast && typeof response.broadcast === 'object'
             ? response.broadcast
             : {
@@ -381,7 +375,7 @@ export class BlackboardNetworkAdapter {
                 boardOwnerType: 'agent',
                 boardOwnerId: 'agent_robo_team',
                 boardVisibility: 'room',
-                version,
+                revision,
                 visibility: response?.object?.visibility || { mode: 'all' },
                 object: response?.object?.id ? response.object : response?.blackboard
             };
@@ -406,7 +400,7 @@ export class BlackboardNetworkAdapter {
             boardOwnerType: String(broadcastPayload.boardOwnerType || 'agent').trim(),
             boardOwnerId: String(broadcastPayload.boardOwnerId || 'agent_robo_team').trim(),
             boardVisibility: String(broadcastPayload.boardVisibility || 'room').trim(),
-            blackboardVersion: version,
+            blackboardRevision: revision,
             changeType: String(response?.change?.changeType || fallbackChangeType || 'update').trim(),
             targetType: String(response?.change?.targetType || 'blackboard').trim(),
             targetRef: String(response?.change?.targetRef || response?.object?.id || '').trim(),

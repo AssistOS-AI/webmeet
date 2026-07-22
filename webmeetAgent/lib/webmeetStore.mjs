@@ -66,7 +66,9 @@ import {
 } from './services/roomArchive.mjs';
 import {
     applyRoomBlackboardChange as applyRoomBlackboardChangeImpl,
+    applyRoomBlackboardEvents as applyRoomBlackboardEventsImpl,
     getRoomBlackboard as getRoomBlackboardImpl,
+    getRoomBlackboardForCommand as getRoomBlackboardForCommandImpl,
     redoRoomBlackboard as redoRoomBlackboardImpl,
     undoRoomBlackboard as undoRoomBlackboardImpl
 } from './blackboard/service.mjs';
@@ -74,7 +76,7 @@ import {
     ROBO_TEAM_AGENT_TYPE,
     ROBO_TEAM_MODE,
     ensureRoboTeamAgentPayload,
-    getRoboTeamBlackboardVersion,
+    getRoboTeamBlackboardRevision,
     ensureRoboTeamDemoBlackboard,
     ensureRoboTeamSettingsPayload,
     getRoboTeamSettings as getRoboTeamSettingsImpl,
@@ -237,29 +239,78 @@ export async function getRoomBlackboard(context, { roomId, boardId = '', partici
     return await getRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
+export async function getRoomBlackboardForCommand(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    await repairScriptaBlackboardProjectionImpl(context, { roomId, participantId, authInfo });
+    return await getRoomBlackboardForCommandImpl(context, { roomId, boardId, participantId, authInfo });
+}
+
 export async function authorizeMeetingParticipant(context, {
     roomId,
     participantId = '',
     authInfo = null,
 } = {}) {
-    const record = await loadMeetingRecord(context, roomId);
+    let record = await loadMeetingRecord(context, roomId);
     if (!canViewMeetingRecord(record, authInfo)) throw new Error('Meeting not found.');
-    const payload = decryptMeetingPayload(context, record);
+    let payload = decryptMeetingPayload(context, record);
+    const targetParticipantId = String(participantId || '').trim();
+    let participant = (Array.isArray(payload.members) ? payload.members : [])
+        .find((entry) => String(entry?.id || '').trim() === targetParticipantId) || null;
+    if (!participant) {
+        try {
+            await getMeetingImpl(context, roomId, authInfo, { includeParticipants: true }, participantServiceDeps);
+        } catch (_) {
+            // The explicit participant_not_joined error below is stable even
+            // when LiveKit reconciliation is temporarily unavailable.
+        }
+        record = await loadMeetingRecord(context, roomId);
+        payload = decryptMeetingPayload(context, record);
+        participant = (Array.isArray(payload.members) ? payload.members : [])
+            .find((entry) => String(entry?.id || '').trim() === targetParticipantId) || null;
+    }
+    if (!participant) {
+        const error = new Error('Participant is not joined or is no longer connected to the room.');
+        error.code = 'participant_not_joined';
+        throw error;
+    }
+    const authorizedParticipantId = authorizeRoomParticipantId(payload, authInfo, targetParticipantId, record.meetingId);
+    const auth = normalizeAuthInfo(authInfo);
+    if (isAdminAuthInfo(authInfo)) {
+        const memberUserId = String(participant.userId || participant.attributes?.webmeetUserId || '').trim();
+        const authenticatedIds = new Set([auth.id, auth.principalId, auth.username, auth.email]
+            .map((value) => String(value || '').trim()).filter(Boolean));
+        if (!authenticatedIds.has(authorizedParticipantId) && !authenticatedIds.has(memberUserId)) {
+            throw new Error('Access denied: cannot act as another participant.');
+        }
+    }
+    await mutateMeeting(context, roomId, (_record, lockedPayload) => {
+        const current = (Array.isArray(lockedPayload.members) ? lockedPayload.members : [])
+            .find((entry) => String(entry?.id || '').trim() === authorizedParticipantId) || null;
+        if (!current) {
+            const error = new Error('Participant is not joined or is no longer connected to the room.');
+            error.code = 'participant_not_joined';
+            throw error;
+        }
+        current.lastSeenAt = nowIso();
+    });
     return {
-        participantId: authorizeRoomParticipantId(payload, authInfo, participantId, record.meetingId),
+        participantId: authorizedParticipantId,
     };
 }
 
-export async function applyRoomBlackboardChange(context, { roomId, boardId = '', change, participantId = '', authInfo = null, expectedBoardVersion = null } = {}) {
-    return await applyRoomBlackboardChangeImpl(context, { roomId, boardId, change, participantId, authInfo, expectedBoardVersion });
+export async function applyRoomBlackboardChange(context, { roomId, boardId = '', change, participantId = '', authInfo = null } = {}) {
+    return await applyRoomBlackboardChangeImpl(context, { roomId, boardId, change, participantId, authInfo });
 }
 
-export async function undoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null, expectedBoardVersion = null } = {}) {
-    return await undoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion });
+export async function applyRoomBlackboardEvents(context, input = {}) {
+    return await applyRoomBlackboardEventsImpl(context, input);
 }
 
-export async function redoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null, expectedBoardVersion = null } = {}) {
-    return await redoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo, expectedBoardVersion });
+export async function undoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    return await undoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
+}
+
+export async function redoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
+    return await redoRoomBlackboardImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
 export async function getRoboTeamSettings(context, { roomId, authInfo = null } = {}) {
@@ -366,7 +417,7 @@ export async function createMeeting(context, { title = '', name = '', roomType =
             if (demoCreated) {
                 stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
                     meetingId: record.meetingId,
-                    blackboardVersion: getRoboTeamBlackboardVersion(payload),
+                    blackboardRevision: getRoboTeamBlackboardRevision(payload),
                     changeType: 'create',
                     targetType: 'blackboard',
                     targetRef: '',
@@ -532,7 +583,7 @@ export async function listMeetingAgents(context, meetingId, authInfo = null) {
             if (demoCreated) {
                 stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
                     meetingId,
-                    blackboardVersion: getRoboTeamBlackboardVersion(mutablePayload),
+                    blackboardRevision: getRoboTeamBlackboardRevision(mutablePayload),
                     changeType: 'create',
                     targetType: 'blackboard',
                     targetRef: '',
