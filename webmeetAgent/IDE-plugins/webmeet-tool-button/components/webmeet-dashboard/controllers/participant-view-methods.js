@@ -1,6 +1,5 @@
 import { isMicrophonePublication } from '../services/microphone-publication.js';
 import { buildWebMeetAvatarSource } from '../services/webmeet-avatar-override.js';
-import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 function getParticipantUserIdFromParticipant(participant = null) {
     return String(
@@ -319,15 +318,12 @@ export const participantViewMethods = {
             const presenterId = String(agent?.participantIdentity || agent?.participant?.identity || participantId || ROBO_TEAM_PARTICIPANT_ID).trim();
             const presenterName = String(agent?.agentName || agent?.participant?.name || 'Robo Team').trim() || 'Robo Team';
             try {
+                if (this.state.blackboard?.visible) {
+                    this.collapseBlackboardFocus?.();
+                    this.participantLayoutController?.renderParticipantLayout?.();
+                    return;
+                }
                 await this.applyBlackboardVisibility?.({
-                    meetingId,
-                    participantId: actorParticipantId,
-                    visible: true,
-                    presenterId,
-                    presenterName
-                });
-                await this.publishRealtimePayload?.({
-                    type: WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED,
                     meetingId,
                     participantId: actorParticipantId,
                     visible: true,

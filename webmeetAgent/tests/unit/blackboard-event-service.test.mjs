@@ -119,6 +119,11 @@ test('structured result schema covers every public action and both terminal resu
     assert.equal(schema.type, 'object');
     assert.equal(schema.additionalProperties, false);
     assert.deepEqual(schema.required, ['events', 'error']);
+    assert.equal(schema.anyOf.length, 2);
+    assert.equal(schema.anyOf[0].properties.events.minItems, 1);
+    assert.deepEqual(schema.anyOf[0].properties.error, { type: 'null' });
+    assert.deepEqual(schema.anyOf[1].properties.events, { type: 'null' });
+    assert.equal(schema.anyOf[1].properties.error.additionalProperties, false);
     const eventSchema = schema.properties.events.anyOf[0].items;
     assert.deepEqual(eventSchema.properties.action.enum, [...eventSchema.properties.action.enum]);
     assert.deepEqual(new Set(eventSchema.properties.action.enum), new Set([
@@ -156,6 +161,21 @@ test('structured result normalization removes nullable transport fields and rest
             payload: { data: { answers: { q1: 'Yes' } } },
         }],
     });
+    assert.throws(
+        () => normalizeBlackboardStructuredResult({ events: null, error: null }),
+        /exactly one non-empty terminal branch/,
+    );
+    assert.throws(
+        () => normalizeBlackboardStructuredResult({ events: [], error: null }),
+        /exactly one non-empty terminal branch/,
+    );
+    assert.throws(
+        () => normalizeBlackboardStructuredResult({
+            events: [{ action: 'clear' }],
+            error: { code: 'unsupported_request', message: 'No.' },
+        }),
+        /exactly one non-empty terminal branch/,
+    );
 });
 
 test('blackboard skill prefers provider-native structured output with the canonical schema', async () => {
@@ -214,6 +234,68 @@ test('blackboard skill retries one rejected structured result through the same s
     });
     assert.equal(calls, 3);
     assert.equal(result.events[0].action, 'clear');
+});
+
+test('blackboard skill repairs an empty structured terminal envelope', async () => {
+    let calls = 0;
+    const result = await interpretBlackboardSkill({
+        promptText: 'clear the board',
+        context: { board: { widgets: [] } },
+        llmAgent: {
+            executeStructuredPrompt: async () => {
+                calls += 1;
+                if (calls === 1) return { events: null, error: null };
+                return {
+                    events: [{ action: 'clear', target: { type: 'blackboard' }, payload: {} }],
+                    error: null,
+                };
+            },
+        },
+    });
+    assert.equal(calls, 3);
+    assert.equal(result.events[0].action, 'clear');
+});
+
+test('blackboard skill discards LLM geometry and derives valid bounds for axis-aligned free arrows', async () => {
+    const llmResult = () => ({
+        events: [
+            {
+                action: 'create',
+                target: { type: 'blackboard' },
+                payload: { widget: { type: 'line', properties: {
+                    geometry: { x: 640, y: 150, width: 160, height: 0, rotation: 0 },
+                    line: { x1: 640, y1: 150, x2: 800, y2: 150, markerEnd: 'arrow' },
+                } } },
+            },
+            {
+                action: 'create',
+                target: { type: 'blackboard' },
+                payload: { widget: { type: 'line', properties: {
+                    geometry: { x: 900, y: 200, width: 0, height: 120, rotation: 0 },
+                    line: { x1: 900, y1: 200, x2: 900, y2: 320, markerEnd: 'arrow' },
+                } } },
+            },
+        ],
+    });
+    const result = await interpretBlackboardSkill({
+        promptText: 'draw an arrow to the right of the circle',
+        context: { board: { widgets: [] } },
+        llmAgent: { executeStructuredPrompt: async () => llmResult() },
+    });
+
+    const properties = result.events[0].payload.widget.properties;
+    assert.equal(Object.hasOwn(properties, 'geometry'), false);
+    assert.deepEqual(properties.line, { x1: 640, y1: 150, x2: 800, y2: 150, markerEnd: 'arrow' });
+
+    const widget = new BlackboardWidget({ id: 'arrow-1', type: 'line', properties });
+    assert.deepEqual(widget.properties.geometry, { x: 639.5, y: 149.5, width: 161, height: 1, rotation: 0 });
+    assert.equal(widget.properties.line.markerEnd, 'arrow');
+
+    const verticalProperties = result.events[1].payload.widget.properties;
+    assert.equal(Object.hasOwn(verticalProperties, 'geometry'), false);
+    const verticalWidget = new BlackboardWidget({ id: 'arrow-2', type: 'line', properties: verticalProperties });
+    assert.deepEqual(verticalWidget.properties.geometry, { x: 899.5, y: 199.5, width: 1, height: 121, rotation: 0 });
+    assert.equal(verticalWidget.properties.line.markerEnd, 'arrow');
 });
 
 test('widget capability allowlists protect structural and specialized content', () => {
@@ -565,15 +647,15 @@ test('malformed AI line endpoints are migrated to the canonical line schema', ()
         id: 'line-45', type: 'line',
         properties: { geometry: { x1: 700, y1: 400, x2: 770.710678, y2: 470.710678 } },
     });
-    assert.equal(widget.properties.geometry.x, 698);
-    assert.equal(widget.properties.geometry.y, 398);
+    assert.equal(widget.properties.geometry.x, 699.5);
+    assert.equal(widget.properties.geometry.y, 399.5);
     assert.equal(widget.properties.geometry.rotation, 0);
-    assert.ok(Math.abs(widget.properties.geometry.width - 74.710678) < 1e-9);
-    assert.ok(Math.abs(widget.properties.geometry.height - 74.710678) < 1e-9);
-    assert.equal(widget.properties.line.x1, 2);
-    assert.equal(widget.properties.line.y1, 2);
-    assert.ok(Math.abs(widget.properties.line.x2 - 72.710678) < 1e-9);
-    assert.ok(Math.abs(widget.properties.line.y2 - 72.710678) < 1e-9);
+    assert.ok(Math.abs(widget.properties.geometry.width - 71.710678) < 1e-9);
+    assert.ok(Math.abs(widget.properties.geometry.height - 71.710678) < 1e-9);
+    assert.equal(widget.properties.line.x1, 0.5);
+    assert.equal(widget.properties.line.y1, 0.5);
+    assert.ok(Math.abs(widget.properties.line.x2 - 71.210678) < 1e-9);
+    assert.ok(Math.abs(widget.properties.line.y2 - 71.210678) < 1e-9);
     assert.ok(Math.abs(Math.hypot(
         widget.properties.line.x2 - widget.properties.line.x1,
         widget.properties.line.y2 - widget.properties.line.y1,

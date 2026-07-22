@@ -911,6 +911,28 @@ test('blackboard network adapter applies last-edit-wins without a conflict resyn
     assert.equal(adapter.currentRevision, 5);
 });
 
+test('blackboard visibility payloads remain local and are never published by the adapter', async () => {
+    const published = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_1',
+        runTool: async () => ({
+            ok: true,
+            visibilityPayload: {
+                type: WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED,
+                meetingId: 'room_1', participantId: 'participant_1', visible: true,
+            },
+        }),
+        publishRealtimePayload: async (payload) => { published.push(payload); },
+    });
+
+    const response = await adapter.sendEvent('show', {}, { targetType: 'blackboard' });
+
+    assert.equal(response.visibilityPayload.visible, true);
+    assert.deepEqual(published, []);
+});
+
 test('blackboard theme updates are broadcast as full blackboard updates for other participants', async () => {
     const received = [];
     const adapter = new BlackboardNetworkAdapter({
@@ -1359,6 +1381,11 @@ test('blackboard draws selected shape and line widgets from pointer drag', async
         height: 100
     });
     assert.equal(sentChanges[1].widget.type, 'line');
+    assert.equal(
+        Object.hasOwn(sentChanges[1].widget.properties, 'label'),
+        false,
+        'line and arrow create payloads must not contain the shape-only label property'
+    );
     assert.deepEqual(sentChanges[1].widget.properties.geometry, {
         x: 170,
         y: 240,
@@ -1948,6 +1975,13 @@ test('blackboard text widget theme defaults are transparent in every theme', () 
     assert.equal(getBlackboardTheme('contrast').defaults.text.textColor, '#ffffff');
 });
 
+test('blackboard line widget defaults are one pixel in every theme', () => {
+    for (const option of getBlackboardThemeOptions()) {
+        const theme = getBlackboardTheme(option.id);
+        assert.equal(theme.defaults.line.strokeWidth, 1, `${option.id} line strokeWidth`);
+    }
+});
+
 test('blackboard image widget defaults are transparent and borderless in every theme', () => {
     for (const option of getBlackboardThemeOptions()) {
         const theme = getBlackboardTheme(option.id);
@@ -2113,7 +2147,7 @@ test('blackboard WebSkel components trigger their initial render', async () => {
     }
 });
 
-test('blackboard visibility change is a realtime-only WebMeet event', () => {
+test('legacy blackboard visibility envelopes remain nonpersistent transport data', () => {
     const encoded = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED, {
         meetingId: 'room_1',
         participantId: 'participant_1',
@@ -2182,14 +2216,14 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             }],
         });
         const lineWidget = lineCreated.blackboard.widgets.find((widget) => widget.type === 'line');
-        assert.deepEqual(lineWidget.properties.geometry, { x: 98, y: 198, width: 204, height: 4, rotation: 0 });
-        assert.deepEqual(lineWidget.properties.line, { x1: 2, y1: 2, x2: 202, y2: 2, markerEnd: 'arrow' });
+        assert.deepEqual(lineWidget.properties.geometry, { x: 99.5, y: 199.5, width: 201, height: 1, rotation: 0 });
+        assert.deepEqual(lineWidget.properties.line, { x1: 0.5, y1: 0.5, x2: 200.5, y2: 0.5, markerEnd: 'arrow' });
         const lineMoved = await applyRoomBlackboardEvents(context, {
             roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
             events: [{ action: 'update', target: { type: 'widget', widgetId: lineWidget.id }, payload: { patch: { properties: { geometryDelta: { x: 0, y: -50 } } } } }],
         });
         const movedLine = lineMoved.blackboard.widgets.find((widget) => widget.id === lineWidget.id);
-        assert.equal(movedLine.properties.geometry.y, 148);
+        assert.equal(movedLine.properties.geometry.y, 149.5);
         assert.deepEqual(movedLine.properties.line, lineWidget.properties.line);
 
         const response = await getRoomBlackboard(context, {

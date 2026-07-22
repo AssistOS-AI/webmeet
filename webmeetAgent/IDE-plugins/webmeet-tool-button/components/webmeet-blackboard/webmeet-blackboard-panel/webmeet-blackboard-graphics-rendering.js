@@ -74,7 +74,7 @@ export const blackboardGraphicsRenderingMethods = {
         const markerEnd = String(line.markerEnd || '').trim();
         const defaults = this.getBlackboardTheme().defaults?.line || {};
         const stroke = style.stroke || defaults.stroke || '#334155';
-        const strokeWidth = Number(style.strokeWidth || defaults.strokeWidth || 3) || 3;
+        const strokeWidth = Number(style.strokeWidth || defaults.strokeWidth || 1) || 1;
         const markerIdBase = `bb_arrow_${String(widget.id || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         const svg = this.createSvgElement('svg');
         svg.setAttribute('class', 'webmeet-blackboard-line-svg');

@@ -15,6 +15,20 @@ function responseValue(response) {
     return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
+function discardDerivedFreeLineGeometry(result) {
+    const events = Array.isArray(result?.events) ? result.events : [];
+    for (const event of events) {
+        const widget = event?.action === 'create' ? event.payload?.widget : null;
+        const properties = widget?.type === 'line' ? widget.properties : null;
+        if (!properties?.line || properties.connection) continue;
+        // Free-line endpoints are absolute at the interpreter boundary. Geometry is
+        // a server-derived projection, so an LLM-provided zero-height/zero-width
+        // bounding box must never reach canonical validation.
+        delete properties.geometry;
+    }
+    return result;
+}
+
 async function requestCanonicalResult(llmAgent, prompt) {
     const response = llmAgent.executeStructuredPrompt
         ? await llmAgent.executeStructuredPrompt(prompt, {
@@ -28,7 +42,9 @@ async function requestCanonicalResult(llmAgent, prompt) {
             model: 'plan',
             params: { response_format: getBlackboardChatResponseFormat() },
         });
-    return normalizeBlackboardEventResult(normalizeBlackboardStructuredResult(responseValue(response)));
+    return normalizeBlackboardEventResult(discardDerivedFreeLineGeometry(
+        normalizeBlackboardStructuredResult(responseValue(response))
+    ));
 }
 
 async function requestCanonicalResultWithRepairs(llmAgent, prompt, maxAttempts = 3) {
@@ -54,6 +70,7 @@ export async function action({ promptText, llmAgent, context }) {
     if (!llmAgent?.executePrompt && !llmAgent?.executeStructuredPrompt) throw new Error('Blackboard event interpretation requires an LLM agent.');
     const prompt = [
         'Convert the participant instruction into {events:[...]} containing one or more canonical WebMeet blackboard events.',
+        'The structured transport has exactly one non-null terminal branch: success is {events:[...],error:null}; failure is {events:null,error:{code:string,message:string}}. Never return both branches null or both branches populated.',
         'Understand the instruction semantically in any language; never match a hardcoded phrase list.',
         'If the instruction cannot be resolved deterministically, return exactly {error:{code:string,message:string}} and no events. Never ask a clarification question. Explain the exact cause naturally in the same language as the instruction. Use one of: ambiguous_target, missing_target, target_type_mismatch, ambiguous_operation, confirmation_required, unsupported_request.',
         `Allowed actions: ${BLACKBOARD_PUBLIC_ACTIONS.join(', ')}.`,
@@ -72,6 +89,7 @@ export async function action({ promptText, llmAgent, context }) {
         'For relative movement use exactly patch.properties.geometryDelta:{x,y}; never use dx/dy. Down is positive y, up is negative y, right is positive x, and left is negative x. A direction without distance uses 40 px. "larger" without a value means 20 percent.',
         'Rotation uses patch.properties.rotation in degrees. "Rotate by N degrees" is relative: add N to the target widget rotation from Context. "Rotate to N degrees" is absolute. Preserve the target center and do not rewrite free-line endpoints merely to rotate its rendered widget.',
         'A free line MUST use payload.widget.properties.line:{x1,y1,x2,y2,markerStart?,markerEnd?}. These create coordinates are absolute blackboard coordinates. Never put x1, y1, x2, or y2 in properties.geometry.',
+        'For a free-line create, omit properties.geometry entirely. The server derives its geometry from properties.line, including the default 1 px render thickness for perfectly horizontal or vertical lines.',
         'For a free line defined by center, length, and angle, calculate both endpoints deterministically with cosine and sine.',
         'When creating or adding a free line while board.focusedWidgetId identifies a free line, and the participant gives no different origin or center, continue from that focused line: use its absolute line.x2/y2 as the new x1/y1 and extend x2/y2 by cos(angle)*length and sin(angle)*length. An explicit origin, center, target, or instruction not to connect takes priority.',
         'For SCRIPTA actions, the event action determines intent kind and operation. Put only the listed fields directly in payload using the exact schema for that action. payload.mutation and every other wrapper object are invalid and must never be emitted. Never put an operation name in payload.type; type is permitted only by the two vote action schemas:',

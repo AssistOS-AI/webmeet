@@ -1,4 +1,3 @@
-import { buildWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { ROBO_TEAM_PARTICIPANT_ID } from '../roboTeam/service.mjs';
 import { assertRoboCommand, normalizeRoboIntent } from './commands.mjs';
 import {
@@ -44,9 +43,6 @@ function presentation(roomId) {
             type: 'blackboard.visibility_changed', meetingId: roomId, participantId: ROBO_TEAM_PARTICIPANT_ID,
             presenterName: 'RoboTeam', visible: true, boardId: 'agent:agent_robo_team',
         },
-        visibilityEvent: buildWebMeetEvent(roomId, 'blackboard.visibility_changed', {
-            meetingId: roomId, participantId: ROBO_TEAM_PARTICIPANT_ID, visible: true, boardId: 'agent:agent_robo_team',
-        }),
     };
 }
 

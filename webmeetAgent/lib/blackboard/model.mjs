@@ -83,7 +83,7 @@ export function normalizeFreeLineProperties(properties = {}) {
     if (!absoluteCoordinates) return normalized;
 
     const [x1, y1, x2, y2] = absoluteCoordinates;
-    const padding = 2;
+    const padding = 0.5;
     const x = Math.min(x1, x2) - padding;
     const y = Math.min(y1, y2) - padding;
     const lineSource = canonicalLine || geometry || {};
@@ -91,8 +91,8 @@ export function normalizeFreeLineProperties(properties = {}) {
     normalized.geometry = {
         x,
         y,
-        width: Math.max(4, Math.abs(x2 - x1) + padding * 2),
-        height: Math.max(4, Math.abs(y2 - y1) + padding * 2),
+        width: Math.max(1, Math.abs(x2 - x1) + padding * 2),
+        height: Math.max(1, Math.abs(y2 - y1) + padding * 2),
         rotation: 0,
     };
     normalized.line = {

@@ -109,11 +109,11 @@ export const blackboardRenderingMethods = {
         const from = anchorPoint(connection.from);
         const to = anchorPoint(connection.to);
         if (!from || !to) return widget;
-        const padding = 2;
+        const padding = 0.5;
         const x = Math.min(from.x, to.x) - padding;
         const y = Math.min(from.y, to.y) - padding;
-        const width = Math.max(4, Math.abs(to.x - from.x) + padding * 2);
-        const height = Math.max(4, Math.abs(to.y - from.y) + padding * 2);
+        const width = Math.max(1, Math.abs(to.x - from.x) + padding * 2);
+        const height = Math.max(1, Math.abs(to.y - from.y) + padding * 2);
         return {
             ...widget,
             properties: {

@@ -115,9 +115,6 @@ export class BlackboardNetworkAdapter {
             // local Automerge change.
             void this.scriptaReplica.schedulePullAll();
         }
-        if (response?.visibilityPayload && typeof this.publishRealtimePayload === 'function') {
-            await this.publishRealtimePayload(response.visibilityPayload);
-        }
         return response;
     }
 

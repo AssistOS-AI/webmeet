@@ -671,7 +671,7 @@ export class WebMeetBlackboardWidgetEditor {
                 }
             }
             this.setThemedStyleValue(style, 'stroke', this.strokeInput?.value, typeDefaults.stroke);
-            this.setThemedStyleValue(style, 'strokeWidth', this.strokeWidthInput?.value, typeDefaults.strokeWidth ?? (type === 'line' ? 3 : 2));
+            this.setThemedStyleValue(style, 'strokeWidth', this.strokeWidthInput?.value, typeDefaults.strokeWidth ?? (type === 'line' ? 1 : 2));
             if (TEXT_COLOR_WIDGET_TYPES.has(type)) {
                 const textColor = type === 'text' ? this.textStyleColorInput?.value : this.textColorInput?.value;
                 this.setThemedStyleValue(style, 'textColor', textColor, typeDefaults.textColor);

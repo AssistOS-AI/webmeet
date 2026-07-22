@@ -196,6 +196,7 @@ test('/robo command applies the open blackboard and broadcasts its revision', as
     const update = published.find((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
     assert.equal(update.boardId, 'agent:agent_robo_team');
     assert.equal(update.blackboardRevision, 42);
+    assert.equal(published.some((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED), false);
 });
 
 test('sendChat renders returned store message before detail refresh completes', async () => {

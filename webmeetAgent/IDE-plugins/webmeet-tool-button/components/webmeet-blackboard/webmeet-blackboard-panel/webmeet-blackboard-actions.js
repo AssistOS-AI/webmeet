@@ -361,7 +361,6 @@ export const blackboardActionMethods = {
                 markerStart: variant === 'arrow-both' ? 'arrow' : '',
                 markerEnd: variant === 'arrow-end' || variant === 'arrow-both' ? 'arrow' : ''
             };
-            widget.properties.label = '';
         } else if (normalizedType === 'text') {
             widget.properties.style = {
                 fill: 'transparent',
@@ -421,8 +420,8 @@ export const blackboardActionMethods = {
         } else {
             if (normalizedType === 'shape') {
                 widget.properties.shapeKind = variant || 'rectangle';
+                widget.properties.label = '';
             }
-            widget.properties.label = '';
         }
         this.applyWidgetPlacement(widget, position);
         return widget;

@@ -237,14 +237,18 @@ export const blackboardMethods = {
         }
         const participantId = getParticipantId(this);
         const meetingId = getMeetingId(this);
-        const isLocalPresenter = this.state.blackboard?.visible
-            && this.state.blackboard?.presenterId === participantId;
-        const visible = !isLocalPresenter;
-        const adapter = await this.ensureBlackboardAdapter();
-        const response = await adapter.sendEvent(visible ? 'show' : 'hide', {}, {
-            targetType: 'blackboard'
+        if (this.state.blackboard?.visible) {
+            this.collapseBlackboardFocus();
+            this.participantLayoutController?.renderParticipantLayout?.();
+            return;
+        }
+        await this.applyBlackboardVisibility({
+            meetingId,
+            participantId,
+            visible: true,
+            presenterId: 'agent_robo_team',
+            presenterName: 'RoboTeam'
         });
-        await this.applyBlackboardVisibility(response.visibilityPayload || { meetingId, participantId, visible });
     },
 
     async applyBlackboardVisibility(payload = {}) {

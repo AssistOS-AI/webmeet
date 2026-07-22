@@ -182,13 +182,21 @@ function eventSchema() {
 }
 
 export function getBlackboardStructuredResultSchema() {
-    return strictObject({
-        events: nullable({ type: 'array', minItems: 1, items: eventSchema() }),
-        error: nullable(strictObject({
-            code: { type: 'string', enum: BLACKBOARD_SEMANTIC_ERROR_CODES },
-            message: { type: 'string' },
-        })),
+    const events = { type: 'array', minItems: 1, items: eventSchema() };
+    const error = strictObject({
+        code: { type: 'string', enum: BLACKBOARD_SEMANTIC_ERROR_CODES },
+        message: { type: 'string' },
     });
+    return {
+        ...strictObject({
+            events: nullable(events),
+            error: nullable(error),
+        }),
+        anyOf: [
+            { properties: { events, error: { type: 'null' } } },
+            { properties: { events: { type: 'null' }, error } },
+        ],
+    };
 }
 
 export function getBlackboardChatResponseFormat() {
@@ -212,6 +220,11 @@ function removeNullFields(value) {
 
 export function normalizeBlackboardStructuredResult(value) {
     const normalized = removeNullFields(value);
+    const hasEvents = Array.isArray(normalized?.events) && normalized.events.length > 0;
+    const hasError = Boolean(normalized?.error) && typeof normalized.error === 'object' && !Array.isArray(normalized.error);
+    if (hasEvents === hasError) {
+        throw new Error('Interpreter result must contain exactly one non-empty terminal branch: events or error.');
+    }
     for (const event of normalized?.events || []) {
         const answers = event?.payload?.data?.answers;
         if (Array.isArray(answers)) {

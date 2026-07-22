@@ -365,11 +365,10 @@ export class ChatComponent {
                 }
             }
             if (result?.ok === false) throw new Error(result?.error?.message || 'Blackboard event failed.');
-            if (result?.visibilityPayload && this.getRoom()?.localParticipant) {
-                await this.publishRealtimePayload(result.visibilityPayload).catch(() => {});
+            if (result?.visibilityPayload || result?.blackboard) {
+                await this.refreshBlackboard(result).catch(() => {});
             }
             if (result?.blackboard) {
-                await this.refreshBlackboard(result).catch(() => {});
                 if (this.getRoom()?.localParticipant) {
                     await this.publishRealtimePayload({
                         type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
