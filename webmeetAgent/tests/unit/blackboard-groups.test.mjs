@@ -3,10 +3,37 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
+import {
+    GROUP_SELECTION_PADDING,
+    blackboardGroupMethods,
+    padGroupSelectionBounds,
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-groups.js';
+
 const panelRoot = path.resolve(
     import.meta.dirname,
     '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel',
 );
+
+test('Robo ordinals treat each rigid group as one target', () => {
+    const {widgetOrdinals, groupOrdinals} = blackboardGroupMethods.getRoboTargetOrdinals([
+        {id: 'a', groupId: 'group-1'},
+        {id: 'b', groupId: 'group-1'},
+        {id: 'c'},
+        {id: 'd', groupId: 'group-2'},
+        {id: 'e', groupId: 'group-2'},
+    ]);
+
+    assert.deepEqual([...groupOrdinals.entries()], [['group-1', 1], ['group-2', 3]]);
+    assert.deepEqual([...widgetOrdinals.entries()], [['c', 2]]);
+});
+
+test('group selection border keeps a stable visual gap around group members', () => {
+    assert.equal(GROUP_SELECTION_PADDING, 8);
+    assert.deepEqual(
+        padGroupSelectionBounds({x: 20, y: 30, width: 200, height: 100}),
+        {x: 12, y: 22, width: 216, height: 116},
+    );
+});
 
 test('blackboard group UI exposes rigid block selection and all contextual transforms', async () => {
     const [groupSource, panelSource, renderingSource, interactionSource, css] = await Promise.all([
@@ -28,7 +55,13 @@ test('blackboard group UI exposes rigid block selection and all contextual trans
     assert.match(interactionSource, /webmeet-blackboard-group-hit-area/);
     assert.match(interactionSource, /beginGroupDrag\(event, groupId, representative\)/);
     assert.match(renderingSource, /!widget\.groupId.*renderResizeHandles/);
-    assert.match(renderingSource, /renderGroupHitAreas\(\)/);
+    assert.match(renderingSource, /renderGroupHitAreas\(groupOrdinals\)/);
+    assert.match(renderingSource, /getRoboTargetOrdinals\(widgets\)/);
+    assert.match(groupSource, /getRoboTargetOrdinals\(widgets/);
+    assert.match(groupSource, /badge\.textContent = `G\$\{ordinal\}`/);
+    assert.match(groupSource, /webmeet-blackboard-group-ordinal/);
+    assert.match(groupSource, /applyGroupSelectionBounds\(overlay, bounds\)/);
+    assert.match(groupSource, /applyGroupSelectionBounds\(this\.groupOverlay, bounds\)/);
     assert.match(renderingSource, /if \(widget\.groupId\) return/);
 
     for (const action of ['Move group', 'Rotate group', 'Export group', 'Delete group', 'Ungroup widgets']) {
@@ -42,6 +75,7 @@ test('blackboard group UI exposes rigid block selection and all contextual trans
     assert.match(groupSource, /targetType: 'group'.*group-resize/s);
     assert.match(groupSource, /targetType: 'group'.*group-rotate/s);
     assert.match(css, /\.webmeet-blackboard-group-overlay/);
+    assert.match(css, /\.webmeet-blackboard-group-ordinal/);
     assert.match(css, /\.webmeet-blackboard-group-hit-area[\s\S]*z-index:\s*1/);
     assert.doesNotMatch(css, /\.webmeet-blackboard-widget\.is-group-selected-member[\s\S]*box-shadow/);
     assert.match(css, /\.webmeet-blackboard-selection-marquee/);

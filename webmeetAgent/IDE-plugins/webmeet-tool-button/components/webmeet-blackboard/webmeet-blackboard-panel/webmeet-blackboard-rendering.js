@@ -1,5 +1,4 @@
 import { TEXT_DEFAULT_STYLE } from './webmeet-blackboard-text-style.js';
-
 export const blackboardRenderingMethods = {
     renderWidgets() {
         if (!this.board) return;
@@ -13,16 +12,17 @@ export const blackboardRenderingMethods = {
         const fragment = document.createDocumentFragment();
         this.widgetNodes.clear();
         const widgets = this.blackboard?.widgets || [];
+        const {widgetOrdinals, groupOrdinals} = this.getRoboTargetOrdinals(widgets);
         if (this.fullscreenWidgetId && !widgets.some((widget) => String(widget.id || '') === String(this.fullscreenWidgetId))) {
             this.fullscreenWidgetId = '';
         }
-        for (const [index, widget] of widgets.entries()) {
-            const node = this.renderWidget(widget, index + 1);
+        for (const widget of widgets) {
+            const node = this.renderWidget(widget, Number(widgetOrdinals.get(String(widget.id || '')) || 0));
             fragment.append(node);
             this.widgetNodes.set(widget.id, node);
         }
         this.board.replaceChildren(fragment);
-        this.renderGroupHitAreas();
+        this.renderGroupHitAreas(groupOrdinals);
         this.renderSelectionOverlay();
         this.updateToolbarState();
     },

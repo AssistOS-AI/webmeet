@@ -21,6 +21,11 @@
                     role="tab" aria-controls="webmeetAudioVideoSettingsTabPanel" aria-selected="true">
                 Audio &amp; video
             </button>
+            <button type="button" id="webmeetSettingsTabVoice" class="webmeet-settings-tab"
+                    data-local-action="setSettingsTab" data-settings-tab="voice"
+                    role="tab" aria-controls="webmeetVoiceCommandSettingsTabPanel" aria-selected="false">
+                Voice commands
+            </button>
             <button type="button" id="webmeetSettingsTabAvatar" class="webmeet-settings-tab"
                     data-local-action="setSettingsTab" data-settings-tab="avatar"
                     role="tab" aria-controls="webmeetAvatarSettingsTabPanel" aria-selected="false">
@@ -428,6 +433,30 @@
                  aria-live="polite"></div>
         </section>
 
+        <section id="webmeetVoiceCommandSettingsTabPanel" class="webmeet-settings-section"
+                 aria-labelledby="webmeetSettingsTabVoice webmeetVoiceCommandSettingsSectionTitle" role="tabpanel"
+                 data-settings-tab-panel="voice" hidden>
+            <div class="webmeet-settings-grid">
+                <section class="webmeet-media-settings-group webmeet-media-settings-group-wide"
+                         aria-labelledby="webmeetVoiceCommandSettingsSectionTitle">
+                    <div class="webmeet-media-settings-group-header">
+                        <span id="webmeetVoiceCommandSettingsSectionTitle">Speech to text</span>
+                    </div>
+                    <div class="webmeet-media-settings-row">
+                        <div class="webmeet-setting-label">
+                            <label for="webmeetSpeechRecognitionLanguage">Recognition language</label>
+                        </div>
+                        <custom-select id="webmeetSpeechRecognitionLanguage"
+                                       data-presenter="custom-select"
+                                       data-name="speechRecognitionLanguage"></custom-select>
+                    </div>
+                    <p class="webmeet-media-settings-note">
+                        Automatic uses your browser language. This preference applies only to Robo push-to-talk commands and takes effect on the next recording.
+                    </p>
+                </section>
+            </div>
+        </section>
+
         <section id="webmeetAvatarSettingsTabPanel" class="webmeet-settings-section"
                  aria-labelledby="webmeetSettingsTabAvatar webmeetAvatarSettingsSectionTitle" role="tabpanel"
                  data-settings-tab-panel="avatar" hidden>
@@ -442,7 +471,7 @@
     </div>
     <div class="modal-footer modal-actions">
         <div id="webmeetMediaSettingsActions" class="webmeet-media-settings-actions">
-            <button type="button" class="gray-button" data-local-action="refreshMediaDevices">
+            <button type="button" class="gray-button" id="webmeetRefreshMediaDevicesButton" data-local-action="refreshMediaDevices">
                 Refresh devices
             </button>
             <button type="button" class="general-button webmeet-apply-media-settings-button"

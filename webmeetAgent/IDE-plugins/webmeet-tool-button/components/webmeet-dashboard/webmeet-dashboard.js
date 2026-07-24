@@ -131,6 +131,7 @@ export class WebmeetDashboard {
                 humFilter: DEFAULT_HUM_FILTER,
                 outputVolume: DEFAULT_OUTPUT_VOLUME,
                 roomNotificationSounds: true,
+                speechRecognitionLanguage: 'auto',
                 cameraQuality: 'h720',
                 screenShareQuality: 'h1080fps30',
                 backgroundMode: 'none',

@@ -123,10 +123,17 @@ export function calculateContentBounds(widgets = []) {
 }
 
 export function buildSemanticBoardContext(board = {}) {
-    const widgets = (Array.isArray(board.widgets) ? board.widgets : []).map((widget, index) => {
+    const boardWidgets = Array.isArray(board.widgets) ? board.widgets : [];
+    const groupOrdinals = new Map();
+    let nextOrdinal = 0;
+    const widgets = boardWidgets.map((widget) => {
+        const groupId = String(widget.groupId || '');
+        if (groupId && !groupOrdinals.has(groupId)) groupOrdinals.set(groupId, ++nextOrdinal);
+        const ordinal = groupId ? groupOrdinals.get(groupId) : ++nextOrdinal;
         const scripta = getScriptaSemanticState(widget);
         return {
-            ordinal: index + 1,
+            ordinal,
+            targetType: groupId ? 'group' : 'widget',
             id: String(widget.id || ''),
             type: String(widget.type || ''),
             label: String(widget.properties?.label || ''),
@@ -135,16 +142,43 @@ export function buildSemanticBoardContext(board = {}) {
             rotation: Number(widget.properties?.rotation ?? widget.properties?.geometry?.rotation ?? 0),
             line: cloneJson(getAbsoluteFreeLine(widget)),
             style: cloneJson(widget.properties?.style || null),
-            groupId: String(widget.groupId || ''),
+            groupId,
             connection: cloneJson(widget.properties?.connection || null),
             capabilities: getWidgetCapabilities(widget),
             ...(scripta ? { scripta: cloneJson(scripta) } : {}),
         };
     });
+    const groups = [...groupOrdinals.entries()].map(([groupId, ordinal]) => {
+        const members = widgets.filter((widget) => widget.groupId === groupId);
+        return {
+            ordinal,
+            groupId,
+            geometry: calculateContentBounds(boardWidgets.filter((widget) => String(widget.groupId || '') === groupId)),
+            memberWidgetIds: members.map((widget) => widget.id),
+            members: members.map((widget) => ({
+                id: widget.id,
+                type: widget.type,
+                label: widget.label,
+            })),
+            capabilities: {
+                movable: true,
+                resizable: true,
+                rotatable: true,
+                deletable: true,
+                ungroupable: true,
+            },
+        };
+    });
+    const focusedWidgetId = String(board.interactionContext?.focusedWidgetId || '');
+    const focusedGroupId = String(
+        widgets.find((widget) => widget.id === focusedWidgetId)?.groupId || ''
+    );
     return {
         contentBounds: calculateContentBounds(board.widgets),
-        focusedWidgetId: String(board.interactionContext?.focusedWidgetId || ''),
+        focusedWidgetId: focusedGroupId ? '' : focusedWidgetId,
+        focusedGroupId,
         lastAffectedWidgetIds: cloneJson(board.interactionContext?.lastAffectedWidgetIds || []),
+        groups,
         widgets,
     };
 }

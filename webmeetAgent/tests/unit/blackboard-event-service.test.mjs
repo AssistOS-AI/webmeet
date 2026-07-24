@@ -442,6 +442,61 @@ test('blackboard skill gives displayed ordinals priority in compact speech comma
     assert.deepEqual(result.events[0].payload.patch.properties.geometryDelta, { x: 0, y: 100 });
 });
 
+test('a rigid group receives one ordinal target and focused members resolve to the whole group', async () => {
+    const board = new Blackboard({
+        interactionContext: { focusedWidgetId: 'group-line', lastAffectedWidgetIds: ['group-shape', 'group-line'] },
+        widgets: [
+            {
+                id: 'group-shape', type: 'shape', groupId: 'group-1',
+                properties: { label: 'Plan', geometry: { x: 20, y: 30, width: 100, height: 60 } },
+            },
+            {
+                id: 'group-line', type: 'line', groupId: 'group-1',
+                properties: { geometry: { x: 140, y: 40, width: 100, height: 2 }, line: { x1: 0, y1: 1, x2: 100, y2: 1 } },
+            },
+            {
+                id: 'outside', type: 'shape',
+                properties: { label: 'Outside', geometry: { x: 300, y: 30, width: 80, height: 60 } },
+            },
+        ],
+    });
+    const semantic = buildSemanticBoardContext(board.serializePrivileged());
+
+    assert.equal(semantic.groups.length, 1);
+    assert.equal(semantic.groups[0].ordinal, 1);
+    assert.equal(semantic.groups[0].groupId, 'group-1');
+    assert.deepEqual(semantic.groups[0].memberWidgetIds, ['group-shape', 'group-line']);
+    assert.equal(semantic.widgets[0].ordinal, 1);
+    assert.equal(semantic.widgets[1].ordinal, 1);
+    assert.equal(semantic.widgets[0].targetType, 'group');
+    assert.equal(semantic.widgets[2].ordinal, 2);
+    assert.equal(semantic.widgets[2].targetType, 'widget');
+    assert.equal(semantic.focusedWidgetId, '');
+    assert.equal(semantic.focusedGroupId, 'group-1');
+
+    const prompts = [];
+    const groupUpdate = { events: [{
+        action: 'update',
+        target: { type: 'group', groupId: 'group-1' },
+        payload: { patch: { transform: { translation: { x: 0, y: 100 } } } },
+    }] };
+    const result = await interpretBlackboardSkill({
+        promptText: 'mută grupul 1 cu 100px mai jos',
+        context: { board: semantic },
+        llmAgent: {
+            executePrompt: async (prompt) => {
+                prompts.push(prompt);
+                return groupUpdate;
+            },
+        },
+    });
+
+    assert.match(prompts[0], /browser displays a group ordinal as G<number>/);
+    assert.match(prompts[0], /focusedGroupId before board\.focusedWidgetId/);
+    assert.deepEqual(result.events[0].target, { type: 'group', groupId: 'group-1' });
+    assert.deepEqual(result.events[0].payload.patch.transform.translation, { x: 0, y: 100 });
+});
+
 test('semantic context exposes canonical widget rotation for relative rotation commands', () => {
     const semantic = buildSemanticBoardContext({
         widgets: [{ id: 'line-1', type: 'line', properties: {

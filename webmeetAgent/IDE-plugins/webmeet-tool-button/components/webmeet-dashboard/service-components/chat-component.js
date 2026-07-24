@@ -89,6 +89,7 @@ export class ChatComponent {
             input,
             button,
             status: this.elements?.chatSpeechStatus || null,
+            getLanguage: () => this.getState()?.mediaSettings?.speechRecognitionLanguage,
             onSubmit: () => this.sendChat(),
             onError: (message) => this.setError(message)
         });

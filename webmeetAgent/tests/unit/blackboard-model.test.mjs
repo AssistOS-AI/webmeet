@@ -1132,8 +1132,9 @@ test('Robo widget ordinals are transient overlays controlled by command status',
 
     assert.match(panelSource, /this\.roboOrdinalMode/);
     assert.match(panelSource, /webmeet-blackboard-widget-ordinal/);
-    assert.match(panelSource, /renderWidget\(widget, index \+ 1\)/);
-    assert.match(semanticSource, /ordinal: index \+ 1/);
+    assert.match(panelSource, /getRoboTargetOrdinals\(widgets\)/);
+    assert.match(semanticSource, /targetType: groupId \? 'group' : 'widget'/);
+    assert.match(semanticSource, /focusedGroupId/);
     assert.match(dashboardHtml, /webmeetBlackboardCommandStatus/);
     const statusRule = dashboardCss.match(/\.webmeet-blackboard-command-status\s*\{[\s\S]*?\}/)?.[0] || '';
     assert.match(statusRule, /color:\s*var\(--text-muted\)/);

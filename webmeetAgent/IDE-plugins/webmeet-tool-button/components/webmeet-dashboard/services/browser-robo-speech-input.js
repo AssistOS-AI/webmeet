@@ -1,4 +1,5 @@
-const DEFAULT_LANGUAGE = 'en-US';
+import { resolveSpeechRecognitionLanguage } from './speechRecognitionLanguages.js';
+
 const ROBO_PREFIX = '/robo ';
 const FINALIZATION_TIMEOUT_MS = 1500;
 
@@ -16,7 +17,7 @@ function getRecognitionErrorMessage(code) {
         case 'network':
             return 'Voice recognition could not reach the browser speech service.';
         case 'language-not-supported':
-            return 'Voice recognition does not support the current browser language.';
+            return 'Voice recognition does not support the selected language.';
         default:
             return 'Voice recognition failed. Hold the microphone and try again.';
     }
@@ -37,6 +38,7 @@ export class BrowserRoboSpeechInput {
         this.status = options.status || null;
         this.onSubmit = typeof options.onSubmit === 'function' ? options.onSubmit : async () => {};
         this.onError = typeof options.onError === 'function' ? options.onError : () => {};
+        this.getLanguage = typeof options.getLanguage === 'function' ? options.getLanguage : () => 'auto';
         this.windowRef = options.windowRef || globalThis.window || null;
         this.navigatorRef = options.navigatorRef || globalThis.navigator || null;
         this.RecognitionClass = options.RecognitionClass
@@ -299,7 +301,10 @@ export class BrowserRoboSpeechInput {
         try {
             const recognition = new this.RecognitionClass();
             this.recognition = recognition;
-            recognition.lang = String(this.navigatorRef?.language || DEFAULT_LANGUAGE).trim() || DEFAULT_LANGUAGE;
+            recognition.lang = resolveSpeechRecognitionLanguage(
+                this.getLanguage(),
+                this.navigatorRef?.language
+            );
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.onresult = (event) => this.handleRecognitionResult(event);

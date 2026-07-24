@@ -613,6 +613,12 @@ webmeet-blackboard-panel {
     pointer-events: none;
 }
 
+.webmeet-blackboard-group-ordinal {
+    z-index: 21;
+    border-style: double;
+    background: color-mix(in srgb, var(--bb-selection) 20%, var(--bb-widget-bg));
+}
+
 .webmeet-scripta-document-paragraph {
     display: flex;
     align-items: center;

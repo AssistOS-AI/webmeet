@@ -86,3 +86,48 @@ test('media setting normalization treats saved default device ids as browser def
     assert.equal(settings.videoInputDeviceId, 'camera-1');
     assert.equal(settings.audioOutputDeviceId, '');
 });
+
+test('media setting normalization persists only supported speech recognition languages', () => {
+    const harness = createHarness();
+
+    assert.equal(
+        harness.normalizeMediaSettings({ speechRecognitionLanguage: 'ro-RO' }).speechRecognitionLanguage,
+        'ro-RO'
+    );
+    assert.equal(
+        harness.normalizeMediaSettings({ speechRecognitionLanguage: 'invalid' }).speechRecognitionLanguage,
+        'auto'
+    );
+    assert.equal(
+        harness.normalizeMediaSettings({}).speechRecognitionLanguage,
+        'auto'
+    );
+});
+
+test('speech recognition language round-trips through the existing media settings storage', () => {
+    const harness = createHarness();
+    const values = new Map();
+    const previousWindow = globalThis.window;
+    globalThis.window = {
+        localStorage: {
+            getItem: (key) => values.get(key) || null,
+            setItem: (key, value) => values.set(key, value)
+        }
+    };
+    try {
+        harness.state = {
+            mediaSettings: harness.normalizeMediaSettings({ speechRecognitionLanguage: 'ro-RO' })
+        };
+        harness.persistMediaSettings();
+
+        assert.equal(harness.loadMediaSettings().speechRecognitionLanguage, 'ro-RO');
+        values.set('webmeet.mediaSettings', JSON.stringify({ speechRecognitionLanguage: 'unsupported' }));
+        assert.equal(harness.loadMediaSettings().speechRecognitionLanguage, 'auto');
+    } finally {
+        if (previousWindow === undefined) {
+            delete globalThis.window;
+        } else {
+            globalThis.window = previousWindow;
+        }
+    }
+});

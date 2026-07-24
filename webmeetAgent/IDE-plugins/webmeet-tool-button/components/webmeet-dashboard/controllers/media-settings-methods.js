@@ -8,6 +8,11 @@ import {
     normalizeVoiceProcessingMode as normalizeSharedVoiceProcessingMode
 } from '../services/audio-processing/settings.js';
 import { createMicrophoneTestSession } from '../services/audio-processing/microphone-test-session.js';
+import {
+    AUTO_SPEECH_RECOGNITION_LANGUAGE,
+    SPEECH_RECOGNITION_LANGUAGES,
+    normalizeSpeechRecognitionLanguage
+} from '../services/speechRecognitionLanguages.js';
 
 function escapeHtml(value) {
     return String(value || '')
@@ -77,7 +82,9 @@ export const mediaSettingsMethods = {
         this.settingsTabButtons = Array.from(root?.querySelectorAll?.('[data-settings-tab]') || []);
         this.settingsTabPanels = Array.from(root?.querySelectorAll?.('[data-settings-tab-panel]') || []);
         this.mediaSettingsActions = root?.querySelector?.('#webmeetMediaSettingsActions') || null;
+        this.refreshMediaDevicesButton = root?.querySelector?.('#webmeetRefreshMediaDevicesButton') || null;
         this.avatarSettingsActions = root?.querySelector?.('#webmeetAvatarSettingsActions') || null;
+        this.speechRecognitionLanguageSelect = root?.querySelector?.('#webmeetSpeechRecognitionLanguage') || null;
         this.audioInputSelect = root?.querySelector?.('#webmeetAudioInputSelect') || null;
         this.videoInputSelect = root?.querySelector?.('#webmeetVideoInputSelect') || null;
         this.cameraQualitySelect = root?.querySelector?.('#webmeetCameraQualitySelect') || null;
@@ -398,6 +405,8 @@ export const mediaSettingsMethods = {
         this.audioOutputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.cameraQualitySelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.screenShareQualitySelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.speechRecognitionLanguageSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.speechRecognitionLanguageSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.echoCancellationInput?.addEventListener?.('change', handleManualVoiceProcessingControlChange);
         this.echoCancellationInput?.addEventListener?.('input', handleManualVoiceProcessingControlChange);
         this.noiseSuppressionInput?.addEventListener?.('change', handleManualVoiceProcessingControlChange);
@@ -449,6 +458,7 @@ export const mediaSettingsMethods = {
             humFilter: DEFAULT_HUM_FILTER,
             outputVolume: DEFAULT_OUTPUT_VOLUME,
             roomNotificationSounds: true,
+            speechRecognitionLanguage: AUTO_SPEECH_RECOGNITION_LANGUAGE,
             cameraQuality: 'h720',
             screenShareQuality: 'h1080fps30',
             backgroundMode: 'none',
@@ -471,6 +481,7 @@ export const mediaSettingsMethods = {
                 humFilter: this.normalizeHumFilter(parsed?.humFilter),
                 outputVolume: this.normalizeOutputVolume(parsed?.outputVolume),
                 roomNotificationSounds: parsed?.roomNotificationSounds !== false,
+                speechRecognitionLanguage: normalizeSpeechRecognitionLanguage(parsed?.speechRecognitionLanguage),
                 cameraQuality: this.normalizeCameraQuality(parsed?.cameraQuality),
                 screenShareQuality: this.normalizeScreenShareQuality(parsed?.screenShareQuality),
                 backgroundMode: this.normalizeBackgroundMode(parsed?.backgroundMode),
@@ -497,6 +508,7 @@ export const mediaSettingsMethods = {
             humFilter: this.normalizeHumFilter(settings.humFilter),
             outputVolume: this.normalizeOutputVolume(settings.outputVolume),
             roomNotificationSounds: settings.roomNotificationSounds !== false,
+            speechRecognitionLanguage: normalizeSpeechRecognitionLanguage(settings.speechRecognitionLanguage),
             cameraQuality: this.normalizeCameraQuality(settings.cameraQuality),
             screenShareQuality: this.normalizeScreenShareQuality(settings.screenShareQuality),
             backgroundMode: this.normalizeBackgroundMode(settings.backgroundMode),
@@ -1161,13 +1173,15 @@ export const mediaSettingsMethods = {
         const source = target?.target || target;
         const tabElement = source?.closest?.('[data-settings-tab]') || source;
         const tab = String(tabElement?.dataset?.settingsTab || '').trim();
-        this.state.activeSettingsTab = tab === 'avatar' ? 'avatar' : 'media';
+        this.state.activeSettingsTab = ['media', 'voice', 'avatar'].includes(tab) ? tab : 'media';
         this.renderMediaSettingsPanel();
     },
 
     renderMediaSettingsPanel() {
         const settings = this.getCurrentMediaSettingsForPanel();
-        const activeSettingsTab = this.state.activeSettingsTab === 'avatar' ? 'avatar' : 'media';
+        const activeSettingsTab = ['media', 'voice', 'avatar'].includes(this.state.activeSettingsTab)
+            ? this.state.activeSettingsTab
+            : 'media';
         for (const button of this.settingsTabButtons || []) {
             const isActive = String(button.dataset?.settingsTab || '').trim() === activeSettingsTab;
             button.classList.toggle('is-active', isActive);
@@ -1179,7 +1193,8 @@ export const mediaSettingsMethods = {
             const isActive = String(panel.dataset?.settingsTabPanel || '').trim() === activeSettingsTab;
             panel.hidden = !isActive;
         }
-        this.mediaSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
+        this.mediaSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab === 'avatar');
+        this.refreshMediaDevicesButton?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
         this.avatarSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'avatar');
         const syncSelectOptions = (selectElement, devices, selectedId, emptyLabel) => {
             if (!selectElement) return;
@@ -1197,6 +1212,19 @@ export const mediaSettingsMethods = {
         syncSelectOptions(this.audioInputSelect, this.mediaDevices.audioInput, settings.audioInputDeviceId, 'Microphone');
         syncSelectOptions(this.videoInputSelect, this.mediaDevices.videoInput, settings.videoInputDeviceId, 'Camera');
         syncSelectOptions(this.audioOutputSelect, this.mediaDevices.audioOutput, settings.audioOutputDeviceId, 'Speaker');
+        if (this.speechRecognitionLanguageSelect) {
+            const selectedLanguage = normalizeSpeechRecognitionLanguage(settings.speechRecognitionLanguage);
+            this.speechRecognitionLanguageSelect.setAttribute(
+                'data-options',
+                encodeURIComponent(JSON.stringify(SPEECH_RECOGNITION_LANGUAGES))
+            );
+            this.speechRecognitionLanguageSelect.setAttribute('data-selected', selectedLanguage);
+            this.speechRecognitionLanguageSelect.webSkelPresenter?.setOptions?.(
+                SPEECH_RECOGNITION_LANGUAGES,
+                selectedLanguage
+            );
+            this.speechRecognitionLanguageSelect.value = selectedLanguage;
+        }
         if (this.cameraQualitySelect) this.cameraQualitySelect.value = this.normalizeCameraQuality(settings.cameraQuality);
         if (this.screenShareQualitySelect) this.screenShareQualitySelect.value = this.normalizeScreenShareQuality(settings.screenShareQuality);
         if (this.backgroundEffectSelect) this.backgroundEffectSelect.value = this.normalizeBackgroundMode(settings.backgroundMode);
@@ -1402,6 +1430,9 @@ export const mediaSettingsMethods = {
             humFilter: this.normalizeHumFilter(this.humFilterSelect?.value),
             outputVolume: this.normalizeOutputVolume(this.outputVolumeInput?.value),
             roomNotificationSounds: this.roomNotificationSoundsInput?.checked !== false,
+            speechRecognitionLanguage: normalizeSpeechRecognitionLanguage(
+                this.speechRecognitionLanguageSelect?.value || baseSettings.speechRecognitionLanguage
+            ),
             cameraQuality: this.normalizeCameraQuality(this.cameraQualitySelect?.value),
             screenShareQuality: this.normalizeScreenShareQuality(this.screenShareQualitySelect?.value),
             backgroundMode: this.normalizeBackgroundMode(this.backgroundEffectSelect?.value || baseSettings.backgroundMode),

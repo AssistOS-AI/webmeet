@@ -100,6 +100,7 @@ function createHarness(options = {}) {
         windowRef,
         navigatorRef,
         RecognitionClass: options.supported === false ? null : FakeRecognition,
+        getLanguage: options.getLanguage,
         onSubmit: async () => submissions.push(input.value),
         onError: (message) => errors.push(message)
     });
@@ -167,6 +168,33 @@ test('push-to-talk exposes /robo immediately and submits the finalized transcrip
 
     assert.deepEqual(submissions, ['/robo mută linia trei cu 30 de pixeli']);
     assert.equal(button.dataset.mode, 'send');
+    service.destroy();
+});
+
+test('an explicit recognition setting overrides the browser language', () => {
+    const { service, button } = createHarness({ getLanguage: () => 'en-GB' });
+
+    button.dispatchEvent(pointerEvent('pointerdown', 11));
+
+    assert.equal(FakeRecognition.instances[0].lang, 'en-GB');
+    service.cancelVoiceCapture();
+    service.destroy();
+});
+
+test('the next push-to-talk capture reads the latest recognition language setting', () => {
+    let language = 'ro-RO';
+    const { service, button } = createHarness({ getLanguage: () => language });
+
+    button.dispatchEvent(pointerEvent('pointerdown', 12));
+    const first = FakeRecognition.instances[0];
+    assert.equal(first.lang, 'ro-RO');
+    language = 'fr-FR';
+    assert.equal(first.lang, 'ro-RO');
+
+    service.cancelVoiceCapture();
+    button.dispatchEvent(pointerEvent('pointerdown', 13));
+    assert.equal(FakeRecognition.instances[1].lang, 'fr-FR');
+    service.cancelVoiceCapture();
     service.destroy();
 });
 

@@ -1,4 +1,23 @@
 const GROUPABLE_WIDGET_TYPES = new Set(['shape', 'line', 'text', 'image', 'card']);
+export const GROUP_SELECTION_PADDING = 8;
+
+export function padGroupSelectionBounds(bounds = {}, padding = GROUP_SELECTION_PADDING) {
+    const gap = Math.max(0, Number(padding) || 0);
+    return {
+        x: Number(bounds.x || 0) - gap,
+        y: Number(bounds.y || 0) - gap,
+        width: Math.max(1, Number(bounds.width || 0) + gap * 2),
+        height: Math.max(1, Number(bounds.height || 0) + gap * 2),
+    };
+}
+
+function applyGroupSelectionBounds(overlay, bounds) {
+    if (!overlay || !bounds) return;
+    const padded = padGroupSelectionBounds(bounds);
+    Object.assign(overlay.style, {
+        left: `${padded.x}px`, top: `${padded.y}px`, width: `${padded.width}px`, height: `${padded.height}px`,
+    });
+}
 
 function finiteGeometry(widget = {}) {
     const geometry = widget.properties?.geometry || {};
@@ -28,6 +47,21 @@ function intersects(a, b) {
 }
 
 export const blackboardGroupMethods = {
+    getRoboTargetOrdinals(widgets = this.blackboard?.widgets || []) {
+        const widgetOrdinals = new Map();
+        const groupOrdinals = new Map();
+        let nextOrdinal = 0;
+        for (const widget of widgets) {
+            const groupId = String(widget.groupId || '');
+            if (groupId) {
+                if (!groupOrdinals.has(groupId)) groupOrdinals.set(groupId, ++nextOrdinal);
+                continue;
+            }
+            widgetOrdinals.set(String(widget.id || ''), ++nextOrdinal);
+        }
+        return {widgetOrdinals, groupOrdinals};
+    },
+
     isGroupableWidget(widget) {
         return GROUPABLE_WIDGET_TYPES.has(String(widget?.type || ''));
     },
@@ -87,7 +121,7 @@ export const blackboardGroupMethods = {
         return true;
     },
 
-    renderGroupHitAreas() {
+    renderGroupHitAreas(groupOrdinals = new Map()) {
         const groups = new Map();
         for (const widget of this.blackboard?.widgets || []) {
             const groupId = String(widget.groupId || '');
@@ -108,6 +142,16 @@ export const blackboardGroupMethods = {
             hitArea.style.height = `${bounds.height}px`;
             hitArea.setAttribute('aria-hidden', 'true');
             this.board.append(hitArea);
+            const ordinal = Number(groupOrdinals.get(groupId) || 0);
+            if (this.roboOrdinalMode && ordinal > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'webmeet-blackboard-widget-ordinal webmeet-blackboard-group-ordinal';
+                badge.textContent = `G${ordinal}`;
+                badge.style.left = `${bounds.x + 15}px`;
+                badge.style.top = `${bounds.y - 5}px`;
+                badge.setAttribute('aria-hidden', 'true');
+                this.board.append(badge);
+            }
         }
     },
 
@@ -122,10 +166,7 @@ export const blackboardGroupMethods = {
         const overlay = document.createElement('div');
         overlay.className = `webmeet-blackboard-group-overlay ${grouped ? 'is-group' : 'is-multi-selection'}`;
         overlay.dataset.groupId = grouped ? this.selectedGroupId : '';
-        overlay.style.left = `${bounds.x}px`;
-        overlay.style.top = `${bounds.y}px`;
-        overlay.style.width = `${bounds.width}px`;
-        overlay.style.height = `${bounds.height}px`;
+        applyGroupSelectionBounds(overlay, bounds);
         overlay.setAttribute('aria-label', grouped ? 'Selected widget group' : 'Selected widgets');
         if (grouped) {
             this.renderGroupContextMenu(overlay, widgets);
@@ -427,9 +468,7 @@ export const blackboardGroupMethods = {
             node.style.width = `${origin.width * scaleX}px`;
             node.style.height = `${origin.height * scaleY}px`;
         }
-        Object.assign(this.groupOverlay.style, {
-            left: `${bounds.x}px`, top: `${bounds.y}px`, width: `${bounds.width}px`, height: `${bounds.height}px`,
-        });
+        applyGroupSelectionBounds(this.groupOverlay, bounds);
     },
 
     async finishGroupResize(event) {
