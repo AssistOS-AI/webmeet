@@ -3,6 +3,17 @@ export const blackboardInteractionMethods = {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !this.board.contains(target)) return;
+        if (target.closest?.('.webmeet-blackboard-group-overlay')) return;
+        const groupHitArea = target.closest?.('.webmeet-blackboard-group-hit-area');
+        if (groupHitArea) {
+            const groupId = String(groupHitArea.dataset.groupId || '');
+            const representative = this.getGroupMembers(groupId).at(-1);
+            if (!representative) return;
+            this.selectGroup(groupId, representative.id);
+            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: representative.id}).catch(() => {});
+            this.beginGroupDrag(event, groupId, representative);
+            return;
+        }
         if (this.pendingWidgetType) {
             const type = this.pendingWidgetType;
             const position = this.getBoardPointFromEvent(event);
@@ -18,6 +29,25 @@ export const blackboardInteractionMethods = {
         }
         const widgetNode = target.closest?.('.webmeet-blackboard-widget') || null;
         const nextSelection = String(widgetNode?.dataset?.widgetId || '').trim();
+        const widget = nextSelection ? this.getWidgetById(nextSelection) : null;
+        if (widget && this.isGroupableWidget(widget) && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleWidgetMultiSelection(widget);
+            return;
+        }
+        if (!widget && target === this.board && this.activeTool === 'select') {
+            this.beginMarqueeSelection(event);
+            return;
+        }
+        if (widget?.groupId) {
+            this.selectGroup(widget.groupId, widget.id);
+            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: widget.id}).catch(() => {});
+            return;
+        } else {
+            this.clearGroupSelection();
+            widgetNode?.setAttribute?.('aria-selected', 'true');
+        }
         if (this.selection === nextSelection) return;
         const previousSelection = this.selection;
         this.selection = nextSelection;
@@ -245,6 +275,11 @@ export const blackboardInteractionMethods = {
 
     beginLocalDrag(event, widget) {
         if (!widget || widget.locked) return;
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        if (widget.groupId) {
+            this.beginGroupDrag(event, widget.groupId, widget);
+            return;
+        }
         this.selection = widget.id;
         this.updateToolbarState();
         if (this.activeTool !== 'select') return;

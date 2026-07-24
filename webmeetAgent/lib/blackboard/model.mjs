@@ -10,6 +10,14 @@ export const BLACKBOARD_WIDGET_TYPES = Object.freeze([
     'embed'
 ]);
 
+export const BLACKBOARD_GROUPABLE_WIDGET_TYPES = Object.freeze([
+    'shape',
+    'line',
+    'text',
+    'image',
+    'card'
+]);
+
 export const BLACKBOARD_CHANGE_TYPES = Object.freeze([
     'create',
     'update',
@@ -540,6 +548,84 @@ function translateWidget(widget, dx, dy, options = {}) {
     widget.patch({ properties }, options);
 }
 
+const GROUP_WIDGET_MINIMUM_SIZE = Object.freeze({
+    line: { width: 1, height: 1 },
+    poll: { width: 260, height: 132 },
+    bullets: { width: 320, height: 190 },
+    'scripta-document': { width: 600, height: 400 },
+});
+
+function widgetMinimumSize(widget) {
+    return GROUP_WIDGET_MINIMUM_SIZE[widget?.type] || { width: 48, height: 32 };
+}
+
+function widgetGeometry(widget) {
+    const geometry = widget?.properties?.geometry || {};
+    return {
+        x: Number(geometry.x || 0),
+        y: Number(geometry.y || 0),
+        width: Math.max(1, Number(geometry.width || 1)),
+        height: Math.max(1, Number(geometry.height || 1)),
+    };
+}
+
+function widgetsBounds(widgets = []) {
+    const geometries = widgets.map(widgetGeometry);
+    const x = Math.min(...geometries.map((geometry) => geometry.x));
+    const y = Math.min(...geometries.map((geometry) => geometry.y));
+    const right = Math.max(...geometries.map((geometry) => geometry.x + geometry.width));
+    const bottom = Math.max(...geometries.map((geometry) => geometry.y + geometry.height));
+    return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+}
+
+function resizeWidgetInGroup(widget, sourceBounds, targetBounds, scaleX, scaleY, options = {}) {
+    const geometry = widgetGeometry(widget);
+    const properties = {
+        geometry: {
+            ...(widget.properties?.geometry || {}),
+            x: targetBounds.x + (geometry.x - sourceBounds.x) * scaleX,
+            y: targetBounds.y + (geometry.y - sourceBounds.y) * scaleY,
+            width: geometry.width * scaleX,
+            height: geometry.height * scaleY,
+        },
+    };
+    if (widget.type === 'line' && widget.properties?.line && !widget.properties?.connection) {
+        const line = widget.properties.line;
+        properties.line = {
+            ...line,
+            x1: Number(line.x1 || 0) * scaleX,
+            y1: Number(line.y1 || 0) * scaleY,
+            x2: Number(line.x2 || 0) * scaleX,
+            y2: Number(line.y2 || 0) * scaleY,
+        };
+    }
+    widget.patch({ properties }, options);
+}
+
+function rotateWidgetInGroup(widget, center, degrees, options = {}) {
+    const geometry = widgetGeometry(widget);
+    const radians = degrees * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const widgetCenterX = geometry.x + geometry.width / 2;
+    const widgetCenterY = geometry.y + geometry.height / 2;
+    const offsetX = widgetCenterX - center.x;
+    const offsetY = widgetCenterY - center.y;
+    const nextCenterX = center.x + offsetX * cosine - offsetY * sine;
+    const nextCenterY = center.y + offsetX * sine + offsetY * cosine;
+    const rotation = Number(widget.properties?.rotation ?? widget.properties?.geometry?.rotation ?? 0) + degrees;
+    widget.patch({
+        properties: {
+            geometry: {
+                ...(widget.properties?.geometry || {}),
+                x: nextCenterX - geometry.width / 2,
+                y: nextCenterY - geometry.height / 2,
+            },
+            rotation,
+        },
+    }, options);
+}
+
 function canManagePollWidget(widget, actorId = '', options = {}) {
     if (options.canManagePoll === true || options.canModerateBlackboard === true) {
         return true;
@@ -771,8 +857,12 @@ export class Blackboard {
         const widgets = input.widgets instanceof Map ? [...input.widgets.values()] : input.widgets || [];
         for (const widget of widgets) {
             const normalized = BlackboardWidget.from(widget);
+            if (!BLACKBOARD_GROUPABLE_WIDGET_TYPES.includes(normalized.type)) {
+                normalized.groupId = '';
+            }
             this.widgets.set(normalized.id, normalized);
         }
+        this.dissolveSingletonGroups();
     }
 
     addWidget(widget, options = {}) {
@@ -1027,7 +1117,7 @@ export class Blackboard {
 
     applyHistoryEntry(entry, direction) {
         const object = direction === 'undo' ? entry.beforeObject : entry.afterObject;
-        if (entry.operation === 'clear' || entry.operation === 'command') {
+        if (['clear', 'command', 'group', 'transformGroup', 'deleteGroup', 'ungroupGroup'].includes(entry.operation)) {
             const history = this.history;
             this.replaceFromSerialized(object || { roomId: this.roomId, widgets: [] });
             this.history = history;
@@ -1071,7 +1161,13 @@ export class Blackboard {
         }
         const targetRef = String(change.targetRef || change.widgetId || '').trim();
         if (!targetRef) {
-            throw new Error('Missing blackboard widget target.');
+            throw new Error('Missing blackboard widget or group target.');
+        }
+        if (String(change.targetType || '').trim() === 'group') {
+            if (changeType === 'update') return this.transformGroup(targetRef, change.patch?.transform || {}, options);
+            if (changeType === 'delete') return this.removeGroup(targetRef, options);
+            if (changeType === 'ungroup') return this.ungroupGroup(targetRef, options);
+            throw new Error(`Unsupported group change type "${changeType}".`);
         }
         if (changeType === 'delete') {
             return this.removeWidget(targetRef, { ...options, participantId: getChangeActorId(change, options) });
@@ -1101,12 +1197,119 @@ export class Blackboard {
                 throw error;
             }
             if (widget.groupId) throw new Error(`Blackboard widget "${id}" already belongs to a group.`);
+            if (!BLACKBOARD_GROUPABLE_WIDGET_TYPES.includes(widget.type)) {
+                const error = new Error(`Interactive blackboard widget type "${widget.type}" cannot be grouped.`);
+                error.code = 'widget_not_groupable';
+                throw error;
+            }
             return widget;
         });
+        const selectedIds = new Set(ids);
+        for (const widget of widgets) {
+            const connection = widget.properties?.connection;
+            if (connection && (!selectedIds.has(connection.from?.widgetId) || !selectedIds.has(connection.to?.widgetId))) {
+                throw new Error('An attached connection can be grouped only together with both endpoint widgets.');
+            }
+        }
+        const before = options.record !== false ? this.serializePrivileged() : null;
         const groupId = String(options.groupId || randomId('group')).trim();
         widgets.forEach((widget) => { widget.groupId = groupId; });
         this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('group', before, this.serializePrivileged());
+        }
         return widgets;
+    }
+
+    getGroupMembers(groupId) {
+        const normalizedGroupId = String(groupId || '').trim();
+        const members = [...this.widgets.values()].filter((widget) => widget.groupId === normalizedGroupId);
+        if (members.length < 2) {
+            const error = new Error(`Blackboard group "${normalizedGroupId}" was not found.`);
+            error.code = 'group_not_found';
+            throw error;
+        }
+        return members;
+    }
+
+    transformGroup(groupId, transform = {}, options = {}) {
+        const members = this.getGroupMembers(groupId);
+        const transformableMembers = members.filter((widget) => !widget.properties?.connection);
+        for (const widget of members) {
+            assertCanManagePollWidget(widget, String(options.participantId || '').trim(), options);
+            if (widget.properties?.closed && !options.canEditClosed) {
+                throw new Error(`Blackboard widget "${widget.id}" is closed.`);
+            }
+        }
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        const translation = transform.translation;
+        if (translation) {
+            const dx = Number(translation.x || 0);
+            const dy = Number(translation.y || 0);
+            transformableMembers.forEach((widget) => translateWidget(widget, dx, dy, options));
+        }
+        const rotationDelta = Number(transform.rotationDelta || 0);
+        if (rotationDelta) {
+            const bounds = widgetsBounds(transformableMembers);
+            const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+            transformableMembers.forEach((widget) => rotateWidgetInGroup(widget, center, rotationDelta, options));
+        }
+        if (transform.resize) {
+            const sourceBounds = widgetsBounds(transformableMembers);
+            const requested = transform.resize;
+            let scaleX = Number(requested.width) / sourceBounds.width;
+            let scaleY = Number(requested.height) / sourceBounds.height;
+            for (const widget of transformableMembers) {
+                const geometry = widgetGeometry(widget);
+                const minimum = widgetMinimumSize(widget);
+                scaleX = Math.max(scaleX, minimum.width / geometry.width);
+                scaleY = Math.max(scaleY, minimum.height / geometry.height);
+            }
+            const targetBounds = {
+                x: Number(requested.x),
+                y: Number(requested.y),
+                width: sourceBounds.width * scaleX,
+                height: sourceBounds.height * scaleY,
+            };
+            transformableMembers.forEach((widget) => resizeWidgetInGroup(widget, sourceBounds, targetBounds, scaleX, scaleY, options));
+        }
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('transformGroup', before, this.serializePrivileged());
+        }
+        return members;
+    }
+
+    removeGroup(groupId, options = {}) {
+        const members = this.getGroupMembers(groupId);
+        members.forEach((widget) => assertCanManagePollWidget(widget, String(options.participantId || '').trim(), options));
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        const memberIds = new Set(members.map((widget) => widget.id));
+        for (const candidate of this.widgets.values()) {
+            const connection = candidate.properties?.connection;
+            if (connection && (memberIds.has(connection.from?.widgetId) || memberIds.has(connection.to?.widgetId))) {
+                memberIds.add(candidate.id);
+            }
+        }
+        const removed = [...memberIds].map((id) => this.getWidget(id)).filter(Boolean);
+        memberIds.forEach((id) => this.widgets.delete(id));
+        this.dissolveSingletonGroups();
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('deleteGroup', before, this.serializePrivileged());
+        }
+        return removed;
+    }
+
+    ungroupGroup(groupId, options = {}) {
+        const members = this.getGroupMembers(groupId);
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        members.forEach((widget) => { widget.groupId = ''; });
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('ungroupGroup', before, this.serializePrivileged());
+        }
+        return members;
     }
 
     ungroupWidget(widgetId, options = {}) {
@@ -1160,10 +1363,12 @@ export class Blackboard {
     }
 
     serialize(viewerContext = {}) {
+        const themeId = String(this.metadata?.theme?.id || '').trim();
         return {
             boardId: this.boardId,
             revision: this.revision,
             interactionContext: cloneJson(this.interactionContext),
+            metadata: themeId ? { theme: { id: themeId } } : {},
             widgets: [...this.widgets.values()]
                 .map((widget) => widget.serialize(viewerContext))
                 .filter(Boolean)

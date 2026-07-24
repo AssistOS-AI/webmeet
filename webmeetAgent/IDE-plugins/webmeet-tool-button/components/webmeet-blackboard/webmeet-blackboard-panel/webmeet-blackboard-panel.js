@@ -2,6 +2,8 @@ import { blackboardActionMethods } from './webmeet-blackboard-actions.js';
 import { blackboardGeometryMethods } from './webmeet-blackboard-geometry.js';
 import { blackboardGraphicsRenderingMethods } from './webmeet-blackboard-graphics-rendering.js';
 import { blackboardInteractionMethods } from './webmeet-blackboard-interactions.js';
+import { blackboardGroupMethods } from './webmeet-blackboard-groups.js';
+import { blackboardExportMethods } from './webmeet-blackboard-export.js';
 import { blackboardRenderingMethods } from './webmeet-blackboard-rendering.js';
 import { blackboardCollaborationRenderingMethods } from './webmeet-blackboard-collaboration-rendering.js';
 import { blackboardScriptaActionMethods } from './webmeet-blackboard-scripta-actions.js';
@@ -15,6 +17,15 @@ export class WebMeetBlackboardPanel {
         this.blackboard = {widgets: []};
         this.widgetNodes = new Map();
         this.selection = '';
+        this.selectedWidgetIds = new Set();
+        this.selectedGroupId = '';
+        this.groupOverlay = null;
+        this.groupDragState = null;
+        this.groupRotateState = null;
+        this.groupResizeState = null;
+        this.groupExportMenu = null;
+        this.groupExportBusy = false;
+        this.marqueeState = null;
         this.activeTool = 'select';
         this.viewport = {x: 0, y: 0, scale: 1};
         this.dragState = null;
@@ -63,7 +74,10 @@ export class WebMeetBlackboardPanel {
             });
         };
         this.handleToolbarActionEvent = (event) => {
-            if (event.detail?.action === 'delete') void this.deleteSelectedWidget();
+            if (event.detail?.action === 'delete') {
+                if (this.selectedGroupId) void this.deleteSelectedGroup();
+                else void this.deleteSelectedWidget();
+            }
             if (event.detail?.action === 'clear') void this.clearBlackboard();
             if (event.detail?.action === 'undo') void this.undo();
             if (event.detail?.action === 'redo') void this.redo();
@@ -106,6 +120,18 @@ export class WebMeetBlackboardPanel {
         this.handlePendingWidgetDrawMove = this.handlePendingWidgetDrawMove.bind(this);
         this.finishPendingWidgetDraw = this.finishPendingWidgetDraw.bind(this);
         this.cancelPendingWidgetDraw = this.cancelPendingWidgetDraw.bind(this);
+        this.handleGroupDrag = this.handleGroupDrag.bind(this);
+        this.finishGroupDrag = this.finishGroupDrag.bind(this);
+        this.cancelGroupDrag = this.cancelGroupDrag.bind(this);
+        this.handleGroupRotate = this.handleGroupRotate.bind(this);
+        this.finishGroupRotate = this.finishGroupRotate.bind(this);
+        this.cancelGroupRotate = this.cancelGroupRotate.bind(this);
+        this.handleGroupResize = this.handleGroupResize.bind(this);
+        this.finishGroupResize = this.finishGroupResize.bind(this);
+        this.cancelGroupResize = this.cancelGroupResize.bind(this);
+        this.handleMarqueeSelection = this.handleMarqueeSelection.bind(this);
+        this.finishMarqueeSelection = this.finishMarqueeSelection.bind(this);
+        this.cancelMarqueeSelection = this.cancelMarqueeSelection.bind(this);
     }
 
     cacheElements() {
@@ -200,6 +226,9 @@ export class WebMeetBlackboardPanel {
         if (blackboard) {
             this.blackboard = blackboard;
             this.selection = String(blackboard.interactionContext?.focusedWidgetId || '').trim();
+            this.selectedWidgetIds.clear();
+            const focused = (blackboard.widgets || []).find((widget) => String(widget.id) === this.selection);
+            this.selectedGroupId = String(focused?.groupId || '');
         }
         this.renderWidgets();
     }
@@ -218,6 +247,12 @@ export class WebMeetBlackboardPanel {
     }
 
     handlePanelKeydown(event) {
+        if (event.key === 'Escape' && this.groupExportMenu) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeGroupExportMenu();
+            return;
+        }
         if (event.key === 'Escape' && this.fullscreenWidgetId) {
             event.preventDefault();
             event.stopPropagation();
@@ -230,7 +265,8 @@ export class WebMeetBlackboardPanel {
         if (this.isTextEditingTarget(event.target)) return;
         event.preventDefault();
         event.stopPropagation();
-        void this.deleteSelectedWidget();
+        if (this.selectedGroupId) void this.deleteSelectedGroup();
+        else void this.deleteSelectedWidget();
     }
 
     isDeleteKeyEvent(event) {
@@ -257,6 +293,11 @@ export class WebMeetBlackboardPanel {
             this.board.removeEventListener?.('pointerdown', this.handleBoardPointerDown, true);
         }
         this.cancelPendingWidgetDraw?.();
+        this.cancelGroupDrag?.();
+        this.cancelGroupRotate?.();
+        this.cancelGroupResize?.();
+        this.closeGroupExportMenu?.();
+        this.cancelMarqueeSelection?.();
         this.cleanup();
     }
 
@@ -277,6 +318,8 @@ Object.assign(
     blackboardCollaborationRenderingMethods,
     blackboardScriptaActionMethods,
     blackboardScriptaRenderingMethods,
+    blackboardExportMethods,
+    blackboardGroupMethods,
     blackboardInteractionMethods,
     blackboardActionMethods
 );

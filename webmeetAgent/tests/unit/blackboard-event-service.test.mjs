@@ -489,6 +489,8 @@ test('SCRIPTA semantic context exposes safe active focus and uses it when no ord
     });
     assert.equal(JSON.stringify(scriptaWidget.scripta).includes('private content'), false);
     assert.ok(scriptaWidget.capabilities.domainActions.includes('scripta-chapter-edit'));
+    assert.equal(semantic.widgets[0].capabilities.groupable, true);
+    assert.equal(scriptaWidget.capabilities.groupable, false);
 
     const prompts = [];
     const renameFocusedChapter = { events: [{
@@ -673,6 +675,174 @@ test('groups move together, resize independently, and dissolve when one member r
     assert.equal(board.getWidget('b').properties.geometry.width, 100);
     board.removeWidget('a', { record: false });
     assert.equal(board.getWidget('b').groupId, '');
+});
+
+test('canonical group targets move, resize, rotate, ungroup, and delete rigid blocks', () => {
+    const moveEvent = normalizeBlackboardEvent({
+        action: 'update',
+        target: { type: 'group', groupId: 'group-1' },
+        payload: { patch: { transform: { translation: { x: 10, y: 20 } } } },
+    });
+    assert.deepEqual(moveEvent.target, { type: 'group', groupId: 'group-1' });
+    assert.throws(() => normalizeBlackboardEvent({
+        action: 'update',
+        target: { type: 'group', groupId: 'group-1' },
+        payload: { patch: { properties: { geometryDelta: { x: 10, y: 20 } } } },
+    }), /requires a transformation|unsupported fields/);
+
+    const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
+    board.addWidget(new BlackboardWidget({ id: 'a', type: 'shape', properties: { geometry: { x: 0, y: 0, width: 100, height: 50 } } }), { record: false });
+    board.addWidget(new BlackboardWidget({ id: 'b', type: 'shape', properties: { geometry: { x: 200, y: 0, width: 100, height: 50 } } }), { record: false });
+    board.groupWidgets(['a', 'b'], { groupId: 'group-1', record: false });
+    board.transformGroup('group-1', { translation: { x: 10, y: 20 } }, { record: false });
+    assert.deepEqual(board.getWidget('a').properties.geometry, { x: 10, y: 20, width: 100, height: 50 });
+    assert.deepEqual(board.getWidget('b').properties.geometry, { x: 210, y: 20, width: 100, height: 50 });
+
+    board.transformGroup('group-1', { resize: { x: 0, y: 0, width: 600, height: 100 } }, { record: false });
+    assert.deepEqual(board.getWidget('a').properties.geometry, { x: 0, y: 0, width: 200, height: 100 });
+    assert.deepEqual(board.getWidget('b').properties.geometry, { x: 400, y: 0, width: 200, height: 100 });
+
+    board.transformGroup('group-1', { rotationDelta: 90 }, { record: false });
+    assert.ok(Math.abs(board.getWidget('a').properties.geometry.x - 200) < 1e-9);
+    assert.ok(Math.abs(board.getWidget('a').properties.geometry.y + 200) < 1e-9);
+    assert.ok(Math.abs(board.getWidget('b').properties.geometry.x - 200) < 1e-9);
+    assert.ok(Math.abs(board.getWidget('b').properties.geometry.y - 200) < 1e-9);
+    assert.equal(board.getWidget('a').properties.rotation, 90);
+    assert.equal(board.getWidget('b').properties.rotation, 90);
+
+    const members = board.ungroupGroup('group-1', { record: false });
+    assert.deepEqual(members.map((widget) => widget.groupId), ['', '']);
+});
+
+test('group deletion removes every member and dependent attached connection atomically', () => {
+    const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
+    board.addWidget(new BlackboardWidget({ id: 'a', type: 'shape' }), { record: false });
+    board.addWidget(new BlackboardWidget({ id: 'b', type: 'shape' }), { record: false });
+    board.addWidget(new BlackboardWidget({ id: 'outside', type: 'shape' }), { record: false });
+    board.addWidget(new BlackboardWidget({
+        id: 'edge',
+        type: 'line',
+        properties: { connection: { from: { widgetId: 'b', anchor: 'right' }, to: { widgetId: 'outside', anchor: 'left' } } },
+    }), { record: false });
+    board.groupWidgets(['a', 'b'], { groupId: 'group-1', record: false });
+    const removed = board.removeGroup('group-1', { record: false });
+    assert.deepEqual(new Set(removed.map((widget) => widget.id)), new Set(['a', 'b', 'edge']));
+    assert.equal(board.getWidget('a'), null);
+    assert.equal(board.getWidget('b'), null);
+    assert.equal(board.getWidget('edge'), null);
+    assert.ok(board.getWidget('outside'));
+});
+
+test('interactive widgets cannot be grouped', () => {
+    for (const type of ['poll', 'bullets', 'embed', 'scripta-document']) {
+        const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
+        board.addWidget(new BlackboardWidget({ id: 'shape', type: 'shape' }), { record: false });
+        board.addWidget(new BlackboardWidget({ id: 'interactive', type }), { record: false });
+
+        assert.throws(
+            () => board.applyFinalChange({ changeType: 'group', widgetIds: ['shape', 'interactive'] }),
+            (error) => error?.code === 'widget_not_groupable' && /cannot be grouped/.test(error.message),
+        );
+        assert.equal(board.getWidget('shape').groupId, '');
+        assert.equal(board.getWidget('interactive').groupId, '');
+        assert.equal(board.history.undoStack.length, 0);
+    }
+
+    const loaded = new Blackboard({
+        boardId: 'agent:agent_robo_team',
+        widgets: [
+            { id: 'shape', type: 'shape', groupId: 'invalid-group' },
+            { id: 'poll', type: 'poll', groupId: 'invalid-group' },
+        ],
+    });
+    assert.equal(loaded.getWidget('shape').groupId, '');
+    assert.equal(loaded.getWidget('poll').groupId, '');
+});
+
+test('direct UI group mutations are atomic undo and redo history entries', () => {
+    const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
+    board.addWidget(new BlackboardWidget({
+        id: 'a',
+        type: 'shape',
+        properties: { geometry: { x: 0, y: 0, width: 100, height: 50 } },
+    }), { record: false });
+    board.addWidget(new BlackboardWidget({
+        id: 'b',
+        type: 'shape',
+        properties: { geometry: { x: 200, y: 0, width: 100, height: 50 } },
+    }), { record: false });
+    board.addWidget(new BlackboardWidget({ id: 'outside', type: 'shape' }), { record: false });
+    board.addWidget(new BlackboardWidget({
+        id: 'edge',
+        type: 'line',
+        properties: { connection: { from: { widgetId: 'b', anchor: 'right' }, to: { widgetId: 'outside', anchor: 'left' } } },
+    }), { record: false });
+
+    board.applyFinalChange({ changeType: 'group', widgetIds: ['a', 'b'] });
+    const groupId = board.getWidget('a').groupId;
+    assert.ok(groupId);
+    assert.equal(board.history.undoStack.at(-1).operation, 'group');
+    board.undo();
+    assert.equal(board.getWidget('a').groupId, '');
+    assert.equal(board.getWidget('b').groupId, '');
+    board.redo();
+    assert.equal(board.getWidget('a').groupId, groupId);
+    assert.equal(board.getWidget('b').groupId, groupId);
+
+    board.applyFinalChange({
+        changeType: 'update',
+        targetType: 'group',
+        targetRef: groupId,
+        patch: { transform: { translation: { x: 30, y: 20 } } },
+    });
+    assert.equal(board.history.undoStack.at(-1).operation, 'transformGroup');
+    assert.equal(board.getWidget('a').properties.geometry.x, 30);
+    board.undo();
+    assert.equal(board.getWidget('a').properties.geometry.x, 0);
+    board.redo();
+    assert.equal(board.getWidget('a').properties.geometry.x, 30);
+
+    board.applyFinalChange({ changeType: 'ungroup', targetType: 'group', targetRef: groupId });
+    assert.equal(board.history.undoStack.at(-1).operation, 'ungroupGroup');
+    assert.equal(board.getWidget('a').groupId, '');
+    board.undo();
+    assert.equal(board.getWidget('a').groupId, groupId);
+    assert.equal(board.getWidget('b').groupId, groupId);
+
+    board.applyFinalChange({ changeType: 'delete', targetType: 'group', targetRef: groupId });
+    assert.equal(board.history.undoStack.at(-1).operation, 'deleteGroup');
+    assert.equal(board.getWidget('a'), null);
+    assert.equal(board.getWidget('b'), null);
+    assert.equal(board.getWidget('edge'), null);
+    board.undo();
+    assert.equal(board.getWidget('a').groupId, groupId);
+    assert.equal(board.getWidget('b').groupId, groupId);
+    assert.ok(board.getWidget('edge'));
+    board.redo();
+    assert.equal(board.getWidget('a'), null);
+    assert.equal(board.getWidget('b'), null);
+    assert.equal(board.getWidget('edge'), null);
+    assert.ok(board.getWidget('outside'));
+});
+
+test('attached connections join a group only with both endpoints and remain derived during transforms', () => {
+    const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
+    board.addWidget(new BlackboardWidget({ id: 'from', type: 'shape', properties: { geometry: { x: 0, y: 0, width: 100, height: 50 } } }), { record: false });
+    board.addWidget(new BlackboardWidget({ id: 'to', type: 'shape', properties: { geometry: { x: 200, y: 0, width: 100, height: 50 } } }), { record: false });
+    board.addWidget(new BlackboardWidget({
+        id: 'edge', type: 'line',
+        properties: { connection: { from: { widgetId: 'from', anchor: 'right' }, to: { widgetId: 'to', anchor: 'left' } } },
+    }), { record: false });
+    assert.throws(() => board.groupWidgets(['from', 'edge'], { groupId: 'invalid' }), /both endpoint widgets/);
+    board.groupWidgets(['from', 'to', 'edge'], { groupId: 'valid', record: false });
+    board.transformGroup('valid', { translation: { x: 30, y: 40 } }, { record: false });
+    assert.deepEqual(board.getWidget('from').properties.geometry, { x: 30, y: 40, width: 100, height: 50 });
+    assert.deepEqual(board.getWidget('to').properties.geometry, { x: 230, y: 40, width: 100, height: 50 });
+    assert.equal(board.getWidget('edge').properties.geometry, undefined);
+    assert.deepEqual(board.getWidget('edge').properties.connection, {
+        from: { widgetId: 'from', anchor: 'right' },
+        to: { widgetId: 'to', anchor: 'left' },
+    });
 });
 
 test('deleting a connection endpoint removes its dependent attached line', () => {

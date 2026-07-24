@@ -166,6 +166,7 @@ test('blackboard theme changes reset only widget color style fields', () => {
     });
 
     assert.deepEqual(blackboard.metadata.theme, { id: 'leadership' });
+    assert.deepEqual(blackboard.serialize().metadata, { theme: { id: 'leadership' } });
     assert.deepEqual(blackboard.getWidget('shape_1').properties.style, { strokeWidth: 2 });
     assert.deepEqual(blackboard.getWidget('line_1').properties.style, { strokeWidth: 3 });
     assert.deepEqual(blackboard.getWidget('text_1').properties.style, {
@@ -173,6 +174,22 @@ test('blackboard theme changes reset only widget color style fields', () => {
         fontSize: 24,
         fontWeight: '700',
         fontStyle: 'italic'
+    });
+});
+
+test('blackboard public projection exposes only safe theme metadata', () => {
+    const blackboard = new Blackboard({
+        roomId: 'room_1',
+        metadata: {
+            theme: { id: 'paper', internalToken: 'not-public' },
+            privateState: { secret: true }
+        }
+    });
+
+    assert.deepEqual(blackboard.serialize().metadata, { theme: { id: 'paper' } });
+    assert.deepEqual(blackboard.serializePrivileged().metadata, {
+        theme: { id: 'paper', internalToken: 'not-public' },
+        privateState: { secret: true }
     });
 });
 
@@ -867,6 +884,16 @@ test('blackboard network adapter maps UI changes to canonical event commands and
     assert.equal(auditMessage.id, 'chat-event');
 
     await adapter.sendChange({
+        changeType: 'update',
+        targetType: 'group',
+        targetRef: 'group_1',
+        patch: { transform: { translation: { x: 20, y: 10 } } },
+    });
+    const groupEvent = JSON.parse(toolCall.args.event);
+    assert.deepEqual(groupEvent.target, { type: 'group', groupId: 'group_1' });
+    assert.deepEqual(groupEvent.payload.patch.transform.translation, { x: 20, y: 10 });
+
+    await adapter.sendChange({
         changeType: 'create', targetType: 'blackboard',
         widget: { id: 'local-id', type: 'shape', locked: true, visibility: { mode: 'private' }, properties: { label: 'Safe' } },
     });
@@ -1090,6 +1117,14 @@ test('Robo widget ordinals are transient overlays controlled by command status',
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.html'),
         'utf8'
     );
+    const dashboardCss = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.css'),
+        'utf8'
+    );
+    const controllerSource = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/blackboard-methods.js'),
+        'utf8'
+    );
     const config = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/config.json'),
         'utf8'
@@ -1100,6 +1135,25 @@ test('Robo widget ordinals are transient overlays controlled by command status',
     assert.match(panelSource, /renderWidget\(widget, index \+ 1\)/);
     assert.match(semanticSource, /ordinal: index \+ 1/);
     assert.match(dashboardHtml, /webmeetBlackboardCommandStatus/);
+    const statusRule = dashboardCss.match(/\.webmeet-blackboard-command-status\s*\{[\s\S]*?\}/)?.[0] || '';
+    assert.match(statusRule, /color:\s*var\(--text-muted\)/);
+    assert.match(statusRule, /font-size:\s*0\.72rem/);
+    assert.doesNotMatch(statusRule, /border(?:-radius)?:/);
+    assert.doesNotMatch(statusRule, /background:/);
+    assert.doesNotMatch(dashboardCss, /\.webmeet-blackboard-command-status::after/);
+    assert.match(controllerSource, /entry\.state === 'started'[\s\S]*webmeet-blackboard-command-status-activity[\s\S]*index < 3/);
+    assert.match(dashboardCss, /webmeet-blackboard-command-status-dot:nth-child\(2\)[\s\S]*animation-delay:\s*0\.14s/);
+    assert.match(dashboardCss, /webmeet-blackboard-command-status-dot:nth-child\(3\)[\s\S]*animation-delay:\s*0\.28s/);
+    assert.match(dashboardCss, /@keyframes webmeet-blackboard-status-dot-wave[\s\S]*translateY\(-2px\)/);
+    assert.match(dashboardCss, /@keyframes webmeet-blackboard-status-scroll/);
+    assert.match(dashboardCss, /is-scrolling[\s\S]*--webmeet-status-scroll-duration/);
+    assert.match(controllerSource, /travelDistance = viewportWidth \+ textWidth/);
+    assert.match(controllerSource, /travelDistance \/ 45/);
+    assert.match(controllerSource, /--webmeet-status-scroll-start/);
+    assert.match(controllerSource, /--webmeet-status-scroll-end/);
+    assert.match(controllerSource, /roboStatusErrorDurationMs\(errorMessage\)/);
+    assert.match(controllerSource, /String\(message \|\| ''\)\.length \/ 6/);
+    assert.match(dashboardCss, /prefers-reduced-motion:\s*reduce[\s\S]*animation:\s*none/);
     assert.doesNotMatch(config, /webmeet-robo-clarification-modal/);
 });
 
@@ -1588,7 +1642,7 @@ test('blackboard poll widget renders summary modal and poll settings', async () 
     assert.match(editorSource, /patch\.properties\.durationSeconds/);
     assert.match(panelSource, /renderBulletsWidgetContent\(node, widget\)/);
     assert.match(panelSource, /createBulletsItemRow\(item\)/);
-    assert.match(panelSource, /if \(!isFullscreen\) this\.renderContextMenu\(node, widget\)/);
+    assert.match(panelSource, /if \(!isFullscreen && !widget\.groupId && !multiSelected\) this\.renderContextMenu\(node, widget\)/);
     assert.match(panelSource, /toggleBulletsFullscreen\(widget\.id\)/);
     assert.match(panelSource, /webmeet-blackboard-bullets-fullscreen-button/);
     assert.match(panelSource, /fullscreenIcon\.src = '\/explorer\/assets\/icons\/fullscreen\.svg'/);
@@ -2262,6 +2316,79 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         });
         assert.equal(later.blackboard.widgets.find((widget) => widget.id === 'shape_1').properties.label, 'stale');
         assert.ok(later.blackboard.revision > response.blackboard.revision);
+
+        await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            change: {
+                changeType: 'create',
+                targetType: 'widget',
+                widget: {
+                    id: 'shape_2',
+                    type: 'shape',
+                    properties: { geometry: { x: 240, y: 2, width: 100, height: 50 } }
+                }
+            }
+        });
+        const grouped = await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            change: {
+                changeType: 'group',
+                targetType: 'blackboard',
+                widgetIds: ['shape_1', 'shape_2']
+            }
+        });
+        const groupId = grouped.blackboard.widgets.find((widget) => widget.id === 'shape_1').groupId;
+        assert.ok(groupId);
+
+        const movedGroup = await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            change: {
+                changeType: 'update',
+                targetType: 'group',
+                targetRef: groupId,
+                patch: { transform: { translation: { x: 20, y: 10 } } }
+            }
+        });
+        assert.equal(movedGroup.broadcast.kind, 'blackboard');
+        assert.equal(movedGroup.broadcast.object.revision, movedGroup.blackboard.revision);
+        assert.deepEqual(movedGroup.object, movedGroup.blackboard);
+
+        const ungrouped = await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            change: { changeType: 'ungroup', targetType: 'group', targetRef: groupId }
+        });
+        assert.equal(ungrouped.broadcast.kind, 'blackboard');
+        assert.deepEqual(ungrouped.object, ungrouped.blackboard);
+        assert.equal(ungrouped.blackboard.widgets.find((widget) => widget.id === 'shape_1').groupId, '');
+
+        const regrouped = await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            change: {
+                changeType: 'group',
+                targetType: 'blackboard',
+                widgetIds: ['shape_1', 'shape_2']
+            }
+        });
+        const regroupedId = regrouped.blackboard.widgets.find((widget) => widget.id === 'shape_1').groupId;
+        const deletedGroup = await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId: 'agent:agent_robo_team',
+            authInfo,
+            change: { changeType: 'delete', targetType: 'group', targetRef: regroupedId }
+        });
+        assert.equal(deletedGroup.broadcast.kind, 'blackboard');
+        assert.deepEqual(deletedGroup.object, deletedGroup.blackboard);
+        assert.equal(deletedGroup.blackboard.widgets.some((widget) => ['shape_1', 'shape_2'].includes(widget.id)), false);
     } finally {
         if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
         else process.env.WEBMEET_DATA_DIR = previousDataDir;

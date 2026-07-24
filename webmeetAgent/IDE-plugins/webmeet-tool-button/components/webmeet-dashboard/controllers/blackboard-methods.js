@@ -53,6 +53,11 @@ const ROBO_STATUS_SUCCESS_MS = 4_000;
 const ROBO_STATUS_ERROR_MS = 10_000;
 const ROBO_STATUS_STARTED_TIMEOUT_MS = 75_000;
 
+function roboStatusErrorDurationMs(message = '') {
+    const readingDuration = (String(message || '').length / 6) * 1_000 + 4_000;
+    return Math.max(ROBO_STATUS_ERROR_MS, Math.ceil(readingDuration));
+}
+
 export const blackboardMethods = {
     setRoboCommandDraftActive(active) {
         const next = active === true;
@@ -95,7 +100,7 @@ export const blackboardMethods = {
 
         const duration = state === 'started'
             ? ROBO_STATUS_STARTED_TIMEOUT_MS
-            : state === 'success' ? ROBO_STATUS_SUCCESS_MS : ROBO_STATUS_ERROR_MS;
+            : state === 'success' ? ROBO_STATUS_SUCCESS_MS : roboStatusErrorDurationMs(errorMessage);
         const timer = globalThis.setTimeout(() => {
             if (state === 'started' && this.roboCommandStatuses.get(commandId)?.state === 'started') {
                 this.roboCommandStatuses.set(commandId, {
@@ -107,7 +112,7 @@ export const blackboardMethods = {
                     this.roboCommandStatuses.delete(commandId);
                     this.roboCommandStatusTimers.delete(commandId);
                     this.renderRoboCommandStatus();
-                }, ROBO_STATUS_ERROR_MS));
+                }, roboStatusErrorDurationMs('Blackboard command status expired before a result was received.')));
                 return;
             }
             this.roboCommandStatuses.delete(commandId);
@@ -140,13 +145,53 @@ export const blackboardMethods = {
         for (const entry of entries) {
             const row = document.createElement('div');
             row.className = 'webmeet-blackboard-command-status-row';
-            row.textContent = entry.state === 'started'
+            row.dataset.state = entry.state;
+            const text = document.createElement('span');
+            text.className = 'webmeet-blackboard-command-status-text';
+            text.textContent = entry.state === 'started'
                 ? `${entry.participantName} is editing now`
                 : entry.state === 'success'
                     ? `${entry.participantName} finished editing`
                     : (entry.errorMessage || 'The blackboard command failed.');
+            if (entry.state === 'started') {
+                const activity = document.createElement('span');
+                activity.className = 'webmeet-blackboard-command-status-activity';
+                activity.setAttribute('aria-hidden', 'true');
+                for (let index = 0; index < 3; index += 1) {
+                    const dot = document.createElement('span');
+                    dot.className = 'webmeet-blackboard-command-status-dot';
+                    activity.append(dot);
+                }
+                text.append(activity);
+            }
+            row.append(text);
             this.blackboardCommandStatus.append(row);
         }
+        this.measureRoboCommandStatusOverflow();
+    },
+
+    measureRoboCommandStatusOverflow() {
+        const status = this.blackboardCommandStatus;
+        if (!status || status.hidden) return;
+        const measure = () => {
+            for (const row of status.querySelectorAll('.webmeet-blackboard-command-status-row')) {
+                const text = row.querySelector('.webmeet-blackboard-command-status-text');
+                if (!text) continue;
+                row.classList.remove('is-scrolling');
+                row.style.removeProperty('--webmeet-status-scroll-start');
+                row.style.removeProperty('--webmeet-status-scroll-end');
+                row.style.removeProperty('--webmeet-status-scroll-duration');
+                const viewportWidth = Math.max(0, Math.ceil(row.clientWidth));
+                const textWidth = Math.max(0, Math.ceil(text.scrollWidth));
+                if (textWidth - viewportWidth <= 1) continue;
+                const travelDistance = viewportWidth + textWidth;
+                row.style.setProperty('--webmeet-status-scroll-start', `${viewportWidth}px`);
+                row.style.setProperty('--webmeet-status-scroll-end', `${-textWidth}px`);
+                row.style.setProperty('--webmeet-status-scroll-duration', `${Math.max(8, travelDistance / 45).toFixed(2)}s`);
+                row.classList.add('is-scrolling');
+            }
+        };
+        measure();
     },
 
     async handleBlackboardPanelReady(event = null) {

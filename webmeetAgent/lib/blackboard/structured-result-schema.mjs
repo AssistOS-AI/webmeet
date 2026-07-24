@@ -35,6 +35,19 @@ function geometryDeltaSchema() {
     return strictObject({ x: nullableNumber, y: nullableNumber });
 }
 
+function groupTransformSchema() {
+    return strictObject({
+        translation: nullable(strictObject({ x: nullableNumber, y: nullableNumber })),
+        rotationDelta: nullableNumber,
+        resize: nullable(strictObject({
+            x: nullableNumber,
+            y: nullableNumber,
+            width: nullableNumber,
+            height: nullableNumber,
+        })),
+    });
+}
+
 function styleSchema() {
     return strictObject({
         fill: nullableString,
@@ -134,7 +147,10 @@ function eventPayloadSchema() {
             type: { type: 'string', enum: ['shape', 'line', 'text', 'image', 'card', 'poll', 'bullets', 'embed'] },
             properties: widgetPropertiesSchema(),
         })),
-        patch: nullable(strictObject({ properties: widgetPropertiesSchema() })),
+        patch: nullable(strictObject({
+            properties: nullable(widgetPropertiesSchema()),
+            transform: nullable(groupTransformSchema()),
+        })),
         widgetIds: nullable({ type: 'array', items: { type: 'string' } }),
         reason: nullableString,
         data: nullable(strictObject({
@@ -173,9 +189,10 @@ function eventSchema() {
         ref: nullableString,
         action: { type: 'string', enum: BLACKBOARD_PUBLIC_ACTIONS },
         target: strictObject({
-            type: { type: 'string', enum: ['blackboard', 'widget'] },
+            type: { type: 'string', enum: ['blackboard', 'widget', 'group'] },
             widgetId: nullableString,
             ref: nullableString,
+            groupId: nullableString,
         }),
         payload: eventPayloadSchema(),
     });

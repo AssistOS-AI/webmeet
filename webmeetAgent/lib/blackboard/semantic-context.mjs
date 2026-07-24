@@ -26,7 +26,7 @@ export function calculateLineFromCenter({ centerX = 0, centerY = 0, length = 0, 
 
 export function getWidgetCapabilities(widget = {}) {
     return getCanonicalWidgetCapabilities(widget.type) || {
-        movable: false, resizable: false, deletable: false, editableProperties: [], domainActions: [],
+        movable: false, resizable: false, deletable: false, groupable: false, editableProperties: [], domainActions: [],
     };
 }
 

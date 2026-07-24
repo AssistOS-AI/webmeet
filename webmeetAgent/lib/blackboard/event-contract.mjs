@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { BLACKBOARD_GROUPABLE_WIDGET_TYPES } from './model.mjs';
 
 export const BLACKBOARD_PUBLIC_ACTIONS = Object.freeze([
     'create', 'update', 'delete', 'group', 'ungroup', 'clear', 'undo', 'redo', 'show', 'hide',
@@ -104,16 +105,22 @@ export const BLACKBOARD_WIDGET_EVENT_SCHEMAS = Object.freeze({
 const COMMON_EDITABLE_PROPERTIES = ['geometry', 'geometryDelta', 'style', 'rotation'];
 const SCRIPTA_DOMAIN_ACTIONS = BLACKBOARD_PUBLIC_ACTIONS.filter((action) => action.startsWith('scripta-'));
 export const BLACKBOARD_WIDGET_CAPABILITIES = Object.freeze({
-    shape: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'label', 'shapeKind'], domainActions: [] },
-    text: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'text'], domainActions: [] },
-    line: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'line', 'connection'], domainActions: [] },
-    image: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'alt'], domainActions: [] },
-    card: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'text'], domainActions: [] },
-    embed: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title'], domainActions: [] },
-    poll: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'description', 'resultsVisibility', 'questions', 'allowPollChange', 'anonymous', 'durationSeconds'], domainActions: ['submit', 'start', 'close'] },
-    bullets: { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'items', 'resultsVisibility'], domainActions: ['reorder'] },
-    'scripta-document': { movable: true, resizable: true, deletable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES], domainActions: [...SCRIPTA_DOMAIN_ACTIONS] },
+    shape: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'label', 'shapeKind'], domainActions: [] },
+    text: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'text'], domainActions: [] },
+    line: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'line', 'connection'], domainActions: [] },
+    image: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'alt'], domainActions: [] },
+    card: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'text'], domainActions: [] },
+    embed: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title'], domainActions: [] },
+    poll: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'description', 'resultsVisibility', 'questions', 'allowPollChange', 'anonymous', 'durationSeconds'], domainActions: ['submit', 'start', 'close'] },
+    bullets: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'items', 'resultsVisibility'], domainActions: ['reorder'] },
+    'scripta-document': { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES], domainActions: [...SCRIPTA_DOMAIN_ACTIONS] },
 });
+
+for (const type of BLACKBOARD_GROUPABLE_WIDGET_TYPES) {
+    if (BLACKBOARD_WIDGET_CAPABILITIES[type]?.groupable !== true) {
+        throw new Error(`Missing canonical group capability for widget type "${type}".`);
+    }
+}
 
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
     'createdBy', 'updatedBy', 'requestedBy', 'executor', 'participantId',
@@ -161,6 +168,35 @@ function validateGeometryDelta(value, label) {
     if (x === 0 && y === 0) throw new Error(`${label} must move at least one axis.`);
     delta.x = x;
     delta.y = y;
+}
+
+function validateGroupTransform(value, label) {
+    const transform = plainObject(value, label);
+    assertOnlyKeys(transform, ['translation', 'rotationDelta', 'resize'], label);
+    if (!Object.keys(transform).length) throw new Error(`${label} requires a transformation.`);
+    if (transform.translation !== undefined) {
+        const translation = plainObject(transform.translation, `${label}.translation`);
+        assertOnlyKeys(translation, ['x', 'y'], `${label}.translation`);
+        translation.x = finiteNumber(translation.x ?? 0, `${label}.translation.x`);
+        translation.y = finiteNumber(translation.y ?? 0, `${label}.translation.y`);
+        if (translation.x === 0 && translation.y === 0) {
+            throw new Error(`${label}.translation must move at least one axis.`);
+        }
+    }
+    if (transform.rotationDelta !== undefined) {
+        transform.rotationDelta = finiteNumber(transform.rotationDelta, `${label}.rotationDelta`);
+        if (transform.rotationDelta === 0) throw new Error(`${label}.rotationDelta must not be zero.`);
+    }
+    if (transform.resize !== undefined) {
+        const resize = plainObject(transform.resize, `${label}.resize`);
+        assertOnlyKeys(resize, ['x', 'y', 'width', 'height'], `${label}.resize`);
+        for (const key of ['x', 'y', 'width', 'height']) {
+            resize[key] = finiteNumber(resize[key], `${label}.resize.${key}`);
+        }
+        if (resize.width <= 0 || resize.height <= 0) {
+            throw new Error(`${label}.resize width and height must be greater than zero.`);
+        }
+    }
 }
 
 function validateStyle(value, label) {
@@ -361,16 +397,20 @@ function normalizeTarget(input, action, defaults = {}) {
     const targetType = requiredString(input?.type || defaults.targetType || (
         ['create', 'group', 'clear', 'undo', 'redo', 'show', 'hide'].includes(action) ? 'blackboard' : 'widget'
     ), 'target.type');
-    if (!['blackboard', 'widget'].includes(targetType)) {
-        throw new Error('Event target.type must be "blackboard" or "widget".');
+    if (!['blackboard', 'widget', 'group'].includes(targetType)) {
+        throw new Error('Event target.type must be "blackboard", "widget", or "group".');
     }
     const widgetId = String(input?.widgetId || defaults.widgetId || (action.startsWith('scripta-') ? 'robo_scripta_document' : '')).trim();
     const ref = String(input?.ref || '').trim();
+    const groupId = String(input?.groupId || defaults.groupId || '').trim();
     if (targetType === 'widget' && !widgetId && !ref) {
         throw new Error('Missing required event target.widgetId or target.ref.');
     }
+    if (targetType === 'group' && !groupId) throw new Error('Missing required event target.groupId.');
     if (widgetId && ref) throw new Error('Event target cannot contain both widgetId and ref.');
-    return { type: targetType, ...(widgetId ? { widgetId } : {}), ...(ref ? { ref } : {}) };
+    if (targetType !== 'widget' && (widgetId || ref)) throw new Error(`Event target.type "${targetType}" cannot contain widgetId or ref.`);
+    if (targetType !== 'group' && groupId) throw new Error(`Event target.type "${targetType}" cannot contain groupId.`);
+    return { type: targetType, ...(widgetId ? { widgetId } : {}), ...(ref ? { ref } : {}), ...(groupId ? { groupId } : {}) };
 }
 
 function validateActionShape(event) {
@@ -390,12 +430,20 @@ function validateActionShape(event) {
         if (target.type === 'widget') {
             const unexpectedPatchKeys = Object.keys(patch).filter((key) => key !== 'properties');
             if (unexpectedPatchKeys.length) throw new Error(`Widget update cannot modify ${unexpectedPatchKeys.join(', ')}.`);
+        } else if (target.type === 'group') {
+            assertOnlyKeys(patch, ['transform'], 'event.payload.patch');
+            validateGroupTransform(patch.transform, 'event.payload.patch.transform');
+        } else {
+            const unexpectedPatchKeys = Object.keys(patch).filter((key) => key === 'transform');
+            if (unexpectedPatchKeys.length) throw new Error('Blackboard update cannot contain a group transform.');
         }
         if (patch.properties !== undefined) {
             patch.properties = normalizeConnection(plainObject(patch.properties, 'event.payload.patch.properties'));
         }
-    } else if (action === 'delete' || action === 'ungroup' || action === 'focus') {
-        if (target.type !== 'widget') throw new Error(`${action} must target a widget.`);
+    } else if (action === 'delete' || action === 'ungroup') {
+        if (!['widget', 'group'].includes(target.type)) throw new Error(`${action} must target a widget or group.`);
+    } else if (action === 'focus') {
+        if (target.type !== 'widget') throw new Error('focus must target a widget.');
     } else if (action === 'group') {
         if (target.type !== 'blackboard') throw new Error('group must target the blackboard.');
         const ids = Array.isArray(payload.widgetIds) ? payload.widgetIds.map((id) => String(id || '').trim()).filter(Boolean) : [];

@@ -74,7 +74,14 @@ export class BlackboardNetworkAdapter {
         if (action === 'add') throw new Error('Unsupported blackboard event action "add".');
         const target = action === 'create' || ['clear', 'group'].includes(action)
             ? { type: 'blackboard' }
-            : { type: targetType, ...(change?.targetRef ? { widgetId: String(change.targetRef) } : {}) };
+            : {
+                type: targetType,
+                ...(change?.targetRef
+                    ? targetType === 'group'
+                        ? { groupId: String(change.targetRef) }
+                        : { widgetId: String(change.targetRef) }
+                    : {}),
+            };
         let payload = {};
         if (action === 'create') {
             const inputWidget = JSON.parse(JSON.stringify(change.widget || change.object || {}));

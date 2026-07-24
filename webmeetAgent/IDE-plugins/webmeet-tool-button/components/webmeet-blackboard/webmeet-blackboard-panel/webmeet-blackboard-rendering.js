@@ -22,6 +22,8 @@ export const blackboardRenderingMethods = {
             this.widgetNodes.set(widget.id, node);
         }
         this.board.replaceChildren(fragment);
+        this.renderGroupHitAreas();
+        this.renderSelectionOverlay();
         this.updateToolbarState();
     },
 
@@ -36,7 +38,8 @@ export const blackboardRenderingMethods = {
         node.classList.toggle('is-fullscreen', isFullscreen);
         node.dataset.widgetId = widget.id;
         node.tabIndex = 0;
-        node.setAttribute('aria-selected', String(this.selection === widget.id));
+        const multiSelected = this.decorateWidgetGroupSelection(node, widget);
+        node.setAttribute('aria-selected', String(!widget.groupId && this.selection === widget.id && !multiSelected));
         node.style.left = `${Number(geometry.x || 0)}px`;
         node.style.top = `${Number(geometry.y || 0)}px`;
         const widgetWidth = Number(geometry.width || 120);
@@ -70,14 +73,15 @@ export const blackboardRenderingMethods = {
             badge.setAttribute('aria-hidden', 'true');
             node.append(badge);
         }
-        if (!isFullscreen) this.renderResizeHandles(node, widget);
-        if (!isFullscreen) this.renderContextMenu(node, widget);
+        if (!isFullscreen && !widget.groupId) this.renderResizeHandles(node, widget);
+        if (!isFullscreen && !widget.groupId && !multiSelected) this.renderContextMenu(node, widget);
         if (!isFullscreen && this.canMoveWidget(widget)) {
             node.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
         }
         node.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (widget.groupId) return;
             if (!this.canEditWidget(widget)) return;
             this.selection = widget.id;
             void this.editWidget(widget);

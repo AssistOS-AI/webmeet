@@ -293,12 +293,14 @@
     align-items: center;
     gap: 8px;
 }
+
 .main-header-content {
     display: flex;
     justify-content: space-between;
     width: 100%;
     align-items: center;
 }
+
 .webmeet-archived-rooms-toggle {
     display: inline-flex;
     align-items: center;
@@ -954,37 +956,93 @@
 }
 
 .webmeet-blackboard-command-status {
-    position: relative;
     flex: 1 1 auto;
     min-width: 0;
     max-width: min(620px, 70%);
-    padding: 7px 11px;
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-    color: var(--text);
-    font-size: 0.76rem;
-    font-weight: 600;
-    line-height: 1.35;
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 8%, transparent);
-}
-
-.webmeet-blackboard-command-status::after {
-    content: '';
-    position: absolute;
-    left: 18px;
-    bottom: -5px;
-    width: 8px;
-    height: 8px;
-    border-right: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
-    border-bottom: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
-    background: inherit;
-    transform: rotate(45deg);
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    line-height: 1.25;
+    text-align: center;
 }
 
 .webmeet-blackboard-command-status[data-state="error"] {
-    border-color: color-mix(in srgb, var(--danger, #c33) 42%, var(--border));
-    background: color-mix(in srgb, var(--danger, #c33) 9%, var(--surface));
+    color: var(--danger, #c33);
+}
+
+.webmeet-blackboard-command-status-row {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-command-status-text {
+    display: inline-block;
+}
+
+.webmeet-blackboard-command-status-row.is-scrolling .webmeet-blackboard-command-status-text {
+    animation: webmeet-blackboard-status-scroll var(--webmeet-status-scroll-duration) linear infinite;
+    will-change: transform;
+}
+
+.webmeet-blackboard-command-status-activity {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.webmeet-blackboard-command-status-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.38;
+    animation: webmeet-blackboard-status-dot-wave 1.05s ease-in-out infinite;
+}
+
+.webmeet-blackboard-command-status-dot:nth-child(2) {
+    animation-delay: 0.14s;
+}
+
+.webmeet-blackboard-command-status-dot:nth-child(3) {
+    animation-delay: 0.28s;
+}
+
+@keyframes webmeet-blackboard-status-scroll {
+    0% {
+        transform: translateX(var(--webmeet-status-scroll-start));
+    }
+
+    100% {
+        transform: translateX(var(--webmeet-status-scroll-end));
+    }
+}
+
+@keyframes webmeet-blackboard-status-dot-wave {
+    0%, 60%, 100% {
+        opacity: 0.38;
+        transform: translateY(0);
+    }
+
+    30% {
+        opacity: 1;
+        transform: translateY(-2px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .webmeet-blackboard-command-status-row {
+        overflow: visible;
+        white-space: normal;
+    }
+
+    .webmeet-blackboard-command-status-row.is-scrolling .webmeet-blackboard-command-status-text,
+    .webmeet-blackboard-command-status-dot {
+        animation: none;
+    }
 }
 
 .webmeet-blackboard-command-status-row + .webmeet-blackboard-command-status-row {
@@ -1630,6 +1688,10 @@ textarea.form-input {
         max-height: calc(100dvh - 24px);
         overflow: auto;
         transform: translateY(4px);
+    }
+
+    .webmeet-video-all.has-focus .webmeet-blackboard-surface.is-focused {
+        width: 100%;
     }
 
     .webmeet-setting-help-control:hover .webmeet-setting-help-tooltip,
@@ -2951,7 +3013,8 @@ textarea.form-input {
     .webmeet-video-all:not(.has-focus) webmeet-participant-card {
         min-height: 188px;
     }
-    webmeet-dashboard .webmeet-avatar-quick-menu{
+
+    webmeet-dashboard .webmeet-avatar-quick-menu {
         bottom: calc(100% + 12px);
     }
 }

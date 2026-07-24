@@ -111,6 +111,9 @@ function normalizeChange(input = {}, authInfo = null) {
         reason: String(input.reason || '').trim(),
         widget: cloneJson(input.widget),
         object: cloneJson(input.object),
+        widgetIds: Array.isArray(input.widgetIds)
+            ? input.widgetIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : undefined,
         patch: cloneJson(input.patch || {}),
         data: cloneJson(input.data),
         participantId: ''
@@ -258,7 +261,7 @@ function changeForEvent(event) {
     return {
         changeType: event.action,
         targetType: event.target.type,
-        targetRef: event.target.widgetId || '',
+        targetRef: event.target.widgetId || event.target.groupId || '',
         patch: event.payload.patch,
         data: event.payload.data,
         reason: event.payload.reason || 'event',
@@ -268,6 +271,7 @@ function changeForEvent(event) {
 function eventAffectedIds(event, result) {
     if (event.action === 'clear') return [];
     if (event.action === 'group') return event.payload.widgetIds;
+    if (Array.isArray(result)) return result.map((widget) => widget?.id).filter(Boolean);
     if (event.action === 'ungroup') return result?.id ? [result.id] : [];
     if (result instanceof BlackboardWidget) return [result.id];
     return event.target?.widgetId ? [event.target.widgetId] : [];
@@ -448,10 +452,15 @@ export async function applyRoomBlackboardChange(context, {
             canModerateBlackboard: isAdminAuthInfo(authInfo)
         });
         serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
-        serializedObject = result?.serializePrivileged ? result.serializePrivileged() : blackboard.serializePrivileged();
-        const objectKind = normalizedChange.changeType === 'clear' || normalizedChange.targetType === 'blackboard'
-            ? 'blackboard'
-            : 'widget';
+        const returnsBoardProjection = normalizedChange.changeType === 'clear'
+            || normalizedChange.targetType === 'blackboard'
+            || normalizedChange.targetType === 'group';
+        serializedObject = returnsBoardProjection
+            ? blackboard.serializePrivileged()
+            : result?.serializePrivileged
+                ? result.serializePrivileged()
+                : blackboard.serializePrivileged();
+        const objectKind = returnsBoardProjection ? 'blackboard' : 'widget';
         broadcast = buildBroadcastPayload(targetRoomId, blackboard, serializedObject, objectKind);
         stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, buildBlackboardEventData(
             targetRoomId,
@@ -466,9 +475,12 @@ export async function applyRoomBlackboardChange(context, {
     }
 
     const viewerContext = buildViewerContext(authInfo, normalizedChange?.participantId || participantId);
+    const returnsBoardProjection = normalizedChange?.changeType === 'clear'
+        || normalizedChange?.targetType === 'blackboard'
+        || normalizedChange?.targetType === 'group';
     return {
         blackboard: Blackboard.from(serializedBlackboard).serialize(viewerContext),
-        object: normalizedChange?.targetType === 'blackboard'
+        object: returnsBoardProjection
             ? Blackboard.from(serializedBlackboard).serialize(viewerContext)
             : serializedObject?.id
             ? Blackboard.from(serializedBlackboard).getWidget(serializedObject.id)?.serialize(viewerContext)

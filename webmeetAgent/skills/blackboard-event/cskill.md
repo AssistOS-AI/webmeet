@@ -12,6 +12,10 @@ The prompt is the complete instruction. Runtime context contains only the safe s
 
 Return `{ "events": [...] }`. Widgets created in the same command may declare a local `ref`; later events may target that `ref`. Never return persistent widget ids for created widgets, provenance, participant ids, command ids, event ids, revision, `focus`, `lock`, `unlock`, or `add`.
 
+Widgets sharing a non-empty `groupId` are one rigid block. Existing groups are targeted with `{ "type": "group", "groupId": "..." }`; their canonical update uses `payload.patch.transform` with `translation`, `resize`, or `rotationDelta`. Group deletion removes every member, while `ungroup` preserves current geometry. A group id must always come from context.
+
+Create a group only when every selected widget exposes `capabilities.groupable: true`. Interactive widgets (`poll`, `bullets`, `embed`, and `scripta-document`) are complex standalone widgets and must never be grouped.
+
 If the intent cannot be resolved deterministically, return `{ "error": { "code": "...", "message": "..." } }`. The message must explain the exact cause naturally in the language of the participant's instruction. Never return executable events together with an error and never request clarification.
 
 Canonical semantic error codes are `ambiguous_target`, `missing_target`, `target_type_mismatch`, `ambiguous_operation`, `confirmation_required`, and `unsupported_request`.
