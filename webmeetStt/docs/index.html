@@ -7,7 +7,7 @@
 <body>
     <h1>webmeetStt</h1>
     <p>Internal Faster-Whisper speech-to-text service for WebMeet scribe agents, with optional self-hosted DTLN denoise before transcription.</p>
-    <p>The Ploinky v5 manifest uses one isolated <code>bridge</code> attachment named <code>webmeet</code>; it declares no browser HTTP service or physical-host publication.</p>
+    <p>The Ploinky v5 manifest uses one isolated <code>bridge</code> attachment named <code>webmeet</code>; it declares no browser HTTP service or physical-host publication. Its in-container readiness probe verifies the loopback <code>/healthz</code> endpoint without adding a Router target or port mapping.</p>
     <ul>
         <li><a href="specs/matrix.md">Spec matrix</a></li>
     </ul>

@@ -6,7 +6,9 @@ The service is not a browser surface and must not declare `httpServices`. Its
 network contract is the strict v5 bridge form with one primary logical
 attachment named `webmeet`; legacy `network.name` and `network.aliases` are
 invalid. Ploinky derives the effective instance alias and keeps the service on
-that isolated bridge. No current WebMeet consumer is confirmed after removal
+that isolated bridge. Readiness runs inside the container and verifies the
+loopback `/healthz` endpoint, so it does not require a Router target or a
+private port mapping. No current WebMeet consumer is confirmed after removal
 of the prior LiveKit AI worker, so retaining or removing this dependency is a
 separate product decision; this networking hard cut does not invent a new
 consumer or expose STT publicly.
