@@ -10,7 +10,7 @@ webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI dispatch metadata, r
 2. Read `docs/index.html` for the local documentation entry point.
 3. Read `docs/specs/DS000-vision.md` for the local WebMeet ownership model.
 4. Read `docs/specs/matrix.md` and the relevant local DS files before changing behavior.
-5. Read `docs/specs/DS006-ploinky-runtime-invariants.md` before touching auth, routing, guest access, MCP, HTTP services, files, logs, or runtime configuration.
+5. Read `docs/specs/DS006-ploinky-runtime-invariants.md` before touching auth, routing, guest access, MCP, Router HTTP paths, files, logs, or runtime configuration.
 6. Read `docs/specs/DS001-coding-style.md` for coding style, module structure, and test-organization rules when that file exists; otherwise inherit the parent repository coding-style authority.
 
 ## Current Skill Catalog

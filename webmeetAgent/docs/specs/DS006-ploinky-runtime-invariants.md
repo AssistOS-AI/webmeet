@@ -26,7 +26,7 @@ operations cannot satisfy the full runtime-v5 contract.
 
 ## Core Content
 
-`webmeetAgent` must treat the Ploinky router as the browser and MCP trust broker. Browser surfaces, first-party MCP calls, delegated MCP calls, uploads, blobs, and manifest-declared HTTP services are expected to enter through the router so route authentication, session handling, invocation minting, and audit behavior can apply. Direct agent ports are implementation details even when bound to localhost.
+`webmeetAgent` must treat the Ploinky router as the browser and MCP trust broker. Browser surfaces, first-party MCP calls, delegated MCP calls, uploads, blobs, and convention-routed agent HTTP traffic are expected to enter through the router so route authentication, session handling, invocation minting, and audit behavior can apply. Direct agent ports are implementation details even when bound to localhost.
 
 Executable MCP operations must be authorized by router-minted request JWTs. The launcher/router may derive per-agent request secrets from `PLOINKY_MASTER_KEY`, but the agent runtime must receive only its own `PLOINKY_AGENT_ID`, `PLOINKY_AGENT_SECRET`, and compatibility `PLOINKY_AGENT_PRINCIPAL`. Agents must never receive, derive, or require `PLOINKY_MASTER_KEY` or the legacy `PLOINKY_DERIVED_MASTER_KEY`. Code must not invent alternate bearer-token, client-secret, or caller-header authorization paths around the router's secure-wire model.
 
@@ -46,14 +46,20 @@ File and static-content handling must stay workspace-confined. Paths must resolv
 
 Logs and user-facing errors must not expose secrets, cookies, bearer tokens, invocation JWTs, LiveKit participant JWTs, API keys, raw prompts, hidden policy text, internal payloads, SDP, ICE credentials, screenshots, or DOM dumps. Trace sanitization recognizes dynamic participant JWTs, TURN usernames/credentials, arbitrary Playwright cookie objects, compound cookie fields, named query/form values, router assertions, and CSRF values even when those values were not supplied through the runner environment. It transforms JSON and Playwright NDJSON structurally, preserves record parseability, and post-scans textual archive members before attachment. Detailed diagnostics belong behind explicit debug modes and must still redact sensitive values before persistence.
 
-Media topology is box-owned runtime state. Each join resolves the active schema-v2 signaling locator and external relay endpoints, then obtains short-lived relay credentials from the private broker under an exact current-generation assertion. Browser-facing addresses are never declared as manifest environment or synthesized from a workstation address. See DS004 for credential lifetime, controlled rejoin, and network-lane invariants.
+Media topology is box-owned runtime state. Each join reads the current
+unversioned media/publication state, uses the same-origin LiveKit convention
+path, and obtains short-lived relay credentials from the private broker under
+an exact current-generation assertion. Browser-facing addresses are never
+declared as manifest environment or synthesized from a workstation address.
+See DS004 for credential lifetime, controlled rejoin, and network-lane
+invariants.
 
 Agent-local contract:
 
 - Manifest: `manifest.json`.
 - Role: Meeting application agent for workspace team rooms and invite-scoped public meetings.
 - Authentication: Workspace room operations require authenticated route/MCP context. Public room entry requires a Ploinky public-protected invocation scoped to the target room.
-- HTTP service surface: WebMeet does not publish a product HTTP service surface. Browser calls use the generic Ploinky MCP route, and direct room entry uses the whitelisted `roomLoader.html` plus plugin/assets routing owned by Ploinky core.
+- Router surface: WebMeet does not publish a product-specific additional-server route. Browser calls use the generic Ploinky MCP route, and direct room entry uses the whitelisted `roomLoader.html` plus plugin/assets routing owned by Ploinky core.
 - Persistent state: Room data lives under `/data`; LiveKit secrets stay server-side.
 - Volumes: `.ploinky/data/webmeetAgent/data:/data`.
 - Dependencies: Base startup uses Ploinky's shared prepared dependency cache. WebMeet must not add native external AI worker dependencies.
@@ -106,7 +112,7 @@ without changing its interface class.
 
 `webmeetAgent` remains compatible with Ploinky only while it preserves
 router-mediated entry, secure-wire invocation, scoped guest behavior, explicit
-manifest HTTP services, workspace-confined storage, redacted logging, derived
+Router route policy, workspace-confined storage, redacted logging, derived
 secrets, and local domain authorization. The current rootless private-service
 slice remains partially implemented and is not complete until the approved
 managed-bridge reachability contract passes end to end.

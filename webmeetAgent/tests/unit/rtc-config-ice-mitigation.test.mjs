@@ -55,12 +55,12 @@ describe('external TURN runtime contract', () => {
         }, ['turn:turn.example:3478'], now), /expired|short-lived/i);
     });
 
-    test('signal URL is derived only from the active Router service', () => {
-        assert.equal(edgeRuntimeTest.normalizeSignalUrl({
-            activeBrowserUrl: 'https://meet.example/',
-            routerPath: '/public-services/livekit-signal/',
-        }), 'wss://meet.example/public-services/livekit-signal/');
-        assert.throws(() => edgeRuntimeTest.normalizeSignalUrl({ activeBrowserUrl: 'file:///tmp/a', routerPath: '/' }), /must use ws/i);
+    test('signal URL is the canonical Router convention path', () => {
+        assert.equal(
+            edgeRuntimeTest.normalizeSignalUrl(),
+            '/base-agent-additional-server/liveKitServerAgent/7880/',
+        );
+        assert.throws(() => edgeRuntimeTest.normalizeSignalUrl('../livekit'), /invalid/i);
     });
 
     test('join material can be supplied through the explicit unit seam without environment fallback', async () => {

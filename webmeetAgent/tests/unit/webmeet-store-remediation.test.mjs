@@ -30,7 +30,7 @@ async function freshContext() {
     const { createStoreContext } = await import('../../lib/webmeetStore.mjs');
     const storeContext = await createStoreContext(dir);
     storeContext.resolveEdgeJoinMaterial = async () => ({
-        livekitUrl: 'wss://router.test/public-services/livekit-signal/',
+        livekitUrl: 'wss://router.test/base-agent-additional-server/liveKitServerAgent/7880/',
         rtcConfig: {
             iceTransportPolicy: 'all',
             iceServers: [{
@@ -505,7 +505,7 @@ describe('manifest secret compatibility', () => {
                 livekitApiSecret: 'test-secret',
                 agentName: 'WebMeetAgent',
                 resolvePrivateLiveKitCall: async () => ({
-                    url: new URL('http://127.0.0.1:8081/private/livekit-api/DeleteRoom'),
+                    url: new URL('http://127.0.0.1:8081/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/DeleteRoom'),
                     assertion: 'test-private-router-assertion',
                 }),
             }, 'room-a', { strict: true });
@@ -547,7 +547,7 @@ describe('manifest secret compatibility', () => {
                         identity: 'participant-a'
                     });
                     return {
-                        url: new URL('http://127.0.0.1:8081/services/livekit-api/RemoveParticipant'),
+                        url: new URL('http://127.0.0.1:8081/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/RemoveParticipant'),
                         assertion: 'test-private-router-assertion'
                     };
                 }
@@ -556,7 +556,10 @@ describe('manifest secret compatibility', () => {
             globalThis.fetch = originalFetch;
         }
 
-        assert.match(requestUrl, /\/services\/livekit-api\/RemoveParticipant$/);
+        assert.match(
+            requestUrl,
+            /\/base-agent-additional-server\/liveKitServerAgent\/7880\/twirp\/livekit\.RoomService\/RemoveParticipant$/,
+        );
         assert.equal(routerAssertion, 'test-private-router-assertion');
         assert.deepEqual(requestBody, {
             room: 'room-a',

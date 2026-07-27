@@ -2,7 +2,7 @@
 
 `webmeetStt` is the Ploinky-managed internal Faster-Whisper service for WebMeet transcript generation. It owns the Python runtime, Faster-Whisper dependency installation, model cache volume, internal port, and readiness.
 
-The service is not a browser surface and must not declare `httpServices`. Its
+The service is not a browser surface and must not declare a Router HTTP route. Its
 network contract is the strict v5 bridge form with one primary logical
 attachment named `webmeet`; legacy `network.name` and `network.aliases` are
 invalid. Ploinky derives the effective instance alias and keeps the service on

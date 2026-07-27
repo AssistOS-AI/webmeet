@@ -142,10 +142,16 @@ export class WebMeetRoomLiveKit {
                 }
                 return acc;
             }, { hasStun: false, hasTurn: false, hasTurns: false });
+            const livekitUrl = new URL(session.livekitUrl, window.location.href);
+            if (livekitUrl.protocol === 'https:') livekitUrl.protocol = 'wss:';
+            if (livekitUrl.protocol === 'http:') livekitUrl.protocol = 'ws:';
+            if (!['ws:', 'wss:'].includes(livekitUrl.protocol)) {
+                throw new Error('Join payload contains an invalid media URL');
+            }
             logMediaDiagnostic('room-connect-start', {
                 livekitHost: (() => {
                     try {
-                        return new URL(session.livekitUrl).host;
+                        return livekitUrl.host;
                     } catch (_) {
                         return '';
                     }
@@ -166,7 +172,7 @@ export class WebMeetRoomLiveKit {
                 }
             });
             await room.connect(
-                session.livekitUrl,
+                livekitUrl.toString(),
                 session.participantToken,
                 connectOptions
             );

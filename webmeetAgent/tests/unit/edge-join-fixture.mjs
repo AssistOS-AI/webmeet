@@ -2,7 +2,7 @@ export function installEdgeJoinFixture(context) {
     context.livekitApiKey = context.livekitApiKey || 'unit-test-livekit-key';
     context.livekitApiSecret = context.livekitApiSecret || 'unit-test-livekit-secret-32-bytes';
     context.resolveEdgeJoinMaterial = async ({ roomName, participantIdentity }) => ({
-        livekitUrl: 'wss://router.test/public-services/livekit-signal/',
+        livekitUrl: 'wss://router.test/base-agent-additional-server/liveKitServerAgent/7880/',
         rtcConfig: {
             iceTransportPolicy: 'all',
             iceServers: [{

@@ -17,20 +17,22 @@ recording commands, and controlled rejoin. `liveKitServerAgent` owns Redis,
 LiveKit Server, Egress, and supervisor health. Ploinky Router owns browser
 signaling and private administrative transport.
 
-For every join, WebMeet resolves schema-v2 topology and requires the current
-active `livekit-signal` locator. It obtains short-lived external relay
+For every join, WebMeet reads the current unversioned media topology and uses
+the same-origin `/base-agent-additional-server/liveKitServerAgent/7880/`
+signaling path. It obtains short-lived external relay
 credentials from the private broker using an exact current-generation
 assertion. The material must include valid expiry and matching topology and
 publication generations. There is no static ICE or URL fallback.
 
-Server-side RoomService, AgentDispatchService, and Egress calls use the
-`livekit-api` service on private Router `8081`. The request assertion binds the
+Server-side RoomService calls use
+`/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/`
+on private Router `8081`. The request assertion binds the
 audience, caller generation, method, exact Twirp path, body digest, expiry, and
 nonce. Router consumes the assertion and preserves the LiveKit API JWT.
 
 Implementation status (2026-07-15): the WebMeet topology, assertion, reconnect,
 and release-gate code exists, but a default managed-bridge WebMeet runtime cannot
-activate the private broker or `livekit-api` route on the observed rootless
+activate the private broker or private RoomService convention route on the observed rootless
 Podman topology. Its exact `host.containers.internal:host-gateway` mapping
 terminates on the box outer-facing interface rather than loopback or an address
 assigned to the managed bridge. Binding private Router `8081` there would

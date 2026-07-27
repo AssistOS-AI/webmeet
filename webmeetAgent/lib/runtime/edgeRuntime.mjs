@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const LIVEKIT_ROUTE_KEY = 'liveKitServerAgent';
-const LIVEKIT_SIGNAL_SLUG = 'livekit-signal';
+const LIVEKIT_SIGNAL_PATH = '/base-agent-additional-server/liveKitServerAgent/7880/';
+const LIVEKIT_ROOM_SERVICE_PREFIX = '/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/';
 const PRIVATE_ASSERTION_HEADER = 'Ploinky-Agent-Assertion';
 
 function requireNonEmptyString(value, label) {
@@ -21,7 +21,7 @@ async function loadEdgeRuntime(env = process.env) {
         import(runtimeModuleUrl('edgeTopology.mjs', env)),
         import(runtimeModuleUrl('agentAssertion.mjs', env)),
     ]);
-    if (typeof topologyModule.readEdgeTopology !== 'function' || typeof topologyModule.resolveEdgeService !== 'function') {
+    if (typeof topologyModule.readEdgeTopology !== 'function') {
         throw new Error('Ploinky edge topology runtime is unavailable.');
     }
     if (typeof assertionModule.signPrivateRouterAssertion !== 'function') {
@@ -30,19 +30,12 @@ async function loadEdgeRuntime(env = process.env) {
     return { ...topologyModule, ...assertionModule };
 }
 
-function normalizeSignalUrl(service) {
-    const activeBrowserUrl = requireNonEmptyString(service?.activeBrowserUrl, 'Active LiveKit browser URL');
-    const routerPath = requireNonEmptyString(service?.routerPath, 'LiveKit Router path');
-    if (!routerPath.startsWith('/') || routerPath.includes('..') || routerPath.includes('?') || routerPath.includes('#')) {
+function normalizeSignalUrl(routerPath = LIVEKIT_SIGNAL_PATH) {
+    const selectedPath = requireNonEmptyString(routerPath, 'LiveKit Router path');
+    if (!selectedPath.startsWith('/') || selectedPath.includes('..') || selectedPath.includes('?') || selectedPath.includes('#')) {
         throw new Error('LiveKit Router path is invalid.');
     }
-    const url = new URL(routerPath, activeBrowserUrl);
-    if (url.protocol === 'https:') url.protocol = 'wss:';
-    if (url.protocol === 'http:') url.protocol = 'ws:';
-    if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
-        throw new Error('LiveKit browser URL must use ws, wss, http, or https.');
-    }
-    return url.toString();
+    return selectedPath;
 }
 
 function validateTurnTopology(topology) {
@@ -63,32 +56,14 @@ function validateTurnTopology(topology) {
     return { urls, credentialPath };
 }
 
-function validateGeneration(topology, resolvedService) {
-    const resolved = resolvedService?.service && typeof resolvedService.service === 'object'
-        ? resolvedService.service
-        : resolvedService;
-    const configurationGeneration = String(
-        resolvedService?.configurationGeneration || resolved?.configurationGeneration || topology?.configurationGeneration || ''
-    ).trim();
-    const publicationGeneration = resolvedService?.publicationGeneration
-        ?? resolved?.publicationGeneration
-        ?? topology?.publicationGeneration;
+function validateGeneration(topology) {
+    const configurationGeneration = String(topology?.configurationGeneration || '').trim();
+    const publicationGeneration = topology?.publicationGeneration;
     if (!configurationGeneration || !Number.isSafeInteger(Number(publicationGeneration))) {
         throw new Error('Edge topology generation metadata is invalid.');
     }
-    if (
-        resolvedService?.configurationGeneration
-        && String(resolvedService.configurationGeneration) !== String(topology.configurationGeneration)
-    ) {
-        throw new Error('Edge topology changed while join material was being resolved.');
-    }
-    if (
-        resolvedService?.publicationGeneration !== undefined
-        && Number(resolvedService.publicationGeneration) !== Number(topology.publicationGeneration)
-    ) {
-        throw new Error('Edge publication changed while join material was being resolved.');
-    }
-    return { resolved, configurationGeneration, publicationGeneration: Number(publicationGeneration) };
+    if (topology?.state !== 'ready') throw new Error('Edge topology is not ready.');
+    return { configurationGeneration, publicationGeneration: Number(publicationGeneration) };
 }
 
 function validateCredentialResponse(payload, topologyUrls, now = Date.now()) {
@@ -115,16 +90,10 @@ export async function resolveEdgeJoinMaterial(context, { roomName, participantId
     const targetRoomName = requireNonEmptyString(roomName, 'LiveKit room name');
     const targetParticipant = requireNonEmptyString(participantIdentity, 'LiveKit participant identity');
     const internalRouterUrl = requireNonEmptyString(process.env.PLOINKY_INTERNAL_ROUTER_URL, 'PLOINKY_INTERNAL_ROUTER_URL');
-    const { readEdgeTopology, resolveEdgeService, signPrivateRouterAssertion } = await loadEdgeRuntime();
+    const { readEdgeTopology, signPrivateRouterAssertion } = await loadEdgeRuntime();
     const topology = readEdgeTopology({ file: process.env.PLOINKY_EDGE_TOPOLOGY_FILE });
-    const selectedService = resolveEdgeService({
-        routeKey: LIVEKIT_ROUTE_KEY,
-        slug: LIVEKIT_SIGNAL_SLUG,
-        requireActive: true,
-        file: process.env.PLOINKY_EDGE_TOPOLOGY_FILE,
-    });
-    const generation = validateGeneration(topology, selectedService);
-    const livekitUrl = normalizeSignalUrl(generation.resolved);
+    const generation = validateGeneration(topology);
+    const livekitUrl = normalizeSignalUrl();
     const turnTopology = validateTurnTopology(topology);
     const body = Buffer.from(JSON.stringify({ roomName: targetRoomName, participantIdentity: targetParticipant }));
     const assertion = signPrivateRouterAssertion({
@@ -168,20 +137,8 @@ export async function resolvePrivateLiveKitCall({ methodName, body, env = proces
     }
     const requestBody = Buffer.isBuffer(body) ? body : Buffer.from(body || '');
     const internalRouterUrl = requireNonEmptyString(env.PLOINKY_INTERNAL_ROUTER_URL, 'PLOINKY_INTERNAL_ROUTER_URL');
-    const { resolveEdgeService, signPrivateRouterAssertion } = await loadEdgeRuntime(env);
-    const selected = resolveEdgeService({
-        routeKey: LIVEKIT_ROUTE_KEY,
-        slug: 'livekit-api',
-        requireActive: true,
-        file: env.PLOINKY_EDGE_TOPOLOGY_FILE,
-    });
-    const service = selected?.service && typeof selected.service === 'object' ? selected.service : selected;
-    const prefix = requireNonEmptyString(service?.externalPrefix || service?.routerPath, 'Private LiveKit Router prefix');
-    const normalizedPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
-    if (!normalizedPrefix.startsWith('/') || normalizedPrefix.includes('..') || normalizedPrefix.includes('?')) {
-        throw new Error('Private LiveKit Router prefix is invalid.');
-    }
-    const requestPath = `${normalizedPrefix}${targetMethod}`;
+    const { signPrivateRouterAssertion } = await loadEdgeRuntime(env);
+    const requestPath = `${LIVEKIT_ROOM_SERVICE_PREFIX}${targetMethod}`;
     return {
         url: new URL(requestPath, internalRouterUrl),
         requestPath,

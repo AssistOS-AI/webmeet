@@ -6,17 +6,11 @@ import test from 'node:test';
 
 import { resolvePrivateLiveKitCall } from '../../lib/runtime/edgeRuntime.mjs';
 
-test('RoomService calls resolve only the private livekit-api service and bind assertion bytes', async () => {
+test('RoomService calls use the private convention route and bind assertion bytes', async () => {
   const runtime = await mkdtemp(path.join(os.tmpdir(), 'webmeet-edge-runtime-'));
   const lib = path.join(runtime, 'lib');
   await mkdir(lib);
-  await writeFile(path.join(lib, 'edgeTopology.mjs'), `
-    export function readEdgeTopology() { return {}; }
-    export function resolveEdgeService(input) {
-      globalThis.__livekitResolvedServiceInput = input;
-      return { service: { externalPrefix: '/services/livekit-api/' } };
-    }
-  `);
+  await writeFile(path.join(lib, 'edgeTopology.mjs'), 'export function readEdgeTopology() { return {}; }\n');
   await writeFile(path.join(lib, 'agentAssertion.mjs'), `
     export function signPrivateRouterAssertion(input) {
       globalThis.__livekitAssertionInput = input;
@@ -30,26 +24,19 @@ test('RoomService calls resolve only the private livekit-api service and bind as
       body,
       env: {
         PLOINKY_AGENT_LIB_DIR: runtime,
-        PLOINKY_EDGE_TOPOLOGY_FILE: '/root/.ploinky/edge-topology-v2.json',
         PLOINKY_INTERNAL_ROUTER_URL: 'http://127.0.0.1:8081',
       },
     });
-    assert.equal(resolved.url.href, 'http://127.0.0.1:8081/services/livekit-api/DeleteRoom');
-    assert.equal(resolved.requestPath, '/services/livekit-api/DeleteRoom');
-    assert.deepEqual(globalThis.__livekitResolvedServiceInput, {
-      routeKey: 'liveKitServerAgent',
-      slug: 'livekit-api',
-      requireActive: true,
-      file: '/root/.ploinky/edge-topology-v2.json',
-    });
+    const expectedPath = '/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/DeleteRoom';
+    assert.equal(resolved.url.href, `http://127.0.0.1:8081${expectedPath}`);
+    assert.equal(resolved.requestPath, expectedPath);
     assert.deepEqual(JSON.parse(resolved.assertion), {
       method: 'POST',
-      path: '/services/livekit-api/DeleteRoom',
+      path: expectedPath,
       body: body.toString('hex'),
     });
     assert.equal(globalThis.__livekitAssertionInput.body.equals(body), true);
   } finally {
-    delete globalThis.__livekitResolvedServiceInput;
     delete globalThis.__livekitAssertionInput;
     await rm(runtime, { recursive: true, force: true });
   }

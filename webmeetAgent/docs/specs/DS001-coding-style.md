@@ -20,7 +20,7 @@ The local source layout is contract-bearing:
 
 | Path | Purpose |
 | --- | --- |
-| `manifest.json` | Ploinky agent command, network, dependency edges, volumes, HTTP services, and profile env. |
+| `manifest.json` | Ploinky agent command, network, dependency edges, volumes, Router access policy, and profile env. |
 | `scripts/startAgent.sh` | Starts the MCP AgentServer. |
 | `lib/` | Store, crypto, event append files, secrets helpers, and workspace path resolution. |
 | `tools/` | MCP tool dispatcher and shell entrypoint. |
