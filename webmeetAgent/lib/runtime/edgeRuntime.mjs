@@ -40,6 +40,7 @@ function normalizeSignalUrl(routerPath = LIVEKIT_SIGNAL_PATH) {
 
 function validateTurnTopology(topology) {
     const turn = topology?.media?.turn;
+    if (turn === undefined) return null;
     const urls = Array.isArray(turn?.urls)
         ? [...new Set(turn.urls.map((value) => String(value || '').trim()).filter(Boolean))]
         : [];
@@ -95,6 +96,17 @@ export async function resolveEdgeJoinMaterial(context, { roomName, participantId
     const generation = validateGeneration(topology);
     const livekitUrl = normalizeSignalUrl();
     const turnTopology = validateTurnTopology(topology);
+    if (!turnTopology) {
+        return {
+            livekitUrl,
+            rtcConfig: {
+                iceTransportPolicy: 'all',
+                iceServers: [],
+            },
+            configurationGeneration: generation.configurationGeneration,
+            publicationGeneration: generation.publicationGeneration,
+        };
+    }
     const body = Buffer.from(JSON.stringify({ roomName: targetRoomName, participantIdentity: targetParticipant }));
     const assertion = signPrivateRouterAssertion({
         method: 'POST',

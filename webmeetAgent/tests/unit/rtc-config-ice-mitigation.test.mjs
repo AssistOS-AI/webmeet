@@ -24,6 +24,7 @@ describe('external TURN runtime contract', () => {
     });
 
     test('topology requires an exact external TURN broker contract', () => {
+        assert.equal(edgeRuntimeTest.validateTurnTopology({}), null);
         assert.deepEqual(edgeRuntimeTest.validateTurnTopology({
             media: { turn: {
                 urls: ['turn:turn.example:3478?transport=udp', 'turns:turn.example:5349?transport=tcp'],
