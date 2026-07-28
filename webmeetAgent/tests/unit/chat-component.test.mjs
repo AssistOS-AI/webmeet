@@ -4,6 +4,30 @@ import assert from 'node:assert/strict';
 import { ChatComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/service-components/chat-component.js';
 import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
+function createListenerTarget() {
+    const listeners = new Map();
+    const classes = new Set();
+    return {
+        listeners,
+        classList: {
+            toggle(name, active) {
+                if (active) classes.add(name);
+                else classes.delete(name);
+            },
+            contains: (name) => classes.has(name),
+        },
+        addEventListener(name, handler) {
+            listeners.set(name, handler);
+        },
+        removeEventListener(name, handler) {
+            if (listeners.get(name) === handler) listeners.delete(name);
+        },
+        dispatch(name, event = {}) {
+            listeners.get(name)?.(event);
+        },
+    };
+}
+
 function makeComponent(overrides = {}) {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
     const calls = [];
@@ -74,7 +98,7 @@ test('chat image upload stages in Explorer and publishes one chat and Blackboard
             };
         }
     });
-    const classList = { add() {}, remove() {} };
+    const classList = { toggle() {} };
     component.elements = { chatImageButton: { disabled: false, classList, setAttribute() {} } };
     try {
         await component.publishImage({ name: 'photo.png', type: 'image/png', size: 24 });
@@ -89,6 +113,136 @@ test('chat image upload stages in Explorer and publishes one chat and Blackboard
     });
     assert.equal(state.chat[0].id, 'chat-image');
     assert.deepEqual(refreshOptions, { ensureVisible: true });
+});
+
+test('chat image paste and composer drop publish every transferred file', async () => {
+    const { component } = makeComponent();
+    const input = createListenerTarget();
+    input.files = [];
+    input.value = '';
+    const composer = createListenerTarget();
+    const overlayAttributes = new Map();
+    const overlay = {
+        hidden: true,
+        setAttribute: (name, value) => overlayAttributes.set(name, value),
+    };
+    const batches = [];
+    component.publishImages = async (files) => { batches.push(files.map((file) => file.name)); };
+    component.setElements({
+        chatComposer: composer,
+        chatInput: { value: '' },
+        chatImageInput: input,
+        chatDropOverlay: overlay,
+    });
+
+    let pastePrevented = 0;
+    composer.dispatch('paste', {
+        clipboardData: {
+            items: [
+                { kind: 'string', type: 'text/plain' },
+                { kind: 'file', type: 'image/png', getAsFile: () => ({ name: 'paste-1.png' }) },
+                { kind: 'file', type: 'image/jpeg', getAsFile: () => ({ name: 'paste-2.jpg' }) },
+            ],
+        },
+        preventDefault: () => { pastePrevented += 1; },
+    });
+
+    assert.equal(pastePrevented, 1);
+    assert.deepEqual(batches[0], ['paste-1.png', 'paste-2.jpg']);
+
+    composer.dispatch('paste', {
+        clipboardData: { items: [{ kind: 'string', type: 'text/plain' }] },
+        preventDefault: () => { pastePrevented += 1; },
+    });
+    assert.equal(pastePrevented, 1, 'text-only paste must retain the native textarea behavior');
+
+    const dragTransfer = { types: ['Files'], files: [{ name: 'drop-1.webp' }, { name: 'drop-2.gif' }] };
+    composer.dispatch('dragenter', { dataTransfer: dragTransfer, preventDefault() {} });
+    composer.dispatch('dragenter', { dataTransfer: dragTransfer, preventDefault() {} });
+    composer.dispatch('dragover', { dataTransfer: dragTransfer, preventDefault() {} });
+    assert.equal(dragTransfer.dropEffect, 'copy');
+    assert.equal(overlay.hidden, false);
+    assert.equal(composer.classList.contains('is-image-drag-active'), true);
+    composer.dispatch('dragleave', { preventDefault() {} });
+    assert.equal(overlay.hidden, false, 'nested dragleave must not hide the overlay');
+    let dropStopped = 0;
+    composer.dispatch('drop', {
+        dataTransfer: dragTransfer,
+        preventDefault() {},
+        stopPropagation: () => { dropStopped += 1; },
+    });
+
+    assert.equal(dropStopped, 1);
+    assert.equal(overlay.hidden, true);
+    assert.equal(overlayAttributes.get('aria-hidden'), 'true');
+    assert.deepEqual(batches[1], ['drop-1.webp', 'drop-2.gif']);
+
+    input.files = [{ name: 'picker.png' }];
+    composer.dispatch('dragleave', { preventDefault() {} });
+    input.dispatch('change');
+    assert.deepEqual(batches[2], ['picker.png']);
+    assert.equal(input.value, '');
+
+    component.destroyImageUpload();
+    assert.equal(composer.listeners.size, 0);
+    assert.equal(input.listeners.size, 0);
+});
+
+test('image upload queue continues after one file fails and preserves order', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetched = [];
+    globalThis.fetch = async (_url, options) => {
+        const filename = options.body.name;
+        fetched.push(filename);
+        if (filename === 'broken.png') {
+            return { ok: false, status: 500, text: async () => 'temporary failure' };
+        }
+        return {
+            ok: true,
+            json: async () => ({ id: filename, agent: 'explorer', localPath: `blobs/${filename}` }),
+        };
+    };
+    const errors = [];
+    const published = [];
+    let refreshCount = 0;
+    const { component, state } = makeComponent({
+        setError: (message) => { errors.push(message); },
+        refreshBlackboard: async () => { refreshCount += 1; },
+        runTool: async (_name, args) => {
+            published.push(args.filename);
+            return {
+                message: { id: `chat-${args.filename}`, message: args.filename },
+                blackboard: { revision: published.length, widgets: [] },
+            };
+        },
+    });
+    const busyStates = [];
+    component.elements = {
+        chatImageButton: {
+            disabled: false,
+            classList: { toggle(_name, active) { busyStates.push(active); } },
+            setAttribute() {},
+        },
+    };
+
+    try {
+        await component.publishImages([
+            { name: 'first.png', type: 'image/png', size: 10 },
+            { name: 'notes.txt', type: 'text/plain', size: 10 },
+            { name: 'broken.png', type: 'image/png', size: 10 },
+            { name: 'last.jpg', type: 'image/jpeg', size: 10 },
+        ]);
+    } finally {
+        globalThis.fetch = previousFetch;
+    }
+
+    assert.deepEqual(fetched, ['first.png', 'broken.png', 'last.jpg']);
+    assert.deepEqual(published, ['first.png', 'last.jpg']);
+    assert.equal(state.chat.length, 2);
+    assert.equal(refreshCount, 2);
+    assert.match(errors[0], /Choose a PNG/);
+    assert.match(errors[1], /temporary failure/);
+    assert.deepEqual(busyStates, [true, false]);
 });
 
 test('/robo awaits a requested browser-side group insertion before reporting success', async () => {

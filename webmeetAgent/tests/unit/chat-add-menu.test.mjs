@@ -23,6 +23,7 @@ test('chat add control declares reusable menu structure and WebSkel actions in H
     assert.match(html, /id="webmeetChatAddMenu"[\s\S]*role="menu"[\s\S]*hidden/);
     assert.match(html, /data-local-action="selectChatAddImage"[\s\S]*<span>Add image<\/span>/);
     assert.match(html, /webmeet-chat-add-control[\s\S]*webmeet-chat-input-shell[\s\S]*webmeet-compose-actions/);
+    assert.match(html, /id="webmeetChatComposer"[\s\S]*id="webmeetChatDropOverlay"[\s\S]*Drop images to upload/);
     assert.doesNotMatch(chatSource, /button\.addEventListener\(['"]click['"]/);
     assert.doesNotMatch(chatSource, /createElement\(['"]div['"]\)[\s\S]*webmeet-chat-input-shell/);
 });

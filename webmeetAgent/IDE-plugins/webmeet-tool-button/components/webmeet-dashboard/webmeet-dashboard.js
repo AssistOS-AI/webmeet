@@ -631,12 +631,14 @@ export class WebmeetDashboard {
         this.lifecycle = this.element.querySelector('#webmeetLifecycle');
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
+        this.chatComposer = this.element.querySelector('#webmeetChatComposer');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
         this.chatActionButton = this.element.querySelector('#webmeetChatActionButton');
         this.chatImageButton = this.element.querySelector('#webmeetChatImageButton');
         this.chatImageInput = this.element.querySelector('#webmeetChatImageInput');
         this.chatAddMenu = this.element.querySelector('#webmeetChatAddMenu');
         this.chatAddImageOption = this.element.querySelector('#webmeetChatAddImageOption');
+        this.chatDropOverlay = this.element.querySelector('#webmeetChatDropOverlay');
         this.chatSpeechStatus = this.element.querySelector('#webmeetChatSpeechStatus');
         this.chatViewMode = this.element.querySelector('#webmeetChatViewMode');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
@@ -687,10 +689,12 @@ export class WebmeetDashboard {
 
         // Set elements on new modular components
         this.chatComponent?.setElements({
+            chatComposer: this.chatComposer,
             chatInput: this.chatInput,
             chatActionButton: this.chatActionButton,
             chatImageButton: this.chatImageButton,
             chatImageInput: this.chatImageInput,
+            chatDropOverlay: this.chatDropOverlay,
             chatSpeechStatus: this.chatSpeechStatus
         });
 

@@ -62,6 +62,9 @@ export class ChatComponent {
         this.selectedMentionTokens = new Set();
         this.roboSpeechInput = null;
         this.imageUploadHandlers = null;
+        this.imageUploadQueue = [];
+        this.imageUploadDrainPromise = null;
+        this.imageDragDepth = 0;
     }
 
     getKnownAgentTokens() {
@@ -83,27 +86,150 @@ export class ChatComponent {
         this.initChatAutocomplete();
         this.initRoboSpeechInput();
         this.initImageUpload();
+        this.setImageUploadBusy(Boolean(this.imageUploadDrainPromise));
     }
 
     initImageUpload() {
         const input = this.elements?.chatImageInput;
-        if (!input) return;
+        const composer = this.elements?.chatComposer
+            || this.elements?.chatInput?.closest?.('.webmeet-compose')
+            || null;
+        if (!input || !composer) return;
         const onChange = () => {
-            const file = input.files?.[0] || null;
+            const files = Array.from(input.files || []);
             input.value = '';
-            if (file) void this.publishImage(file);
+            if (files.length) void this.publishImages(files);
+        };
+        const onPaste = (event) => {
+            const files = this.getTransferredFiles(event.clipboardData);
+            if (!files.length) return;
+            event.preventDefault();
+            void this.publishImages(files);
+        };
+        const onDragEnter = (event) => {
+            if (!this.hasTransferredFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            this.imageDragDepth += 1;
+            this.setImageDropActive(true);
+        };
+        const onDragOver = (event) => {
+            if (!this.hasTransferredFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+            this.setImageDropActive(true);
+        };
+        const onDragLeave = (event) => {
+            if (!this.imageDragDepth) return;
+            event.preventDefault();
+            this.imageDragDepth = Math.max(0, this.imageDragDepth - 1);
+            if (!this.imageDragDepth) this.setImageDropActive(false);
+        };
+        const onDrop = (event) => {
+            if (!this.hasTransferredFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation?.();
+            const files = this.getTransferredFiles(event.dataTransfer);
+            this.imageDragDepth = 0;
+            this.setImageDropActive(false);
+            if (files.length) void this.publishImages(files);
         };
         input.addEventListener('change', onChange);
-        this.imageUploadHandlers = { input, onChange };
+        composer.addEventListener('paste', onPaste);
+        composer.addEventListener('dragenter', onDragEnter);
+        composer.addEventListener('dragover', onDragOver);
+        composer.addEventListener('dragleave', onDragLeave);
+        composer.addEventListener('drop', onDrop);
+        this.imageUploadHandlers = {
+            input,
+            composer,
+            onChange,
+            onPaste,
+            onDragEnter,
+            onDragOver,
+            onDragLeave,
+            onDrop
+        };
     }
 
     destroyImageUpload() {
         const handlers = this.imageUploadHandlers;
         handlers?.input?.removeEventListener?.('change', handlers.onChange);
+        handlers?.composer?.removeEventListener?.('paste', handlers.onPaste);
+        handlers?.composer?.removeEventListener?.('dragenter', handlers.onDragEnter);
+        handlers?.composer?.removeEventListener?.('dragover', handlers.onDragOver);
+        handlers?.composer?.removeEventListener?.('dragleave', handlers.onDragLeave);
+        handlers?.composer?.removeEventListener?.('drop', handlers.onDrop);
+        this.imageDragDepth = 0;
+        this.setImageDropActive(false);
         this.imageUploadHandlers = null;
     }
 
-    async publishImage(file) {
+    getTransferredFiles(transfer = null) {
+        const itemFiles = Array.from(transfer?.items || [])
+            .filter((item) => item?.kind === 'file')
+            .map((item) => item.getAsFile?.())
+            .filter(Boolean);
+        return itemFiles.length ? itemFiles : Array.from(transfer?.files || []).filter(Boolean);
+    }
+
+    hasTransferredFiles(transfer = null) {
+        if (Array.from(transfer?.items || []).some((item) => item?.kind === 'file')) return true;
+        if (Array.from(transfer?.files || []).length) return true;
+        return Array.from(transfer?.types || []).includes('Files');
+    }
+
+    setImageDropActive(active) {
+        const isActive = active === true;
+        this.elements?.chatComposer?.classList?.toggle?.('is-image-drag-active', isActive);
+        const overlay = this.elements?.chatDropOverlay;
+        if (overlay) {
+            overlay.hidden = !isActive;
+            overlay.setAttribute?.('aria-hidden', isActive ? 'false' : 'true');
+        }
+    }
+
+    setImageUploadBusy(busy) {
+        const button = this.elements?.chatImageButton;
+        if (!button) return;
+        button.disabled = busy === true;
+        button.classList.toggle('is-loading', busy === true);
+        button.setAttribute('aria-busy', busy === true ? 'true' : 'false');
+    }
+
+    publishImage(file) {
+        return this.publishImages([file]);
+    }
+
+    publishImages(files = []) {
+        const nextFiles = Array.from(files || []).filter(Boolean);
+        if (!nextFiles.length) return Promise.resolve();
+        this.imageUploadQueue.push(...nextFiles);
+        if (!this.imageUploadDrainPromise) {
+            this.imageUploadDrainPromise = this.drainImageUploadQueue()
+                .finally(() => {
+                    this.imageUploadDrainPromise = null;
+                });
+        }
+        return this.imageUploadDrainPromise;
+    }
+
+    async drainImageUploadQueue() {
+        this.setImageUploadBusy(true);
+        try {
+            while (this.imageUploadQueue.length) {
+                const file = this.imageUploadQueue.shift();
+                try {
+                    await this.publishImageFile(file);
+                } catch (error) {
+                    this.setError(`Failed to publish image: ${error.message}`);
+                }
+            }
+        } finally {
+            this.setImageUploadBusy(false);
+        }
+    }
+
+    async publishImageFile(file) {
         const meeting = this.getSelectedMeeting();
         const session = this.getSession();
         if (!meeting || !session?.participantIdentity) {
@@ -119,8 +245,6 @@ export class ChatComponent {
             this.setError('Images may not exceed 15 MB.');
             return;
         }
-        const button = this.elements?.chatImageButton;
-        if (button) { button.disabled = true; button.classList.add('is-loading'); button.setAttribute('aria-busy', 'true'); }
         try {
             const upload = await fetch('/blobs/explorer', {
                 method: 'POST',
@@ -166,8 +290,6 @@ export class ChatComponent {
             }
         } catch (error) {
             this.setError(`Failed to publish image: ${error.message}`);
-        } finally {
-            if (button) { button.disabled = false; button.classList.remove('is-loading'); button.setAttribute('aria-busy', 'false'); }
         }
     }
 

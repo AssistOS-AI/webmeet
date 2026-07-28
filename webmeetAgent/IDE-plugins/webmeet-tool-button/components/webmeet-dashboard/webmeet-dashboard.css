@@ -758,6 +758,31 @@
     position: relative;
 }
 
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-drop-overlay {
+    position: absolute;
+    z-index: 30;
+    inset: 4px;
+    border: 2px dashed color-mix(in srgb, var(--accent) 72%, var(--border-strong) 28%);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--menu-backgroud) 88%, var(--accent) 12%);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-drop-overlay[hidden] {
+    display: none;
+}
+
+#webmeetChatSidebar .webmeet-compose.is-image-drag-active {
+    border-top-color: color-mix(in srgb, var(--accent) 70%, var(--border-strong) 30%);
+}
+
 #webmeetChatInput {
     min-height: 40px;
     height: 40px;
