@@ -86,6 +86,7 @@ export const roomSessionMethods = {
             return;
         }
         await this.disconnectRoom();
+        await this.chatComponent?.prepareRoboMicrophonePermission?.();
         this.state.activeSpeakerIds = new Set();
 
         const remoteVideoRecoveryCounts = new WeakMap();
@@ -578,6 +579,7 @@ export const roomSessionMethods = {
                     this.resetRoomUiState({ forceRenderAll: true, applyVideoFullscreenMode: false });
                     return;
                 }
+                this.webMeetRoom.handleExternalLiveKitDisconnect();
                 void this.handleExternalRoomDisconnect();
             },
             onConnected: ({ room, Track }) => {

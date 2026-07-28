@@ -221,14 +221,11 @@ export const blackboardActionMethods = {
         widget.properties = {
             ...widget.properties,
             source: {
-                kind: 'blob',
-                id: image.id,
+                kind: 'explorer-media',
+                assetId: image.id,
                 url: image.url,
-                downloadUrl: image.url,
-                localPath: image.localPath,
                 mimeType: image.mimeType,
-                name: image.name,
-                size: image.size
+                name: image.name
             },
             alt: image.name,
             naturalSize: {
@@ -236,12 +233,15 @@ export const blackboardActionMethods = {
                 height: image.height
             }
         };
-        const ratio = image.width > 0 && image.height > 0 ? image.width / image.height : 4 / 3;
-        const width = Math.min(360, Math.max(180, image.width || 240));
+        const naturalWidth = Math.max(1, Number(image.width || 240));
+        const naturalHeight = Math.max(1, Number(image.height || 180));
+        const naturalMax = Math.max(naturalWidth, naturalHeight);
+        const scale = naturalMax > 360 ? 360 / naturalMax : naturalMax < 180 ? 180 / naturalMax : 1;
+        const width = Math.max(1, Math.round(naturalWidth * scale));
         widget.properties.geometry = {
             ...(widget.properties.geometry || {}),
             width,
-            height: Math.round(width / ratio)
+            height: Math.max(1, Math.round(naturalHeight * scale))
         };
         const response = await this.runFinalChange({
             changeType: 'create',
@@ -257,9 +257,10 @@ export const blackboardActionMethods = {
 
     async loadBlackboardImageFile(file) {
         const mimeType = String(file?.type || '').trim();
-        if (!mimeType.startsWith('image/')) {
-            throw new Error('Selected file is not an image.');
+        if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) {
+            throw new Error('Choose a PNG, JPEG, WebP, or GIF image.');
         }
+        if (Number(file?.size || 0) > 15 * 1024 * 1024) throw new Error('Images may not exceed 15 MB.');
         const name = String(file?.name || 'Image').trim() || 'Image';
         const [upload, dimensions] = await Promise.all([
             this.uploadBlackboardImageBlob(file, name, mimeType),
@@ -268,7 +269,6 @@ export const blackboardActionMethods = {
         return {
             id: upload.id,
             url: upload.url,
-            localPath: upload.localPath,
             mimeType: upload.mimeType || mimeType,
             name: upload.name || name,
             size: upload.size,
@@ -278,7 +278,7 @@ export const blackboardActionMethods = {
     },
 
     async uploadBlackboardImageBlob(file, name, mimeType) {
-        const response = await fetch('/blobs/webmeetAgent', {
+        const response = await fetch('/blobs/explorer', {
             method: 'POST',
             headers: {
                 'Content-Type': mimeType || 'application/octet-stream',
@@ -292,17 +292,19 @@ export const blackboardActionMethods = {
             throw new Error(reason || `Image upload failed (${response.status}).`);
         }
         const payload = await response.json().catch(() => ({}));
-        const url = this.resolveUploadUrl(payload?.downloadUrl || payload?.localPath || '');
+        const asset = await this.adapter?.commitMediaBlob?.(payload, name);
+        const url = asset?.workspaceUrl
+            ? `/workspace-files/${String(asset.workspaceUrl).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`
+            : '';
         if (!url) {
             throw new Error('Image upload did not return a usable URL.');
         }
         return {
-            id: payload?.id || '',
+            id: asset?.assetId || '',
             url,
-            localPath: payload?.localPath || '',
-            mimeType: payload?.mime || mimeType,
-            name: payload?.filename || name,
-            size: Number.isFinite(Number(payload?.size)) ? Number(payload.size) : Number(file?.size || 0)
+            mimeType: asset?.mimeType || mimeType,
+            name: asset?.filename || name,
+            size: Number.isFinite(Number(asset?.size)) ? Number(asset.size) : Number(file?.size || 0)
         };
     },
 
@@ -361,7 +363,6 @@ export const blackboardActionMethods = {
                 markerStart: variant === 'arrow-both' ? 'arrow' : '',
                 markerEnd: variant === 'arrow-end' || variant === 'arrow-both' ? 'arrow' : ''
             };
-            widget.properties.label = '';
         } else if (normalizedType === 'text') {
             widget.properties.style = {
                 fill: 'transparent',
@@ -421,8 +422,8 @@ export const blackboardActionMethods = {
         } else {
             if (normalizedType === 'shape') {
                 widget.properties.shapeKind = variant || 'rectangle';
+                widget.properties.label = '';
             }
-            widget.properties.label = '';
         }
         this.applyWidgetPlacement(widget, position);
         return widget;

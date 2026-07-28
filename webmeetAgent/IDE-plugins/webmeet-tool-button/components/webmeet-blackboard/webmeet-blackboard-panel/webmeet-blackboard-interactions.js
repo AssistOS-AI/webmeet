@@ -1,8 +1,40 @@
+const WIDGET_INTERACTIVE_CONTROL_SELECTOR = [
+    'button',
+    'a[href]',
+    'input',
+    'textarea',
+    'select',
+    'option',
+    'label',
+    '[contenteditable="true"]',
+    '[data-local-action]',
+    '[role="button"]',
+    'scripta-variants-view',
+].join(', ');
+
 export const blackboardInteractionMethods = {
+    isWidgetInteractiveControlEvent(event) {
+        const target = event?.target;
+        if (!target?.closest) return false;
+        if (target.closest('[data-context-action="move"]')) return false;
+        return Boolean(target.closest(WIDGET_INTERACTIVE_CONTROL_SELECTOR));
+    },
+
     handleBoardPointerDownCapture(event) {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !this.board.contains(target)) return;
+        if (target.closest?.('.webmeet-blackboard-group-overlay')) return;
+        const groupHitArea = target.closest?.('.webmeet-blackboard-group-hit-area');
+        if (groupHitArea) {
+            const groupId = String(groupHitArea.dataset.groupId || '');
+            const representative = this.getGroupMembers(groupId).at(-1);
+            if (!representative) return;
+            this.selectGroup(groupId, representative.id);
+            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: representative.id}).catch(() => {});
+            this.beginGroupDrag(event, groupId, representative);
+            return;
+        }
         if (this.pendingWidgetType) {
             const type = this.pendingWidgetType;
             const position = this.getBoardPointFromEvent(event);
@@ -18,6 +50,25 @@ export const blackboardInteractionMethods = {
         }
         const widgetNode = target.closest?.('.webmeet-blackboard-widget') || null;
         const nextSelection = String(widgetNode?.dataset?.widgetId || '').trim();
+        const widget = nextSelection ? this.getWidgetById(nextSelection) : null;
+        if (widget && this.isGroupableWidget(widget) && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleWidgetMultiSelection(widget);
+            return;
+        }
+        if (!widget && target === this.board && this.activeTool === 'select') {
+            this.beginMarqueeSelection(event);
+            return;
+        }
+        if (widget?.groupId) {
+            this.selectGroup(widget.groupId, widget.id);
+            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: widget.id}).catch(() => {});
+            return;
+        } else {
+            this.clearGroupSelection();
+            widgetNode?.setAttribute?.('aria-selected', 'true');
+        }
         if (this.selection === nextSelection) return;
         const previousSelection = this.selection;
         this.selection = nextSelection;
@@ -34,6 +85,9 @@ export const blackboardInteractionMethods = {
             }
         }
         this.updateToolbarState();
+        if (this.selection && this.adapter?.sendEvent) {
+            void this.adapter.sendEvent('focus', {}, { widgetId: this.selection }).catch(() => {});
+        }
     },
 
     canDrawPendingWidget(type = '') {
@@ -242,6 +296,15 @@ export const blackboardInteractionMethods = {
 
     beginLocalDrag(event, widget) {
         if (!widget || widget.locked) return;
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        // Controls rendered inside movable widgets own their pointer gesture.
+        // Starting a widget drag here calls preventDefault(), which suppresses
+        // the subsequent click and makes navigation/forms appear unresponsive.
+        if (this.isWidgetInteractiveControlEvent(event)) return;
+        if (widget.groupId) {
+            this.beginGroupDrag(event, widget.groupId, widget);
+            return;
+        }
         this.selection = widget.id;
         this.updateToolbarState();
         if (this.activeTool !== 'select') return;
@@ -282,6 +345,7 @@ export const blackboardInteractionMethods = {
         if (!node) return;
         node.focus?.({preventScroll: true});
         const geometry = widget.properties?.geometry || {};
+        const minimumSize = this.getWidgetMinimumSize(widget);
         this.resizeState = {
             widget,
             node,
@@ -293,7 +357,8 @@ export const blackboardInteractionMethods = {
             originX: Number(geometry.x || 0),
             originY: Number(geometry.y || 0),
             originWidth: Number(geometry.width || 120),
-            originHeight: Number(geometry.height || 64)
+            originHeight: Number(geometry.height || 64),
+            ...minimumSize
         };
         node.setPointerCapture?.(event.pointerId);
         node.addEventListener('pointermove', this.handleLocalResize);

@@ -91,6 +91,7 @@ export class WebmeetDashboard {
         this.state = {
             meetings: [],
             chat: [],
+            chatViewMode: 'normal',
             resources: [],
             agents: [],
             meetingParticipantsById: {},
@@ -130,6 +131,7 @@ export class WebmeetDashboard {
                 humFilter: DEFAULT_HUM_FILTER,
                 outputVolume: DEFAULT_OUTPUT_VOLUME,
                 roomNotificationSounds: true,
+                speechRecognitionLanguage: 'auto',
                 cameraQuality: 'h720',
                 screenShareQuality: 'h1080fps30',
                 backgroundMode: 'none',
@@ -170,6 +172,7 @@ export class WebmeetDashboard {
             participants: [],
             activeSpeakerIds: new Set(),
             chatSidebarVisible: true,
+            chatAddMenuVisible: false,
             activeMobilePanel: 'room',
             videoGridFullscreen: false,
             blackboard: {
@@ -187,6 +190,9 @@ export class WebmeetDashboard {
             }
         };
         this.room = null;
+        this.roboCommandStatuses = new Map();
+        this.roboCommandStatusTimers = new Map();
+        this.roboCommandDraftActive = false;
         this.blackboardPanelReady = false;
         this.workspaceMeetingsRefreshTimer = null;
         this.workspaceRosterRefreshTimer = null;
@@ -206,6 +212,11 @@ export class WebmeetDashboard {
         this.handleWebMeetAvatarSettingsChangeEvent = (event) => this.handleWebMeetAvatarSettingsChange(event);
         this.handleChatInputKeydown = (event) => this.onChatInputKeydown(event);
         this.handleArchivedRoomsToggleChange = (event) => this.toggleArchivedRoomsVisibility(event);
+        this.handleChatViewModeChange = (event) => {
+            if (!event?.target?.matches?.('#webmeetChatViewMode')) return;
+            this.state.chatViewMode = event.target.checked ? 'full' : 'normal';
+            this.renderFeedLists();
+        };
         this.handleSettingsModalReadyEvent = (event) => this.mountMediaSettingsModal(event);
         this.handleSettingsModalActionEvent = (event) => this.handleMediaSettingsModalAction(event);
         this.handleSettingsModalClosedEvent = (event) => this.handleMediaSettingsModalClosed(event);
@@ -216,6 +227,7 @@ export class WebmeetDashboard {
         this.element.addEventListener('click', this.handleClick);
         this.element.addEventListener('keydown', this.handleChatInputKeydown);
         this.element.addEventListener('change', this.handleArchivedRoomsToggleChange);
+        this.element.addEventListener('change', this.handleChatViewModeChange);
         this.element.addEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
         window.addEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);
         window.addEventListener('assistOS:avatar-settings-updated', this.handleAvatarSettingsUpdatedEvent);
@@ -380,6 +392,25 @@ export class WebmeetDashboard {
             getSession: () => this.state.session,
             renderFeedLists: () => this.renderFeedLists(),
             publishRealtimePayload: (payload) => this.publishRealtimePayload(payload),
+            refreshBlackboard: (result, options) => this.refreshChatBlackboard(result, options),
+            executeBlackboardClientAction: async (action = {}) => {
+                if (action.type !== 'scripta-insert-group') throw new Error('Unsupported Blackboard client action.');
+                await this.applyBlackboardVisibility({
+                    meetingId: this.selectedMeeting?.id || '',
+                    participantId: this.state.session?.participantIdentity || '',
+                    visible: true,
+                    presenterId: 'agent_robo_team',
+                    presenterName: 'RoboTeam'
+                });
+                await new Promise((resolve, reject) => {
+                    if (!this.blackboardPanel) return reject(new Error('Blackboard panel is not available.'));
+                    this.blackboardPanel.dispatchEvent(new CustomEvent('webmeet-blackboard-insert-group-scripta', {
+                        detail: { groupId: action.groupId, alt: action.alt, resolve, reject }
+                    }));
+                });
+            },
+            updateRoboCommandStatus: (status) => this.updateRoboCommandStatus(status, { publish: true }),
+            updateRoboDraftState: (active) => this.setRoboCommandDraftActive(active),
             loadMeetingDetails: () => this.loadMeetingDetails(),
             getRoom: () => this.room
         });
@@ -479,6 +510,8 @@ export class WebmeetDashboard {
                 'toggleScreenShare',
                 'toggleVideoGridFullscreen',
                 'toggleChatSidebar',
+                'toggleChatAddMenu',
+                'selectChatAddImage',
                 'toggleMediaSettings',
                 'closeMediaSettings',
                 'setSettingsTab',
@@ -511,6 +544,20 @@ export class WebmeetDashboard {
     }
 
     onChatInputKeydown(event) {
+        if (this.state.chatAddMenuVisible && event.key === 'Escape') {
+            event.preventDefault();
+            this.closeChatAddMenu({ restoreFocus: true });
+            return;
+        }
+        if (
+            this.state.chatAddMenuVisible
+            && event.target?.closest?.('#webmeetChatAddMenu')
+            && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
+        ) {
+            event.preventDefault();
+            this.chatAddImageOption?.focus?.();
+            return;
+        }
         if (!event.target?.matches?.('#webmeetChatInput')) return;
         if (event.key !== 'Enter' || event.isComposing) return;
         if (event.shiftKey || event.altKey || event.ctrlKey) return;
@@ -519,6 +566,26 @@ export class WebmeetDashboard {
     }
 
     handleClick = (event) => {
+        if (
+            this.state.chatAddMenuVisible
+            && !event.target?.closest?.('.webmeet-chat-add-control')
+        ) {
+            this.closeChatAddMenu();
+        }
+        const attachment = event.target?.closest?.('[data-chat-blackboard-widget]');
+        if (attachment) {
+            const widgetId = String(attachment.dataset.chatBlackboardWidget || '').trim();
+            void this.applyBlackboardVisibility({
+                meetingId: this.selectedMeeting?.id || '',
+                participantId: this.state.session?.participantIdentity || '',
+                visible: true,
+                presenterId: 'agent_robo_team',
+                presenterName: 'RoboTeam'
+            }).then(() => {
+                this.blackboardPanel?.dispatchEvent?.(new CustomEvent('webmeet-blackboard-select-widget', {detail: {widgetId}}));
+            });
+            return;
+        }
         if (
             this.state.avatarQuickMenuVisible
             && !event.target?.closest?.('.webmeet-avatar-quick-action')
@@ -564,7 +631,16 @@ export class WebmeetDashboard {
         this.lifecycle = this.element.querySelector('#webmeetLifecycle');
         this.joinPayload = this.element.querySelector('#webmeetJoinPayload');
         this.chatList = this.element.querySelector('#webmeetChatList');
+        this.chatComposer = this.element.querySelector('#webmeetChatComposer');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
+        this.chatActionButton = this.element.querySelector('#webmeetChatActionButton');
+        this.chatImageButton = this.element.querySelector('#webmeetChatImageButton');
+        this.chatImageInput = this.element.querySelector('#webmeetChatImageInput');
+        this.chatAddMenu = this.element.querySelector('#webmeetChatAddMenu');
+        this.chatAddImageOption = this.element.querySelector('#webmeetChatAddImageOption');
+        this.chatDropOverlay = this.element.querySelector('#webmeetChatDropOverlay');
+        this.chatSpeechStatus = this.element.querySelector('#webmeetChatSpeechStatus');
+        this.chatViewMode = this.element.querySelector('#webmeetChatViewMode');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
         this.videoGrid = this.element.querySelector('#webmeetVideoGrid');
         this.videoGridEmpty = this.element.querySelector('#webmeetVideoEmpty');
@@ -580,6 +656,7 @@ export class WebmeetDashboard {
         this.blackboardButton = this.element.querySelector('#webmeetBlackboardButton');
         this.blackboardSurface = this.element.querySelector('#webmeetBlackboardSurface');
         this.blackboardPresenter = this.element.querySelector('#webmeetBlackboardPresenter');
+        this.blackboardCommandStatus = this.element.querySelector('#webmeetBlackboardCommandStatus');
         this.blackboardPanel = this.element.querySelector('webmeet-blackboard-panel');
         this.videoGridFullscreenButton = this.element.querySelector('#webmeetVideoGridFullscreenButton');
         this.dashboardRoot = this.element.querySelector('.webmeet-dashboard');
@@ -612,8 +689,16 @@ export class WebmeetDashboard {
 
         // Set elements on new modular components
         this.chatComponent?.setElements({
-            chatInput: this.chatInput
+            chatComposer: this.chatComposer,
+            chatInput: this.chatInput,
+            chatActionButton: this.chatActionButton,
+            chatImageButton: this.chatImageButton,
+            chatImageInput: this.chatImageInput,
+            chatDropOverlay: this.chatDropOverlay,
+            chatSpeechStatus: this.chatSpeechStatus
         });
+
+        this.applyChatAddMenuState();
 
         this.applyChatSidebarWidth();
         this.applyMobilePanelState();
@@ -626,8 +711,9 @@ export class WebmeetDashboard {
         this.element.removeEventListener('submit', this.handleSubmitEvent);
         this.element.removeEventListener('keydown', this.handleChatInputKeydown);
         this.element.removeEventListener('change', this.handleArchivedRoomsToggleChange);
+        this.element.removeEventListener('change', this.handleChatViewModeChange);
         this.element.removeEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
-        this.chatComponent?.destroyChatAutocomplete?.();
+        this.chatComponent?.destroy?.();
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();

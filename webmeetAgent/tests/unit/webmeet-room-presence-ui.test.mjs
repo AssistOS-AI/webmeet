@@ -33,16 +33,36 @@ test('authenticated refresh does not use cached pending leave state', async () =
     assert.doesNotMatch(presenceController, /pendingLeaves|PENDING_LEAVES_STORAGE_KEY|rememberPendingLeave/);
 });
 
-test('connected room roster is not driven by browser presence timers', async () => {
+test('connected room keeps durable presence alive without roster polling', async () => {
     const modal = await readModalFile('webmeet-dashboard.js');
     const sessionMethods = await readModalFile('controllers/dashboard-session-methods.js');
     const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
     const presenceController = await readModalFile('controllers/meeting-presence-controller.js');
+    const roomService = await readModalFile('services/room/webmeet-room.js');
 
     assert.doesNotMatch(modal, /shouldPing|runPresenceTool/);
     assert.doesNotMatch(sessionMethods, /startPresenceHeartbeat|sendPresencePing/);
     assert.doesNotMatch(roomSessionMethods, /startPresenceHeartbeat|loadMeetingDetails\(\{ includeParticipants: false \}\)/);
     assert.doesNotMatch(presenceController, /setInterval/);
+    assert.match(roomService, /startPresenceHeartbeat/);
+    assert.match(roomService, /sendPresenceHeartbeat/);
+    assert.match(roomService, /getApi\(\)\.heartbeat/);
+    assert.match(roomSessionMethods, /onDisconnected:[\s\S]*handleExternalLiveKitDisconnect\(\)[\s\S]*handleExternalRoomDisconnect\(\)/);
+});
+
+test('room connection prepares push-to-talk microphone permission before LiveKit connects', async () => {
+    const roomSessionMethods = await readModalFile('controllers/room-session-methods.js');
+    const connectRoom = roomSessionMethods.slice(
+        roomSessionMethods.indexOf('async connectRoom'),
+        roomSessionMethods.indexOf('\n        const remoteVideoRecoveryCounts', roomSessionMethods.indexOf('async connectRoom'))
+    );
+
+    assert.match(connectRoom, /await this\.chatComponent\?\.prepareRoboMicrophonePermission\?\.\(\)/);
+    assert.ok(
+        connectRoom.indexOf('await this.disconnectRoom()')
+            < connectRoom.indexOf('prepareRoboMicrophonePermission'),
+        'the previous room microphone must be released before requesting permission for the new room'
+    );
 });
 
 test('workspace event polling is outside the active LiveKit room lifecycle', async () => {
@@ -154,7 +174,7 @@ test('room notification sounds are local, generated, and setting controlled', as
     assert.match(sessionMethods, /playParticipantJoinSound/);
     assert.match(sessionMethods, /playParticipantLeaveSound/);
     assert.match(sessionMethods, /isLocalParticipantIdentity/);
-    assert.match(modal, /webmeetRoomNotificationSounds/);
+    assert.match(modal, /roomNotificationSounds/);
     assert.match(mediaSettings, /roomNotificationSounds:\s*true/);
     assert.match(soundService, /createOscillator/);
     assert.match(soundService, /isJoin\s*\?\s*0\.18\s*:\s*0\.16/);

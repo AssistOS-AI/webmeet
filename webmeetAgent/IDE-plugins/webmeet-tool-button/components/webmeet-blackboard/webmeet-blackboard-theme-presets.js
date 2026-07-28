@@ -23,7 +23,7 @@ const blackboardThemePresets = [
         },
         defaults: {
             shape: {fill: '#ffffff', stroke: '#334155', strokeWidth: 2},
-            line: {stroke: '#334155', strokeWidth: 3},
+            line: {stroke: '#334155', strokeWidth: 1},
             text: {fill: 'transparent', stroke: '#cbd5e1', textColor: '#172033'},
             image: {fill: 'transparent', stroke: '#334155', strokeWidth: 0}
         }
@@ -50,7 +50,7 @@ const blackboardThemePresets = [
         },
         defaults: {
             shape: {fill: '#e0f2fe', stroke: '#38bdf8', strokeWidth: 2},
-            line: {stroke: '#38bdf8', strokeWidth: 3},
+            line: {stroke: '#38bdf8', strokeWidth: 1},
             text: {fill: 'transparent', stroke: '#38bdf8', textColor: '#e0f2fe'},
             image: {fill: 'transparent', stroke: '#38bdf8', strokeWidth: 0}
         }
@@ -77,7 +77,7 @@ const blackboardThemePresets = [
         },
         defaults: {
             shape: {fill: '#fff7df', stroke: '#7c6f57', strokeWidth: 2},
-            line: {stroke: '#7c6f57', strokeWidth: 3},
+            line: {stroke: '#7c6f57', strokeWidth: 1},
             text: {fill: 'transparent', stroke: '#b8a47f', textColor: '#5f4b24'},
             image: {fill: 'transparent', stroke: '#7c6f57', strokeWidth: 0}
         }
@@ -104,7 +104,7 @@ const blackboardThemePresets = [
         },
         defaults: {
             shape: {fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 2},
-            line: {stroke: '#16a34a', strokeWidth: 3},
+            line: {stroke: '#16a34a', strokeWidth: 1},
             text: {fill: 'transparent', stroke: '#16a34a', textColor: '#166534'},
             image: {fill: 'transparent', stroke: '#16a34a', strokeWidth: 0}
         }
@@ -131,7 +131,7 @@ const blackboardThemePresets = [
         },
         defaults: {
             shape: {fill: '#d7eef0', stroke: '#5d9cac', strokeWidth: 2},
-            line: {stroke: '#6276b7', strokeWidth: 3},
+            line: {stroke: '#6276b7', strokeWidth: 1},
             text: {fill: 'transparent', stroke: '#91c9c8', textColor: '#315f86'},
             image: {fill: 'transparent', stroke: '#5d9cac', strokeWidth: 0}
         }
@@ -158,7 +158,7 @@ const blackboardThemePresets = [
         },
         defaults: {
             shape: {fill: '#facc15', stroke: '#ffffff', strokeWidth: 3},
-            line: {stroke: '#facc15', strokeWidth: 4},
+            line: {stroke: '#facc15', strokeWidth: 1},
             text: {fill: 'transparent', stroke: '#facc15', textColor: '#ffffff'},
             image: {fill: 'transparent', stroke: '#ffffff', strokeWidth: 0}
         }

@@ -3,6 +3,7 @@
     "id": "webmeet",
     "component": "webmeet-tool-button",
     "location": ["file-exp:toolbar"],
+    "locationOrder": 300,
     "label": "WebMeet",
     "tooltip": "WebMeet collaboration",
     "icon": "./icon.svg",
@@ -43,7 +44,8 @@
         {
             "component": "custom-select",
             "presenter": "CustomSelect",
-            "path": "explorer/web-components/components/custom-select/custom-select"
+            "agent": "explorer",
+            "baseUrl": "/explorer/web-components/components/custom-select/custom-select"
         },
         {
             "component": "webmeet-participant-card",
@@ -64,6 +66,17 @@
             "presenter": "WebMeetBlackboardWidgetEditor",
             "type": "modal",
             "path": "components/webmeet-blackboard/webmeet-blackboard-widget-editor/webmeet-blackboard-widget-editor"
+        },
+        {
+            "component": "webmeet-scripta-document-modal",
+            "presenter": "WebMeetScriptaDocumentModal",
+            "type": "modal",
+            "path": "components/webmeet-blackboard/webmeet-scripta-document-modal/webmeet-scripta-document-modal"
+        },
+        {
+            "component": "scripta-variants-view",
+            "presenter": "ScriptaVariantsView",
+            "baseUrl": "/explorer/shared/ui/scripta-variants-view/scripta-variants-view"
         },
         {
             "component": "webmeet-blackboard-poll-modal",

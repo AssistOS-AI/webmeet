@@ -70,6 +70,15 @@ function extractToolText(payload) {
     return '';
 }
 
+function extractErrorMessage(value, fallback = 'Tool execution failed') {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (!value || typeof value !== 'object') return fallback;
+    if (typeof value.message === 'string' && value.message.trim()) return value.message.trim();
+    if (value.error !== undefined) return extractErrorMessage(value.error, fallback);
+    if (typeof value.code === 'string' && value.code.trim()) return value.code.trim();
+    return fallback;
+}
+
 function ensureSuccess(payload) {
     if (payload && typeof payload === 'object' && payload.isError === true) {
         const text = extractToolText(payload).trim();
@@ -81,7 +90,8 @@ function ensureSuccess(payload) {
     }
     const parsed = unwrapMcpToolResult(payload);
     if (parsed && typeof parsed === 'object' && parsed.ok === false) {
-        throw new WebMeetToolError('tool_error', parsed.error || 'Tool execution failed', parsed);
+        const errorCode = typeof parsed.error?.code === 'string' ? parsed.error.code : 'tool_error';
+        throw new WebMeetToolError(errorCode, extractErrorMessage(parsed.error), parsed);
     }
 }
 

@@ -11,6 +11,7 @@ import {
     listMeetingChat
 } from '../../lib/webmeetStore.mjs';
 import { dispatch } from '../../tools/webmeet_tool.mjs';
+import { installScriptaFolderFixture } from './edge-join-fixture.mjs';
 
 const ENV_KEYS = [
     'PLOINKY_WEBMEET_MASTER_KEY',
@@ -56,7 +57,7 @@ function startStubRouter() {
 
 async function makeContext() {
     const authInfo = { user: { id: 'local:admin', username: 'admin', name: 'Admin', roles: ['admin'] } };
-    const context = await createStoreContext(tempRoot);
+    const context = installScriptaFolderFixture(await createStoreContext(tempRoot));
     context.envelope = { metadata: { invocationToken: 'caller-token' } };
     const meeting = await createMeeting(context, {
         name: 'Research room',

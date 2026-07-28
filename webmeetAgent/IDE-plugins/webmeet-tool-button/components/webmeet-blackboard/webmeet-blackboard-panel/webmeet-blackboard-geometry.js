@@ -69,8 +69,8 @@ export const blackboardGeometryMethods = {
     },
 
     getResizedGeometry(state, event) {
-        const minWidth = 48;
-        const minHeight = 32;
+        const minWidth = Number(state.minWidth || 48);
+        const minHeight = Number(state.minHeight || 32);
         const dx = event.clientX - state.startX;
         const dy = event.clientY - state.startY;
         const affectsWest = state.handle.includes('w');

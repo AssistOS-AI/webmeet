@@ -197,9 +197,9 @@ export function ensureRoboTeamBlackboardPayload(agent, roomId = '') {
     return agent.blackboard;
 }
 
-export function getRoboTeamBlackboardVersion(payload) {
+export function getRoboTeamBlackboardRevision(payload) {
     const agent = getRoboTeamAgentPayload(payload);
-    return Number(agent?.blackboard?.version || 1);
+    return Number(agent?.blackboard?.revision || 0);
 }
 
 function buildRoboTeamAgent(settings = {}, previous = {}, meetingId = '') {
@@ -383,7 +383,7 @@ export async function updateRoboTeamSettings(context, { roomId, settings, authIn
                 });
                 stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
                     meetingId: targetRoomId,
-                    blackboardVersion: blackboard.version,
+                    blackboardRevision: blackboard.revision,
                     changeType: 'create',
                     targetType: 'blackboard',
                     targetRef: '',

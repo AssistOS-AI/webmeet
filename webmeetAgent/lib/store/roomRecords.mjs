@@ -317,6 +317,15 @@ export async function createRoomRecord(context, title, roomType = 'team') {
     return record;
 }
 
+export async function removeRoomRecord(context, roomId) {
+    const key = String(roomId || '').trim();
+    if (!key) return;
+    await withQueuedRoomLock(context, key, async () => {
+        await fs.rm(path.join(context.eventsDir, key), { recursive: true, force: true });
+        await fs.rm(filePathFor(context.meetingsDir, key), { force: true });
+    });
+}
+
 export async function listRoomRecords(context) {
     return await Promise.all((await listJsonFiles(context.meetingsDir)).map(async (filePath) => {
         try {

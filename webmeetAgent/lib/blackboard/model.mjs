@@ -6,19 +6,29 @@ export const BLACKBOARD_WIDGET_TYPES = Object.freeze([
     'card',
     'poll',
     'bullets',
+    'scripta-document',
     'embed'
+]);
+
+export const BLACKBOARD_GROUPABLE_WIDGET_TYPES = Object.freeze([
+    'shape',
+    'line',
+    'text',
+    'image',
+    'card'
 ]);
 
 export const BLACKBOARD_CHANGE_TYPES = Object.freeze([
     'create',
     'update',
     'delete',
+    'group',
+    'ungroup',
+    'focus',
     'submit',
     'start',
     'close',
     'reorder',
-    'lock',
-    'unlock',
     'clear'
 ]);
 
@@ -54,7 +64,7 @@ function cloneHistorySnapshot(value) {
     }
     const output = {};
     for (const [key, entryValue] of Object.entries(value)) {
-        if (key === 'history') {
+        if (key === 'history' || key === 'privateRoboContext') {
             continue;
         }
         output[key] = cloneHistorySnapshot(entryValue);
@@ -64,6 +74,43 @@ function cloneHistorySnapshot(value) {
 
 function isPlainObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function finiteLineCoordinates(value = {}) {
+    const coordinates = [value.x1, value.y1, value.x2, value.y2].map(Number);
+    return coordinates.every(Number.isFinite) ? coordinates : null;
+}
+
+export function normalizeFreeLineProperties(properties = {}) {
+    const normalized = cloneJson(properties || {});
+    if (normalized.connection) return normalized;
+    const geometry = isPlainObject(normalized.geometry) ? normalized.geometry : null;
+    const canonicalLine = isPlainObject(normalized.line) ? normalized.line : null;
+    const embeddedCoordinates = !canonicalLine && geometry ? finiteLineCoordinates(geometry) : null;
+    const absoluteCoordinates = !geometry && canonicalLine ? finiteLineCoordinates(canonicalLine) : embeddedCoordinates;
+    if (!absoluteCoordinates) return normalized;
+
+    const [x1, y1, x2, y2] = absoluteCoordinates;
+    const padding = 0.5;
+    const x = Math.min(x1, x2) - padding;
+    const y = Math.min(y1, y2) - padding;
+    const lineSource = canonicalLine || geometry || {};
+    const { x1: _x1, y1: _y1, x2: _x2, y2: _y2, x: _x, y: _y, width: _width, height: _height, rotation: _rotation, ...lineOptions } = lineSource;
+    normalized.geometry = {
+        x,
+        y,
+        width: Math.max(1, Math.abs(x2 - x1) + padding * 2),
+        height: Math.max(1, Math.abs(y2 - y1) + padding * 2),
+        rotation: 0,
+    };
+    normalized.line = {
+        ...lineOptions,
+        x1: x1 - x,
+        y1: y1 - y,
+        x2: x2 - x,
+        y2: y2 - y,
+    };
+    return normalized;
 }
 
 export function mergePlainObject(target, patch) {
@@ -94,6 +141,7 @@ function resetThemeStyleProperties(properties = {}, widgetType = '') {
         card: ['fill', 'stroke', 'textColor'],
         poll: ['fill', 'stroke', 'textColor'],
         bullets: ['fill', 'stroke', 'textColor'],
+        'scripta-document': ['fill', 'stroke', 'textColor'],
         embed: ['fill', 'stroke', 'textColor'],
         image: ['stroke']
     };
@@ -246,6 +294,40 @@ function filterPropertiesForViewer(properties = {}, viewerContext = {}) {
     if (!privileged) {
         delete filtered.correctAnswer;
         delete filtered.scoring;
+    }
+
+    const guestViewer = (viewerContext?.roles || []).some((role) => String(role || '').toLowerCase() === 'guest');
+    if (Array.isArray(filtered.documents) && Object.prototype.hasOwnProperty.call(filtered, 'viewMode')) {
+        filtered.canBrowseWorkspace = Boolean(String(viewerContext?.userId || '').trim() && !guestViewer);
+    }
+    if (!String(viewerContext?.userId || '').trim() || guestViewer) {
+        delete filtered.editorUrl;
+        delete filtered.documentId;
+    }
+    if (filtered._viewerVotes && typeof filtered._viewerVotes === 'object') {
+        filtered.viewerVote = participantId ? cloneJson(filtered._viewerVotes[participantId] || null) : null;
+    }
+    delete filtered._viewerVotes;
+    if (filtered.paragraph?._viewerVotes && typeof filtered.paragraph._viewerVotes === 'object') {
+        filtered.paragraph.viewerVote = participantId
+            ? cloneJson(filtered.paragraph._viewerVotes[participantId] || null)
+            : null;
+    }
+    if (filtered.paragraph) delete filtered.paragraph._viewerVotes;
+    if (Array.isArray(filtered.paragraph?.variants)) {
+        const viewerHash = String(viewerContext?.scriptaOwnerHash || '').trim();
+        filtered.paragraph.variants = filtered.paragraph.variants.map((variant) => {
+            const projected = cloneJson(variant) || {};
+            const ownedByViewer = Boolean(
+                viewerHash
+                && String(projected._ownerHash || '').trim() === viewerHash
+            );
+            projected.ownedByViewer = ownedByViewer;
+            projected.canEdit = ownedByViewer;
+            projected.canDelete = ownedByViewer && filtered.paragraph.variants.length > 1;
+            delete projected._ownerHash;
+            return projected;
+        });
     }
 
     return filtered;
@@ -444,12 +526,113 @@ function getChangeActorId(change = {}, options = {}) {
     return String(change.participantId || options.participantId || options.actorParticipantId || '').trim();
 }
 
+function translateWidget(widget, dx, dy, options = {}) {
+    const geometry = widget.properties?.geometry;
+    const properties = {};
+    if (isPlainObject(geometry)) {
+        properties.geometry = {
+            ...geometry,
+            x: Number(geometry.x || 0) + dx,
+            y: Number(geometry.y || 0) + dy,
+        };
+    } else if (widget.type === 'line' && widget.properties?.line && !widget.properties?.connection) {
+        const line = widget.properties.line;
+        properties.line = {
+            ...line,
+            x1: Number(line.x1 || 0) + dx,
+            y1: Number(line.y1 || 0) + dy,
+            x2: Number(line.x2 || 0) + dx,
+            y2: Number(line.y2 || 0) + dy,
+        };
+    }
+    widget.patch({ properties }, options);
+}
+
+const GROUP_WIDGET_MINIMUM_SIZE = Object.freeze({
+    line: { width: 1, height: 1 },
+    poll: { width: 260, height: 132 },
+    bullets: { width: 320, height: 190 },
+    'scripta-document': { width: 600, height: 400 },
+});
+
+function widgetMinimumSize(widget) {
+    return GROUP_WIDGET_MINIMUM_SIZE[widget?.type] || { width: 48, height: 32 };
+}
+
+function widgetGeometry(widget) {
+    const geometry = widget?.properties?.geometry || {};
+    return {
+        x: Number(geometry.x || 0),
+        y: Number(geometry.y || 0),
+        width: Math.max(1, Number(geometry.width || 1)),
+        height: Math.max(1, Number(geometry.height || 1)),
+    };
+}
+
+function widgetsBounds(widgets = []) {
+    const geometries = widgets.map(widgetGeometry);
+    const x = Math.min(...geometries.map((geometry) => geometry.x));
+    const y = Math.min(...geometries.map((geometry) => geometry.y));
+    const right = Math.max(...geometries.map((geometry) => geometry.x + geometry.width));
+    const bottom = Math.max(...geometries.map((geometry) => geometry.y + geometry.height));
+    return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+}
+
+function resizeWidgetInGroup(widget, sourceBounds, targetBounds, scaleX, scaleY, options = {}) {
+    const geometry = widgetGeometry(widget);
+    const properties = {
+        geometry: {
+            ...(widget.properties?.geometry || {}),
+            x: targetBounds.x + (geometry.x - sourceBounds.x) * scaleX,
+            y: targetBounds.y + (geometry.y - sourceBounds.y) * scaleY,
+            width: geometry.width * scaleX,
+            height: geometry.height * scaleY,
+        },
+    };
+    if (widget.type === 'line' && widget.properties?.line && !widget.properties?.connection) {
+        const line = widget.properties.line;
+        properties.line = {
+            ...line,
+            x1: Number(line.x1 || 0) * scaleX,
+            y1: Number(line.y1 || 0) * scaleY,
+            x2: Number(line.x2 || 0) * scaleX,
+            y2: Number(line.y2 || 0) * scaleY,
+        };
+    }
+    widget.patch({ properties }, options);
+}
+
+function rotateWidgetInGroup(widget, center, degrees, options = {}) {
+    const geometry = widgetGeometry(widget);
+    const radians = degrees * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const widgetCenterX = geometry.x + geometry.width / 2;
+    const widgetCenterY = geometry.y + geometry.height / 2;
+    const offsetX = widgetCenterX - center.x;
+    const offsetY = widgetCenterY - center.y;
+    const nextCenterX = center.x + offsetX * cosine - offsetY * sine;
+    const nextCenterY = center.y + offsetX * sine + offsetY * cosine;
+    const rotation = Number(widget.properties?.rotation ?? widget.properties?.geometry?.rotation ?? 0) + degrees;
+    widget.patch({
+        properties: {
+            geometry: {
+                ...(widget.properties?.geometry || {}),
+                x: nextCenterX - geometry.width / 2,
+                y: nextCenterY - geometry.height / 2,
+            },
+            rotation,
+        },
+    }, options);
+}
+
 function canManagePollWidget(widget, actorId = '', options = {}) {
     if (options.canManagePoll === true || options.canModerateBlackboard === true) {
         return true;
     }
+    const permissionParticipantId = String(options.permissionParticipantId || actorId || '').trim();
     const ownerParticipantId = String(widget?.properties?.ownerParticipantId || widget?.createdBy || '').trim();
-    return Boolean(actorId && ownerParticipantId && actorId === ownerParticipantId);
+    return Boolean(permissionParticipantId && ownerParticipantId && permissionParticipantId === ownerParticipantId);
 }
 
 function assertCanManagePollWidget(widget, actorId = '', options = {}) {
@@ -468,11 +651,15 @@ export class BlackboardWidget {
     constructor(input = {}) {
         this.id = String(input.id || randomId('widget')).trim();
         this.type = normalizeWidgetType(input.type || 'shape');
-        this.properties = cloneJson(input.properties || {});
+        this.properties = this.type === 'line'
+            ? normalizeFreeLineProperties(input.properties || {})
+            : cloneJson(input.properties || {});
+        this.groupId = String(input.groupId || '').trim();
         this.visibility = normalizeVisibility(input.visibility || 'all');
         this.locked = Boolean(input.locked);
-        this.version = Number.isFinite(input.version) ? input.version : 1;
         this.createdBy = String(input.createdBy || '').trim();
+        this.updatedBy = String(input.updatedBy || input.createdBy || '').trim();
+        this.provenance = cloneJson(input.provenance || null);
         this.createdAt = String(input.createdAt || input.timestamp || nowIso()).trim();
         this.updatedAt = String(input.updatedAt || input.timestamp || this.createdAt).trim();
         this.timestamp = String(input.timestamp || this.updatedAt).trim();
@@ -489,17 +676,17 @@ export class BlackboardWidget {
         if (patch.properties !== undefined) {
             this.properties = mergePlainObject(this.properties, patch.properties);
         }
+        if (patch.groupId !== undefined) this.groupId = String(patch.groupId || '').trim();
         if (patch.visibility !== undefined) {
             this.visibility = normalizeVisibility(patch.visibility);
         }
         if (patch.locked !== undefined) {
             this.locked = Boolean(patch.locked);
         }
-        this.version = Number.isFinite(patch.version) && options.acceptRemoteVersion
-            ? patch.version
-            : this.version + 1;
         this.timestamp = String(patch.timestamp || nowIso()).trim();
         this.updatedAt = this.timestamp;
+        if (options.participantId) this.updatedBy = String(options.participantId).trim();
+        if (options.provenance) this.provenance = cloneJson(options.provenance);
         return this;
     }
 
@@ -509,7 +696,6 @@ export class BlackboardWidget {
 
     setLocked(value) {
         this.locked = Boolean(value);
-        this.version += 1;
         this.timestamp = nowIso();
         this.updatedAt = this.timestamp;
         return this;
@@ -527,10 +713,11 @@ export class BlackboardWidget {
             id: this.id,
             type: this.type,
             properties: filterPropertiesForViewer(this.properties, viewerContext),
+            groupId: this.groupId,
             visibility: cloneJson(this.visibility),
             locked: this.locked,
-            version: this.version,
             createdBy: this.createdBy,
+            updatedBy: this.updatedBy,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,
             timestamp: this.timestamp
@@ -542,10 +729,12 @@ export class BlackboardWidget {
             id: this.id,
             type: this.type,
             properties: cloneJson(this.properties),
+            groupId: this.groupId,
             visibility: cloneJson(this.visibility),
             locked: this.locked,
-            version: this.version,
             createdBy: this.createdBy,
+            updatedBy: this.updatedBy,
+            provenance: cloneJson(this.provenance),
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,
             timestamp: this.timestamp
@@ -649,7 +838,15 @@ export class Blackboard {
         this.boardOwnerType = String(input.boardOwnerType || input.metadata?.boardOwnerType || '').trim();
         this.boardOwnerId = String(input.boardOwnerId || input.metadata?.boardOwnerId || '').trim();
         this.boardVisibility = String(input.boardVisibility || input.metadata?.boardVisibility || 'room').trim() || 'room';
-        this.version = Number.isFinite(input.version) ? input.version : 0;
+        this.revision = Number.isFinite(input.revision) ? input.revision : 0;
+        this.interactionContext = {
+            focusedWidgetId: String(input.interactionContext?.focusedWidgetId || '').trim(),
+            lastAffectedWidgetIds: Array.isArray(input.interactionContext?.lastAffectedWidgetIds)
+                ? input.interactionContext.lastAffectedWidgetIds.map((id) => String(id || '').trim()).filter(Boolean)
+                : [],
+            updatedBy: String(input.interactionContext?.updatedBy || '').trim(),
+            updatedAt: String(input.interactionContext?.updatedAt || '').trim(),
+        };
         this.metadata = cloneJson(input.metadata || {});
         this.widgets = new Map();
         this.runtime = input.runtime || {};
@@ -660,8 +857,12 @@ export class Blackboard {
         const widgets = input.widgets instanceof Map ? [...input.widgets.values()] : input.widgets || [];
         for (const widget of widgets) {
             const normalized = BlackboardWidget.from(widget);
+            if (!BLACKBOARD_GROUPABLE_WIDGET_TYPES.includes(normalized.type)) {
+                normalized.groupId = '';
+            }
             this.widgets.set(normalized.id, normalized);
         }
+        this.dissolveSingletonGroups();
     }
 
     addWidget(widget, options = {}) {
@@ -671,9 +872,11 @@ export class Blackboard {
         }
         if (options.participantId) {
             normalized.createdBy = String(options.participantId || '').trim();
+            normalized.updatedBy = normalized.createdBy;
         }
+        if (options.provenance) normalized.provenance = cloneJson(options.provenance);
         if (normalized.type === 'poll') {
-            const ownerParticipantId = String(normalized.properties?.ownerParticipantId || normalized.createdBy || options.participantId || '').trim();
+            const ownerParticipantId = String(options.ownerParticipantId || normalized.properties?.ownerParticipantId || normalized.createdBy || options.participantId || '').trim();
             normalized.properties = {
                 ...normalized.properties,
                 ownerParticipantId
@@ -683,7 +886,7 @@ export class Blackboard {
             normalized.properties = normalizeBulletsProperties(normalized.properties);
         }
         this.widgets.set(normalized.id, normalized);
-        this.bumpVersion(options.blackboardVersion);
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('create', null, normalized.serializePrivileged());
         }
@@ -704,13 +907,39 @@ export class Blackboard {
             throw new Error(`Blackboard widget "${widgetId}" is closed.`);
         }
         const before = widget.serializePrivileged();
-        widget.patch(sanitizeWidgetPatch(widget, patch), options);
+        const cleanPatch = sanitizeWidgetPatch(widget, patch);
+        const delta = cleanPatch?.properties?.geometryDelta;
+        if (delta && typeof delta === 'object') {
+            const dx = Number(delta.x || 0);
+            const dy = Number(delta.y || 0);
+            delete cleanPatch.properties.geometryDelta;
+            translateWidget(widget, dx, dy, options);
+            if (widget.groupId) {
+                for (const member of this.widgets.values()) {
+                    if (member.id !== widget.id && member.groupId === widget.groupId) {
+                        translateWidget(member, dx, dy, options);
+                    }
+                }
+            }
+        }
+        if (!delta && options.moveGroup && widget.groupId && cleanPatch?.properties?.geometry) {
+            const current = widget.properties?.geometry || {};
+            const next = cleanPatch.properties.geometry;
+            const dx = Number(next.x ?? current.x ?? 0) - Number(current.x || 0);
+            const dy = Number(next.y ?? current.y ?? 0) - Number(current.y || 0);
+            for (const member of this.widgets.values()) {
+                if (member.id !== widget.id && member.groupId === widget.groupId) translateWidget(member, dx, dy, options);
+            }
+        }
+        if (Object.keys(cleanPatch || {}).some((key) => key !== 'properties' || Object.keys(cleanPatch.properties || {}).length)) {
+            widget.patch(cleanPatch, options);
+        }
         if (widget.type === 'poll') {
             widget.properties = normalizePollProperties(widget.properties);
         } else if (widget.type === 'bullets') {
             widget.properties = normalizeBulletsProperties(widget.properties);
         }
-        this.bumpVersion(options.blackboardVersion);
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('patch', before, widget.serializePrivileged());
         }
@@ -720,11 +949,20 @@ export class Blackboard {
     removeWidget(widgetId, options = {}) {
         const widget = this.getWidget(widgetId);
         if (!widget) {
-            return null;
+            const error = new Error(`Blackboard widget "${widgetId}" was not found.`);
+            error.code = 'widget_not_found';
+            throw error;
         }
         assertCanManagePollWidget(widget, String(options.participantId || '').trim(), options);
         this.widgets.delete(widget.id);
-        this.bumpVersion(options.blackboardVersion);
+        for (const candidate of [...this.widgets.values()]) {
+            const connection = candidate.properties?.connection;
+            if (connection?.from?.widgetId === widget.id || connection?.to?.widgetId === widget.id) {
+                this.widgets.delete(candidate.id);
+            }
+        }
+        this.dissolveSingletonGroups();
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('delete', widget.serializePrivileged(), null);
         }
@@ -734,7 +972,8 @@ export class Blackboard {
     clear(options = {}) {
         const before = this.serializePrivileged();
         this.widgets.clear();
-        this.bumpVersion(options.blackboardVersion);
+        this.interactionContext = { focusedWidgetId: '', lastAffectedWidgetIds: [], updatedBy: '', updatedAt: nowIso() };
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('clear', before, this.serializePrivileged());
         }
@@ -751,7 +990,7 @@ export class Blackboard {
                 resetThemeStyleProperties(widget.properties, widget.type);
             }
         }
-        this.bumpVersion(options.blackboardVersion);
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('patchBlackboard', before, this.serializePrivileged());
         }
@@ -775,7 +1014,7 @@ export class Blackboard {
             }
             if (widget.properties.closesAt && isPastIso(widget.properties.closesAt, nowMs)) {
                 widget.patchProperties({ status: 'closed' }, { ...options, canEditLocked: true });
-                this.bumpVersion(options.blackboardVersion);
+                this.bumpRevision(options.revision);
                 throw new Error('Poll is closed.');
             }
             const questions = normalizePollQuestions(widget.properties);
@@ -792,7 +1031,7 @@ export class Blackboard {
                 participantData: nextParticipantData,
                 aggregation: buildPollAggregation(nextParticipantData, questions)
             }, { ...options, canEditLocked: options.canEditLocked ?? true });
-            this.bumpVersion(options.blackboardVersion);
+            this.bumpRevision(options.revision);
             if (options.record !== false && options.undoable !== false) {
                 this.history.record('submit', before, widget.serializePrivileged());
             }
@@ -804,7 +1043,7 @@ export class Blackboard {
                 [id]: cloneJson(data)
             }
         }, { ...options, canEditLocked: options.canEditLocked ?? true });
-        this.bumpVersion(options.blackboardVersion);
+        this.bumpRevision(options.revision);
         if (options.record !== false && options.undoable !== false) {
             this.history.record('submit', before, widget.serializePrivileged());
         }
@@ -831,7 +1070,7 @@ export class Blackboard {
             startedAt,
             closesAt
         }, { ...options, canEditLocked: true, canEditClosed: true });
-        this.bumpVersion(options.blackboardVersion);
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('startPoll', before, widget.serializePrivileged());
         }
@@ -849,7 +1088,7 @@ export class Blackboard {
         assertCanManagePollWidget(widget, String(options.participantId || '').trim(), options);
         const before = widget.serializePrivileged();
         widget.patchProperties({ status: 'closed' }, { ...options, canEditLocked: true, canEditClosed: true });
-        this.bumpVersion(options.blackboardVersion);
+        this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('closePoll', before, widget.serializePrivileged());
         }
@@ -862,7 +1101,7 @@ export class Blackboard {
             return null;
         }
         this.applyHistoryEntry(entry, 'undo');
-        this.bumpVersion();
+        this.bumpRevision();
         return this.serialize(viewerContext);
     }
 
@@ -872,18 +1111,22 @@ export class Blackboard {
             return null;
         }
         this.applyHistoryEntry(entry, 'redo');
-        this.bumpVersion();
+        this.bumpRevision();
         return this.serialize(viewerContext);
     }
 
     applyHistoryEntry(entry, direction) {
         const object = direction === 'undo' ? entry.beforeObject : entry.afterObject;
-        if (entry.operation === 'clear') {
+        if (['clear', 'command', 'group', 'transformGroup', 'deleteGroup', 'ungroupGroup'].includes(entry.operation)) {
+            const history = this.history;
             this.replaceFromSerialized(object || { roomId: this.roomId, widgets: [] });
+            this.history = history;
             return;
         }
         if (entry.operation === 'patchBlackboard') {
+            const history = this.history;
             this.replaceFromSerialized(object || { roomId: this.roomId, widgets: [] });
+            this.history = history;
             return;
         }
         if (entry.operation === 'create' && direction === 'undo') {
@@ -910,16 +1153,27 @@ export class Blackboard {
         if (changeType === 'clear') {
             return this.clear(options);
         }
+        if (changeType === 'group') {
+            return this.groupWidgets(change.widgetIds || change.data?.widgetIds, options);
+        }
         if (changeType === 'update' && String(change.targetType || '').trim() === 'blackboard') {
             return this.patch(change.patch || {}, options);
         }
         const targetRef = String(change.targetRef || change.widgetId || '').trim();
         if (!targetRef) {
-            throw new Error('Missing blackboard widget target.');
+            throw new Error('Missing blackboard widget or group target.');
+        }
+        if (String(change.targetType || '').trim() === 'group') {
+            if (changeType === 'update') return this.transformGroup(targetRef, change.patch?.transform || {}, options);
+            if (changeType === 'delete') return this.removeGroup(targetRef, options);
+            if (changeType === 'ungroup') return this.ungroupGroup(targetRef, options);
+            throw new Error(`Unsupported group change type "${changeType}".`);
         }
         if (changeType === 'delete') {
             return this.removeWidget(targetRef, { ...options, participantId: getChangeActorId(change, options) });
         }
+        if (changeType === 'ungroup') return this.ungroupWidget(targetRef, options);
+        if (changeType === 'focus') return this.focusWidget(targetRef, options);
         if (changeType === 'submit') {
             return this.submitParticipantData(targetRef, change.participantId, change.data, options);
         }
@@ -929,26 +1183,192 @@ export class Blackboard {
         if (changeType === 'close') {
             return this.closePoll(targetRef, { ...options, participantId: getChangeActorId(change, options) });
         }
-        if (changeType === 'lock' || changeType === 'unlock') {
-            return this.patchWidget(targetRef, { locked: changeType === 'lock' }, { ...options, canEditLocked: true, participantId: getChangeActorId(change, options) });
-        }
         return this.patchWidget(targetRef, change.patch || {}, { ...options, participantId: getChangeActorId(change, options) });
     }
 
-    bumpVersion(explicitVersion) {
-        this.version = Number.isFinite(explicitVersion) ? Math.max(this.version, explicitVersion) : this.version + 1;
+    groupWidgets(widgetIds = [], options = {}) {
+        const ids = [...new Set((Array.isArray(widgetIds) ? widgetIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
+        if (ids.length < 2) throw new Error('A group requires at least two widgets.');
+        const widgets = ids.map((id) => {
+            const widget = this.getWidget(id);
+            if (!widget) {
+                const error = new Error(`Blackboard widget "${id}" was not found.`);
+                error.code = 'widget_not_found';
+                throw error;
+            }
+            if (widget.groupId) throw new Error(`Blackboard widget "${id}" already belongs to a group.`);
+            if (!BLACKBOARD_GROUPABLE_WIDGET_TYPES.includes(widget.type)) {
+                const error = new Error(`Interactive blackboard widget type "${widget.type}" cannot be grouped.`);
+                error.code = 'widget_not_groupable';
+                throw error;
+            }
+            return widget;
+        });
+        const selectedIds = new Set(ids);
+        for (const widget of widgets) {
+            const connection = widget.properties?.connection;
+            if (connection && (!selectedIds.has(connection.from?.widgetId) || !selectedIds.has(connection.to?.widgetId))) {
+                throw new Error('An attached connection can be grouped only together with both endpoint widgets.');
+            }
+        }
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        const groupId = String(options.groupId || randomId('group')).trim();
+        widgets.forEach((widget) => { widget.groupId = groupId; });
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('group', before, this.serializePrivileged());
+        }
+        return widgets;
+    }
+
+    getGroupMembers(groupId) {
+        const normalizedGroupId = String(groupId || '').trim();
+        const members = [...this.widgets.values()].filter((widget) => widget.groupId === normalizedGroupId);
+        if (members.length < 2) {
+            const error = new Error(`Blackboard group "${normalizedGroupId}" was not found.`);
+            error.code = 'group_not_found';
+            throw error;
+        }
+        return members;
+    }
+
+    transformGroup(groupId, transform = {}, options = {}) {
+        const members = this.getGroupMembers(groupId);
+        const transformableMembers = members.filter((widget) => !widget.properties?.connection);
+        for (const widget of members) {
+            assertCanManagePollWidget(widget, String(options.participantId || '').trim(), options);
+            if (widget.properties?.closed && !options.canEditClosed) {
+                throw new Error(`Blackboard widget "${widget.id}" is closed.`);
+            }
+        }
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        const translation = transform.translation;
+        if (translation) {
+            const dx = Number(translation.x || 0);
+            const dy = Number(translation.y || 0);
+            transformableMembers.forEach((widget) => translateWidget(widget, dx, dy, options));
+        }
+        const rotationDelta = Number(transform.rotationDelta || 0);
+        if (rotationDelta) {
+            const bounds = widgetsBounds(transformableMembers);
+            const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+            transformableMembers.forEach((widget) => rotateWidgetInGroup(widget, center, rotationDelta, options));
+        }
+        if (transform.resize) {
+            const sourceBounds = widgetsBounds(transformableMembers);
+            const requested = transform.resize;
+            let scaleX = Number(requested.width) / sourceBounds.width;
+            let scaleY = Number(requested.height) / sourceBounds.height;
+            for (const widget of transformableMembers) {
+                const geometry = widgetGeometry(widget);
+                const minimum = widgetMinimumSize(widget);
+                scaleX = Math.max(scaleX, minimum.width / geometry.width);
+                scaleY = Math.max(scaleY, minimum.height / geometry.height);
+            }
+            const targetBounds = {
+                x: Number(requested.x),
+                y: Number(requested.y),
+                width: sourceBounds.width * scaleX,
+                height: sourceBounds.height * scaleY,
+            };
+            transformableMembers.forEach((widget) => resizeWidgetInGroup(widget, sourceBounds, targetBounds, scaleX, scaleY, options));
+        }
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('transformGroup', before, this.serializePrivileged());
+        }
+        return members;
+    }
+
+    removeGroup(groupId, options = {}) {
+        const members = this.getGroupMembers(groupId);
+        members.forEach((widget) => assertCanManagePollWidget(widget, String(options.participantId || '').trim(), options));
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        const memberIds = new Set(members.map((widget) => widget.id));
+        for (const candidate of this.widgets.values()) {
+            const connection = candidate.properties?.connection;
+            if (connection && (memberIds.has(connection.from?.widgetId) || memberIds.has(connection.to?.widgetId))) {
+                memberIds.add(candidate.id);
+            }
+        }
+        const removed = [...memberIds].map((id) => this.getWidget(id)).filter(Boolean);
+        memberIds.forEach((id) => this.widgets.delete(id));
+        this.dissolveSingletonGroups();
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('deleteGroup', before, this.serializePrivileged());
+        }
+        return removed;
+    }
+
+    ungroupGroup(groupId, options = {}) {
+        const members = this.getGroupMembers(groupId);
+        const before = options.record !== false ? this.serializePrivileged() : null;
+        members.forEach((widget) => { widget.groupId = ''; });
+        this.bumpRevision(options.revision);
+        if (options.record !== false) {
+            this.history.record('ungroupGroup', before, this.serializePrivileged());
+        }
+        return members;
+    }
+
+    ungroupWidget(widgetId, options = {}) {
+        const widget = this.getWidget(widgetId);
+        if (!widget) {
+            const error = new Error(`Blackboard widget "${widgetId}" was not found.`);
+            error.code = 'widget_not_found';
+            throw error;
+        }
+        const groupId = widget.groupId;
+        if (groupId) for (const member of this.widgets.values()) if (member.groupId === groupId) member.groupId = '';
+        this.bumpRevision(options.revision);
+        return widget;
+    }
+
+    dissolveSingletonGroups() {
+        const counts = new Map();
+        for (const widget of this.widgets.values()) if (widget.groupId) counts.set(widget.groupId, (counts.get(widget.groupId) || 0) + 1);
+        for (const widget of this.widgets.values()) if (widget.groupId && counts.get(widget.groupId) < 2) widget.groupId = '';
+    }
+
+    focusWidget(widgetId, options = {}) {
+        const id = String(widgetId || '').trim();
+        if (id && !this.getWidget(id)) {
+            const error = new Error(`Blackboard widget "${id}" was not found.`);
+            error.code = 'widget_not_found';
+            throw error;
+        }
+        this.interactionContext = {
+            focusedWidgetId: id,
+            lastAffectedWidgetIds: id ? [id] : [],
+            updatedBy: String(options.participantId || '').trim(),
+            updatedAt: nowIso(),
+        };
+        this.bumpRevision(options.revision);
+        return id ? this.getWidget(id) : this;
+    }
+
+    updateInteractionContext(widgetIds = [], options = {}) {
+        const ids = [...new Set(widgetIds.map((id) => String(id || '').trim()).filter((id) => this.widgets.has(id)))];
+        this.interactionContext = {
+            focusedWidgetId: ids.at(-1) || '',
+            lastAffectedWidgetIds: ids,
+            updatedBy: String(options.participantId || '').trim(),
+            updatedAt: nowIso(),
+        };
+    }
+
+    bumpRevision(explicitRevision) {
+        this.revision = Number.isFinite(explicitRevision) ? Math.max(this.revision, explicitRevision) : this.revision + 1;
     }
 
     serialize(viewerContext = {}) {
+        const themeId = String(this.metadata?.theme?.id || '').trim();
         return {
-            id: this.id,
-            roomId: this.roomId,
             boardId: this.boardId,
-            boardOwnerType: this.boardOwnerType,
-            boardOwnerId: this.boardOwnerId,
-            boardVisibility: this.boardVisibility,
-            version: this.version,
-            metadata: cloneJson(this.metadata),
+            revision: this.revision,
+            interactionContext: cloneJson(this.interactionContext),
+            metadata: themeId ? { theme: { id: themeId } } : {},
             widgets: [...this.widgets.values()]
                 .map((widget) => widget.serialize(viewerContext))
                 .filter(Boolean)
@@ -963,7 +1383,8 @@ export class Blackboard {
             boardOwnerType: this.boardOwnerType,
             boardOwnerId: this.boardOwnerId,
             boardVisibility: this.boardVisibility,
-            version: this.version,
+            revision: this.revision,
+            interactionContext: cloneJson(this.interactionContext),
             metadata: cloneJson(this.metadata),
             widgets: [...this.widgets.values()].map((widget) => widget.serializePrivileged()),
             history: this.history.serialize()
@@ -978,7 +1399,8 @@ export class Blackboard {
         this.boardOwnerType = next.boardOwnerType;
         this.boardOwnerId = next.boardOwnerId;
         this.boardVisibility = next.boardVisibility;
-        this.version = next.version;
+        this.revision = next.revision;
+        this.interactionContext = next.interactionContext;
         this.metadata = next.metadata;
         this.widgets = next.widgets;
         this.history = next.history;

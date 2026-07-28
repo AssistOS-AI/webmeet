@@ -9,6 +9,10 @@ export class WebMeetBlackboardToolbar {
         this.themeOptions = getBlackboardThemeOptions();
         this.openMenu = '';
         this.pendingWidgetType = '';
+        this.scriptaDocumentMenuOpen = false;
+        this.scriptaOpenMenuOpen = false;
+        this.scriptaWorkspaceEntries = null;
+        this.scriptaWorkspaceLoading = false;
         this.menuSelections = {
             shape: { icon: 'rectangle', value: 'shape:rectangle' },
             line: { icon: 'line', value: 'line' },
@@ -28,7 +32,7 @@ export class WebMeetBlackboardToolbar {
         this.renderState();
     }
 
-    setState({ busy = false, themeId, pendingWidgetType } = {}) {
+    setState({ busy = false, themeId, pendingWidgetType, scriptaWorkspaceEntries, scriptaWorkspaceLoading } = {}) {
         this.busy = busy;
         if (themeId) {
             this.themeId = resolveBlackboardThemeId({ theme: { id: themeId } });
@@ -36,6 +40,8 @@ export class WebMeetBlackboardToolbar {
         if (pendingWidgetType !== undefined) {
             this.pendingWidgetType = String(pendingWidgetType || '').trim();
         }
+        if (scriptaWorkspaceEntries !== undefined) this.scriptaWorkspaceEntries = scriptaWorkspaceEntries;
+        if (scriptaWorkspaceLoading !== undefined) this.scriptaWorkspaceLoading = Boolean(scriptaWorkspaceLoading);
         if (this.busy) {
             this.openMenu = '';
         }
@@ -73,6 +79,35 @@ export class WebMeetBlackboardToolbar {
         input?.click?.();
     }
 
+    toggleScriptaDocumentMenu(_target) {
+        if (_target?.disabled || this.busy) return;
+        this.rememberMenuSelection(_target, 'scripta-document');
+        this.scriptaDocumentMenuOpen = !this.scriptaDocumentMenuOpen;
+        this.scriptaOpenMenuOpen = false;
+        if (this.scriptaDocumentMenuOpen) {
+            this.scriptaWorkspaceLoading = true;
+            this.emit('blackboard-scripta-document', { operation: 'list' });
+        }
+        this.renderState();
+    }
+
+    toggleScriptaOpenMenu(_target) {
+        if (_target?.disabled || this.busy) return;
+        this.scriptaOpenMenuOpen = !this.scriptaOpenMenuOpen;
+        this.renderState();
+    }
+
+    runScriptaMenuAction(_target, operation = '') {
+        if (_target?.disabled || this.busy) return;
+        const normalizedOperation = String(operation || '').trim();
+        const documentPath = String(_target?.dataset?.scriptaPath || '').trim();
+        this.closeMenu();
+        this.emit('blackboard-scripta-document', {
+            operation: normalizedOperation,
+            ...(documentPath ? { path: documentPath } : {})
+        });
+    }
+
     runToolbarAction(_target, action = '') {
         const normalizedAction = String(action || '').trim();
         if (!normalizedAction || _target?.disabled) return;
@@ -92,12 +127,18 @@ export class WebMeetBlackboardToolbar {
         const normalizedMenu = String(menu || '').trim();
         if (!normalizedMenu || _target?.disabled || this.busy) return;
         this.openMenu = this.openMenu === normalizedMenu ? '' : normalizedMenu;
+        if (this.openMenu !== 'insert') {
+            this.scriptaDocumentMenuOpen = false;
+            this.scriptaOpenMenuOpen = false;
+        }
         this.renderState();
     }
 
     closeMenu() {
-        if (!this.openMenu) return;
+        if (!this.openMenu && !this.scriptaDocumentMenuOpen && !this.scriptaOpenMenuOpen) return;
         this.openMenu = '';
+        this.scriptaDocumentMenuOpen = false;
+        this.scriptaOpenMenuOpen = false;
         this.renderState();
     }
 
@@ -165,6 +206,13 @@ export class WebMeetBlackboardToolbar {
             const selectedValue = this.menuSelections[group]?.value || '';
             item.classList.toggle('is-selected', item.dataset.menuValue === selectedValue);
         }
+        const documentBranch = this.element.querySelector('[data-scripta-branch="document"]');
+        const openBranch = this.element.querySelector('[data-scripta-branch="open"]');
+        documentBranch?.classList.toggle('is-open', this.scriptaDocumentMenuOpen && this.openMenu === 'insert');
+        openBranch?.classList.toggle('is-open', this.scriptaOpenMenuOpen && this.scriptaDocumentMenuOpen && this.openMenu === 'insert');
+        documentBranch?.querySelector(':scope > button')?.setAttribute('aria-expanded', this.scriptaDocumentMenuOpen ? 'true' : 'false');
+        openBranch?.querySelector(':scope > button')?.setAttribute('aria-expanded', this.scriptaOpenMenuOpen ? 'true' : 'false');
+        this.renderScriptaOpenDocuments();
         const themeMenu = this.element.querySelector('[data-theme-menu]');
         if (themeMenu) {
             const fragment = document.createDocumentFragment();
@@ -191,6 +239,60 @@ export class WebMeetBlackboardToolbar {
             }
             themeMenu.replaceChildren(fragment);
         }
+    }
+
+    renderScriptaOpenDocuments() {
+        const menu = this.element.querySelector('[data-scripta-open-documents]');
+        if (!menu) return;
+        const fragment = document.createDocumentFragment();
+        const entries = this.scriptaWorkspaceEntries;
+        if (this.scriptaWorkspaceLoading) {
+            const loading = document.createElement('span');
+            loading.className = 'webmeet-blackboard-submenu-status';
+            loading.textContent = 'Loading…';
+            fragment.append(loading);
+        } else if (!entries) {
+            const unavailable = document.createElement('span');
+            unavailable.className = 'webmeet-blackboard-submenu-status';
+            unavailable.textContent = 'Workspace unavailable';
+            fragment.append(unavailable);
+        } else {
+            const documents = Array.isArray(entries.defaultDocuments) ? entries.defaultDocuments : [];
+            if (!documents.length) {
+                const empty = document.createElement('span');
+                empty.className = 'webmeet-blackboard-submenu-status';
+                empty.textContent = 'No documents in room folder';
+                fragment.append(empty);
+            }
+            for (const documentPath of documents) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'webmeet-blackboard-menu-item';
+                button.dataset.localAction = 'runScriptaMenuAction open-path';
+                button.dataset.scriptaPath = documentPath;
+                button.setAttribute('role', 'menuitem');
+                const icon = document.createElement('span');
+                icon.className = 'webmeet-blackboard-menu-item-icon';
+                icon.dataset.iconKey = 'scripta-document';
+                const label = document.createElement('span');
+                label.textContent = documentPath.split('/').pop() || documentPath;
+                button.append(icon, label);
+                fragment.append(button);
+            }
+            const other = document.createElement('button');
+            other.type = 'button';
+            other.className = 'webmeet-blackboard-menu-item webmeet-blackboard-menu-other';
+            other.dataset.localAction = 'runScriptaMenuAction open-other';
+            other.setAttribute('role', 'menuitem');
+            const icon = document.createElement('span');
+            icon.className = 'webmeet-blackboard-menu-item-icon';
+            icon.dataset.iconKey = 'folder-open';
+            const label = document.createElement('span');
+            label.textContent = 'Other…';
+            other.append(icon, label);
+            fragment.append(other);
+        }
+        menu.replaceChildren(fragment);
     }
 
     emit(type, detail) {

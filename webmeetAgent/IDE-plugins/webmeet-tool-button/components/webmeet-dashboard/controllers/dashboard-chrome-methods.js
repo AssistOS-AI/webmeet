@@ -26,6 +26,37 @@ export const dashboardChromeMethods = {
         this.applyChatSidebarVisibility();
     },
 
+    applyChatAddMenuState({ focusFirst = false, restoreFocus = false } = {}) {
+        const visible = this.state.chatAddMenuVisible === true;
+        if (this.chatAddMenu) {
+            this.chatAddMenu.hidden = !visible;
+        }
+        if (this.chatImageButton) {
+            this.chatImageButton.setAttribute('aria-expanded', visible ? 'true' : 'false');
+        }
+        if (visible && focusFirst) {
+            this.chatAddImageOption?.focus?.();
+        } else if (!visible && restoreFocus) {
+            this.chatImageButton?.focus?.();
+        }
+    },
+
+    toggleChatAddMenu() {
+        this.state.chatAddMenuVisible = !this.state.chatAddMenuVisible;
+        this.applyChatAddMenuState({ focusFirst: this.state.chatAddMenuVisible });
+    },
+
+    closeChatAddMenu({ restoreFocus = false } = {}) {
+        if (!this.state.chatAddMenuVisible) return;
+        this.state.chatAddMenuVisible = false;
+        this.applyChatAddMenuState({ restoreFocus });
+    },
+
+    selectChatAddImage() {
+        this.closeChatAddMenu();
+        this.chatImageInput?.click?.();
+    },
+
     setMobilePanel(panelName) {
         const nextPanel = ['room', 'rooms', 'chat', 'settings'].includes(panelName) ? panelName : 'room';
         if (nextPanel === 'settings') {

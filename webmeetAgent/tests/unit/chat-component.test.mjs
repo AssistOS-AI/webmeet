@@ -2,6 +2,31 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ChatComponent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/service-components/chat-component.js';
+import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
+
+function createListenerTarget() {
+    const listeners = new Map();
+    const classes = new Set();
+    return {
+        listeners,
+        classList: {
+            toggle(name, active) {
+                if (active) classes.add(name);
+                else classes.delete(name);
+            },
+            contains: (name) => classes.has(name),
+        },
+        addEventListener(name, handler) {
+            listeners.set(name, handler);
+        },
+        removeEventListener(name, handler) {
+            if (listeners.get(name) === handler) listeners.delete(name);
+        },
+        dispatch(name, event = {}) {
+            listeners.get(name)?.(event);
+        },
+    };
+}
 
 function makeComponent(overrides = {}) {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
@@ -54,6 +79,329 @@ test('sendChat clears the chat input after a successful send', async () => {
     component.elements = { chatInput: { value: 'note' } };
     await component.sendChat();
     assert.equal(component.elements.chatInput.value, '');
+});
+
+test('chat image upload stages in Explorer and publishes one chat and Blackboard result', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({ id: 'b'.repeat(48), agent: 'explorer', localPath: `blobs/${'b'.repeat(48)}` })
+    });
+    let refreshOptions = null;
+    const { component, calls, state } = makeComponent({
+        refreshBlackboard: async (_result, options) => { refreshOptions = options; },
+        runTool: async (name, args) => {
+            calls.push({ name, args });
+            return {
+                message: { id: 'chat-image', message: 'photo.png', metadata: { attachments: [{ kind: 'image' }] } },
+                blackboard: { revision: 4, widgets: [] }
+            };
+        }
+    });
+    const classList = { toggle() {} };
+    component.elements = { chatImageButton: { disabled: false, classList, setAttribute() {} } };
+    try {
+        await component.publishImage({ name: 'photo.png', type: 'image/png', size: 24 });
+    } finally {
+        globalThis.fetch = previousFetch;
+    }
+    assert.equal(calls[0].name, 'webmeet_image_publish');
+    assert.deepEqual(calls[0].args.blobRef, {
+        id: 'b'.repeat(48),
+        agent: 'explorer',
+        localPath: `blobs/${'b'.repeat(48)}`
+    });
+    assert.equal(state.chat[0].id, 'chat-image');
+    assert.deepEqual(refreshOptions, { ensureVisible: true });
+});
+
+test('chat image paste and composer drop publish every transferred file', async () => {
+    const { component } = makeComponent();
+    const input = createListenerTarget();
+    input.files = [];
+    input.value = '';
+    const composer = createListenerTarget();
+    const overlayAttributes = new Map();
+    const overlay = {
+        hidden: true,
+        setAttribute: (name, value) => overlayAttributes.set(name, value),
+    };
+    const batches = [];
+    component.publishImages = async (files) => { batches.push(files.map((file) => file.name)); };
+    component.setElements({
+        chatComposer: composer,
+        chatInput: { value: '' },
+        chatImageInput: input,
+        chatDropOverlay: overlay,
+    });
+
+    let pastePrevented = 0;
+    composer.dispatch('paste', {
+        clipboardData: {
+            items: [
+                { kind: 'string', type: 'text/plain' },
+                { kind: 'file', type: 'image/png', getAsFile: () => ({ name: 'paste-1.png' }) },
+                { kind: 'file', type: 'image/jpeg', getAsFile: () => ({ name: 'paste-2.jpg' }) },
+            ],
+        },
+        preventDefault: () => { pastePrevented += 1; },
+    });
+
+    assert.equal(pastePrevented, 1);
+    assert.deepEqual(batches[0], ['paste-1.png', 'paste-2.jpg']);
+
+    composer.dispatch('paste', {
+        clipboardData: { items: [{ kind: 'string', type: 'text/plain' }] },
+        preventDefault: () => { pastePrevented += 1; },
+    });
+    assert.equal(pastePrevented, 1, 'text-only paste must retain the native textarea behavior');
+
+    const dragTransfer = { types: ['Files'], files: [{ name: 'drop-1.webp' }, { name: 'drop-2.gif' }] };
+    composer.dispatch('dragenter', { dataTransfer: dragTransfer, preventDefault() {} });
+    composer.dispatch('dragenter', { dataTransfer: dragTransfer, preventDefault() {} });
+    composer.dispatch('dragover', { dataTransfer: dragTransfer, preventDefault() {} });
+    assert.equal(dragTransfer.dropEffect, 'copy');
+    assert.equal(overlay.hidden, false);
+    assert.equal(composer.classList.contains('is-image-drag-active'), true);
+    composer.dispatch('dragleave', { preventDefault() {} });
+    assert.equal(overlay.hidden, false, 'nested dragleave must not hide the overlay');
+    let dropStopped = 0;
+    composer.dispatch('drop', {
+        dataTransfer: dragTransfer,
+        preventDefault() {},
+        stopPropagation: () => { dropStopped += 1; },
+    });
+
+    assert.equal(dropStopped, 1);
+    assert.equal(overlay.hidden, true);
+    assert.equal(overlayAttributes.get('aria-hidden'), 'true');
+    assert.deepEqual(batches[1], ['drop-1.webp', 'drop-2.gif']);
+
+    input.files = [{ name: 'picker.png' }];
+    composer.dispatch('dragleave', { preventDefault() {} });
+    input.dispatch('change');
+    assert.deepEqual(batches[2], ['picker.png']);
+    assert.equal(input.value, '');
+
+    component.destroyImageUpload();
+    assert.equal(composer.listeners.size, 0);
+    assert.equal(input.listeners.size, 0);
+});
+
+test('image upload queue continues after one file fails and preserves order', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetched = [];
+    globalThis.fetch = async (_url, options) => {
+        const filename = options.body.name;
+        fetched.push(filename);
+        if (filename === 'broken.png') {
+            return { ok: false, status: 500, text: async () => 'temporary failure' };
+        }
+        return {
+            ok: true,
+            json: async () => ({ id: filename, agent: 'explorer', localPath: `blobs/${filename}` }),
+        };
+    };
+    const errors = [];
+    const published = [];
+    let refreshCount = 0;
+    const { component, state } = makeComponent({
+        setError: (message) => { errors.push(message); },
+        refreshBlackboard: async () => { refreshCount += 1; },
+        runTool: async (_name, args) => {
+            published.push(args.filename);
+            return {
+                message: { id: `chat-${args.filename}`, message: args.filename },
+                blackboard: { revision: published.length, widgets: [] },
+            };
+        },
+    });
+    const busyStates = [];
+    component.elements = {
+        chatImageButton: {
+            disabled: false,
+            classList: { toggle(_name, active) { busyStates.push(active); } },
+            setAttribute() {},
+        },
+    };
+
+    try {
+        await component.publishImages([
+            { name: 'first.png', type: 'image/png', size: 10 },
+            { name: 'notes.txt', type: 'text/plain', size: 10 },
+            { name: 'broken.png', type: 'image/png', size: 10 },
+            { name: 'last.jpg', type: 'image/jpeg', size: 10 },
+        ]);
+    } finally {
+        globalThis.fetch = previousFetch;
+    }
+
+    assert.deepEqual(fetched, ['first.png', 'broken.png', 'last.jpg']);
+    assert.deepEqual(published, ['first.png', 'last.jpg']);
+    assert.equal(state.chat.length, 2);
+    assert.equal(refreshCount, 2);
+    assert.match(errors[0], /Choose a PNG/);
+    assert.match(errors[1], /temporary failure/);
+    assert.deepEqual(busyStates, [true, false]);
+});
+
+test('/robo awaits a requested browser-side group insertion before reporting success', async () => {
+    let clientAction = null;
+    const statuses = [];
+    const { component } = makeComponent({
+        executeBlackboardClientAction: async (action) => { clientAction = action; },
+        updateRoboCommandStatus: async (status) => { statuses.push(status.state); },
+        runTool: async () => ({
+            ok: true,
+            clientAction: { type: 'scripta-insert-group', groupId: 'group-1', alt: 'Diagram' }
+        })
+    });
+    component.elements = { chatInput: { value: '/robo insert group 1 into SCRIPTA' } };
+    await component.sendChat();
+    assert.deepEqual(clientAction, { type: 'scripta-insert-group', groupId: 'group-1', alt: 'Diagram' });
+    assert.deepEqual(statuses, ['started', 'success']);
+});
+
+test('/robo uses the canonical event command and upserts its audit message', async () => {
+    let chatWasRendered = false;
+    const { component, calls, state } = makeComponent({
+        renderFeedLists: () => {
+            chatWasRendered = state.chat.some((entry) => entry.kind === 'event');
+        }
+    });
+    component.runTool = async (name, args) => {
+        calls.push({ name, args });
+        return {
+            ok: true,
+            auditMessage: { id: 'event-chat-1', kind: 'event', message: '/robo add a SCRIPTA document', metadata: { status: 'success' } }
+        };
+    };
+    component.elements = { chatInput: { value: '/robo add a SCRIPTA document' } };
+
+    await component.sendChat();
+
+    assert.deepEqual(calls.map((entry) => entry.name), ['webmeet_event_command']);
+    assert.equal(calls[0].args.source, 'robo');
+    assert.equal(state.chat.length, 1);
+    assert.equal(state.chat[0].message, '/robo add a SCRIPTA document');
+    assert.equal(chatWasRendered, true);
+    assert.equal(component.elements.chatInput.value, '');
+});
+
+test('/robo reports started and success with one stable command id', async () => {
+    const statuses = [];
+    const { component, calls } = makeComponent({
+        updateRoboCommandStatus: async (status) => { statuses.push(status); }
+    });
+    component.runTool = async (name, args) => {
+        calls.push({ name, args });
+        return { ok: true, auditMessage: { id: 'audit-status', kind: 'event', message: args.event, metadata: { status: 'success' } } };
+    };
+    component.elements = { chatInput: { value: '/robo move line 3 right' } };
+
+    await component.sendChat();
+    await Promise.resolve();
+
+    assert.deepEqual(statuses.map((entry) => entry.state), ['started', 'success']);
+    assert.equal(statuses[0].commandId, statuses[1].commandId);
+    assert.equal(calls[0].args.commandId, statuses[0].commandId);
+});
+
+test('typing the /robo prefix activates widget ordinals before submit', () => {
+    const draftStates = [];
+    const { component } = makeComponent({
+        updateRoboDraftState: (active) => draftStates.push(active)
+    });
+    component.elements = { chatInput: { value: '/robo' } };
+    component.updateComposerMentionOverlay();
+    component.elements.chatInput.value = '/robot';
+    component.updateComposerMentionOverlay();
+
+    assert.deepEqual(draftStates, [true, false]);
+});
+
+test('room entry reports denied push-to-talk microphone permission without throwing', async () => {
+    let errorMessage = '';
+    const { component } = makeComponent({
+        setError: (message) => { errorMessage = message; }
+    });
+    component.roboSpeechInput = {
+        prepareMicrophonePermission: async () => ({ status: 'denied', requested: false })
+    };
+
+    const result = await component.prepareRoboMicrophonePermission();
+
+    assert.equal(result.status, 'denied');
+    assert.match(errorMessage, /Push-to-talk will remain unavailable/);
+});
+
+test('/robo reports the explicit server error as its terminal status', async () => {
+    const statuses = [];
+    const { component } = makeComponent({
+        setError: () => {},
+        updateRoboCommandStatus: async (status) => { statuses.push(status); },
+        runTool: async () => ({ ok: false, error: { code: 'ambiguous_target', message: 'There are multiple lines.' } })
+    });
+    component.elements = { chatInput: { value: '/robo move the line' } };
+
+    await component.sendChat();
+    await Promise.resolve();
+
+    assert.deepEqual(statuses.map((entry) => entry.state), ['started', 'error']);
+    assert.equal(statuses[1].errorMessage, 'There are multiple lines.');
+});
+
+test('/robo event error remains available as an audit message', async () => {
+    const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
+    let errorMessage = '';
+    const component = new ChatComponent({
+        isGuestSession: () => false,
+        getState: () => state,
+        getSelectedMeeting: () => ({ id: 'meeting-1' }),
+        getSession: () => state.session,
+        renderFeedLists: () => {},
+        loadMeetingDetails: async () => {},
+        getRoom: () => null,
+        setError: (message) => { errorMessage = message; },
+        runTool: async () => ({
+            ok: false,
+            error: { message: 'AI unavailable' },
+            auditMessage: { id: 'chat-robo', kind: 'event', message: '/robo do something', metadata: { status: 'error' } }
+        })
+    });
+    component.elements = { chatInput: { value: '/robo do something' } };
+
+    await component.sendChat();
+
+    assert.equal(state.chat[0].message, '/robo do something');
+    assert.match(errorMessage, /AI unavailable/);
+});
+
+test('/robo command applies the open blackboard and broadcasts its revision', async () => {
+    const { component, state } = makeComponent();
+    const published = [];
+    let refreshResult = null;
+    component.getRoom = () => ({ localParticipant: { identity: 'p-1' } });
+    component.publishRealtimePayload = async (payload) => { published.push(payload); };
+    component.refreshBlackboard = async (result) => { refreshResult = result; };
+    component.runTool = async (name, args) => {
+        return {
+            ok: true,
+            auditMessage: { id: 'chat-live', kind: 'event', message: args.event, metadata: { status: 'success' } },
+            visibilityPayload: { type: 'blackboard.visibility_changed', visible: true },
+            blackboard: { boardId: 'agent:agent_robo_team', revision: 42, widgets: [] }
+        };
+    };
+    component.elements = { chatInput: { value: '/robo go to next paragraph' } };
+
+    await component.sendChat();
+
+    assert.equal(state.chat[0].message, '/robo go to next paragraph');
+    assert.equal(refreshResult.blackboard.revision, 42);
+    const update = published.find((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
+    assert.equal(update.boardId, 'agent:agent_robo_team');
+    assert.equal(update.blackboardRevision, 42);
+    assert.equal(published.some((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED), false);
 });
 
 test('sendChat renders returned store message before detail refresh completes', async () => {

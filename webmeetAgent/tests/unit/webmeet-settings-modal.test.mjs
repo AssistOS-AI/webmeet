@@ -17,8 +17,9 @@ test('WebMeet dashboard is a page component and settings is a WebSkel modal', as
     assert.equal(dashboard.type, undefined);
     assert.equal(settingsModal?.presenter, 'WebmeetSettingsModal');
     assert.equal(settingsModal?.type, 'modal');
-    assert.equal(customSelect?.path, 'explorer/web-components/components/custom-select/custom-select');
-    assert.equal(customSelect?.baseUrl, undefined);
+    assert.equal(customSelect?.agent, 'explorer');
+    assert.equal(customSelect?.path, undefined);
+    assert.equal(customSelect?.baseUrl, '/explorer/web-components/components/custom-select/custom-select');
 });
 
 test('WebMeet settings modal supports resize, fullscreen, and dashboard action delegation', async () => {
@@ -70,6 +71,8 @@ test('WebMeet settings fields live in the WebSkel modal template, not the dashbo
     assert.doesNotMatch(dashboardHtml, /id="webmeetMediaSettingsPanel"/);
     assert.match(modalHtml, /id="webmeetMediaSettingsPanel" class="webmeet-settings-modal webmeet-media-settings"/);
     assert.match(modalHtml, /id="webmeetAudioVideoSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetVoiceCommandSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetSpeechRecognitionLanguage"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsTabPanel"/);
     assert.match(modalHtml, /id="webmeetMediaSettingsActions"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsActions"/);
@@ -129,7 +132,8 @@ test('WebMeet settings tab footer actions hide inactive tab controls inside the 
     );
 
     assert.match(modalHtml, /id="webmeetAvatarSettingsActions" class="webmeet-media-settings-actions webmeet-hidden"/);
-    assert.match(mediaSettingsSource, /mediaSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'media'\)/);
+    assert.match(mediaSettingsSource, /mediaSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab === 'avatar'\)/);
+    assert.match(mediaSettingsSource, /refreshMediaDevicesButton\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'media'\)/);
     assert.match(mediaSettingsSource, /avatarSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'avatar'\)/);
     assert.match(modalCss, /\.webmeet-settings-modal \.webmeet-hidden\s*\{[\s\S]*display: none !important;/);
 });

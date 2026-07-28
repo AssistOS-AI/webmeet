@@ -28,8 +28,8 @@ async function freshContext() {
     process.env.LIVEKIT_API_SECRET = 'test-livekit-api-secret';
 
     const { createStoreContext } = await import('../../lib/webmeetStore.mjs');
-    const storeContext = await createStoreContext(dir);
-    storeContext.resolveEdgeJoinMaterial = async () => ({
+    const context = await createStoreContext(dir);
+    context.resolveEdgeJoinMaterial = async () => ({
         livekitUrl: 'wss://router.test/base-agent-additional-server/liveKitServerAgent/7880/',
         rtcConfig: {
             iceTransportPolicy: 'all',
@@ -43,7 +43,14 @@ async function freshContext() {
         configurationGeneration: 'test-generation',
         publicationGeneration: 1,
     });
-    return { dir, context: storeContext };
+    context.scriptaExplorerClient = async (tool, args) => {
+        assert.equal(tool, 'scripta_crdt_ensure_folder');
+        return {
+            ok: true,
+            folderPath: args.folderPath,
+        };
+    };
+    return { dir, context };
 }
 
 async function createTestMeeting(ctx, title = 'Test Room', roomType = 'team') {

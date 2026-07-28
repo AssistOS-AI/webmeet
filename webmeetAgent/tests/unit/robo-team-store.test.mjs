@@ -17,6 +17,7 @@ import {
     decryptRoomPayload,
     loadRoomRecord
 } from '../../lib/store/roomRecords.mjs';
+import { installScriptaFolderFixture } from './edge-join-fixture.mjs';
 
 async function withStore(fn) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-robo-team-'));
@@ -26,7 +27,7 @@ async function withStore(fn) {
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
     try {
-        return await fn(await createStoreContext(root));
+        return await fn(installScriptaFolderFixture(await createStoreContext(root)));
     } finally {
         if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
         else process.env.WEBMEET_DATA_DIR = previousDataDir;

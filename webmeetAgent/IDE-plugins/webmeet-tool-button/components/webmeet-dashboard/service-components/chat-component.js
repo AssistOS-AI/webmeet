@@ -5,6 +5,7 @@ import {
     createWorkspacePathsProvider,
     renderComposerMentionOverlayHtml
 } from '../services/chat-autocomplete/index.js';
+import { createBrowserRoboSpeechInput } from '../services/browser-robo-speech-input.js';
 import { WEBMEET_EVENT_TYPES } from '../services/webmeet-events.js';
 
 const runTool = runWebMeetTool;
@@ -38,6 +39,10 @@ export class ChatComponent {
         this.getSession = options.getSession || (() => null);
         this.renderFeedLists = options.renderFeedLists || (() => {});
         this.publishRealtimePayload = options.publishRealtimePayload || (() => Promise.resolve());
+        this.refreshBlackboard = options.refreshBlackboard || (() => Promise.resolve());
+        this.executeBlackboardClientAction = options.executeBlackboardClientAction || (() => Promise.resolve());
+        this.updateRoboCommandStatus = options.updateRoboCommandStatus || (() => Promise.resolve());
+        this.updateRoboDraftState = options.updateRoboDraftState || (() => {});
         this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
         this.getRoom = options.getRoom || (() => null);
         this.runTool = typeof options.runTool === 'function' ? options.runTool : runTool;
@@ -55,6 +60,11 @@ export class ChatComponent {
         this.mentionOverlayInput = null;
         this.mentionOverlayHandlers = null;
         this.selectedMentionTokens = new Set();
+        this.roboSpeechInput = null;
+        this.imageUploadHandlers = null;
+        this.imageUploadQueue = [];
+        this.imageUploadDrainPromise = null;
+        this.imageDragDepth = 0;
     }
 
     getKnownAgentTokens() {
@@ -69,8 +79,258 @@ export class ChatComponent {
     }
 
     setElements(elements) {
+        this.destroyImageUpload();
+        this.destroyRoboSpeechInput();
         this.elements = elements;
+        this.syncRoboDraftState();
         this.initChatAutocomplete();
+        this.initRoboSpeechInput();
+        this.initImageUpload();
+        this.setImageUploadBusy(Boolean(this.imageUploadDrainPromise));
+    }
+
+    initImageUpload() {
+        const input = this.elements?.chatImageInput;
+        const composer = this.elements?.chatComposer
+            || this.elements?.chatInput?.closest?.('.webmeet-compose')
+            || null;
+        if (!input || !composer) return;
+        const onChange = () => {
+            const files = Array.from(input.files || []);
+            input.value = '';
+            if (files.length) void this.publishImages(files);
+        };
+        const onPaste = (event) => {
+            const files = this.getTransferredFiles(event.clipboardData);
+            if (!files.length) return;
+            event.preventDefault();
+            void this.publishImages(files);
+        };
+        const onDragEnter = (event) => {
+            if (!this.hasTransferredFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            this.imageDragDepth += 1;
+            this.setImageDropActive(true);
+        };
+        const onDragOver = (event) => {
+            if (!this.hasTransferredFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+            this.setImageDropActive(true);
+        };
+        const onDragLeave = (event) => {
+            if (!this.imageDragDepth) return;
+            event.preventDefault();
+            this.imageDragDepth = Math.max(0, this.imageDragDepth - 1);
+            if (!this.imageDragDepth) this.setImageDropActive(false);
+        };
+        const onDrop = (event) => {
+            if (!this.hasTransferredFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation?.();
+            const files = this.getTransferredFiles(event.dataTransfer);
+            this.imageDragDepth = 0;
+            this.setImageDropActive(false);
+            if (files.length) void this.publishImages(files);
+        };
+        input.addEventListener('change', onChange);
+        composer.addEventListener('paste', onPaste);
+        composer.addEventListener('dragenter', onDragEnter);
+        composer.addEventListener('dragover', onDragOver);
+        composer.addEventListener('dragleave', onDragLeave);
+        composer.addEventListener('drop', onDrop);
+        this.imageUploadHandlers = {
+            input,
+            composer,
+            onChange,
+            onPaste,
+            onDragEnter,
+            onDragOver,
+            onDragLeave,
+            onDrop
+        };
+    }
+
+    destroyImageUpload() {
+        const handlers = this.imageUploadHandlers;
+        handlers?.input?.removeEventListener?.('change', handlers.onChange);
+        handlers?.composer?.removeEventListener?.('paste', handlers.onPaste);
+        handlers?.composer?.removeEventListener?.('dragenter', handlers.onDragEnter);
+        handlers?.composer?.removeEventListener?.('dragover', handlers.onDragOver);
+        handlers?.composer?.removeEventListener?.('dragleave', handlers.onDragLeave);
+        handlers?.composer?.removeEventListener?.('drop', handlers.onDrop);
+        this.imageDragDepth = 0;
+        this.setImageDropActive(false);
+        this.imageUploadHandlers = null;
+    }
+
+    getTransferredFiles(transfer = null) {
+        const itemFiles = Array.from(transfer?.items || [])
+            .filter((item) => item?.kind === 'file')
+            .map((item) => item.getAsFile?.())
+            .filter(Boolean);
+        return itemFiles.length ? itemFiles : Array.from(transfer?.files || []).filter(Boolean);
+    }
+
+    hasTransferredFiles(transfer = null) {
+        if (Array.from(transfer?.items || []).some((item) => item?.kind === 'file')) return true;
+        if (Array.from(transfer?.files || []).length) return true;
+        return Array.from(transfer?.types || []).includes('Files');
+    }
+
+    setImageDropActive(active) {
+        const isActive = active === true;
+        this.elements?.chatComposer?.classList?.toggle?.('is-image-drag-active', isActive);
+        const overlay = this.elements?.chatDropOverlay;
+        if (overlay) {
+            overlay.hidden = !isActive;
+            overlay.setAttribute?.('aria-hidden', isActive ? 'false' : 'true');
+        }
+    }
+
+    setImageUploadBusy(busy) {
+        const button = this.elements?.chatImageButton;
+        if (!button) return;
+        button.disabled = busy === true;
+        button.classList.toggle('is-loading', busy === true);
+        button.setAttribute('aria-busy', busy === true ? 'true' : 'false');
+    }
+
+    publishImage(file) {
+        return this.publishImages([file]);
+    }
+
+    publishImages(files = []) {
+        const nextFiles = Array.from(files || []).filter(Boolean);
+        if (!nextFiles.length) return Promise.resolve();
+        this.imageUploadQueue.push(...nextFiles);
+        if (!this.imageUploadDrainPromise) {
+            this.imageUploadDrainPromise = this.drainImageUploadQueue()
+                .finally(() => {
+                    this.imageUploadDrainPromise = null;
+                });
+        }
+        return this.imageUploadDrainPromise;
+    }
+
+    async drainImageUploadQueue() {
+        this.setImageUploadBusy(true);
+        try {
+            while (this.imageUploadQueue.length) {
+                const file = this.imageUploadQueue.shift();
+                try {
+                    await this.publishImageFile(file);
+                } catch (error) {
+                    this.setError(`Failed to publish image: ${error.message}`);
+                }
+            }
+        } finally {
+            this.setImageUploadBusy(false);
+        }
+    }
+
+    async publishImageFile(file) {
+        const meeting = this.getSelectedMeeting();
+        const session = this.getSession();
+        if (!meeting || !session?.participantIdentity) {
+            this.setError('Join the meeting before uploading an image.');
+            return;
+        }
+        const allowed = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+        if (!allowed.has(String(file?.type || '').toLowerCase())) {
+            this.setError('Choose a PNG, JPEG, WebP, or GIF image.');
+            return;
+        }
+        if (Number(file?.size || 0) > 15 * 1024 * 1024) {
+            this.setError('Images may not exceed 15 MB.');
+            return;
+        }
+        try {
+            const upload = await fetch('/blobs/explorer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': file.type || 'application/octet-stream',
+                    'X-Mime-Type': file.type || 'application/octet-stream',
+                    'X-File-Name': encodeURIComponent(file.name || 'image')
+                },
+                body: file
+            });
+            if (!upload.ok) throw new Error((await upload.text().catch(() => '')) || `Image upload failed (${upload.status}).`);
+            const staged = await upload.json();
+            const result = await this.runTool('webmeet_image_publish', {
+                roomId: meeting.id,
+                boardId: 'agent:agent_robo_team',
+                participantId: session.participantIdentity,
+                blobRef: {
+                    id: staged.id,
+                    agent: staged.agent,
+                    localPath: staged.localPath
+                },
+                filename: file.name || 'Image'
+            });
+            if (!result?.message || !result?.blackboard) throw new Error('Image publishing returned an incomplete result.');
+            const state = this.getState();
+            state.chat = Array.isArray(state.chat) ? state.chat : [];
+            if (!state.chat.some((entry) => entry?.id === result.message.id)) state.chat.push(result.message);
+            try {
+                await this.refreshBlackboard(result, { ensureVisible: true });
+            } catch (error) {
+                this.setError(`Image was published, but Blackboard could not be opened: ${error.message}`);
+            }
+            this.renderFeedLists();
+            if (this.getRoom()?.localParticipant) {
+                await this.publishRealtimePayload({ type: WEBMEET_EVENT_TYPES.CHAT_REALTIME, meetingId: meeting.id, message: result.message }).catch(() => {});
+                await this.publishRealtimePayload({
+                    type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+                    meetingId: meeting.id,
+                    boardId: 'agent:agent_robo_team',
+                    blackboardRevision: Number(result.blackboard.revision || 0),
+                    changeType: 'create'
+                }).catch(() => {});
+            }
+        } catch (error) {
+            this.setError(`Failed to publish image: ${error.message}`);
+        }
+    }
+
+    initRoboSpeechInput() {
+        const input = this.elements?.chatInput;
+        const button = this.elements?.chatActionButton;
+        if (!input || !button) return;
+        this.roboSpeechInput = createBrowserRoboSpeechInput({
+            input,
+            button,
+            status: this.elements?.chatSpeechStatus || null,
+            getLanguage: () => this.getState()?.mediaSettings?.speechRecognitionLanguage,
+            onSubmit: () => this.sendChat(),
+            onError: (message) => this.setError(message)
+        });
+    }
+
+    destroyRoboSpeechInput() {
+        this.roboSpeechInput?.destroy?.();
+        this.roboSpeechInput = null;
+    }
+
+    async prepareRoboMicrophonePermission() {
+        const result = await this.roboSpeechInput?.prepareMicrophonePermission?.();
+        if (result?.status === 'denied') {
+            this.setError('Microphone access was not granted. Push-to-talk will remain unavailable until microphone access is allowed.');
+        } else if (result?.status === 'error') {
+            this.setError('WebMeet could not prepare microphone access for push-to-talk. You can still join the room.');
+        }
+        return result || { status: 'unsupported', requested: false };
+    }
+
+    destroy() {
+        this.destroyImageUpload();
+        this.destroyRoboSpeechInput();
+        this.destroyChatAutocomplete();
+    }
+
+    syncRoboDraftState() {
+        const value = String(this.elements?.chatInput?.value || '');
+        this.updateRoboDraftState(/^\s*\/robo(?:\s|$)/i.test(value));
     }
 
     initChatAutocomplete() {
@@ -117,15 +377,8 @@ export class ChatComponent {
     }
 
     ensureChatInputShell(input, composer) {
-        if (!input || !composer) return input?.parentElement || null;
-        if (input.parentElement?.classList?.contains('webmeet-chat-input-shell')) {
-            return input.parentElement;
-        }
-        const shell = document.createElement('div');
-        shell.className = 'webmeet-chat-input-shell';
-        composer.insertBefore(shell, input);
-        shell.appendChild(input);
-        return shell;
+        if (!input) return composer || null;
+        return input.closest?.('.webmeet-chat-input-shell') || composer || input.parentElement || null;
     }
 
     recordSelectedMention(token) {
@@ -163,6 +416,8 @@ export class ChatComponent {
     }
 
     updateComposerMentionOverlay() {
+        this.syncRoboDraftState();
+        this.roboSpeechInput?.sync?.();
         if (!this.mentionOverlay || !this.mentionOverlayInput) return;
         this.pruneSelectedMentionTokens();
         this.mentionOverlay.innerHTML = renderComposerMentionOverlayHtml(
@@ -221,6 +476,11 @@ export class ChatComponent {
         const message = String(this.elements.chatInput?.value || '').trim();
         if (!message) return;
 
+        if (/^\/(?:robo|event)(?:\s|$)/i.test(message)) {
+            await this._sendEventCommand(meeting, message, session);
+            return;
+        }
+
         if (this.isGuestSession()) {
             await this._sendGuestChat(meeting, message, session);
             return;
@@ -264,6 +524,74 @@ export class ChatComponent {
             void this.loadMeetingDetails().then(() => this.renderFeedLists()).catch(() => {});
         } catch (error) {
             this.setError(`Failed to send message: ${error.message}`);
+        }
+    }
+
+    async _sendEventCommand(meeting, message, session) {
+        const isRobo = /^\/robo(?:\s|$)/i.test(message);
+        const commandId = `command_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`}`;
+        const participantId = String(session.participantIdentity || '').trim();
+        const notifyStatus = (state, errorMessage = '') => {
+            if (!isRobo) return;
+            try {
+                void Promise.resolve(this.updateRoboCommandStatus({
+                    meetingId: meeting.id,
+                    boardId: 'agent:agent_robo_team',
+                    commandId,
+                    participantId,
+                    state,
+                    ...(errorMessage ? { errorMessage } : {})
+                })).catch(() => {});
+            } catch (_) {}
+        };
+        notifyStatus('started');
+        try {
+            this.elements.chatInput.value = '';
+            this.updateComposerMentionOverlay();
+            const eventInput = isRobo ? message : message.replace(/^\/event\s*/i, '').trim();
+            const result = await this.runTool('webmeet_event_command', {
+                roomId: meeting.id,
+                event: eventInput,
+                source: isRobo ? 'robo' : 'event',
+                commandSource: 'chat',
+                participantId,
+                commandId
+            });
+            if (result?.auditMessage) {
+                const state = this.getState();
+                state.chat = Array.isArray(state.chat) ? state.chat : [];
+                const index = state.chat.findIndex((entry) => entry?.id === result.auditMessage.id);
+                if (index >= 0) state.chat[index] = result.auditMessage;
+                else state.chat.push(result.auditMessage);
+                if (this.getRoom()?.localParticipant) {
+                    await this.publishRealtimePayload({
+                        type: WEBMEET_EVENT_TYPES.CHAT_REALTIME,
+                        meetingId: meeting.id,
+                        message: result.auditMessage
+                    }).catch(() => {});
+                }
+            }
+            if (result?.ok === false) throw new Error(result?.error?.message || 'Blackboard event failed.');
+            if (result?.clientAction) await this.executeBlackboardClientAction(result.clientAction);
+            if (result?.visibilityPayload || result?.blackboard) {
+                await this.refreshBlackboard(result).catch(() => {});
+            }
+            if (result?.blackboard) {
+                if (this.getRoom()?.localParticipant) {
+                    await this.publishRealtimePayload({
+                        type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+                        meetingId: meeting.id,
+                        boardId: 'agent:agent_robo_team',
+                        blackboardRevision: Number(result.blackboard.revision || 0),
+                        changeType: 'update'
+                    }).catch(() => {});
+                }
+            }
+            this.renderFeedLists();
+            notifyStatus('success');
+        } catch (error) {
+            notifyStatus('error', error?.message || 'The blackboard command failed.');
+            this.setError(`Failed to run blackboard event: ${error.message}`);
         }
     }
 

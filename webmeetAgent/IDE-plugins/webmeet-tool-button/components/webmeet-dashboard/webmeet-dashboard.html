@@ -302,6 +302,11 @@
                                  aria-label="Shared blackboard">
                             <div class="webmeet-blackboard-header">
                                 <span>Blackboard</span>
+                                <div id="webmeetBlackboardCommandStatus"
+                                     class="webmeet-blackboard-command-status"
+                                     role="status"
+                                     aria-live="polite"
+                                     hidden></div>
                                 <span id="webmeetBlackboardPresenter" class="webmeet-blackboard-presenter"></span>
                             </div>
                             <webmeet-blackboard-panel
@@ -321,19 +326,85 @@
                 <div class="webmeet-member-list" id="webmeetChatSidebar">
                     <div class="webmeet-panel-header">
                         <span>Chat</span>
+                        <label class="webmeet-chat-view-mode" title="Include commands and events">
+                            <span class="webmeet-chat-view-mode-label">Full</span>
+                            <input id="webmeetChatViewMode"
+                                   class="webmeet-chat-view-mode-input"
+                                   type="checkbox"
+                                   role="switch"
+                                   aria-label="Full chat view">
+                            <span class="webmeet-chat-view-mode-track" aria-hidden="true"></span>
+                        </label>
                     </div>
                     <div id="webmeetChatList" class="webmeet-scroll-list"></div>
-                    <div class="webmeet-compose">
-                        <textarea id="webmeetChatInput" class="form-input" rows="2"
-                                  placeholder="Type a message..."></textarea>
-                        <button type="button" class="general-button" data-local-action="sendChat" title="Send message"
-                                aria-label="Send message">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M22 2 11 13"></path>
-                                <path d="m22 2-7 20-4-9-9-4z"></path>
+                    <div id="webmeetChatComposer" class="webmeet-compose">
+                        <div id="webmeetChatDropOverlay" class="webmeet-chat-drop-overlay"
+                             aria-hidden="true" hidden>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                <path d="m21 15-5-5L5 21"></path>
                             </svg>
-                        </button>
+                            <span>Drop images to upload</span>
+                        </div>
+                        <div class="webmeet-chat-add-control">
+                            <button id="webmeetChatImageButton" type="button"
+                                    class="general-button webmeet-chat-image-button"
+                                    data-local-action="toggleChatAddMenu"
+                                    title="Add attachment" aria-label="Add attachment"
+                                    aria-haspopup="menu" aria-expanded="false"
+                                    aria-controls="webmeetChatAddMenu">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                                     aria-hidden="true">
+                                    <path d="M12 5v14"></path>
+                                    <path d="M5 12h14"></path>
+                                </svg>
+                            </button>
+                            <div id="webmeetChatAddMenu" class="webmeet-chat-add-menu" role="menu" hidden>
+                                <button id="webmeetChatAddImageOption" type="button"
+                                        class="webmeet-chat-add-option" role="menuitem"
+                                        data-local-action="selectChatAddImage">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                        <path d="m21 15-5-5L5 21"></path>
+                                    </svg>
+                                    <span>Add image</span>
+                                </button>
+                            </div>
+                            <input id="webmeetChatImageInput" class="webmeet-sr-only" type="file"
+                                   accept="image/png,image/jpeg,image/webp,image/gif" tabindex="-1">
+                        </div>
+                        <div class="webmeet-chat-input-shell">
+                            <textarea id="webmeetChatInput" class="form-input" rows="2"
+                                      placeholder="Type a message..."></textarea>
+                        </div>
+                        <div class="webmeet-compose-actions">
+                            <button id="webmeetChatActionButton" type="button" class="general-button webmeet-chat-action-button"
+                                    data-mode="microphone" title="Hold to speak a Robo command"
+                                    aria-label="Hold to speak a Robo command" aria-pressed="false">
+                                <svg class="webmeet-chat-action-icon webmeet-chat-microphone-icon" width="18" height="18"
+                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                                    <path d="M5 10a7 7 0 0 0 14 0"></path>
+                                    <path d="M12 17v5"></path>
+                                    <path d="M8 22h8"></path>
+                                </svg>
+                                <svg class="webmeet-chat-action-icon webmeet-chat-send-icon" width="18" height="18"
+                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M22 2 11 13"></path>
+                                    <path d="m22 2-7 20-4-9-9-4z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <span id="webmeetChatSpeechStatus" class="webmeet-sr-only" aria-live="polite"></span>
                     </div>
                 </div>
             </div>

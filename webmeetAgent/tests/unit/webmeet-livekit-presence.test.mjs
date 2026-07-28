@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
+import {
+    installEdgeJoinFixture,
+    installScriptaFolderFixture
+} from './edge-join-fixture.mjs';
 
 import {
     createMeeting,
@@ -88,7 +91,7 @@ test('meeting participants include LiveKit participants and pending joined membe
 });
 
 test('meeting participant projection fails when no LiveKit source is available', async () => {
-    const context = await createStoreContext(tempRoot);
+    const context = installScriptaFolderFixture(await createStoreContext(tempRoot));
     const authInfo = {
         user: {
             id: 'local:admin',

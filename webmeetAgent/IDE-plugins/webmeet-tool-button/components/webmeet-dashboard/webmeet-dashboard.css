@@ -293,12 +293,14 @@
     align-items: center;
     gap: 8px;
 }
+
 .main-header-content {
     display: flex;
     justify-content: space-between;
     width: 100%;
     align-items: center;
 }
+
 .webmeet-archived-rooms-toggle {
     display: inline-flex;
     align-items: center;
@@ -623,6 +625,36 @@
     resize: none;
 }
 
+.webmeet-compose-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.webmeet-chat-image-button.is-loading svg {
+    animation: webmeet-spin 0.9s linear infinite;
+}
+
+.webmeet-chat-attachment-image {
+    display: block;
+    width: min(240px, 100%);
+    max-height: 180px;
+    margin-top: 8px;
+    border-radius: 8px;
+    object-fit: contain;
+    background: color-mix(in srgb, var(--inactive-element) 80%, transparent 20%);
+}
+
+.webmeet-chat-attachment-button {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
 .webmeet-compose.webmeet-collapsible.expanded {
     margin-top: 10px;
     padding: 10px;
@@ -720,10 +752,35 @@
     background: color-mix(in srgb, var(--menu-backgroud) 92%, var(--surface) 8%);
     box-shadow: none;
     display: grid !important;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     position: relative;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-drop-overlay {
+    position: absolute;
+    z-index: 30;
+    inset: 4px;
+    border: 2px dashed color-mix(in srgb, var(--accent) 72%, var(--border-strong) 28%);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--menu-backgroud) 88%, var(--accent) 12%);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-drop-overlay[hidden] {
+    display: none;
+}
+
+#webmeetChatSidebar .webmeet-compose.is-image-drag-active {
+    border-top-color: color-mix(in srgb, var(--accent) 70%, var(--border-strong) 30%);
 }
 
 #webmeetChatInput {
@@ -741,6 +798,52 @@
     position: relative;
     min-width: 0;
     width: 100%;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-control {
+    position: relative;
+    display: flex;
+    align-items: center;
+    align-self: center;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-menu {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    bottom: calc(100% + 8px);
+    min-width: 168px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--menu-backgroud);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--text) 18%, transparent 82%);
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-menu[hidden] {
+    display: none;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-option {
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-option:hover,
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-option:focus-visible {
+    background: color-mix(in srgb, var(--accent) 14%, transparent 86%);
+    outline: none;
 }
 
 .webmeet-chat-input-shell #webmeetChatInput {
@@ -802,12 +905,60 @@
     position: relative;
     align-self: center;
     box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 24%, transparent 76%);
+    touch-action: none;
+    user-select: none;
 }
 
 #webmeetChatSidebar .webmeet-compose .general-button svg {
     width: 16px;
     height: 16px;
+}
+
+.webmeet-chat-action-button .webmeet-chat-action-icon {
+    display: none;
+}
+
+.webmeet-chat-action-button[data-mode="send"] .webmeet-chat-send-icon {
+    display: block;
     rotate: 45deg;
+}
+
+.webmeet-chat-action-button:not([data-mode="send"]) .webmeet-chat-microphone-icon {
+    display: block;
+}
+
+.webmeet-chat-action-button[data-mode="listening"] {
+    color: #fff;
+    background: #d63b3b;
+    border-color: #d63b3b;
+    box-shadow: 0 0 0 4px color-mix(in srgb, #d63b3b 22%, transparent 78%);
+    animation: webmeet-chat-listening-pulse 1.15s ease-in-out infinite;
+}
+
+.webmeet-chat-action-button[data-mode="finalizing"],
+.webmeet-chat-action-button[data-mode="sending"] {
+    cursor: progress;
+}
+
+.webmeet-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@keyframes webmeet-chat-listening-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.06);
+    }
 }
 
 /* Video grid for live room */
@@ -883,10 +1034,11 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+    border-radius: 12px;
     background: var(--surface);
     overflow: hidden;
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .webmeet-blackboard-header {
@@ -895,12 +1047,122 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    min-height: 38px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-strong);
+    min-height: 42px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface));
     color: var(--text);
     font-size: 0.82rem;
     font-weight: 700;
+}
+
+.webmeet-blackboard-command-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: min(620px, 70%);
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    line-height: 1.25;
+    text-align: center;
+}
+
+.webmeet-blackboard-command-status[data-state="error"] {
+    color: var(--danger, #c33);
+}
+
+.webmeet-blackboard-command-status-row {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-command-status-text {
+    display: inline-block;
+}
+
+.webmeet-blackboard-command-status-row.is-scrolling .webmeet-blackboard-command-status-text {
+    animation: webmeet-blackboard-status-scroll var(--webmeet-status-scroll-duration) linear infinite;
+    will-change: transform;
+}
+
+.webmeet-blackboard-command-status-activity {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.webmeet-blackboard-command-status-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.38;
+    animation: webmeet-blackboard-status-dot-wave 1.05s ease-in-out infinite;
+}
+
+.webmeet-blackboard-command-status-dot:nth-child(2) {
+    animation-delay: 0.14s;
+}
+
+.webmeet-blackboard-command-status-dot:nth-child(3) {
+    animation-delay: 0.28s;
+}
+
+@keyframes webmeet-blackboard-status-scroll {
+    0% {
+        transform: translateX(var(--webmeet-status-scroll-start));
+    }
+
+    100% {
+        transform: translateX(var(--webmeet-status-scroll-end));
+    }
+}
+
+@keyframes webmeet-blackboard-status-dot-wave {
+    0%, 60%, 100% {
+        opacity: 0.38;
+        transform: translateY(0);
+    }
+
+    30% {
+        opacity: 1;
+        transform: translateY(-2px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .webmeet-blackboard-command-status-row {
+        overflow: visible;
+        white-space: normal;
+    }
+
+    .webmeet-blackboard-command-status-row.is-scrolling .webmeet-blackboard-command-status-text,
+    .webmeet-blackboard-command-status-dot {
+        animation: none;
+    }
+}
+
+.webmeet-blackboard-command-status-row + .webmeet-blackboard-command-status-row {
+    margin-top: 3px;
+}
+
+.webmeet-blackboard-header > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.webmeet-blackboard-header > span:first-child::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .webmeet-blackboard-presenter {
@@ -908,6 +1170,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
     color: var(--text-soft);
     font-size: 0.75rem;
     font-weight: 600;
@@ -916,7 +1181,9 @@
 .webmeet-blackboard-surface webmeet-blackboard-panel {
     flex: 1 1 auto;
     min-height: 0;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .webmeet-video-empty {
@@ -1524,6 +1791,10 @@ textarea.form-input {
         transform: translateY(4px);
     }
 
+    .webmeet-video-all.has-focus .webmeet-blackboard-surface.is-focused {
+        width: 100%;
+    }
+
     .webmeet-setting-help-control:hover .webmeet-setting-help-tooltip,
     .webmeet-setting-help-control:focus-within .webmeet-setting-help-tooltip {
         transform: translateY(0);
@@ -2006,6 +2277,89 @@ textarea.form-input {
 
 .webmeet-chat-entry.webmeet-chat-entry-self .webmeet-chat-text {
     color: color-mix(in srgb, var(--text) 88%, var(--accent) 12%);
+}
+
+.webmeet-chat-view-mode {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.webmeet-chat-view-mode-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#webmeetChatSidebar .webmeet-panel-header .webmeet-chat-view-mode-label {
+    color: var(--text-soft);
+    font-size: 0.64rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: none;
+    transition: color 160ms ease;
+}
+
+.webmeet-chat-view-mode-track {
+    position: relative;
+    display: block;
+    width: 30px;
+    height: 18px;
+    box-sizing: border-box;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--inactive-element);
+    transition: border-color 160ms ease, background 160ms ease;
+}
+
+.webmeet-chat-view-mode-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 22%, transparent);
+    transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.webmeet-chat-view-mode-input:checked + .webmeet-chat-view-mode-track {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+
+.webmeet-chat-view-mode-input:checked + .webmeet-chat-view-mode-track::after {
+    transform: translateX(12px);
+}
+
+.webmeet-chat-view-mode-input:focus-visible + .webmeet-chat-view-mode-track {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    outline-offset: 2px;
+}
+
+#webmeetChatSidebar .webmeet-panel-header .webmeet-chat-view-mode:hover .webmeet-chat-view-mode-label,
+#webmeetChatSidebar .webmeet-panel-header .webmeet-chat-view-mode:has(.webmeet-chat-view-mode-input:checked) .webmeet-chat-view-mode-label {
+    color: var(--text);
+}
+
+.webmeet-chat-entry.webmeet-chat-entry-event {
+    border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--light-gray-border) 92%);
+}
+
+.webmeet-chat-event-status {
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--bg-active);
+    text-transform: uppercase;
+    font-size: 0.62rem;
 }
 
 .webmeet-chat-empty {
@@ -2760,7 +3114,8 @@ textarea.form-input {
     .webmeet-video-all:not(.has-focus) webmeet-participant-card {
         min-height: 188px;
     }
-    webmeet-dashboard .webmeet-avatar-quick-menu{
+
+    webmeet-dashboard .webmeet-avatar-quick-menu {
         bottom: calc(100% + 12px);
     }
 }

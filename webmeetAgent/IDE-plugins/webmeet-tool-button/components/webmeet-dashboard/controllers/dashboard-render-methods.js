@@ -26,6 +26,48 @@ function formatAvatarOptionLabel(value = '') {
     return formatSharedAvatarOptionLabel(value);
 }
 
+function renderChatAttachments(entry = {}) {
+    const attachments = Array.isArray(entry?.metadata?.attachments) ? entry.metadata.attachments : [];
+    return attachments.filter((attachment) => attachment?.kind === 'image' && attachment?.workspaceUrl).map((attachment) => {
+        const route = `/workspace-files/${String(attachment.workspaceUrl).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
+        const widgetId = String(entry?.metadata?.blackboardWidgetId || '');
+        return `<button type="button" class="webmeet-chat-attachment-button" data-chat-blackboard-widget="${escapeHtml(widgetId)}" aria-label="Open image on Blackboard"><img class="webmeet-chat-attachment-image" src="${escapeHtml(route)}" alt="${escapeHtml(attachment.filename || 'Image')}" loading="lazy"></button>`;
+    }).join('');
+}
+
+export function filterChatEntries(entries, mode = 'normal') {
+    const normalizedMode = mode === 'full' ? 'full' : 'normal';
+    return (Array.isArray(entries) ? entries : []).filter((entry) => {
+        const isEvent = String(entry?.kind || 'user') === 'event';
+        if (normalizedMode === 'full') return true;
+        return !isEvent;
+    });
+}
+
+function safeEventValue(value) {
+    if (Array.isArray(value)) return value.map(safeEventValue);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value)
+        .filter(([key]) => !/(?:^id$|(?:event|command|resource|chapter|paragraph|variant|widget|board|participant|meeting|room)Id$)/i.test(key)
+            && !['targetRef', 'revision', 'path', 'folderPath', 'editorUrl'].includes(key))
+        .map(([key, entry]) => [key, safeEventValue(entry)]));
+}
+
+export function formatChatEntryMessage(entry = {}) {
+    if (String(entry.kind || '') !== 'event') return String(entry.message || '');
+    let event = entry.metadata?.event;
+    if (!event || typeof event !== 'object') {
+        const raw = String(entry.message || '').replace(/^\/(?:event|robo)\s*/i, '').trim();
+        if (raw.startsWith('{')) {
+            try { event = JSON.parse(raw); } catch { event = null; }
+        }
+    }
+    if (!event?.action) return String(entry.message || '');
+    const payload = safeEventValue(event.payload || {});
+    const payloadText = Object.keys(payload).length ? ` ${JSON.stringify(payload)}` : '';
+    return `/event ${event.action}${payloadText}`;
+}
+
 export const dashboardRenderMethods = {
     setRoomTransitionMessage(message, { render = true } = {}) {
         const text = String(message || '').trim();
@@ -437,10 +479,7 @@ export const dashboardRenderMethods = {
             this.chatInput.disabled = isArchiveReadOnlyView;
             this.chatInput.placeholder = isArchiveReadOnlyView ? 'Archived room chat is read-only.' : 'Type a message...';
         }
-        const sendChatButton = this.element.querySelector('[data-local-action="sendChat"]');
-        if (sendChatButton) {
-            sendChatButton.disabled = isArchiveReadOnlyView;
-        }
+        this.chatComponent?.roboSpeechInput?.sync?.();
 
         // Update icon button states
         if (this.micButton) {
@@ -502,9 +541,12 @@ export const dashboardRenderMethods = {
             && (String(meeting?.status || '').trim().toLowerCase() === 'archived' || Boolean(String(meeting?.archivedAt || '').trim()))
             && !this.state.session?.participantIdentity
         );
-        renderFeed(this.chatList, this.state.chat, (entry) => `
+        const chatViewMode = this.state.chatViewMode === 'full' ? 'full' : 'normal';
+        if (this.chatViewMode) this.chatViewMode.checked = chatViewMode === 'full';
+        const visibleChat = filterChatEntries(this.state.chat, chatViewMode);
+        renderFeed(this.chatList, visibleChat, (entry) => `
             <div class="webmeet-feed-item">
-                <div class="webmeet-chat-entry ${
+                <div class="webmeet-chat-entry ${String(entry.kind || '') === 'event' ? 'webmeet-chat-entry-event' : ''} ${
                     String(entry.authorId || '').trim() === String(this.state.session?.participantIdentity || '').trim()
                         ? 'webmeet-chat-entry-self'
                         : ''
@@ -512,9 +554,10 @@ export const dashboardRenderMethods = {
                     <div class="webmeet-chat-message-content">
                         <div class="webmeet-chat-meta">
                             <strong class="webmeet-chat-author">${escapeHtml(entry.authorName || entry.authorId || 'unknown')}</strong>
+                            ${String(entry.kind || '') === 'event' ? `<span class="webmeet-chat-event-status">${escapeHtml(entry.metadata?.status || 'pending')}</span>` : ''}
                             <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.createdAt))}</span>
                         </div>
-                        <div class="webmeet-chat-text">${chatMessageHtml(entry.message)}</div>
+                        <div class="webmeet-chat-text">${chatMessageHtml(formatChatEntryMessage(entry))}${renderChatAttachments(entry)}</div>
                     </div>
                 </div>
             </div>

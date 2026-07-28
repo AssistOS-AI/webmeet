@@ -1,4 +1,15 @@
+export function installScriptaFolderFixture(context) {
+    context.scriptaExplorerClient ||= async (tool, args) => {
+        if (tool === 'scripta_crdt_ensure_folder') {
+            return { ok: true, folderPath: args.folderPath };
+        }
+        throw new Error(`Unexpected Explorer tool ${tool}`);
+    };
+    return context;
+}
+
 export function installEdgeJoinFixture(context) {
+    installScriptaFolderFixture(context);
     context.livekitApiKey = context.livekitApiKey || 'unit-test-livekit-key';
     context.livekitApiSecret = context.livekitApiSecret || 'unit-test-livekit-secret-32-bytes';
     context.resolveEdgeJoinMaterial = async ({ roomName, participantIdentity }) => ({

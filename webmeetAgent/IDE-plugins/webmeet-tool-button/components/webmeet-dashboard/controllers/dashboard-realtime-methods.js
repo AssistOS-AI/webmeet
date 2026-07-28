@@ -116,7 +116,12 @@ export const dashboardRealtimeMethods = {
             if (!payload?.message) return;
             this.state.chat = Array.isArray(this.state.chat) ? this.state.chat : [];
             const messageId = String(payload.message?.id || '').trim();
-            if (messageId && this.state.chat.some((entry) => String(entry?.id || '').trim() === messageId)) {
+            const existingIndex = messageId
+                ? this.state.chat.findIndex((entry) => String(entry?.id || '').trim() === messageId)
+                : -1;
+            if (existingIndex >= 0) {
+                this.state.chat[existingIndex] = payload.message;
+                this.renderFeedLists();
                 return;
             }
             this.state.chat.push(payload.message);
@@ -125,8 +130,8 @@ export const dashboardRealtimeMethods = {
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_UPDATED, (event) => {
             void this.handleBlackboardUpdatedEvent?.(event);
         });
-        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED, (event) => {
-            void this.applyBlackboardVisibility?.(event?.detail?.payload || {});
+        this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.BLACKBOARD_COMMAND_STATUS, (event) => {
+            void this.updateRoboCommandStatus?.(event?.detail?.payload || {}, { publish: false });
         });
         this.webMeetRoom.addEventListener(ROOM_EVENT_TYPES.TRANSCRIPT, () => {
             this.runBestEffortRealtimeRefresh(() => this.refreshMeetingDetailsFromRealtimeEvent());

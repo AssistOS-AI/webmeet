@@ -46,6 +46,7 @@ export async function appendRoomChat(context, {
     message,
     kind = 'user',
     metadata = null,
+    dedupeCommandId = '',
     authInfo = null,
     skipAccessCheck = false
 }, deps = {}) {
@@ -55,7 +56,17 @@ export async function appendRoomChat(context, {
     }
     await cleanupRoomPresence(context, meetingId);
     let chatMessage = null;
+    let deduplicated = false;
     await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
+        const commandId = String(dedupeCommandId || '').trim();
+        if (commandId) {
+            const existing = payload.chatMessages.find((entry) => entry.kind === 'event' && entry.metadata?.commandId === commandId);
+            if (existing) {
+                chatMessage = existing;
+                deduplicated = true;
+                return;
+            }
+        }
         chatMessage = {
             id: randomId('chat'),
             meetingId,
@@ -70,6 +81,38 @@ export async function appendRoomChat(context, {
         }
         payload.chatMessages.push(chatMessage);
         stageEvent('meeting', WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId, chatMessageId: chatMessage.id });
+    });
+    return { message: chatMessage, deduplicated };
+}
+
+export async function updateRoomChat(context, {
+    meetingId,
+    messageId,
+    message,
+    metadata,
+    authInfo = null,
+    skipAccessCheck = false
+}, deps = {}) {
+    if (!skipAccessCheck) {
+        await deps.getRoomDetails(context, meetingId, authInfo, { includeParticipants: false });
+    }
+    let chatMessage = null;
+    await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
+        const index = payload.chatMessages.findIndex((entry) => entry.id === messageId);
+        if (index < 0) throw new Error('Event audit message was not found.');
+        chatMessage = {
+            ...payload.chatMessages[index],
+            message: String(message ?? payload.chatMessages[index].message ?? ''),
+            metadata: metadata && typeof metadata === 'object'
+                ? metadata
+                : payload.chatMessages[index].metadata,
+            updatedAt: nowIso()
+        };
+        payload.chatMessages[index] = chatMessage;
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.CHAT_MESSAGE_UPDATED, {
+            meetingId,
+            chatMessageId: chatMessage.id
+        });
     });
     return { message: chatMessage };
 }
