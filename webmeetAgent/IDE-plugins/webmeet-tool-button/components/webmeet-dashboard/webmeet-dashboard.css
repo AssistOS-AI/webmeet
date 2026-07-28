@@ -752,7 +752,7 @@
     background: color-mix(in srgb, var(--menu-backgroud) 92%, var(--surface) 8%);
     box-shadow: none;
     display: grid !important;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     position: relative;
@@ -773,6 +773,52 @@
     position: relative;
     min-width: 0;
     width: 100%;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-control {
+    position: relative;
+    display: flex;
+    align-items: center;
+    align-self: center;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-menu {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    bottom: calc(100% + 8px);
+    min-width: 168px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--menu-backgroud);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--text) 18%, transparent 82%);
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-menu[hidden] {
+    display: none;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-option {
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-option:hover,
+#webmeetChatSidebar .webmeet-compose .webmeet-chat-add-option:focus-visible {
+    background: color-mix(in srgb, var(--accent) 14%, transparent 86%);
+    outline: none;
 }
 
 .webmeet-chat-input-shell #webmeetChatInput {

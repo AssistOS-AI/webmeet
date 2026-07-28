@@ -86,23 +86,19 @@ export class ChatComponent {
     }
 
     initImageUpload() {
-        const button = this.elements?.chatImageButton;
         const input = this.elements?.chatImageInput;
-        if (!button || !input) return;
-        const onClick = () => input.click();
+        if (!input) return;
         const onChange = () => {
             const file = input.files?.[0] || null;
             input.value = '';
             if (file) void this.publishImage(file);
         };
-        button.addEventListener('click', onClick);
         input.addEventListener('change', onChange);
-        this.imageUploadHandlers = { button, input, onClick, onChange };
+        this.imageUploadHandlers = { input, onChange };
     }
 
     destroyImageUpload() {
         const handlers = this.imageUploadHandlers;
-        handlers?.button?.removeEventListener?.('click', handlers.onClick);
         handlers?.input?.removeEventListener?.('change', handlers.onChange);
         this.imageUploadHandlers = null;
     }
@@ -152,7 +148,11 @@ export class ChatComponent {
             const state = this.getState();
             state.chat = Array.isArray(state.chat) ? state.chat : [];
             if (!state.chat.some((entry) => entry?.id === result.message.id)) state.chat.push(result.message);
-            await this.refreshBlackboard(result).catch(() => {});
+            try {
+                await this.refreshBlackboard(result, { ensureVisible: true });
+            } catch (error) {
+                this.setError(`Image was published, but Blackboard could not be opened: ${error.message}`);
+            }
             this.renderFeedLists();
             if (this.getRoom()?.localParticipant) {
                 await this.publishRealtimePayload({ type: WEBMEET_EVENT_TYPES.CHAT_REALTIME, meetingId: meeting.id, message: result.message }).catch(() => {});
@@ -255,15 +255,8 @@ export class ChatComponent {
     }
 
     ensureChatInputShell(input, composer) {
-        if (!input || !composer) return input?.parentElement || null;
-        if (input.parentElement?.classList?.contains('webmeet-chat-input-shell')) {
-            return input.parentElement;
-        }
-        const shell = document.createElement('div');
-        shell.className = 'webmeet-chat-input-shell';
-        composer.insertBefore(shell, input);
-        shell.appendChild(input);
-        return shell;
+        if (!input) return composer || null;
+        return input.closest?.('.webmeet-chat-input-shell') || composer || input.parentElement || null;
     }
 
     recordSelectedMention(token) {

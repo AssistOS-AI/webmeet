@@ -89,6 +89,37 @@ test('the Blackboard toolbar toggle changes only local dashboard state', async (
     assert.equal(layoutRenders, 1);
 });
 
+test('a chat image upload opens the uploader local Blackboard and applies its projection', async () => {
+    const applied = [];
+    const projections = [];
+    const dashboard = Object.assign({}, blackboardMethods, {
+        state: {
+            session: { participantIdentity: 'participant-1' },
+            blackboard: { visible: false },
+        },
+        selectedMeeting: { id: 'room-1' },
+        applyBlackboardVisibility: async (payload) => {
+            applied.push(payload);
+            dashboard.state.blackboard.visible = payload.visible === true;
+        },
+        ensureBlackboardAdapter: async () => ({
+            applyBlackboardProjection: (projection, options) => projections.push({ projection, options }),
+        }),
+    });
+    const blackboard = { revision: 7, widgets: [{ id: 'image-1', type: 'image' }] };
+
+    await dashboard.refreshChatBlackboard({ blackboard }, { ensureVisible: true });
+
+    assert.equal(applied.length, 1);
+    assert.equal(applied[0].visible, true);
+    assert.equal(applied[0].participantId, 'participant-1');
+    assert.equal(applied[0].presenterId, 'agent_robo_team');
+    assert.deepEqual(projections, [{
+        projection: blackboard,
+        options: { reason: 'command-result' },
+    }]);
+});
+
 test('remote blackboard visibility events are not bound to local dashboard visibility', async () => {
     const source = await fs.readFile(new URL(
         '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-realtime-methods.js',

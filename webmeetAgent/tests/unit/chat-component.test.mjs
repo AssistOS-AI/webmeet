@@ -63,9 +63,9 @@ test('chat image upload stages in Explorer and publishes one chat and Blackboard
         ok: true,
         json: async () => ({ id: 'b'.repeat(48), agent: 'explorer', localPath: `blobs/${'b'.repeat(48)}` })
     });
-    let refreshed = false;
+    let refreshOptions = null;
     const { component, calls, state } = makeComponent({
-        refreshBlackboard: async () => { refreshed = true; },
+        refreshBlackboard: async (_result, options) => { refreshOptions = options; },
         runTool: async (name, args) => {
             calls.push({ name, args });
             return {
@@ -88,7 +88,7 @@ test('chat image upload stages in Explorer and publishes one chat and Blackboard
         localPath: `blobs/${'b'.repeat(48)}`
     });
     assert.equal(state.chat[0].id, 'chat-image');
-    assert.equal(refreshed, true);
+    assert.deepEqual(refreshOptions, { ensureVisible: true });
 });
 
 test('/robo awaits a requested browser-side group insertion before reporting success', async () => {

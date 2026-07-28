@@ -275,6 +275,26 @@ export const blackboardMethods = {
         });
     },
 
+    async refreshChatBlackboard(result = {}, options = {}) {
+        if (result.visibilityPayload) {
+            await this.applyBlackboardVisibility(result.visibilityPayload);
+        }
+        if (options.ensureVisible && !this.state.blackboard?.visible) {
+            await this.applyBlackboardVisibility({
+                meetingId: this.selectedMeeting?.id || '',
+                participantId: this.state.session?.participantIdentity || '',
+                visible: true,
+                presenterId: 'agent_robo_team',
+                presenterName: 'RoboTeam'
+            });
+        }
+        if (!this.state.blackboard?.visible) return;
+        const adapter = await this.ensureBlackboardAdapter();
+        if (result.blackboard) {
+            adapter.applyBlackboardProjection(result.blackboard, { reason: 'command-result' });
+        }
+    },
+
     async toggleBlackboard() {
         if (!this.room?.localParticipant) {
             this.setError('Join a meeting before opening the blackboard.');

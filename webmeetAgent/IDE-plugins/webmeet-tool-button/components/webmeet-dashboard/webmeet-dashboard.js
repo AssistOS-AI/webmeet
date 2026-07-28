@@ -172,6 +172,7 @@ export class WebmeetDashboard {
             participants: [],
             activeSpeakerIds: new Set(),
             chatSidebarVisible: true,
+            chatAddMenuVisible: false,
             activeMobilePanel: 'room',
             videoGridFullscreen: false,
             blackboard: {
@@ -391,16 +392,7 @@ export class WebmeetDashboard {
             getSession: () => this.state.session,
             renderFeedLists: () => this.renderFeedLists(),
             publishRealtimePayload: (payload) => this.publishRealtimePayload(payload),
-            refreshBlackboard: async (result = {}) => {
-                if (result.visibilityPayload) {
-                    await this.applyBlackboardVisibility(result.visibilityPayload);
-                }
-                if (!this.state.blackboard?.visible) return;
-                const adapter = await this.ensureBlackboardAdapter();
-                if (result.blackboard) {
-                    adapter.applyBlackboardProjection(result.blackboard, { reason: 'command-result' });
-                }
-            },
+            refreshBlackboard: (result, options) => this.refreshChatBlackboard(result, options),
             executeBlackboardClientAction: async (action = {}) => {
                 if (action.type !== 'scripta-insert-group') throw new Error('Unsupported Blackboard client action.');
                 await this.applyBlackboardVisibility({
@@ -518,6 +510,8 @@ export class WebmeetDashboard {
                 'toggleScreenShare',
                 'toggleVideoGridFullscreen',
                 'toggleChatSidebar',
+                'toggleChatAddMenu',
+                'selectChatAddImage',
                 'toggleMediaSettings',
                 'closeMediaSettings',
                 'setSettingsTab',
@@ -550,6 +544,20 @@ export class WebmeetDashboard {
     }
 
     onChatInputKeydown(event) {
+        if (this.state.chatAddMenuVisible && event.key === 'Escape') {
+            event.preventDefault();
+            this.closeChatAddMenu({ restoreFocus: true });
+            return;
+        }
+        if (
+            this.state.chatAddMenuVisible
+            && event.target?.closest?.('#webmeetChatAddMenu')
+            && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
+        ) {
+            event.preventDefault();
+            this.chatAddImageOption?.focus?.();
+            return;
+        }
         if (!event.target?.matches?.('#webmeetChatInput')) return;
         if (event.key !== 'Enter' || event.isComposing) return;
         if (event.shiftKey || event.altKey || event.ctrlKey) return;
@@ -558,6 +566,12 @@ export class WebmeetDashboard {
     }
 
     handleClick = (event) => {
+        if (
+            this.state.chatAddMenuVisible
+            && !event.target?.closest?.('.webmeet-chat-add-control')
+        ) {
+            this.closeChatAddMenu();
+        }
         const attachment = event.target?.closest?.('[data-chat-blackboard-widget]');
         if (attachment) {
             const widgetId = String(attachment.dataset.chatBlackboardWidget || '').trim();
@@ -621,6 +635,8 @@ export class WebmeetDashboard {
         this.chatActionButton = this.element.querySelector('#webmeetChatActionButton');
         this.chatImageButton = this.element.querySelector('#webmeetChatImageButton');
         this.chatImageInput = this.element.querySelector('#webmeetChatImageInput');
+        this.chatAddMenu = this.element.querySelector('#webmeetChatAddMenu');
+        this.chatAddImageOption = this.element.querySelector('#webmeetChatAddImageOption');
         this.chatSpeechStatus = this.element.querySelector('#webmeetChatSpeechStatus');
         this.chatViewMode = this.element.querySelector('#webmeetChatViewMode');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
@@ -677,6 +693,8 @@ export class WebmeetDashboard {
             chatImageInput: this.chatImageInput,
             chatSpeechStatus: this.chatSpeechStatus
         });
+
+        this.applyChatAddMenuState();
 
         this.applyChatSidebarWidth();
         this.applyMobilePanelState();
