@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { executeBlackboardEvent } from '../../lib/blackboard/event-service.mjs';
+import { buildScriptaIntent, executeBlackboardEvent } from '../../lib/blackboard/event-service.mjs';
 import {
     BLACKBOARD_CREATABLE_WIDGET_TYPES,
     BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS,
@@ -61,6 +61,10 @@ test('canonical create is accepted while add, lock, unlock, transport ids, and p
     assert.throws(() => normalizeBlackboardEvent({ action: 'update', target: { type: 'widget', widgetId: 'shape-1' }, payload: { patch: { locked: true } } }), /cannot modify locked/);
     assert.throws(() => normalizeBlackboardEvent({ action: 'create', target: { type: 'blackboard' }, payload: { widget: { type: 'scripta-document', properties: {} } } }), /specialized action/);
     assert.throws(() => normalizeBlackboardEvent({ action: 'create', target: { type: 'blackboard' }, payload: { widget: { type: 'ellipse', properties: {} } } }), /specialized action/);
+    assert.throws(() => assertCanonicalWidgetPatch(
+        { type: 'image' },
+        { properties: { source: { kind: 'explorer-media', assetId: 'asset_forged', url: '/workspace-files/document-multimedia/webmeet/room/assets/asset_forged.png' } } }
+    ), /cannot update properties: source/);
     const circle = normalizeBlackboardEvent({
         action: 'create', target: { type: 'blackboard' },
         payload: { widget: { type: 'shape', properties: { shapeKind: 'ellipse', geometry: { x: 10, y: 20, width: 100, height: 100 } } } },
@@ -91,6 +95,17 @@ test('SCRIPTA event payloads are flat and chapter rename requires a real title',
         payload: { chapterOrdinal: 1, title: '  test   chapter  ' },
     });
     assert.deepEqual(event.payload, { chapterOrdinal: 1, title: 'test chapter' });
+    const move = normalizeBlackboardEvent({
+        action: 'scripta-paragraph-move',
+        target: { type: 'widget', widgetId: 'robo_scripta_document' },
+        payload: {
+            chapterId: 'chapter-1',
+            paragraphId: 'paragraph-1',
+            targetChapterId: 'chapter-1',
+            targetIndex: 1,
+        },
+    });
+    assert.equal(move.payload.targetChapterId, 'chapter-1');
     const structuredActions = getBlackboardStructuredResultSchema()
         .properties.events.anyOf[0].items.properties.action.enum;
     assert.deepEqual(
@@ -99,7 +114,46 @@ test('SCRIPTA event payloads are flat and chapter rename requires a real title',
     );
     const prompt = getBlackboardScriptaEventSchemaPrompt();
     assert.match(prompt, /scripta-chapter-edit: payload=\{resourceId,chapterId,chapterOrdinal,title\}/);
+    assert.match(prompt, /scripta-paragraph-move:[^\n]*targetChapterId/);
+    assert.match(prompt, /scripta-p-variant-image-delete:[^\n]*imageOrdinal/);
     assert.doesNotMatch(prompt, /scripta-chapter-edit:[^\n]*type/);
+    const imageDelete = normalizeBlackboardEvent({
+        action: 'scripta-p-variant-image-delete',
+        target: {type: 'widget', widgetId: 'robo_scripta_document'},
+        payload: {variantOrdinal: 1, imageOrdinal: 2},
+    });
+    assert.deepEqual(imageDelete.payload, {variantOrdinal: 1, imageOrdinal: 2});
+    assert.throws(() => normalizeBlackboardEvent({
+        action: 'scripta-p-variant-image-delete',
+        target: {type: 'widget', widgetId: 'robo_scripta_document'},
+        payload: {variantOrdinal: 1},
+    }), /requires imageId or imageOrdinal/);
+});
+
+test('SCRIPTA variant editor actions preserve explicit editing state', () => {
+    const target = { type: 'widget', widgetId: 'robo_scripta_document' };
+    const payload = { chapterId: 'chapter-1', paragraphId: 'paragraph-1', variantId: 'variant-1' };
+    const start = buildScriptaIntent({ action: 'scripta-p-variant-edit-start', target, payload });
+    const cancel = buildScriptaIntent({ action: 'scripta-p-variant-edit-cancel', target, payload });
+    const select = buildScriptaIntent({ action: 'scripta-p-variant-select', target, payload });
+
+    assert.equal(start.kind, 'focus');
+    assert.equal(start.editing, true);
+    assert.equal(cancel.kind, 'focus');
+    assert.equal(cancel.editing, false);
+    assert.equal(select.kind, 'focus');
+    assert.equal(Object.prototype.hasOwnProperty.call(select, 'editing'), false);
+});
+
+test('SCRIPTA view actions derive their mode from the canonical action', () => {
+    const target = { type: 'widget', widgetId: 'robo_scripta_document' };
+    assert.equal(buildScriptaIntent({ action: 'scripta-document-view', target, payload: {} }).mode, 'document');
+    assert.equal(buildScriptaIntent({
+        action: 'scripta-document-view', target, payload: { mode: 'paragraph' }
+    }).mode, 'document');
+    assert.equal(buildScriptaIntent({
+        action: 'scripta-paragraph-open', target, payload: { chapterId: 'chapter-1', paragraphId: 'paragraph-1', mode: 'document' }
+    }).mode, 'paragraph');
 });
 
 test('interpreter results support ordered event lists or one natural-language error', () => {
@@ -133,9 +187,12 @@ test('structured result schema covers every public action and both terminal resu
         'scripta-paragraph-open', 'scripta-document-view', 'scripta-paragraph-next', 'scripta-paragraph-previous',
         'scripta-p-variant-add', 'scripta-p-variant-select', 'scripta-p-variant-edit-start',
         'scripta-p-variant-edit-cancel', 'scripta-p-variant-edit', 'scripta-p-variant-delete',
+        'scripta-p-variant-image-insert', 'scripta-p-variant-image-replace',
+        'scripta-p-variant-image-delete', 'scripta-p-variant-image-layout',
         'scripta-p-variant-vote', 'scripta-p-variant-vote-withdraw', 'scripta-p-variant-reformulate',
         'scripta-undo', 'scripta-chapter-add', 'scripta-chapter-edit', 'scripta-chapter-delete',
         'scripta-chapter-move', 'scripta-paragraph-add', 'scripta-paragraph-delete', 'scripta-paragraph-move',
+        'scripta-media-insert',
     ]));
 });
 
@@ -353,6 +410,33 @@ test('semantic ambiguity returns an explicit error and never executes events', a
     );
 });
 
+test('SCRIPTA group insertion is delegated to the requesting browser renderer', async () => {
+    const deps = makeDeps({
+        getRoomBlackboard: async () => ({
+            blackboard: {
+                boardId: 'agent:agent_robo_team', revision: 2,
+                widgets: [
+                    { id: 'shape-1', type: 'shape', groupId: 'group-1', properties: {} },
+                    { id: 'text-1', type: 'text', groupId: 'group-1', properties: {} },
+                ],
+                interactionContext: { focusedWidgetId: 'shape-1', lastAffectedWidgetIds: ['shape-1', 'text-1'] }
+            },
+        }),
+    });
+    const result = await executeBlackboardEvent({}, {
+        roomId: 'room-1', source: 'event', participantId: 'participant-1',
+        event: {
+            action: 'scripta-media-insert',
+            target: { type: 'group', groupId: 'group-1' },
+            payload: { alt: 'Architecture diagram' }
+        }
+    }, deps);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.clientAction, {
+        type: 'scripta-insert-group', groupId: 'group-1', alt: 'Architecture diagram'
+    });
+});
+
 test('interpreter timeout always shuts down the per-round MainAgent', async () => {
     let shutdown = false;
     class HangingAgent {
@@ -364,6 +448,24 @@ test('interpreter timeout always shuts down the per-round MainAgent', async () =
         (error) => error.code === 'command_interpretation_timeout',
     );
     assert.equal(shutdown, true);
+});
+
+test('interpreter cannot supply stored image authority fields', async () => {
+    class UnsafeImageAgent {
+        executeSkill() {
+            return { result: { events: [{
+                action: 'create', target: { type: 'blackboard' },
+                payload: { widget: { type: 'image', properties: {
+                    source: { kind: 'explorer-media', assetId: 'asset_forged', url: '/workspace-files/document-multimedia/webmeet/room/assets/asset_forged.png' }
+                } } }
+            }] } };
+        }
+        shutdown() {}
+    }
+    await assert.rejects(
+        new BlackboardCommandInterpreter({ MainAgent: UnsafeImageAgent }).interpret({ text: 'add image', board: {} }),
+        /cannot create or replace stored image sources/
+    );
 });
 
 test('geometry uses logical board bounds and deterministic free-line math', () => {
@@ -566,6 +668,32 @@ test('SCRIPTA semantic context exposes safe active focus and uses it when no ord
     assert.match(prompts[0], /Absence of an ordinal is not ambiguous when a compatible focus exists/);
     assert.equal(result.events[0].action, 'scripta-chapter-edit');
     assert.equal(result.events[0].payload.title, 'test');
+});
+
+test('SCRIPTA image context exposes ordinals and safe properties without media authority', () => {
+    const semantic = buildSemanticBoardContext({widgets: [{
+        id: 'robo_scripta_document', type: 'scripta-document', properties: {
+            resourceId: 'resource-1', focusedChapterId: 'chapter-1', focusedParagraphId: 'paragraph-1',
+            chapters: [{chapterId: 'chapter-1', chapterOrdinal: 1, chapterTitle: 'Chapter', paragraphs: [
+                {paragraphId: 'paragraph-1', paragraphOrdinal: 1},
+            ]}],
+            paragraph: {
+                chapterId: 'chapter-1', paragraphId: 'paragraph-1', selectedVariantId: 'variant-1',
+                variants: [{id: 'variant-1', text: 'Body', images: [{
+                    imageId: 'image-secret', assetId: 'asset-secret', workspaceUrl: '/private/path.png',
+                    ordinal: 1, alt: 'Diagram', position: 2,
+                    layout: {widthPercent: 50, aspectRatio: 'auto', fit: 'contain', alignment: 'right'},
+                }]}],
+            },
+        },
+    }]});
+    const scripta = semantic.widgets[0].scripta;
+    assert.equal(scripta.view.selectedVariantOrdinal, 1);
+    assert.deepEqual(scripta.paragraph.variants[0].images, [{
+        ordinal: 1, alt: 'Diagram', position: 2,
+        layout: {widthPercent: 50, aspectRatio: 'auto', fit: 'contain', alignment: 'right'},
+    }]);
+    assert.doesNotMatch(JSON.stringify(scripta), /image-secret|asset-secret|private\/path/);
 });
 
 test('blackboard skill repairs a nested SCRIPTA mutation into the canonical flat payload', async () => {

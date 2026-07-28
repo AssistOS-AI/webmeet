@@ -517,10 +517,9 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-scripta-document-chapter > header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
+    position: relative;
+    display: block;
+    min-height: 32px;
 }
 
 .webmeet-scripta-document-chapter h3 {
@@ -604,10 +603,6 @@ webmeet-blackboard-panel {
     opacity: 0.55;
 }
 
-.webmeet-scripta-document-chapter > header.is-title-editing {
-    align-items: start;
-}
-
 .webmeet-scripta-document-chapter > header.is-title-editing .webmeet-scripta-chapter-actions {
     visibility: hidden;
     pointer-events: none;
@@ -620,9 +615,8 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-scripta-document-paragraph {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    position: relative;
+    display: block;
     width: 100%;
     margin-top: 9px;
     padding: 10px;
@@ -635,10 +629,21 @@ webmeet-blackboard-panel {
 
 .webmeet-scripta-chapter-actions,
 .webmeet-scripta-paragraph-actions {
-    flex: 0 0 auto;
-    margin-left: auto;
+    position: absolute;
+    z-index: 3;
+    top: 6px;
+    right: 6px;
+    align-items: flex-start;
+    margin: 0;
+    padding: 3px;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--bb-widget-bg) 94%, transparent);
+    box-shadow: 0 2px 8px color-mix(in srgb, #000 12%, transparent);
     opacity: 0;
-    transition: opacity 120ms ease;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-2px);
+    transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
 }
 
 .webmeet-scripta-chapter-actions .webmeet-scripta-labeled-action {
@@ -677,6 +682,10 @@ webmeet-blackboard-panel {
 .webmeet-scripta-document-paragraph:hover .webmeet-scripta-paragraph-actions,
 .webmeet-scripta-document-paragraph:focus-within .webmeet-scripta-paragraph-actions {
     opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition-delay: 0s;
 }
 
 .webmeet-scripta-chapter-actions .webmeet-blackboard-context-button:disabled,
@@ -687,12 +696,22 @@ webmeet-blackboard-panel {
 
 .webmeet-scripta-paragraph-open {
     display: grid;
-    flex: 1;
+    width: 100%;
+    min-width: 0;
     border: 0;
     background: transparent;
     color: inherit;
     text-align: left;
     cursor: pointer;
+}
+
+.webmeet-scripta-paragraph-image {
+    display: block;
+    max-width: 100%;
+    max-height: 240px;
+    margin: 0 auto;
+    object-fit: contain;
+    border-radius: 6px;
 }
 
 .webmeet-scripta-document-paragraph:hover,
@@ -1358,6 +1377,11 @@ webmeet-blackboard-panel {
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/export.svg');
 }
 
+.webmeet-blackboard-context-icon.insert {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/scripta-document.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/scripta-document.svg');
+}
+
 .webmeet-blackboard-context-icon.settings {
     -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/settings.svg');
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/settings.svg');
@@ -1462,5 +1486,10 @@ webmeet-blackboard-panel {
 
 @media (hover: none) {
     .webmeet-scripta-chapter-actions,
-    .webmeet-scripta-paragraph-actions { opacity: 1; }
+    .webmeet-scripta-paragraph-actions {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: none;
+    }
 }

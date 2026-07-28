@@ -40,6 +40,7 @@ export class ChatComponent {
         this.renderFeedLists = options.renderFeedLists || (() => {});
         this.publishRealtimePayload = options.publishRealtimePayload || (() => Promise.resolve());
         this.refreshBlackboard = options.refreshBlackboard || (() => Promise.resolve());
+        this.executeBlackboardClientAction = options.executeBlackboardClientAction || (() => Promise.resolve());
         this.updateRoboCommandStatus = options.updateRoboCommandStatus || (() => Promise.resolve());
         this.updateRoboDraftState = options.updateRoboDraftState || (() => {});
         this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
@@ -60,6 +61,7 @@ export class ChatComponent {
         this.mentionOverlayHandlers = null;
         this.selectedMentionTokens = new Set();
         this.roboSpeechInput = null;
+        this.imageUploadHandlers = null;
     }
 
     getKnownAgentTokens() {
@@ -74,11 +76,99 @@ export class ChatComponent {
     }
 
     setElements(elements) {
+        this.destroyImageUpload();
         this.destroyRoboSpeechInput();
         this.elements = elements;
         this.syncRoboDraftState();
         this.initChatAutocomplete();
         this.initRoboSpeechInput();
+        this.initImageUpload();
+    }
+
+    initImageUpload() {
+        const button = this.elements?.chatImageButton;
+        const input = this.elements?.chatImageInput;
+        if (!button || !input) return;
+        const onClick = () => input.click();
+        const onChange = () => {
+            const file = input.files?.[0] || null;
+            input.value = '';
+            if (file) void this.publishImage(file);
+        };
+        button.addEventListener('click', onClick);
+        input.addEventListener('change', onChange);
+        this.imageUploadHandlers = { button, input, onClick, onChange };
+    }
+
+    destroyImageUpload() {
+        const handlers = this.imageUploadHandlers;
+        handlers?.button?.removeEventListener?.('click', handlers.onClick);
+        handlers?.input?.removeEventListener?.('change', handlers.onChange);
+        this.imageUploadHandlers = null;
+    }
+
+    async publishImage(file) {
+        const meeting = this.getSelectedMeeting();
+        const session = this.getSession();
+        if (!meeting || !session?.participantIdentity) {
+            this.setError('Join the meeting before uploading an image.');
+            return;
+        }
+        const allowed = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+        if (!allowed.has(String(file?.type || '').toLowerCase())) {
+            this.setError('Choose a PNG, JPEG, WebP, or GIF image.');
+            return;
+        }
+        if (Number(file?.size || 0) > 15 * 1024 * 1024) {
+            this.setError('Images may not exceed 15 MB.');
+            return;
+        }
+        const button = this.elements?.chatImageButton;
+        if (button) { button.disabled = true; button.classList.add('is-loading'); button.setAttribute('aria-busy', 'true'); }
+        try {
+            const upload = await fetch('/blobs/explorer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': file.type || 'application/octet-stream',
+                    'X-Mime-Type': file.type || 'application/octet-stream',
+                    'X-File-Name': encodeURIComponent(file.name || 'image')
+                },
+                body: file
+            });
+            if (!upload.ok) throw new Error((await upload.text().catch(() => '')) || `Image upload failed (${upload.status}).`);
+            const staged = await upload.json();
+            const result = await this.runTool('webmeet_image_publish', {
+                roomId: meeting.id,
+                boardId: 'agent:agent_robo_team',
+                participantId: session.participantIdentity,
+                blobRef: {
+                    id: staged.id,
+                    agent: staged.agent,
+                    localPath: staged.localPath
+                },
+                filename: file.name || 'Image'
+            });
+            if (!result?.message || !result?.blackboard) throw new Error('Image publishing returned an incomplete result.');
+            const state = this.getState();
+            state.chat = Array.isArray(state.chat) ? state.chat : [];
+            if (!state.chat.some((entry) => entry?.id === result.message.id)) state.chat.push(result.message);
+            await this.refreshBlackboard(result).catch(() => {});
+            this.renderFeedLists();
+            if (this.getRoom()?.localParticipant) {
+                await this.publishRealtimePayload({ type: WEBMEET_EVENT_TYPES.CHAT_REALTIME, meetingId: meeting.id, message: result.message }).catch(() => {});
+                await this.publishRealtimePayload({
+                    type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+                    meetingId: meeting.id,
+                    boardId: 'agent:agent_robo_team',
+                    blackboardRevision: Number(result.blackboard.revision || 0),
+                    changeType: 'create'
+                }).catch(() => {});
+            }
+        } catch (error) {
+            this.setError(`Failed to publish image: ${error.message}`);
+        } finally {
+            if (button) { button.disabled = false; button.classList.remove('is-loading'); button.setAttribute('aria-busy', 'false'); }
+        }
     }
 
     initRoboSpeechInput() {
@@ -111,6 +201,7 @@ export class ChatComponent {
     }
 
     destroy() {
+        this.destroyImageUpload();
         this.destroyRoboSpeechInput();
         this.destroyChatAutocomplete();
     }
@@ -366,6 +457,7 @@ export class ChatComponent {
                 }
             }
             if (result?.ok === false) throw new Error(result?.error?.message || 'Blackboard event failed.');
+            if (result?.clientAction) await this.executeBlackboardClientAction(result.clientAction);
             if (result?.visibilityPayload || result?.blackboard) {
                 await this.refreshBlackboard(result).catch(() => {});
             }

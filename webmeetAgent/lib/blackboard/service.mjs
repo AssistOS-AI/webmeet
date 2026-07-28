@@ -22,8 +22,119 @@ import {
     getRoboTeamAgentPayload
 } from '../roboTeam/service.mjs';
 import { scriptaOwnerHash } from '../scripta/identity.mjs';
+import { scriptaExplorer } from '../scripta/explorer-crdt-client.mjs';
+import { calculateContentBounds } from './semantic-context.mjs';
 
 export const DEFAULT_BLACKBOARD_BOARD_ID = ROBO_TEAM_BLACKBOARD_BOARD_ID;
+
+function imageGeometry(blackboard, asset) {
+    const bounds = calculateContentBounds([...blackboard.widgets.values()].map((widget) => widget.serializePrivileged()));
+    const naturalWidth = Math.max(1, Number(asset.width || 1));
+    const naturalHeight = Math.max(1, Number(asset.height || 1));
+    const naturalMax = Math.max(naturalWidth, naturalHeight);
+    const scale = naturalMax > 360 ? 360 / naturalMax : naturalMax < 180 ? 180 / naturalMax : 1;
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+    return {
+        x: Math.round(bounds.centerX - width / 2),
+        y: Math.round(bounds.centerY - height / 2),
+        width,
+        height,
+        rotation: 0
+    };
+}
+
+function publicMediaAsset(asset = {}) {
+    return {
+        assetId: String(asset.assetId || ''),
+        kind: 'image',
+        filename: String(asset.filename || 'Image'),
+        mimeType: String(asset.mimeType || ''),
+        size: Number(asset.size || 0),
+        width: Number(asset.width || 0),
+        height: Number(asset.height || 0),
+        workspaceUrl: String(asset.workspaceUrl || '')
+    };
+}
+
+export async function publishRoomImage(context, {
+    roomId,
+    boardId = '',
+    participantId = '',
+    blobRef = null,
+    filename = '',
+    authInfo = null
+} = {}) {
+    const targetRoomId = String(roomId || '').trim();
+    const targetBoardId = assertSupportedBoardId(boardId);
+    const roomRecord = await loadRoomRecord(context, targetRoomId);
+    assertCanMutateBlackboard(roomRecord, authInfo);
+    const roomPayload = decryptRoomPayload(context, roomRecord);
+    const authorizedParticipantId = authorizeRoomParticipantId(roomPayload, authInfo, participantId, targetRoomId);
+    const assetResult = await scriptaExplorer.commitMedia(context, {
+        roomId: targetRoomId,
+        blobRef,
+        filename: String(filename || 'Image'),
+        createdBy: authorizedParticipantId
+    });
+    const asset = publicMediaAsset(assetResult?.asset || assetResult);
+    if (!asset.assetId || !asset.workspaceUrl) throw new Error('Explorer did not return a valid media asset.');
+    let result = null;
+    await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
+        assertCanMutateBlackboard(record, authInfo);
+        const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
+        const member = (Array.isArray(payload.members) ? payload.members : [])
+            .find((entry) => String(entry?.id || '') === effectiveParticipantId);
+        const authorName = String(member?.displayName || member?.name || 'User');
+        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        const before = blackboard.serializePrivileged();
+        const widgetId = newEventId('widget');
+        const routeUrl = `/workspace-files/${asset.workspaceUrl.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
+        const widget = blackboard.applyFinalChange({
+            changeType: 'create',
+            targetType: 'widget',
+            reason: 'chatImageUpload',
+            widget: {
+                id: widgetId,
+                type: 'image',
+                properties: {
+                    source: { kind: 'explorer-media', assetId: asset.assetId, url: routeUrl, name: asset.filename, mimeType: asset.mimeType },
+                    alt: asset.filename,
+                    naturalSize: { width: asset.width, height: asset.height },
+                    geometry: imageGeometry(blackboard, asset)
+                }
+            }
+        }, { participantId: effectiveParticipantId, ownerParticipantId: effectiveParticipantId, record: false });
+        blackboard.history.record('command', before, blackboard.serializePrivileged());
+        blackboard.updateInteractionContext([widgetId], { participantId: effectiveParticipantId });
+        const serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+        payload.resources = Array.isArray(payload.resources) ? payload.resources : [];
+        if (!payload.resources.some((entry) => entry?.assetId === asset.assetId)) {
+            payload.resources.push({ ...asset, resourceId: asset.assetId, roomId: targetRoomId, createdAt: new Date().toISOString() });
+        }
+        const chatMessage = {
+            id: newEventId('chat'), meetingId: targetRoomId,
+            authorId: effectiveParticipantId, authorName,
+            message: asset.filename, kind: 'user', createdAt: new Date().toISOString(),
+            metadata: { attachments: [{ ...asset }], blackboardWidgetId: widgetId }
+        };
+        payload.chatMessages = Array.isArray(payload.chatMessages) ? payload.chatMessages : [];
+        payload.chatMessages.push(chatMessage);
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId: targetRoomId, chatMessageId: chatMessage.id });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+            meetingId: targetRoomId, boardId: blackboard.boardId,
+            blackboardRevision: blackboard.revision, changeType: 'create',
+            targetType: 'widget', targetRef: widgetId, objectKind: 'blackboard'
+        });
+        result = {
+            ok: true, asset, message: chatMessage,
+            widget: widget.serialize(buildViewerContext(authInfo, effectiveParticipantId)),
+            blackboard: Blackboard.from(serializedBlackboard).serialize(buildViewerContext(authInfo, effectiveParticipantId)),
+            broadcast: buildBroadcastPayload(targetRoomId, blackboard, serializedBlackboard, 'blackboard')
+        };
+    });
+    return result;
+}
 
 function assertSupportedBoardId(boardId = '') {
     const normalized = String(boardId || '').trim();
@@ -283,6 +394,34 @@ function normalizeCreatedWidget(widget = {}) {
     return normalized;
 }
 
+async function canonicalizeImageAssetEvents(context, roomId, events) {
+    const canonical = cloneJson(events);
+    for (const event of canonical) {
+        if (event.action !== 'create' || event.payload?.widget?.type !== 'image') continue;
+        const properties = event.payload.widget.properties || {};
+        if (!properties.source) continue;
+        const assetId = String(properties.source.assetId || '').trim();
+        const assetResult = await scriptaExplorer.getMedia(context, { roomId, assetId });
+        const asset = publicMediaAsset(assetResult?.asset || assetResult);
+        if (!asset.assetId || !asset.workspaceUrl) throw new Error('Explorer did not return a valid image asset.');
+        const routeUrl = `/workspace-files/${asset.workspaceUrl.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
+        properties.source = {
+            kind: 'explorer-media', assetId: asset.assetId, url: routeUrl,
+            name: asset.filename, mimeType: asset.mimeType
+        };
+        properties.naturalSize = { width: asset.width, height: asset.height };
+    }
+    return canonical;
+}
+
+function requiresImageAssetResolution(events) {
+    return events.some((event) => (
+        event?.action === 'create'
+        && event?.payload?.widget?.type === 'image'
+        && Boolean(event?.payload?.widget?.properties?.source)
+    ));
+}
+
 export async function applyRoomBlackboardEvents(context, {
     roomId,
     boardId = '',
@@ -297,6 +436,13 @@ export async function applyRoomBlackboardEvents(context, {
     if (events.some((event) => ['show', 'hide'].includes(event.action))) {
         throw new Error('show and hide cannot be combined with persistent blackboard events.');
     }
+    if (requiresImageAssetResolution(events)) {
+        const authorizationRecord = await loadRoomRecord(context, targetRoomId);
+        assertCanMutateBlackboard(authorizationRecord, authInfo);
+        const authorizationPayload = decryptRoomPayload(context, authorizationRecord);
+        authorizeRoomParticipantId(authorizationPayload, authInfo, participantId, targetRoomId);
+    }
+    const canonicalEvents = await canonicalizeImageAssetEvents(context, targetRoomId, events);
     let serializedBlackboard;
     let broadcast;
     let effectiveParticipantId = '';
@@ -316,10 +462,10 @@ export async function applyRoomBlackboardEvents(context, {
             : { executor: effectiveParticipantId, requestedBy: effectiveParticipantId, source: 'ui' };
         const actorId = source === 'robo' ? ROBO_TEAM_PARTICIPANT_ID : effectiveParticipantId;
 
-        for (const rawEvent of events) {
+        for (const rawEvent of canonicalEvents) {
             const event = resolveEvent(rawEvent, refs);
             if (event.action === 'undo' || event.action === 'redo') {
-                if (events.length !== 1) throw new Error(`${event.action} cannot be combined with other events.`);
+                if (canonicalEvents.length !== 1) throw new Error(`${event.action} cannot be combined with other events.`);
                 const result = event.action === 'undo' ? blackboard.undo() : blackboard.redo();
                 appliedEvents.push(event);
                 if (!result) {
@@ -371,8 +517,8 @@ export async function applyRoomBlackboardEvents(context, {
             return;
         }
         blackboard.bumpRevision();
-        if (!['undo', 'redo'].includes(events[0].action)) {
-            if (events.at(-1).action === 'clear' && !affectedIds.length) {
+        if (!['undo', 'redo'].includes(canonicalEvents[0].action)) {
+            if (canonicalEvents.at(-1).action === 'clear' && !affectedIds.length) {
                 blackboard.interactionContext = { focusedWidgetId: '', lastAffectedWidgetIds: [], updatedBy: '', updatedAt: '' };
             } else {
                 blackboard.updateInteractionContext(affectedIds, { participantId: actorId });
@@ -387,7 +533,7 @@ export async function applyRoomBlackboardEvents(context, {
             meetingId: targetRoomId,
             boardId: blackboard.boardId,
             blackboardRevision: blackboard.revision,
-            changeType: events.length > 1 ? 'command' : events[0].action,
+            changeType: canonicalEvents.length > 1 ? 'command' : canonicalEvents[0].action,
             targetType: 'blackboard',
             targetRef: blackboard.interactionContext.focusedWidgetId,
             objectKind: 'blackboard',

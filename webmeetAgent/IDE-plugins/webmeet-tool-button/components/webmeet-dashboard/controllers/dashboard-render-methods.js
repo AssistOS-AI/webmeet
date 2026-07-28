@@ -26,6 +26,15 @@ function formatAvatarOptionLabel(value = '') {
     return formatSharedAvatarOptionLabel(value);
 }
 
+function renderChatAttachments(entry = {}) {
+    const attachments = Array.isArray(entry?.metadata?.attachments) ? entry.metadata.attachments : [];
+    return attachments.filter((attachment) => attachment?.kind === 'image' && attachment?.workspaceUrl).map((attachment) => {
+        const route = `/workspace-files/${String(attachment.workspaceUrl).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
+        const widgetId = String(entry?.metadata?.blackboardWidgetId || '');
+        return `<button type="button" class="webmeet-chat-attachment-button" data-chat-blackboard-widget="${escapeHtml(widgetId)}" aria-label="Open image on Blackboard"><img class="webmeet-chat-attachment-image" src="${escapeHtml(route)}" alt="${escapeHtml(attachment.filename || 'Image')}" loading="lazy"></button>`;
+    }).join('');
+}
+
 export function filterChatEntries(entries, mode = 'normal') {
     const normalizedMode = mode === 'full' ? 'full' : 'normal';
     return (Array.isArray(entries) ? entries : []).filter((entry) => {
@@ -548,7 +557,7 @@ export const dashboardRenderMethods = {
                             ${String(entry.kind || '') === 'event' ? `<span class="webmeet-chat-event-status">${escapeHtml(entry.metadata?.status || 'pending')}</span>` : ''}
                             <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.createdAt))}</span>
                         </div>
-                        <div class="webmeet-chat-text">${chatMessageHtml(formatChatEntryMessage(entry))}</div>
+                        <div class="webmeet-chat-text">${chatMessageHtml(formatChatEntryMessage(entry))}${renderChatAttachments(entry)}</div>
                     </div>
                 </div>
             </div>

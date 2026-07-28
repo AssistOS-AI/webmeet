@@ -113,6 +113,8 @@ export const blackboardScriptaRenderingMethods = {
         const moveUp = chapterNode.querySelector('[data-move-direction="up"]');
         const moveDown = chapterNode.querySelector('[data-move-direction="down"]');
         const deleteChapter = chapterNode.querySelector('[data-local-action*="scripta-chapter-delete"]');
+        const addImage = chapterNode.querySelector('[data-local-action="insertScriptaChapterImage"]');
+        if (addImage) addImage.dataset.chapterId = chapter.chapterId;
         moveUp.disabled = chapter.chapterOrdinal <= 1;
         moveDown.disabled = chapter.chapterOrdinal >= chapterCount;
         deleteChapter.disabled = chapterCount <= 1;
@@ -167,9 +169,38 @@ export const blackboardScriptaRenderingMethods = {
         const text = setText(
             paragraphNode,
             '[data-role="paragraph-text"]',
-            paragraphText || 'Empty paragraph — select to add text.'
+            ''
         );
-        text.classList.toggle('is-placeholder', !paragraphText);
+        const images = (Array.isArray(paragraph.images) ? paragraph.images : [])
+            .map((media, index) => ({...media, index, position: Math.max(0, Math.min(
+                paragraphText.length,
+                Number.isInteger(Number(media?.position)) ? Number(media.position) : paragraphText.length,
+            ))}))
+            .sort((left, right) => left.position - right.position || left.index - right.index);
+        let cursor = 0;
+        for (const media of images) {
+            text.append(document.createTextNode(paragraphText.slice(cursor, media.position)));
+            const image = document.createElement('img');
+            image.className = 'webmeet-scripta-paragraph-image';
+            image.src = `/workspace-files/${String(media.workspaceUrl).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
+            image.alt = String(media.alt || 'Image');
+            image.loading = 'lazy';
+            const layout = media.layout || {};
+            const widthPercent = Math.max(20, Math.min(100, Math.round(Number(layout.widthPercent) || 100)));
+            const aspectRatio = ['1:1', '4:3', '3:2', '16:9'].includes(layout.aspectRatio)
+                ? layout.aspectRatio.replace(':', ' / ')
+                : 'auto';
+            const alignment = ['left', 'center', 'right'].includes(layout.alignment) ? layout.alignment : 'center';
+            image.style.width = `${widthPercent}%`;
+            image.style.aspectRatio = aspectRatio;
+            image.style.objectFit = layout.fit === 'cover' ? 'cover' : 'contain';
+            image.style.marginInline = alignment === 'left' ? '0 auto' : alignment === 'right' ? 'auto 0' : 'auto';
+            text.append(image);
+            cursor = media.position;
+        }
+        text.append(document.createTextNode(paragraphText.slice(cursor)));
+        if (!paragraphText && !images.length) text.textContent = 'Empty paragraph — select to add text.';
+        text.classList.toggle('is-placeholder', !paragraphText && !images.length);
         paragraphNode.querySelector('[data-move-direction="up"]').disabled = paragraph.paragraphOrdinal <= 1;
         paragraphNode.querySelector('[data-move-direction="down"]').disabled = (
             paragraph.paragraphOrdinal >= chapter.paragraphs.length
@@ -203,6 +234,18 @@ export const blackboardScriptaRenderingMethods = {
 
     configureScriptaVariantsView(variantsView, paragraph, resourceId) {
         variantsView.addEventListener('pointerdown', (event) => event.stopPropagation());
+        variantsView.addEventListener('scripta-image-inspector-change', (event) => {
+            const detail = event.detail || {};
+            this.scriptaImageInspector = detail.open === true
+                ? {
+                    resourceId,
+                    chapterId: paragraph.chapterId,
+                    paragraphId: paragraph.paragraphId,
+                    variantId: String(detail.variantId || ''),
+                    imageId: String(detail.imageId || ''),
+                }
+                : null;
+        });
         variantsView.addEventListener('scripta-p-variant-select', (event) => void this.runScriptaEvent(
             'scripta-p-variant-select',
             {
@@ -225,7 +268,7 @@ export const blackboardScriptaRenderingMethods = {
             });
         });
         variantsView.addEventListener('scripta-p-variant-edit-start', (event) => {
-            this.scriptaEditStartPromise = this.runScriptaEvent('scripta-p-variant-edit-start', {
+            this.scriptaEditStartPromise = this.startScriptaVariantEdit(variantsView, {
                 chapterId: paragraph.chapterId,
                 paragraphId: paragraph.paragraphId,
                 variantId: event.detail?.variantId,
@@ -267,6 +310,55 @@ export const blackboardScriptaRenderingMethods = {
             paragraphId: paragraph.paragraphId,
             variantId: event.detail?.variantId,
         }));
+        variantsView.addEventListener('scripta-p-variant-image-replace', (event) => void this.replaceScriptaVariantImage({
+            resourceId,
+            chapterId: paragraph.chapterId,
+            paragraphId: paragraph.paragraphId,
+            variantId: event.detail?.variantId,
+            variantOrdinal: event.detail?.variantOrdinal,
+            imageId: event.detail?.imageId,
+            imageOrdinal: event.detail?.imageOrdinal,
+        }));
+        variantsView.addEventListener('scripta-p-variant-image-insert', (event) => void this.insertScriptaVariantImage({
+            resourceId,
+            chapterId: paragraph.chapterId,
+            paragraphId: paragraph.paragraphId,
+            variantId: event.detail?.variantId,
+            variantOrdinal: event.detail?.variantOrdinal,
+            position: event.detail?.position,
+            text: event.detail?.text,
+        }));
+        variantsView.addEventListener('scripta-p-variant-image-delete', (event) => void this.deleteScriptaVariantImage({
+            resourceId,
+            chapterId: paragraph.chapterId,
+            paragraphId: paragraph.paragraphId,
+            variantId: event.detail?.variantId,
+            variantOrdinal: event.detail?.variantOrdinal,
+            imageId: event.detail?.imageId,
+            imageOrdinal: event.detail?.imageOrdinal,
+        }));
+        variantsView.addEventListener('scripta-p-variant-image-layout', (event) => {
+            this.scriptaImageInspector = {
+                resourceId,
+                chapterId: paragraph.chapterId,
+                paragraphId: paragraph.paragraphId,
+                variantId: String(event.detail?.variantId || ''),
+                imageId: String(event.detail?.imageId || ''),
+            };
+            void this.updateScriptaVariantImageLayout({
+                resourceId,
+                chapterId: paragraph.chapterId,
+                paragraphId: paragraph.paragraphId,
+                variantId: event.detail?.variantId,
+                variantOrdinal: event.detail?.variantOrdinal,
+                imageId: event.detail?.imageId,
+                imageOrdinal: event.detail?.imageOrdinal,
+                widthPercent: event.detail?.widthPercent,
+                aspectRatio: event.detail?.aspectRatio,
+                fit: event.detail?.fit,
+                alignment: event.detail?.alignment,
+            });
+        });
         variantsView.addEventListener('scripta-p-variant-reformulate', () => void this.runScriptaEvent('scripta-p-variant-reformulate', {
             chapterId: paragraph.chapterId,
             paragraphId: paragraph.paragraphId,
@@ -281,6 +373,20 @@ export const blackboardScriptaRenderingMethods = {
             && draft.variantId === paragraph.editingVariantId
             && draft.editorParticipantId === paragraph.editorParticipantId
         );
+        const inspector = this.scriptaImageInspector;
+        const inspectorMatches = Boolean(
+            inspector
+            && inspector.resourceId === resourceId
+            && inspector.chapterId === paragraph.chapterId
+            && inspector.paragraphId === paragraph.paragraphId
+            && (paragraph.variants || []).some((variant) => (
+                variant.id === inspector.variantId
+                && (variant.images || []).some((image) => image.imageId === inspector.imageId)
+            ))
+        );
+        if (inspector && !inspectorMatches && inspector.resourceId === resourceId && inspector.paragraphId === paragraph.paragraphId) {
+            this.scriptaImageInspector = null;
+        }
         const viewData = {
             variants: (paragraph.variants || []).map((variant, index) => ({
                 ...variant,
@@ -289,6 +395,7 @@ export const blackboardScriptaRenderingMethods = {
             })),
             activeVariantId: paragraph.activeVariantId,
             selectedVariantId: paragraph.selectedVariantId,
+            selectedImageId: inspectorMatches ? inspector.imageId : '',
             editingVariantId: paragraph.editingVariantId,
             viewerVote: paragraph.viewerVote || null,
             editable: true,

@@ -57,6 +57,57 @@ test('sendChat clears the chat input after a successful send', async () => {
     assert.equal(component.elements.chatInput.value, '');
 });
 
+test('chat image upload stages in Explorer and publishes one chat and Blackboard result', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({ id: 'b'.repeat(48), agent: 'explorer', localPath: `blobs/${'b'.repeat(48)}` })
+    });
+    let refreshed = false;
+    const { component, calls, state } = makeComponent({
+        refreshBlackboard: async () => { refreshed = true; },
+        runTool: async (name, args) => {
+            calls.push({ name, args });
+            return {
+                message: { id: 'chat-image', message: 'photo.png', metadata: { attachments: [{ kind: 'image' }] } },
+                blackboard: { revision: 4, widgets: [] }
+            };
+        }
+    });
+    const classList = { add() {}, remove() {} };
+    component.elements = { chatImageButton: { disabled: false, classList, setAttribute() {} } };
+    try {
+        await component.publishImage({ name: 'photo.png', type: 'image/png', size: 24 });
+    } finally {
+        globalThis.fetch = previousFetch;
+    }
+    assert.equal(calls[0].name, 'webmeet_image_publish');
+    assert.deepEqual(calls[0].args.blobRef, {
+        id: 'b'.repeat(48),
+        agent: 'explorer',
+        localPath: `blobs/${'b'.repeat(48)}`
+    });
+    assert.equal(state.chat[0].id, 'chat-image');
+    assert.equal(refreshed, true);
+});
+
+test('/robo awaits a requested browser-side group insertion before reporting success', async () => {
+    let clientAction = null;
+    const statuses = [];
+    const { component } = makeComponent({
+        executeBlackboardClientAction: async (action) => { clientAction = action; },
+        updateRoboCommandStatus: async (status) => { statuses.push(status.state); },
+        runTool: async () => ({
+            ok: true,
+            clientAction: { type: 'scripta-insert-group', groupId: 'group-1', alt: 'Diagram' }
+        })
+    });
+    component.elements = { chatInput: { value: '/robo insert group 1 into SCRIPTA' } };
+    await component.sendChat();
+    assert.deepEqual(clientAction, { type: 'scripta-insert-group', groupId: 'group-1', alt: 'Diagram' });
+    assert.deepEqual(statuses, ['started', 'success']);
+});
+
 test('/robo uses the canonical event command and upserts its audit message', async () => {
     let chatWasRendered = false;
     const { component, calls, state } = makeComponent({

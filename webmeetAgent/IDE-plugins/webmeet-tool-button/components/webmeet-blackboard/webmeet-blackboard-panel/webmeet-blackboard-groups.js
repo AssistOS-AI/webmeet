@@ -207,6 +207,12 @@ export const blackboardGroupMethods = {
             event.stopPropagation();
             this.toggleGroupExportMenu(menu, exportButton);
         });
+        const insertButton = this.createContextButton('insert', 'Insert group into SCRIPTA', 'Insert into SCRIPTA', 'insert');
+        insertButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void this.insertSelectedGroupIntoScripta({background: 'transparent'});
+        });
         const remove = this.createContextButton('delete', 'Delete group', 'Delete group', 'delete');
         remove.addEventListener('click', (event) => {
             event.preventDefault();
@@ -219,7 +225,7 @@ export const blackboardGroupMethods = {
             event.stopPropagation();
             void this.ungroupSelectedGroup();
         });
-        menu.append(move, rotate, exportButton, remove, ungroup);
+        menu.append(move, rotate, exportButton, insertButton, remove, ungroup);
         overlay.append(menu);
     },
 

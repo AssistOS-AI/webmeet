@@ -12,6 +12,10 @@ const SCRIPTA_DOCUMENT_MUTATION_ACTIONS = new Set([
     'scripta-p-variant-reformulate',
     'scripta-p-variant-edit',
     'scripta-p-variant-delete',
+    'scripta-p-variant-image-insert',
+    'scripta-p-variant-image-replace',
+    'scripta-p-variant-image-delete',
+    'scripta-p-variant-image-layout',
     'scripta-undo',
     'scripta-chapter-add',
     'scripta-chapter-edit',
@@ -53,6 +57,7 @@ export class BlackboardNetworkAdapter {
         this.room = room;
         this.handlers = new Set();
         this.seenMessageIds = new Set();
+        this.locallyAppliedScriptaRevisions = new Set();
         this.currentRevision = 0;
         this.unsubscribeRoom = null;
         this.scriptaReplica = new ScriptaCrdtReplica(this);
@@ -64,8 +69,20 @@ export class BlackboardNetworkAdapter {
             boardId: this.boardId,
             participantId: this.participantId
         });
-        this.currentRevision = Number(response?.blackboard?.revision || 0);
+        const revision = Number(response?.blackboard?.revision || 0);
+        this.currentRevision = Math.max(this.currentRevision, revision);
         return response?.blackboard || { roomId, revision: 0, widgets: [] };
+    }
+
+    applyBlackboardProjection(blackboard, { kind = 'blackboard', reason = 'update' } = {}) {
+        if (!blackboard || typeof blackboard !== 'object') return false;
+        const revision = Number(blackboard.revision);
+        if (!Number.isSafeInteger(revision) || revision < 0 || revision < this.currentRevision) {
+            return false;
+        }
+        this.currentRevision = Math.max(this.currentRevision, revision);
+        this.emit({ kind, object: blackboard, revision, reason });
+        return true;
     }
 
     async sendChange(change) {
@@ -98,13 +115,12 @@ export class BlackboardNetworkAdapter {
         const response = await this.runEvent(event);
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard event failed.');
-        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
-        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: action });
-        await this.publishFinalUpdate(response, change?.changeType || 'update');
+        const projectionApplied = this.applyBlackboardProjection(response?.blackboard, { reason: action });
+        if (projectionApplied) await this.publishFinalUpdate(response, change?.changeType || 'update');
         return response;
     }
 
-    async sendEvent(action, payload = {}, { widgetId = '', targetType = 'widget' } = {}) {
+    async sendEvent(action, payload = {}, { widgetId = '', targetType = 'widget', projectionMode = 'render' } = {}) {
         const response = await this.runEvent(this.createEvent({
                 target: { type: targetType, ...(widgetId ? { widgetId } : {}) },
                 action,
@@ -112,9 +128,18 @@ export class BlackboardNetworkAdapter {
             }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || response?.message || 'Blackboard event failed.');
-        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
-        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: action });
-        if (response?.blackboard) await this.publishFinalUpdate(response, action);
+        const projectionApplied = this.applyBlackboardProjection(response?.blackboard, {
+            kind: projectionMode === 'state' ? 'blackboard-state' : 'blackboard',
+            reason: action
+        });
+        const responseRevision = Number(response?.blackboard?.revision || 0);
+        if (projectionApplied && SCRIPTA_DOCUMENT_MUTATION_ACTIONS.has(String(action || '')) && responseRevision > 0) {
+            this.locallyAppliedScriptaRevisions.add(responseRevision);
+            while (this.locallyAppliedScriptaRevisions.size > 64) {
+                this.locallyAppliedScriptaRevisions.delete(this.locallyAppliedScriptaRevisions.values().next().value);
+            }
+        }
+        if (projectionApplied) await this.publishFinalUpdate(response, action);
         if (SCRIPTA_DOCUMENT_MUTATION_ACTIONS.has(String(action || ''))) {
             // The command response is the authoritative projection and can be
             // rendered immediately. Keep the browser CRDT replica synchronized
@@ -127,6 +152,61 @@ export class BlackboardNetworkAdapter {
 
     async listScriptaWorkspaceEntries() {
         return this.runTool('webmeet_scripta_workspace_list', { roomId: this.roomId });
+    }
+
+    async commitMediaBlob(stagedBlob, filename) {
+        const response = await this.runTool('webmeet_media_commit', {
+            roomId: this.roomId,
+            participantId: this.participantId,
+            blobRef: {
+                id: stagedBlob?.id,
+                agent: stagedBlob?.agent,
+                localPath: stagedBlob?.localPath
+            },
+            filename
+        });
+        return response?.asset || response;
+    }
+
+    async mutateScriptaVariantImage(operation, {
+        assetId = '', imageId = '', variantId = '', chapterId = '', paragraphId = '', alt, position,
+        variantOrdinal, imageOrdinal, widthPercent, aspectRatio, fit, alignment
+    } = {}) {
+        if (!['insert', 'replace', 'delete', 'layout'].includes(operation)) {
+            throw new Error(`Unsupported SCRIPTA image operation "${operation}".`);
+        }
+        const payload = {};
+        for (const [key, value] of Object.entries({assetId, imageId, variantId, chapterId, paragraphId})) {
+            if (String(value || '').trim()) payload[key] = value;
+        }
+        for (const [key, value] of Object.entries({variantOrdinal, imageOrdinal, position, widthPercent})) {
+            if (value !== undefined && value !== null && value !== '') payload[key] = value;
+        }
+        if (alt !== undefined) payload.alt = alt;
+        if (String(aspectRatio || '').trim()) payload.aspectRatio = aspectRatio;
+        if (String(fit || '').trim()) payload.fit = fit;
+        if (String(alignment || '').trim()) payload.alignment = alignment;
+        return this.sendEvent(`scripta-p-variant-image-${operation}`, payload, {
+            widgetId: 'robo_scripta_document',
+            targetType: 'widget',
+            projectionMode: operation === 'layout' ? 'state' : 'render',
+        });
+    }
+
+    async addScriptaImageParagraph({chapterId = '', assetId = '', alt = 'Image'} = {}) {
+        return this.sendEvent('scripta-paragraph-add', {
+            chapterId,
+            text: '',
+            assetId,
+            alt,
+        }, {
+            widgetId: 'robo_scripta_document',
+            targetType: 'widget',
+        });
+    }
+
+    async insertScriptaMedia(assetId, alt = 'Image') {
+        return this.mutateScriptaVariantImage('insert', {assetId, alt});
     }
 
     createEvent({ target, action, payload }) {
@@ -151,9 +231,8 @@ export class BlackboardNetworkAdapter {
         }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard undo failed.');
-        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
-        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: 'undo' });
-        if (response?.changed) {
+        const projectionApplied = this.applyBlackboardProjection(response?.blackboard, { reason: 'undo' });
+        if (response?.changed && projectionApplied) {
             await this.publishFinalUpdate(response, 'undo');
         }
         return response;
@@ -165,9 +244,8 @@ export class BlackboardNetworkAdapter {
         }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard redo failed.');
-        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
-        if (response?.blackboard) this.emit({ kind: 'blackboard', object: response.blackboard, revision: this.currentRevision, reason: 'redo' });
-        if (response?.changed) {
+        const projectionApplied = this.applyBlackboardProjection(response?.blackboard, { reason: 'redo' });
+        if (response?.changed && projectionApplied) {
             await this.publishFinalUpdate(response, 'redo');
         }
         return response;
@@ -199,14 +277,10 @@ export class BlackboardNetworkAdapter {
             await this.requestResync('scripta-p-variant-edit-failed').catch(() => {});
             throw error;
         }
-        this.currentRevision = Number(response?.blackboard?.revision || this.currentRevision);
-        if (response?.blackboard) {
-            this.emit({
-                kind: 'blackboard',
-                object: response.blackboard,
-                revision: this.currentRevision,
-                reason: 'scripta-crdt-edit'
-            });
+        const projectionApplied = this.applyBlackboardProjection(response?.blackboard, {
+            reason: 'scripta-crdt-edit'
+        });
+        if (projectionApplied) {
             await this.publishFinalUpdate(response, 'scripta-p-variant-edit');
         }
         return response;
@@ -265,6 +339,9 @@ export class BlackboardNetworkAdapter {
                 });
                 return 'applied';
             }
+            if (!protocol.payload.object && this.locallyAppliedScriptaRevisions.delete(protocolRevision)) {
+                return 'applied';
+            }
             if (protocol.payload.object) {
                 if (containsViewerScopedScriptaProjection(protocol.payload.object)) {
                     // SCRIPTA edit/delete permissions and viewer votes are
@@ -298,7 +375,7 @@ export class BlackboardNetworkAdapter {
 
     async requestResync(reason = 'manual') {
         const blackboard = await this.loadInitialBlackboard(this.roomId);
-        this.emit({ kind: 'blackboard', object: blackboard, revision: blackboard.revision, reason });
+        this.applyBlackboardProjection(blackboard, { reason });
         return blackboard;
     }
 

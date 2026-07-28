@@ -191,6 +191,51 @@
       "env": { "TOOL_NAME": "webmeet_chat_send" }
     },
     {
+      "name": "webmeet_image_publish",
+      "title": "WebMeet Publish Image",
+      "description": "Commit an Explorer image and publish it atomically to room chat and Blackboard.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "boardId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false },
+        "blobRef": {
+          "type": "object",
+          "optional": false,
+          "properties": {
+            "id": { "type": "string", "optional": false },
+            "agent": { "type": "string", "optional": false },
+            "localPath": { "type": "string", "optional": false }
+          }
+        },
+        "filename": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_image_publish" }
+    },
+    {
+      "name": "webmeet_media_commit",
+      "title": "WebMeet Commit Media",
+      "description": "Commit a staged Explorer image for an authorized room without publishing a chat message.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false },
+        "blobRef": {
+          "type": "object",
+          "optional": false,
+          "properties": {
+            "id": { "type": "string", "optional": false },
+            "agent": { "type": "string", "optional": false },
+            "localPath": { "type": "string", "optional": false }
+          }
+        },
+        "filename": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_media_commit" }
+    },
+    {
       "name": "webmeet_participant_avatar_update",
       "title": "WebMeet Update Participant Avatar",
       "description": "Publish the current participant avatar projection for a room.",

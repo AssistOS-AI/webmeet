@@ -70,6 +70,22 @@ function getScriptaSemanticState(widget = {}) {
         || '';
     const focusedChapter = chapters.find((chapter) => chapter.chapterId === focusedChapterId) || null;
     const focusedParagraph = focusedChapter?.paragraphs.find((paragraph) => paragraph.paragraphId === focusedParagraphId) || null;
+    const paragraphProjection = properties.paragraph && typeof properties.paragraph === 'object'
+        ? properties.paragraph
+        : null;
+    const variants = (Array.isArray(paragraphProjection?.variants) ? paragraphProjection.variants : []).map((variant, variantIndex) => ({
+        variantId: String(variant?.id || ''),
+        ordinal: variantIndex + 1,
+        text: String(variant?.text || ''),
+        images: (Array.isArray(variant?.images) ? variant.images : []).map((image, imageIndex) => ({
+            ordinal: Math.max(1, Number(image?.ordinal || imageIndex + 1)),
+            alt: String(image?.alt || 'Image'),
+            position: Math.max(0, Number(image?.position || 0)),
+            layout: cloneJson(image?.layout || null),
+        })),
+    }));
+    const selectedVariantId = String(paragraphProjection?.selectedVariantId || paragraphProjection?.activeVariantId || '');
+    const selectedVariantOrdinal = variants.findIndex((variant) => variant.variantId === selectedVariantId) + 1;
     return {
         activeResourceId: String(properties.resourceId || ''),
         documentTitle: String(properties.documentTitle || ''),
@@ -80,8 +96,19 @@ function getScriptaSemanticState(widget = {}) {
             chapterOrdinal: focusedChapter?.ordinal || null,
             paragraphId: focusedParagraphId,
             paragraphOrdinal: focusedParagraph?.ordinal || null,
+            ...(paragraphProjection ? {
+                selectedVariantId,
+                selectedVariantOrdinal: selectedVariantOrdinal || null,
+            } : {}),
         },
         documentOutline: chapters,
+        ...(paragraphProjection ? { paragraph: {
+            chapterId: String(paragraphProjection.chapterId || focusedChapterId),
+            chapterOrdinal: Number(paragraphProjection.chapterOrdinal || focusedChapter?.ordinal || 0) || null,
+            paragraphId: String(paragraphProjection.paragraphId || focusedParagraphId),
+            paragraphOrdinal: Number(paragraphProjection.paragraphOrdinal || focusedParagraph?.ordinal || 0) || null,
+            variants,
+        } } : {}),
     };
 }
 

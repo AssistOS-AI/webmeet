@@ -398,9 +398,24 @@ export class WebmeetDashboard {
                 if (!this.state.blackboard?.visible) return;
                 const adapter = await this.ensureBlackboardAdapter();
                 if (result.blackboard) {
-                    adapter.currentRevision = Number(result.blackboard.revision || adapter.currentRevision);
-                    adapter.emit({ kind: 'blackboard', object: result.blackboard, revision: adapter.currentRevision, reason: 'command-result' });
+                    adapter.applyBlackboardProjection(result.blackboard, { reason: 'command-result' });
                 }
+            },
+            executeBlackboardClientAction: async (action = {}) => {
+                if (action.type !== 'scripta-insert-group') throw new Error('Unsupported Blackboard client action.');
+                await this.applyBlackboardVisibility({
+                    meetingId: this.selectedMeeting?.id || '',
+                    participantId: this.state.session?.participantIdentity || '',
+                    visible: true,
+                    presenterId: 'agent_robo_team',
+                    presenterName: 'RoboTeam'
+                });
+                await new Promise((resolve, reject) => {
+                    if (!this.blackboardPanel) return reject(new Error('Blackboard panel is not available.'));
+                    this.blackboardPanel.dispatchEvent(new CustomEvent('webmeet-blackboard-insert-group-scripta', {
+                        detail: { groupId: action.groupId, alt: action.alt, resolve, reject }
+                    }));
+                });
             },
             updateRoboCommandStatus: (status) => this.updateRoboCommandStatus(status, { publish: true }),
             updateRoboDraftState: (active) => this.setRoboCommandDraftActive(active),
@@ -543,6 +558,20 @@ export class WebmeetDashboard {
     }
 
     handleClick = (event) => {
+        const attachment = event.target?.closest?.('[data-chat-blackboard-widget]');
+        if (attachment) {
+            const widgetId = String(attachment.dataset.chatBlackboardWidget || '').trim();
+            void this.applyBlackboardVisibility({
+                meetingId: this.selectedMeeting?.id || '',
+                participantId: this.state.session?.participantIdentity || '',
+                visible: true,
+                presenterId: 'agent_robo_team',
+                presenterName: 'RoboTeam'
+            }).then(() => {
+                this.blackboardPanel?.dispatchEvent?.(new CustomEvent('webmeet-blackboard-select-widget', {detail: {widgetId}}));
+            });
+            return;
+        }
         if (
             this.state.avatarQuickMenuVisible
             && !event.target?.closest?.('.webmeet-avatar-quick-action')
@@ -590,6 +619,8 @@ export class WebmeetDashboard {
         this.chatList = this.element.querySelector('#webmeetChatList');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
         this.chatActionButton = this.element.querySelector('#webmeetChatActionButton');
+        this.chatImageButton = this.element.querySelector('#webmeetChatImageButton');
+        this.chatImageInput = this.element.querySelector('#webmeetChatImageInput');
         this.chatSpeechStatus = this.element.querySelector('#webmeetChatSpeechStatus');
         this.chatViewMode = this.element.querySelector('#webmeetChatViewMode');
         this.roomConnectionState = this.element.querySelector('#webmeetRoomConnectionState');
@@ -642,6 +673,8 @@ export class WebmeetDashboard {
         this.chatComponent?.setElements({
             chatInput: this.chatInput,
             chatActionButton: this.chatActionButton,
+            chatImageButton: this.chatImageButton,
+            chatImageInput: this.chatImageInput,
             chatSpeechStatus: this.chatSpeechStatus
         });
 

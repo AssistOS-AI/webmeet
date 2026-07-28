@@ -60,7 +60,7 @@ test('group export is local and does not call the blackboard adapter', async () 
     assert.match(source, /html2canvas\(stage/);
     assert.match(source, /foreignObjectRendering:\s*false/);
     assert.match(source, /normalizeModernCssColors/);
-    assert.match(source, /triggerDownload\(await canvasToPng/);
+    assert.match(source, /if \(download\) triggerDownload\(blob/);
 });
 
 test('group export vendors its rasterizer and license locally', async () => {

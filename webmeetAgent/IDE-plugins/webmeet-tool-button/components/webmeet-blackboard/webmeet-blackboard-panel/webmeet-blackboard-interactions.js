@@ -1,4 +1,25 @@
+const WIDGET_INTERACTIVE_CONTROL_SELECTOR = [
+    'button',
+    'a[href]',
+    'input',
+    'textarea',
+    'select',
+    'option',
+    'label',
+    '[contenteditable="true"]',
+    '[data-local-action]',
+    '[role="button"]',
+    'scripta-variants-view',
+].join(', ');
+
 export const blackboardInteractionMethods = {
+    isWidgetInteractiveControlEvent(event) {
+        const target = event?.target;
+        if (!target?.closest) return false;
+        if (target.closest('[data-context-action="move"]')) return false;
+        return Boolean(target.closest(WIDGET_INTERACTIVE_CONTROL_SELECTOR));
+    },
+
     handleBoardPointerDownCapture(event) {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
@@ -276,6 +297,10 @@ export const blackboardInteractionMethods = {
     beginLocalDrag(event, widget) {
         if (!widget || widget.locked) return;
         if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        // Controls rendered inside movable widgets own their pointer gesture.
+        // Starting a widget drag here calls preventDefault(), which suppresses
+        // the subsequent click and makes navigation/forms appear unresponsive.
+        if (this.isWidgetInteractiveControlEvent(event)) return;
         if (widget.groupId) {
             this.beginGroupDrag(event, widget.groupId, widget);
             return;

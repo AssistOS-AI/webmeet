@@ -27,7 +27,8 @@ import {
     getRoomBlackboard,
     getRoomBlackboardForCommand,
     joinMeeting,
-    listMeetingEvents
+    listMeetingEvents,
+    publishRoomImage
 } from '../../lib/webmeetStore.mjs';
 import {
     decryptRoomPayload,
@@ -43,6 +44,7 @@ import {
     getBlackboardTheme,
     getBlackboardThemeOptions
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-theme-presets.js';
+import { blackboardScriptaActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-scripta-actions.js';
 
 const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-panel.js',
@@ -901,6 +903,43 @@ test('blackboard network adapter maps UI changes to canonical event commands and
     assert.deepEqual(createEvent.payload.widget, { type: 'shape', properties: { label: 'Safe' } });
 });
 
+test('blackboard network adapter ignores command projections older than the applied revision', async () => {
+    const pending = [];
+    const received = [];
+    const published = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_1',
+        runTool: async () => new Promise((resolve) => pending.push(resolve)),
+        publishRealtimePayload: async (payload) => published.push(payload),
+    });
+    adapter.subscribe((payload) => received.push(payload));
+
+    const first = adapter.sendEvent('update', { patch: { properties: { text: 'Older' } } }, {
+        widgetId: 'widget_1',
+    });
+    const second = adapter.sendEvent('update', { patch: { properties: { text: 'Newer' } } }, {
+        widgetId: 'widget_1',
+    });
+    await Promise.resolve();
+
+    pending[1]({
+        ok: true,
+        blackboard: { boardId: 'agent:agent_robo_team', revision: 2, widgets: [{ id: 'widget_1', properties: { text: 'Newer' } }] },
+    });
+    await second;
+    pending[0]({
+        ok: true,
+        blackboard: { boardId: 'agent:agent_robo_team', revision: 1, widgets: [{ id: 'widget_1', properties: { text: 'Older' } }] },
+    });
+    await first;
+
+    assert.equal(adapter.currentRevision, 2);
+    assert.deepEqual(received.map((entry) => [entry.revision, entry.object.widgets[0].properties.text]), [[2, 'Newer']]);
+    assert.equal(published.filter((entry) => entry.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED).length, 1);
+});
+
 test('blackboard undo and redo publish changed projections to realtime peers', async () => {
     const published = [];
     const adapter = new BlackboardNetworkAdapter({
@@ -915,6 +954,205 @@ test('blackboard undo and redo publish changed projections to realtime peers', a
     await adapter.undo();
     await adapter.redo();
     assert.equal(published.filter((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED).length, 2);
+});
+
+test('SCRIPTA local navigation sends only action-compatible target fields', () => {
+    const calls = [];
+    const panel = {
+        runScriptaEvent(action, payload) {
+            calls.push({ action, payload });
+        }
+    };
+    const invoke = (action) => blackboardScriptaActionMethods.runScriptaLocalAction.call(
+        panel,
+        { disabled: false },
+        action,
+        encodeURIComponent('chapter-1'),
+        encodeURIComponent('paragraph-1'),
+        '1',
+        '1',
+        '-'
+    );
+
+    invoke('scripta-document-view');
+    invoke('scripta-paragraph-previous');
+    invoke('scripta-paragraph-next');
+    invoke('scripta-paragraph-open');
+
+    assert.deepEqual(calls, [
+        { action: 'scripta-document-view', payload: {} },
+        { action: 'scripta-paragraph-previous', payload: {} },
+        { action: 'scripta-paragraph-next', payload: {} },
+        { action: 'scripta-paragraph-open', payload: { chapterId: 'chapter-1', paragraphId: 'paragraph-1' } },
+    ]);
+});
+
+test('SCRIPTA edit start validates through a state-only projection without rerendering the panel', async () => {
+    const calls = [];
+    let renders = 0;
+    const panel = {
+        busy: false,
+        adapter: {
+            sendEvent: async (...args) => {
+                calls.push(args);
+                return {ok: true, blackboard: {revision: 4, widgets: []}};
+            },
+        },
+        clearScriptaDraft() {},
+        renderWidgets() { renders += 1; },
+    };
+
+    const response = await blackboardScriptaActionMethods.startScriptaVariantEdit.call(panel, null, {
+        chapterId: 'chapter-1',
+        paragraphId: 'paragraph-1',
+        variantId: 'variant-1',
+    });
+
+    assert.equal(response.ok, true);
+    assert.equal(calls[0][0], 'scripta-p-variant-edit-start');
+    assert.deepEqual(calls[0][2], {
+        widgetId: 'robo_scripta_document',
+        targetType: 'widget',
+        projectionMode: 'state',
+    });
+    assert.equal(renders, 0);
+});
+
+test('SCRIPTA variant image adapter sends canonical audited event commands', async () => {
+    const calls = [];
+    const audits = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1', boardId: 'agent:agent_robo_team', participantId: 'participant_1',
+        runTool: async (name, args) => {
+            calls.push({ name, args });
+            return {
+                ok: true,
+                blackboard: { boardId: 'agent:agent_robo_team', revision: calls.length, widgets: [] },
+                auditMessage: {id: `audit-${calls.length}`, kind: 'event'},
+            };
+        },
+        onAuditMessage: (message) => audits.push(message),
+        publishRealtimePayload: async () => {},
+    });
+    const localUpdates = [];
+    adapter.subscribe((payload) => localUpdates.push(payload));
+    const target = {chapterId: 'chapter-1', paragraphId: 'paragraph-1', variantId: 'variant-1', variantOrdinal: 1};
+    await adapter.mutateScriptaVariantImage('insert', {
+        ...target, assetId: 'asset-1', alt: 'First', position: 7,
+        aspectRatio: '', fit: '', alignment: '',
+    });
+    await adapter.mutateScriptaVariantImage('replace', {...target, imageId: 'image-1', imageOrdinal: 1, assetId: 'asset-2', alt: 'Second'});
+    await adapter.mutateScriptaVariantImage('layout', {...target, imageId: 'image-1', imageOrdinal: 1, widthPercent: 55, aspectRatio: '16:9', fit: 'cover', alignment: 'right'});
+    await adapter.mutateScriptaVariantImage('delete', {...target, imageId: 'image-1', imageOrdinal: 1});
+
+    assert.deepEqual(calls.map(({name}) => name), [
+        'webmeet_event_command',
+        'webmeet_event_command',
+        'webmeet_event_command',
+        'webmeet_event_command',
+    ]);
+    const events = calls.map(({args}) => JSON.parse(args.event));
+    assert.deepEqual(events.map(({action}) => action), [
+        'scripta-p-variant-image-insert',
+        'scripta-p-variant-image-replace',
+        'scripta-p-variant-image-layout',
+        'scripta-p-variant-image-delete',
+    ]);
+    assert.equal(events[0].payload.position, 7);
+    assert.equal('imageId' in events[0].payload, false);
+    assert.equal('aspectRatio' in events[0].payload, false);
+    assert.equal(events[1].payload.imageOrdinal, 1);
+    assert.equal(events[2].payload.widthPercent, 55);
+    assert.equal(events[2].payload.aspectRatio, '16:9');
+    assert.equal(events[3].payload.variantOrdinal, 1);
+    assert.equal(audits.length, 4);
+    assert.deepEqual(localUpdates.map(({kind, reason}) => ({kind, reason})), [
+        {kind: 'blackboard', reason: 'scripta-p-variant-image-insert'},
+        {kind: 'blackboard', reason: 'scripta-p-variant-image-replace'},
+        {kind: 'blackboard-state', reason: 'scripta-p-variant-image-layout'},
+        {kind: 'blackboard', reason: 'scripta-p-variant-image-delete'},
+    ]);
+});
+
+test('a local SCRIPTA image layout response is not rerendered through its own realtime invalidation', async () => {
+    let published = null;
+    let toolCalls = 0;
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1',
+        boardId: 'agent:agent_robo_team',
+        participantId: 'participant_1',
+        runTool: async () => {
+            toolCalls += 1;
+            return {
+                ok: true,
+                blackboard: {boardId: 'agent:agent_robo_team', revision: 7, widgets: []},
+            };
+        },
+        publishRealtimePayload: async (payload) => { published = payload; },
+    });
+    const localUpdates = [];
+    adapter.subscribe((payload) => localUpdates.push(payload));
+
+    await adapter.mutateScriptaVariantImage('layout', {
+        chapterId: 'chapter-1', paragraphId: 'paragraph-1', variantOrdinal: 1, imageOrdinal: 1,
+        widthPercent: 60,
+    });
+    assert.equal(localUpdates.length, 1);
+    assert.equal(localUpdates[0].kind, 'blackboard-state');
+    assert.equal(toolCalls, 1);
+
+    const encodedEvent = buildWebMeetEvent('room_1', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, published);
+    assert.equal(await adapter.handleEncodedEvent(encodedEvent), 'applied');
+    assert.equal(toolCalls, 1);
+    assert.equal(localUpdates.length, 1);
+});
+
+test('SCRIPTA image insertion saves the draft before applying the cursor-positioned asset', async () => {
+    const calls = [];
+    const panel = {
+        busy: false,
+        pickScriptaImage: async () => ({name: 'diagram.png'}),
+        uploadPickedScriptaImage: async () => ({assetId: 'asset-diagram', alt: 'diagram.png'}),
+        clearScriptaDraft: () => calls.push({operation: 'clear-draft'}),
+        adapter: {
+            applyScriptaVariantEdit: async (payload) => calls.push({operation: 'edit', payload}),
+            mutateScriptaVariantImage: async (operation, payload) => calls.push({operation, payload}),
+        },
+        renderWidgets() {},
+    };
+    await blackboardScriptaActionMethods.insertScriptaVariantImage.call(panel, {
+        resourceId: 'resource-1', chapterId: 'chapter-1', paragraphId: 'paragraph-1', variantId: 'variant-1',
+        text: 'text with draft', position: 5,
+    });
+    assert.deepEqual(calls.map((entry) => entry.operation), ['clear-draft', 'edit', 'insert']);
+    assert.equal(calls[1].payload.text, 'text with draft');
+    assert.equal(calls[2].payload.position, 5);
+    assert.equal(calls[2].payload.assetId, 'asset-diagram');
+});
+
+test('SCRIPTA chapter image adapter creates an image paragraph without a Blackboard widget', async () => {
+    const calls = [];
+    const adapter = new BlackboardNetworkAdapter({
+        roomId: 'room_1', boardId: 'agent:agent_robo_team', participantId: 'participant_1',
+        runTool: async (name, args) => {
+            calls.push({name, args});
+            return {ok: true, blackboard: {boardId: 'agent:agent_robo_team', revision: 1, widgets: []}};
+        },
+        publishRealtimePayload: async () => {},
+    });
+
+    await adapter.addScriptaImageParagraph({chapterId: 'chapter-2', assetId: 'asset-image', alt: 'Sketch'});
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].name, 'webmeet_event_command');
+    const event = JSON.parse(calls[0].args.event);
+    assert.equal(event.action, 'scripta-paragraph-add');
+    assert.deepEqual(event.payload, {
+        chapterId: 'chapter-2',
+        text: '',
+        assetId: 'asset-image',
+        alt: 'Sketch',
+    });
 });
 
 test('blackboard network adapter applies last-edit-wins without a conflict resync', async () => {
@@ -1332,6 +1570,50 @@ test('blackboard selected toolbar widget is created at board click position', as
     assert.equal(panel.pendingWidgetType, '');
     assert.ok(toolbarState.some((state) => state.pendingWidgetType === 'shape:ellipse'));
     assert.ok(toolbarState.some((state) => state.pendingWidgetType === ''));
+});
+
+test('interactive controls inside movable widgets keep their click gesture', async () => {
+    const { blackboardInteractionMethods } = await import(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-interactions.js')
+    );
+    const interactiveTarget = {
+        closest(selector) {
+            if (selector === '[data-context-action="move"]') return null;
+            return selector.includes('button') ? this : null;
+        }
+    };
+    let prevented = false;
+    const context = {
+        isWidgetInteractiveControlEvent: blackboardInteractionMethods.isWidgetInteractiveControlEvent,
+        beginGroupDrag() {
+            throw new Error('An interactive control must not begin a group drag.');
+        }
+    };
+
+    blackboardInteractionMethods.beginLocalDrag.call(context, {
+        target: interactiveTarget,
+        preventDefault() { prevented = true; },
+        stopPropagation() {},
+    }, {
+        id: 'robo_scripta_document',
+        type: 'scripta-document',
+        groupId: '',
+        properties: {geometry: {x: 0, y: 0, width: 600, height: 400}}
+    });
+
+    assert.equal(prevented, false);
+    assert.equal(context.dragState, undefined);
+    assert.equal(
+        blackboardInteractionMethods.isWidgetInteractiveControlEvent({
+            target: {
+                closest(selector) {
+                    return selector === '[data-context-action="move"]' ? this : null;
+                }
+            }
+        }),
+        false,
+        'the explicit Move handle must remain a drag source'
+    );
 });
 
 test('blackboard draws selected shape and line widgets from pointer drag', async () => {
@@ -1816,8 +2098,13 @@ test('blackboard Insert menu opens SCRIPTA create/open through RoboTeam events',
     assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-move"\s*data-move-direction="up"/);
     assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-move"\s*data-move-direction="down"/);
     assert.match(panelSource, /payload\.targetIndex = moveDirection === 'up' \? ordinal - 1 : ordinal \+ 1/);
+    assert.match(panelSource, /payload\.targetChapterId = chapterId/);
+    assert.doesNotMatch(panelSource, /payload\.targetChapterOrdinal = Number\(chapterOrdinal\)/);
     assert.doesNotMatch(panelSource, /Target chapter number/);
     assert.match(panelCss, /\.webmeet-scripta-paragraph-actions/);
+    assert.match(panelCss, /\.webmeet-scripta-chapter-actions,\s*\.webmeet-scripta-paragraph-actions\s*\{[\s\S]*position:\s*absolute[\s\S]*top:\s*6px[\s\S]*right:\s*6px/);
+    assert.match(panelCss, /\.webmeet-scripta-document-paragraph\s*\{[\s\S]*position:\s*relative[\s\S]*display:\s*block/);
+    assert.match(panelCss, /\.webmeet-scripta-paragraph-open\s*\{[\s\S]*width:\s*100%/);
     assert.match(panelHtml, /title="Move paragraph up"[\s\S]*aria-label="Move paragraph up"[\s\S]*webmeet-blackboard-context-icon reorder-up/);
     assert.match(panelHtml, /title="Move paragraph down"[\s\S]*aria-label="Move paragraph down"[\s\S]*webmeet-blackboard-context-icon reorder-down/);
     assert.match(panelHtml, /data-local-action="runScriptaLocalAction scripta-paragraph-add"/);
@@ -2166,6 +2453,9 @@ test('blackboard rendering is split by responsibility and uses WebSkel SCRIPTA t
     assert.match(scriptaRendering, /focusScriptaDocumentTarget\(node, props\)/);
     assert.match(scriptaRendering, /scrollIntoView\(\{block: 'nearest', inline: 'nearest'\}\)/);
     assert.match(scriptaRendering, /focusTarget\?\.focus\?\.\(\{preventScroll: true\}\)/);
+    assert.match(panel, /this\.scriptaImageInspector = null/);
+    assert.match(scriptaRendering, /scripta-image-inspector-change/);
+    assert.match(scriptaRendering, /selectedImageId: inspectorMatches \? inspector\.imageId : ''/);
     assert.match(scriptaRendering, /chapterNode\.dataset\.chapterId = chapter\.chapterId/);
     assert.match(scriptaRendering, /action\.dataset\.localAction = `runScriptaLocalAction \$\{eventAction\} \$\{values\.join\(' '\)\}`/);
     assert.match(scriptaRendering, /node\.textContent = text/);
@@ -2215,6 +2505,58 @@ test('legacy blackboard visibility envelopes remain nonpersistent transport data
     assert.equal(parsed.persistent, false);
 });
 
+test('blackboard image events authorize the room before resolving Explorer media', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-auth-'));
+    const previousDataDir = process.env.WEBMEET_DATA_DIR;
+    const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
+    await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
+
+    try {
+        const adminAuth = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
+        const outsiderAuth = { user: { id: 'local:outsider', username: 'outsider', roles: [] } };
+        const context = await createStoreContext(root);
+        let mediaGetCalls = 0;
+        context.scriptaExplorerClient = async (tool, args) => {
+            if (tool === 'scripta_crdt_ensure_folder') return { ok: true, folderPath: args.folderPath };
+            if (tool === 'webmeet_media_get') {
+                mediaGetCalls += 1;
+                return { ok: true, asset: { assetId: args.assetId, workspaceUrl: '/unexpected.png' } };
+            }
+            throw new Error(`Unexpected Explorer tool ${tool}`);
+        };
+        const meeting = await createMeeting(context, { name: 'Private blackboard', authInfo: adminAuth });
+
+        await assert.rejects(
+            applyRoomBlackboardEvents(context, {
+                roomId: meeting.roomId,
+                boardId: 'agent:agent_robo_team',
+                participantId: 'outsider',
+                authInfo: outsiderAuth,
+                events: [{
+                    action: 'create',
+                    target: { type: 'blackboard' },
+                    payload: {
+                        widget: {
+                            type: 'image',
+                            properties: { source: { kind: 'explorer-media', assetId: 'asset_private' } },
+                        },
+                    },
+                }],
+            }),
+            /Access denied/,
+        );
+        assert.equal(mediaGetCalls, 0);
+    } finally {
+        if (previousDataDir === undefined) delete process.env.WEBMEET_DATA_DIR;
+        else process.env.WEBMEET_DATA_DIR = previousDataDir;
+        if (previousMasterKey === undefined) delete process.env.PLOINKY_WEBMEET_MASTER_KEY;
+        else process.env.PLOINKY_WEBMEET_MASTER_KEY = previousMasterKey;
+        await fs.rm(root, { recursive: true, force: true });
+    }
+});
+
 test('webmeet store persists blackboard on the RoboTeam agent and appends final event', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
@@ -2227,10 +2569,45 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const context = await createStoreContext(root);
         context.scriptaExplorerClient = async (tool, args) => {
-            assert.equal(tool, 'scripta_crdt_ensure_folder');
-            return { ok: true, folderPath: args.folderPath };
+            if (tool === 'scripta_crdt_ensure_folder') return { ok: true, folderPath: args.folderPath };
+            if (tool === 'webmeet_media_commit') {
+                assert.deepEqual(args.blobRef, {
+                    id: 'b'.repeat(48),
+                    agent: 'explorer',
+                    localPath: `blobs/${'b'.repeat(48)}`
+                });
+                return { ok: true, asset: {
+                    assetId: 'asset_chat-1', filename: 'chat.png', mimeType: 'image/png', size: 24,
+                    width: 800, height: 600,
+                    workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/asset_chat-1.png`
+                } };
+            }
+            if (tool === 'webmeet_media_get') return {
+                ok: true,
+                asset: {
+                    assetId: args.assetId, filename: 'photo.png', mimeType: 'image/png', size: 24,
+                    width: 640, height: 480,
+                    workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.assetId}.png`
+                }
+            };
+            throw new Error(`Unexpected Explorer tool ${tool}`);
         };
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
+
+        const publishedImage = await publishRoomImage(context, {
+            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin',
+            blobRef: {
+                id: 'b'.repeat(48),
+                agent: 'explorer',
+                localPath: `blobs/${'b'.repeat(48)}`
+            },
+            filename: 'chat.png', authInfo
+        });
+        assert.equal(publishedImage.message.metadata.attachments[0].assetId, 'asset_chat-1');
+        assert.equal(publishedImage.widget.type, 'image');
+        assert.equal(publishedImage.widget.properties.geometry.width, 360);
+        assert.equal(publishedImage.widget.properties.geometry.height, 270);
+        assert.equal(publishedImage.widget.properties.geometry.rotation, 0);
 
         let beforeEmptyUndo = await getRoomBlackboard(context, {
             roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
@@ -2280,6 +2657,24 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         const movedLine = lineMoved.blackboard.widgets.find((widget) => widget.id === lineWidget.id);
         assert.equal(movedLine.properties.geometry.y, 149.5);
         assert.deepEqual(movedLine.properties.line, lineWidget.properties.line);
+
+        const imageCreated = await applyRoomBlackboardEvents(context, {
+            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            events: [{
+                action: 'create', target: { type: 'blackboard' },
+                payload: { widget: { type: 'image', properties: {
+                    source: {
+                        kind: 'explorer-media', assetId: 'asset_image-1',
+                        url: '/workspace-files/document-multimedia/webmeet/forged/assets/asset_image-1.png'
+                    },
+                    naturalSize: { width: 1, height: 1 },
+                    geometry: { x: 10, y: 10, width: 200, height: 150 }
+                } } }
+            }]
+        });
+        const imageWidget = imageCreated.blackboard.widgets.find((widget) => widget.type === 'image');
+        assert.equal(imageWidget.properties.source.url, `/workspace-files/document-multimedia/webmeet/${meeting.roomId}/assets/asset_image-1.png`);
+        assert.deepEqual(imageWidget.properties.naturalSize, { width: 640, height: 480 });
 
         const response = await getRoomBlackboard(context, {
             roomId: meeting.roomId,

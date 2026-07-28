@@ -69,6 +69,7 @@ import {
     applyRoomBlackboardEvents as applyRoomBlackboardEventsImpl,
     getRoomBlackboard as getRoomBlackboardImpl,
     getRoomBlackboardForCommand as getRoomBlackboardForCommandImpl,
+    publishRoomImage as publishRoomImageImpl,
     redoRoomBlackboard as redoRoomBlackboardImpl,
     undoRoomBlackboard as undoRoomBlackboardImpl
 } from './blackboard/service.mjs';
@@ -105,6 +106,7 @@ import {
     WEBMEET_EVENT_TYPES,
 } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { authorizeRoomParticipantId } from './store/participantAuthorization.mjs';
+import { scriptaExplorer } from './scripta/explorer-crdt-client.mjs';
 
 const DEFAULT_ROOM_TITLE = 'General';
 
@@ -303,6 +305,23 @@ export async function applyRoomBlackboardChange(context, { roomId, boardId = '',
 
 export async function applyRoomBlackboardEvents(context, input = {}) {
     return await applyRoomBlackboardEventsImpl(context, input);
+}
+
+export async function publishRoomImage(context, input = {}) {
+    return await publishRoomImageImpl(context, input);
+}
+
+export async function commitRoomMedia(context, { roomId, participantId = '', blobRef, filename = '', authInfo = null } = {}) {
+    const record = await loadMeetingRecord(context, roomId);
+    if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
+    const payload = decryptMeetingPayload(context, record);
+    const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
+    return await scriptaExplorer.commitMedia(context, {
+        roomId,
+        blobRef,
+        filename,
+        createdBy: effectiveParticipantId
+    });
 }
 
 export async function undoRoomBlackboard(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {

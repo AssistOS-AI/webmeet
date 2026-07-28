@@ -9,9 +9,12 @@ export const BLACKBOARD_PUBLIC_ACTIONS = Object.freeze([
     'scripta-p-variant-add', 'scripta-p-variant-select',
     'scripta-p-variant-edit-start', 'scripta-p-variant-edit-cancel',
     'scripta-p-variant-edit', 'scripta-p-variant-delete',
+    'scripta-p-variant-image-insert', 'scripta-p-variant-image-replace',
+    'scripta-p-variant-image-delete', 'scripta-p-variant-image-layout',
     'scripta-p-variant-vote', 'scripta-p-variant-vote-withdraw', 'scripta-p-variant-reformulate',
     'scripta-undo', 'scripta-chapter-add', 'scripta-chapter-edit', 'scripta-chapter-delete',
     'scripta-chapter-move', 'scripta-paragraph-add', 'scripta-paragraph-delete', 'scripta-paragraph-move',
+    'scripta-media-insert',
 ]);
 
 export const BLACKBOARD_INTERNAL_ACTIONS = Object.freeze(['focus']);
@@ -46,6 +49,19 @@ export const BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS = Object.freeze({
     'scripta-p-variant-edit-cancel': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal']),
     'scripta-p-variant-edit': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'text']),
     'scripta-p-variant-delete': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal']),
+    'scripta-p-variant-image-insert': Object.freeze([
+        ...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'assetId', 'alt', 'position',
+    ]),
+    'scripta-p-variant-image-replace': Object.freeze([
+        ...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal', 'assetId', 'alt',
+    ]),
+    'scripta-p-variant-image-delete': Object.freeze([
+        ...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal',
+    ]),
+    'scripta-p-variant-image-layout': Object.freeze([
+        ...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal',
+        'widthPercent', 'aspectRatio', 'fit', 'alignment',
+    ]),
     'scripta-p-variant-vote': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'type']),
     'scripta-p-variant-vote-withdraw': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'variantId', 'variantOrdinal', 'type']),
     'scripta-p-variant-reformulate': Object.freeze([...SCRIPTA_TARGET_FIELDS]),
@@ -54,9 +70,10 @@ export const BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS = Object.freeze({
     'scripta-chapter-edit': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'title']),
     'scripta-chapter-delete': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal']),
     'scripta-chapter-move': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'targetIndex']),
-    'scripta-paragraph-add': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'text']),
+    'scripta-paragraph-add': Object.freeze(['resourceId', 'chapterId', 'chapterOrdinal', 'text', 'assetId', 'alt']),
     'scripta-paragraph-delete': Object.freeze([...SCRIPTA_TARGET_FIELDS]),
-    'scripta-paragraph-move': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'targetChapterOrdinal', 'targetIndex']),
+    'scripta-paragraph-move': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'targetChapterId', 'targetChapterOrdinal', 'targetIndex']),
+    'scripta-media-insert': Object.freeze([...SCRIPTA_TARGET_FIELDS, 'alt']),
 });
 
 export function getBlackboardScriptaEventSchemaPrompt() {
@@ -81,8 +98,8 @@ export const BLACKBOARD_WIDGET_EVENT_SCHEMAS = Object.freeze({
         semantics: 'independent text box; use text for its content',
     }),
     image: Object.freeze({
-        createProperties: Object.freeze([...COMMON_CREATE_PROPERTIES, 'alt']),
-        semantics: 'image placeholder only; never invent source URLs, downloads, or paths',
+        createProperties: Object.freeze([...COMMON_CREATE_PROPERTIES, 'alt', 'source', 'naturalSize']),
+        semantics: 'image placeholder only; source and naturalSize are reserved for validated UI uploads; never invent asset ids, URLs, downloads, or paths',
     }),
     card: Object.freeze({
         createProperties: Object.freeze([...COMMON_CREATE_PROPERTIES, 'title', 'text']),
@@ -236,6 +253,23 @@ function validateStructuredWidgetProperties(widgetType, properties, { creating =
     if (properties.line !== undefined) validateLine(properties.line, `${label}.line`, {
         requireCoordinates: creating && widgetType === 'line' && properties.connection === undefined,
     });
+    if (widgetType === 'image' && properties.source !== undefined) {
+        const source = plainObject(properties.source, `${label}.source`);
+        assertOnlyKeys(source, ['kind', 'assetId', 'url', 'name', 'mimeType'], `${label}.source`);
+        if (String(source.kind || '') !== 'explorer-media' || !/^asset_[a-zA-Z0-9-]+$/.test(String(source.assetId || ''))) {
+            throw new Error(`${label}.source must reference an Explorer media asset.`);
+        }
+        if (!String(source.url || '').startsWith('/workspace-files/document-multimedia/webmeet/')) {
+            throw new Error(`${label}.source.url must use the WebMeet workspace media route.`);
+        }
+    }
+    if (widgetType === 'image' && properties.naturalSize !== undefined) {
+        const size = plainObject(properties.naturalSize, `${label}.naturalSize`);
+        assertOnlyKeys(size, ['width', 'height'], `${label}.naturalSize`);
+        size.width = finiteNumber(size.width, `${label}.naturalSize.width`);
+        size.height = finiteNumber(size.height, `${label}.naturalSize.height`);
+        if (size.width <= 0 || size.height <= 0) throw new Error(`${label}.naturalSize must be positive.`);
+    }
 }
 
 function assertNoAuthorityFields(value, path = 'event') {
@@ -254,12 +288,15 @@ function assertNoAuthorityFields(value, path = 'event') {
 }
 
 function validateScriptaPayload(action, target, payload) {
-    if (target.type !== 'widget') throw new Error(`${action} must target a widget.`);
+    const allowedTargetTypes = action === 'scripta-media-insert' ? ['widget', 'group'] : ['widget'];
+    if (!allowedTargetTypes.includes(target.type)) {
+        throw new Error(`${action} must target ${action === 'scripta-media-insert' ? 'a widget or group' : 'a widget'}.`);
+    }
     const allowedFields = BLACKBOARD_SCRIPTA_ACTION_PAYLOAD_FIELDS[action];
     if (!allowedFields) throw new Error(`Missing canonical payload schema for ${action}.`);
     assertOnlyKeys(payload, allowedFields, `event.payload for ${action}`);
 
-    for (const key of ['chapterOrdinal', 'paragraphOrdinal', 'targetChapterOrdinal', 'variantOrdinal']) {
+    for (const key of ['chapterOrdinal', 'paragraphOrdinal', 'targetChapterOrdinal', 'variantOrdinal', 'imageOrdinal']) {
         if (payload[key] === undefined) continue;
         const value = finiteNumber(payload[key], `event.payload.${key}`);
         if (!Number.isInteger(value) || value < 1) throw new Error(`event.payload.${key} must be a positive integer.`);
@@ -270,6 +307,16 @@ function validateScriptaPayload(action, target, payload) {
         if (!Number.isInteger(value) || value < 0) throw new Error('event.payload.targetIndex must be a non-negative integer.');
         payload.targetIndex = value;
     }
+    if (payload.position !== undefined) {
+        const value = finiteNumber(payload.position, 'event.payload.position');
+        if (!Number.isInteger(value) || value < 0) throw new Error('event.payload.position must be a non-negative integer.');
+        payload.position = value;
+    }
+    if (payload.widthPercent !== undefined) {
+        const value = finiteNumber(payload.widthPercent, 'event.payload.widthPercent');
+        if (value < 20 || value > 100) throw new Error('event.payload.widthPercent must be between 20 and 100.');
+        payload.widthPercent = value;
+    }
     for (const key of ['confirmed', 'editing']) {
         if (payload[key] !== undefined && typeof payload[key] !== 'boolean') {
             throw new Error(`event.payload.${key} must be a boolean.`);
@@ -277,6 +324,15 @@ function validateScriptaPayload(action, target, payload) {
     }
     if (payload.type !== undefined && !['like', 'dislike'].includes(String(payload.type))) {
         throw new Error('event.payload.type must be "like" or "dislike".');
+    }
+    if (payload.aspectRatio !== undefined && !['auto', '1:1', '4:3', '3:2', '16:9'].includes(String(payload.aspectRatio))) {
+        throw new Error('event.payload.aspectRatio is invalid.');
+    }
+    if (payload.fit !== undefined && !['contain', 'cover'].includes(String(payload.fit))) {
+        throw new Error('event.payload.fit must be "contain" or "cover".');
+    }
+    if (payload.alignment !== undefined && !['left', 'center', 'right'].includes(String(payload.alignment))) {
+        throw new Error('event.payload.alignment must be "left", "center", or "right".');
     }
 
     if (action === 'scripta-document-create' && !String(payload.name || payload.title || '').trim()) {
@@ -288,6 +344,14 @@ function validateScriptaPayload(action, target, payload) {
     if (action === 'scripta-chapter-edit') {
         payload.title = String(payload.title || '').replace(/\s+/g, ' ').trim();
         if (!payload.title) throw new Error('scripta-chapter-edit requires a non-empty title.');
+    }
+    if (['scripta-p-variant-image-insert', 'scripta-p-variant-image-replace'].includes(action)
+        && !String(payload.assetId || '').trim()) {
+        throw new Error(`${action} requires a validated assetId.`);
+    }
+    if (['scripta-p-variant-image-replace', 'scripta-p-variant-image-delete', 'scripta-p-variant-image-layout'].includes(action)
+        && !String(payload.imageId || '').trim() && payload.imageOrdinal === undefined) {
+        throw new Error(`${action} requires imageId or imageOrdinal.`);
     }
 }
 
@@ -400,7 +464,9 @@ function normalizeTarget(input, action, defaults = {}) {
     if (!['blackboard', 'widget', 'group'].includes(targetType)) {
         throw new Error('Event target.type must be "blackboard", "widget", or "group".');
     }
-    const widgetId = String(input?.widgetId || defaults.widgetId || (action.startsWith('scripta-') ? 'robo_scripta_document' : '')).trim();
+    const widgetId = String(input?.widgetId || defaults.widgetId || (
+        targetType === 'widget' && action.startsWith('scripta-') ? 'robo_scripta_document' : ''
+    )).trim();
     const ref = String(input?.ref || '').trim();
     const groupId = String(input?.groupId || defaults.groupId || '').trim();
     if (targetType === 'widget' && !widgetId && !ref) {

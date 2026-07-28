@@ -151,6 +151,7 @@ export const blackboardRenderingMethods = {
             menu.append(deleteButton);
         }
 
+        this.appendImageScriptaButton(menu, widget);
         if (this.canEditWidget(widget)) {
             const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
             settingsButton.addEventListener('click', (event) => {
@@ -337,7 +338,6 @@ export const blackboardRenderingMethods = {
         node.style.fontStyle = String(normalized.fontStyle || TEXT_DEFAULT_STYLE.fontStyle);
         node.style.color = String(normalized.textColor || textDefaults.textColor || theme.tokens?.widgetText || TEXT_DEFAULT_STYLE.textColor);
     },
-
 
     getWidgetLabel(widget) {
         if (widget.type === 'text') return widget.properties?.text || '';

@@ -2,8 +2,9 @@ const INTENT_KINDS = new Set(['document', 'focus', 'navigation', 'mutation', 'ai
 const DOCUMENT_OPERATIONS = new Set(['document-create', 'document-open', 'document-delete']);
 const MUTATION_OPERATIONS = new Set([
     'p-variant-add', 'p-variant-vote', 'p-variant-vote-withdraw', 'p-variant-edit',
-    'p-variant-delete', 'chapter-add', 'chapter-delete',
-    'chapter-rename', 'chapter-move', 'paragraph-add', 'paragraph-delete', 'paragraph-move', 'undo',
+    'p-variant-delete', 'p-variant-image-insert', 'p-variant-image-replace', 'p-variant-image-delete', 'p-variant-image-layout',
+    'chapter-add', 'chapter-delete', 'chapter-rename', 'chapter-move',
+    'paragraph-add', 'paragraph-delete', 'paragraph-move', 'undo',
 ]);
 
 function optionalString(value) {
@@ -51,9 +52,11 @@ export function normalizeRoboIntent(value = {}) {
         variantId: optionalString(value.variantId),
         chapterOrdinal: optionalOrdinal(value.chapterOrdinal),
         paragraphOrdinal: optionalOrdinal(value.paragraphOrdinal),
+        targetChapterId: optionalString(value.targetChapterId),
         targetChapterOrdinal: optionalOrdinal(value.targetChapterOrdinal),
         targetIndex: value.targetIndex === 0 ? 0 : optionalOrdinal(value.targetIndex),
         variantOrdinal: optionalOrdinal(value.variantOrdinal),
+        imageOrdinal: optionalOrdinal(value.imageOrdinal),
         name: optionalString(value.name),
         path: optionalString(value.path),
         folderPath: optionalString(value.folderPath),
@@ -61,6 +64,15 @@ export function normalizeRoboIntent(value = {}) {
         objective: optionalString(value.objective),
         title: optionalString(value.title),
         text: String(value.text ?? ''),
+        assetId: optionalString(value.assetId),
+        imageId: optionalString(value.imageId),
+        position: value.position === undefined ? undefined : Math.max(0, Number.parseInt(String(value.position), 10) || 0),
+        widthPercent: value.widthPercent === undefined ? undefined : Math.max(20, Math.min(100, Number.parseInt(String(value.widthPercent), 10) || 100)),
+        aspectRatio: optionalString(value.aspectRatio),
+        fit: optionalString(value.fit),
+        alignment: optionalString(value.alignment),
+        showCaption: value.showCaption === undefined ? undefined : value.showCaption !== false,
+        alt: optionalString(value.alt),
         type: optionalString(value.type).toLowerCase(),
         mode: optionalString(value.mode).toLowerCase(),
         direction: optionalString(value.direction).toLowerCase(),

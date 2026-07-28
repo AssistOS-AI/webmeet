@@ -6,6 +6,20 @@ import { buildSemanticBoardContext } from './semantic-context.mjs';
 const AGENT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const DEFAULT_COMMAND_INTERPRETATION_TIMEOUT_MS = 60_000;
 
+function assertInterpreterMediaSafety(result = {}) {
+    for (const event of result.events || []) {
+        const properties = event.action === 'create'
+            ? event.payload?.widget?.properties
+            : event.action === 'update'
+                ? event.payload?.patch?.properties
+                : null;
+        if (properties?.source !== undefined || properties?.naturalSize !== undefined) {
+            throw new Error('RoboTeam cannot create or replace stored image sources. Upload the image through the WebMeet image control.');
+        }
+    }
+    return result;
+}
+
 function commandTimeoutMs(deps = {}) {
     const value = Number(
         deps.timeoutMs
@@ -46,7 +60,7 @@ export class BlackboardCommandInterpreter {
                     }, commandTimeoutMs(deps));
                 }),
             ]);
-            return normalizeBlackboardEventResult(response?.result ?? response);
+            return assertInterpreterMediaSafety(normalizeBlackboardEventResult(response?.result ?? response));
         } finally {
             clearTimeout(timer);
             await agent.shutdown?.();

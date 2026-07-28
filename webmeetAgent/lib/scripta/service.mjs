@@ -31,6 +31,10 @@ const DOCUMENT_CHANGE_OPERATIONS = new Set([
     'p-variant-vote-withdraw',
     'p-variant-edit',
     'p-variant-delete',
+    'p-variant-image-insert',
+    'p-variant-image-replace',
+    'p-variant-image-delete',
+    'p-variant-image-layout',
     'chapter-add',
     'chapter-delete',
     'chapter-rename',
@@ -40,6 +44,60 @@ const DOCUMENT_CHANGE_OPERATIONS = new Set([
     'paragraph-move',
     'undo',
 ]);
+
+const EXPLORER_MUTATION_ARGUMENT_KEYS = Object.freeze({
+    'p-variant-add': Object.freeze(['chapterId', 'paragraphId', 'text']),
+    'p-variant-vote': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'type']),
+    'p-variant-vote-withdraw': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal']),
+    'p-variant-edit': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'text']),
+    'p-variant-delete': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal']),
+    'p-variant-image-insert': Object.freeze([
+        'chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'assetId', 'alt', 'position', 'widthPercent',
+        'aspectRatio', 'fit', 'alignment', 'showCaption', 'roomId',
+    ]),
+    'p-variant-image-replace': Object.freeze([
+        'chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal', 'assetId', 'alt', 'position', 'widthPercent',
+        'aspectRatio', 'fit', 'alignment', 'showCaption', 'roomId',
+    ]),
+    'p-variant-image-delete': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal']),
+    'p-variant-image-layout': Object.freeze([
+        'chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal',
+        'widthPercent', 'aspectRatio', 'fit', 'alignment', 'showCaption',
+    ]),
+    'chapter-add': Object.freeze(['title']),
+    'chapter-delete': Object.freeze(['chapterId']),
+    'chapter-rename': Object.freeze(['chapterId', 'title']),
+    'chapter-move': Object.freeze(['chapterId', 'targetIndex']),
+    'paragraph-add': Object.freeze(['chapterId', 'text', 'assetId', 'alt', 'roomId']),
+    'paragraph-delete': Object.freeze(['chapterId', 'paragraphId']),
+    'paragraph-move': Object.freeze(['chapterId', 'paragraphId', 'targetChapterId', 'targetIndex']),
+    undo: Object.freeze([]),
+});
+
+const OPTIONAL_ENUM_MUTATION_ARGUMENTS = new Set(['aspectRatio', 'fit', 'alignment']);
+
+function projectExplorerMutationArguments(operation, args = {}) {
+    const allowedKeys = EXPLORER_MUTATION_ARGUMENT_KEYS[operation];
+    if (!allowedKeys) throw new Error(`Unsupported SCRIPTA operation "${operation}".`);
+    const projected = {};
+    for (const key of allowedKeys) {
+        const value = args[key];
+        if (value === undefined || value === null) continue;
+        if (OPTIONAL_ENUM_MUTATION_ARGUMENTS.has(key) && String(value).trim() === '') continue;
+        projected[key] = value;
+    }
+    return projected;
+}
+
+function resolveVariantSelector(args = {}, selectedVariantId = '') {
+    const explicitVariantId = String(args.variantId || '').trim();
+    if (explicitVariantId) return { variantId: explicitVariantId };
+    if (args.variantOrdinal !== undefined && args.variantOrdinal !== null && args.variantOrdinal !== '') {
+        return { variantOrdinal: args.variantOrdinal };
+    }
+    const fallbackVariantId = String(selectedVariantId || '').trim();
+    return fallbackVariantId ? { variantId: fallbackVariantId } : {};
+}
 
 function documentAttachmentLockId(documentPath = '') {
     return stableId('scripta-document-lock', String(documentPath || '').trim().toLowerCase());
@@ -959,15 +1017,25 @@ export async function mutateScripta(context, {
         if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
         const entry = activeEntry(scripta);
         if (!entry) throw new Error('No SCRIPTA document is active.');
+        const explorerMutationArgs = projectExplorerMutationArguments(operation, {
+            ...args,
+            chapterId: chapterId || scripta.view.chapterId,
+            paragraphId: paragraphId || scripta.view.paragraphId,
+            ...(
+                ['p-variant-image-insert', 'p-variant-image-replace'].includes(operation)
+                || (operation === 'paragraph-add' && args.assetId)
+                    ? { roomId }
+                    : {}
+            ),
+            ...(['p-variant-image-insert', 'p-variant-image-replace', 'p-variant-image-delete', 'p-variant-image-layout'].includes(operation)
+                ? resolveVariantSelector(args, scripta.view.selectedVariantId)
+                : {}),
+        });
         const result = await scriptaExplorer.mutate(context, {
             path: entry.path,
             resourceId: entry.resourceId,
             operation,
-            args: {
-                ...args,
-                chapterId: chapterId || scripta.view.chapterId,
-                paragraphId: paragraphId || scripta.view.paragraphId,
-            },
+            args: explorerMutationArgs,
             participant: {
                 id: participant.id,
                 hash: participant.hash,

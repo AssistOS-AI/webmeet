@@ -29,8 +29,10 @@ import {
     listScriptaWorkspaceEntries,
     openScriptaCollaboration,
     pullScriptaCollaboration,
+    publishRoomImage,
     applyScriptaCollaboration,
     closeScriptaCollaboration,
+    commitRoomMedia,
     listMeetingAgents,
     listMeetingChat,
     listMeetingEvents,
@@ -128,6 +130,14 @@ async function readEnvelope() {
 function getRequiredString(args, key) {
     const value = String(args?.[key] || '').trim();
     if (!value) {
+        throw new Error(`Missing required argument "${key}".`);
+    }
+    return value;
+}
+
+function getRequiredObject(args, key) {
+    const value = args?.[key];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new Error(`Missing required argument "${key}".`);
     }
     return value;
@@ -427,6 +437,23 @@ export async function dispatch(toolName, args, context, authInfo) {
             });
             return { ...appended, researchTask: null };
         }
+    case 'webmeet_image_publish':
+        return await publishRoomImage(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            boardId: getRequiredString(args, 'boardId'),
+            participantId: getRequiredString(args, 'participantId'),
+            blobRef: getRequiredObject(args, 'blobRef'),
+            filename: String(args?.filename || 'Image'),
+            authInfo
+        });
+    case 'webmeet_media_commit':
+        return await commitRoomMedia(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            participantId: getRequiredString(args, 'participantId'),
+            blobRef: getRequiredObject(args, 'blobRef'),
+            filename: String(args?.filename || 'Image'),
+            authInfo
+        });
     case 'webmeet_agent_attach': {
         const meetingId = getRequiredString(args, 'roomId');
         const agentType = getRequiredString(args, 'agentType');

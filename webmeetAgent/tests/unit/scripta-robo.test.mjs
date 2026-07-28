@@ -134,6 +134,8 @@ test('WebMeet delegates SCRIPTA persistence to Explorer without a local state or
     const workspaceListTool = mcpConfig.tools.find((tool) => tool.name === 'webmeet_scripta_workspace_list');
     assert.deepEqual(workspaceListTool.inputSchema, { roomId: { type: 'string', optional: false } });
     assert.equal('input' in workspaceListTool, false);
+    assert.equal(mcpConfig.tools.some((tool) => tool.name === 'webmeet_scripta_variant_image_mutate'), false);
+    assert.equal(explorerMutateTool.inputSchema.args.properties.imageOrdinal.type, 'number');
 });
 
 test('Explorer MCP envelopes are decoded and tool errors are not accepted as documents', async () => {
@@ -192,6 +194,72 @@ test('missing SCRIPTA ordinals remain absent while target index zero remains val
     assert.throws(() => normalizeRoboIntent({
         kind: 'mutation', operation: 'chapter-rename', chapterOrdinal: 1, title: '   ',
     }), /requires a non-empty title/);
+});
+
+test('structural SCRIPTA commands send only operation-specific arguments to Explorer', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Mutation arguments', authInfo: ADMIN });
+        await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: 'Draft',
+            template: 'general',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+
+        const delegatedExplorerClient = context.scriptaExplorerClient;
+        const explorerCalls = [];
+        context.scriptaExplorerClient = async (tool, args) => {
+            explorerCalls.push({ tool, args: structuredClone(args) });
+            return delegatedExplorerClient(tool, args);
+        };
+
+        await executeRoboCommand(context, {
+            roomId: meeting.roomId,
+            text: '/robo add chapter',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        }, { intent: { kind: 'mutation', operation: 'chapter-add' } });
+
+        assert.deepEqual(explorerCalls.filter((call) => call.tool === 'scripta_crdt_mutate').at(-1).args.args, { title: '' });
+
+        const current = await getScriptaContext(context, {
+            roomId: meeting.roomId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const sourceChapter = current.documentOutline[0];
+        const sourceParagraph = sourceChapter.paragraphs[0];
+        explorerCalls.length = 0;
+        await executeRoboCommand(context, {
+            roomId: meeting.roomId,
+            text: '/robo move paragraph down',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        }, {
+            intent: {
+                kind: 'mutation',
+                operation: 'paragraph-move',
+                chapterId: sourceChapter.chapterId,
+                paragraphId: sourceParagraph.paragraphId,
+                targetChapterId: sourceChapter.chapterId,
+                targetIndex: 1,
+            },
+        });
+
+        assert.deepEqual(explorerCalls.map((call) => call.tool), ['scripta_crdt_mutate']);
+        assert.deepEqual(explorerCalls[0].args.args, {
+            chapterId: sourceChapter.chapterId,
+            paragraphId: sourceParagraph.paragraphId,
+            targetChapterId: sourceChapter.chapterId,
+            targetIndex: 0,
+        });
+        for (const call of explorerCalls) {
+            assert.equal('aspectRatio' in call.args.args, false);
+            assert.equal('fit' in call.args.args, false);
+            assert.equal('alignment' in call.args.args, false);
+        }
+    });
 });
 
 test('SCRIPTA command intents use only canonical p-variant operations', () => {
@@ -416,6 +484,45 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
             authInfo: ADMIN,
         });
         assert.equal(current.document.chapters[0].chapterTitle, 'Chapter 1 test zzzzzzz');
+
+        const editTarget = {
+            chapterId: current.paragraph.chapterId,
+            paragraphId: current.paragraph.paragraphId,
+            variantId: current.paragraph.variants[0].id,
+        };
+        const editStarted = await dispatch('webmeet_event_command', {
+            roomId: meeting.roomId,
+            event: `scripta-p-variant-edit-start ${JSON.stringify(editTarget)}`,
+            source: 'ui',
+            commandSource: 'chat',
+            participantId: 'admin',
+        }, context, ADMIN);
+        assert.equal(editStarted.ok, true, JSON.stringify(editStarted));
+        assert.equal(editStarted.focus.editingVariantId, editTarget.variantId);
+        assert.equal(editStarted.focus.editorParticipantId, 'admin');
+
+        const editCancelled = await dispatch('webmeet_event_command', {
+            roomId: meeting.roomId,
+            event: `scripta-p-variant-edit-cancel ${JSON.stringify(editTarget)}`,
+            source: 'ui',
+            commandSource: 'chat',
+            participantId: 'admin',
+        }, context, ADMIN);
+        assert.equal(editCancelled.ok, true, JSON.stringify(editCancelled));
+        assert.equal(editCancelled.focus.editingVariantId, '');
+        assert.equal(editCancelled.focus.editorParticipantId, '');
+
+        const documentView = await dispatch('webmeet_event_command', {
+            roomId: meeting.roomId,
+            event: 'scripta-document-view {}',
+            source: 'ui',
+            commandSource: 'chat',
+            participantId: 'admin',
+        }, context, ADMIN);
+        assert.equal(documentView.ok, true, JSON.stringify(documentView));
+        assert.equal(documentView.focus.mode, 'document');
+        assert.equal(documentView.focus.chapterId, editTarget.chapterId);
+        assert.equal(documentView.focus.paragraphId, editTarget.paragraphId);
     });
 });
 
@@ -835,6 +942,203 @@ test('paragraph variant ownership controls edit and delete but not voting', asyn
             .find((entry) => entry.id === 'robo_scripta_document')
             .properties.paragraph.variants;
         assert.equal(publicVariants.every((entry) => !('_ownerHash' in entry)), true);
+    });
+});
+
+test('SCRIPTA image mutations apply only to the selected owned variant', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Variant images', authInfo: ADMIN });
+        await joinMeeting(context, {
+            meetingId: meeting.roomId, participantId: 'admin', displayName: 'Admin', authInfo: ADMIN,
+        });
+        await createScriptaDocument(context, {
+            roomId: meeting.roomId, name: 'Illustrated', template: 'general', participantId: 'admin', authInfo: ADMIN,
+        });
+        const originalExplorer = context.scriptaExplorerClient;
+        context.scriptaExplorerClient = (tool, args) => originalExplorer(tool, {
+            ...args,
+            ...(tool === 'scripta_crdt_mutate' && (
+                ['p-variant-image-insert', 'p-variant-image-replace'].includes(args.operation)
+                || (args.operation === 'paragraph-add' && args.args?.assetId)
+            )
+                ? { args: { ...args.args, workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.args.assetId}.png` } }
+                : {}),
+        });
+        let current = await getScriptaContext(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
+        const target = {
+            chapterId: current.paragraph.chapterId,
+            paragraphId: current.paragraph.paragraphId,
+            variantId: current.paragraph.selectedVariantId,
+        };
+        await mutateScripta(context, {
+            roomId: meeting.roomId, operation: 'p-variant-image-insert', ...target,
+            assetId: 'asset_one', alt: 'First', participantId: 'admin', authInfo: ADMIN,
+        });
+        current = await getScriptaContext(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
+        const selected = current.paragraph.variants.find((variant) => variant.id === target.variantId);
+        assert.equal(selected.images[0].assetId, 'asset_one');
+        const imageId = selected.images[0].imageId;
+
+        await mutateScripta(context, {
+            roomId: meeting.roomId, operation: 'p-variant-image-replace', ...target, imageId,
+            assetId: 'asset_two', alt: 'Second', participantId: 'admin', authInfo: ADMIN,
+        });
+        current = await getScriptaContext(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
+        assert.equal(current.paragraph.variants.find((variant) => variant.id === target.variantId).images[0].assetId, 'asset_two');
+
+        await executeRoboCommand(context, {
+            roomId: meeting.roomId,
+            text: '/robo aliniază imaginea 1 la stânga și setează lățimea la 60%',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        }, {intent: {
+            kind: 'mutation', operation: 'p-variant-image-layout',
+            variantOrdinal: 1, imageOrdinal: 1,
+            widthPercent: 60, aspectRatio: '4:3', fit: 'cover', alignment: 'left',
+        }});
+        current = await getScriptaContext(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
+        assert.deepEqual(
+            current.paragraph.variants.find((variant) => variant.id === target.variantId).images[0].layout,
+            {widthPercent: 60, aspectRatio: '4:3', fit: 'cover', alignment: 'left', showCaption: true},
+        );
+
+        const deleted = await dispatch('webmeet_event_command', {
+            roomId: meeting.roomId,
+            participantId: 'admin',
+            source: 'ui',
+            commandSource: 'chat',
+            event: JSON.stringify({
+                action: 'scripta-p-variant-image-delete',
+                target: {type: 'widget', widgetId: 'robo_scripta_document'},
+                payload: {
+                    chapterId: target.chapterId,
+                    paragraphId: target.paragraphId,
+                    variantId: target.variantId,
+                    variantOrdinal: 1,
+                    imageId,
+                    imageOrdinal: 1,
+                },
+            }),
+        }, context, ADMIN);
+        assert.equal(deleted.ok, true, JSON.stringify(deleted));
+        assert.equal(deleted.auditMessage.metadata.status, 'success');
+        assert.match(deleted.auditMessage.message, /^\/event scripta-p-variant-image-delete/);
+        assert.match(deleted.auditMessage.message, /"imageOrdinal":1/);
+        assert.doesNotMatch(deleted.auditMessage.message, /imageId|variantId|paragraphId|chapterId|assetId/);
+        current = await getScriptaContext(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
+        assert.deepEqual(current.paragraph.variants.find((variant) => variant.id === target.variantId).images, []);
+
+        const added = await mutateScripta(context, {
+            roomId: meeting.roomId,
+            operation: 'paragraph-add',
+            chapterId: target.chapterId,
+            text: '',
+            assetId: 'asset_paragraph',
+            alt: 'New image paragraph',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const widget = added.blackboard.widgets.find((entry) => entry.id === 'robo_scripta_document');
+        const chapter = widget.properties.chapters.find((entry) => entry.chapterId === target.chapterId);
+        const imageParagraph = chapter.paragraphs.at(-1);
+        assert.equal(imageParagraph.text, '');
+        assert.equal(imageParagraph.images[0].assetId, 'asset_paragraph');
+    });
+});
+
+test('an explicit variant ordinal outranks the UI-selected variant for Robo image commands', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Variant image hierarchy', authInfo: ADMIN });
+        await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: 'Illustrated alternatives',
+            template: 'general',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const originalExplorer = context.scriptaExplorerClient;
+        context.scriptaExplorerClient = (tool, args) => originalExplorer(tool, {
+            ...args,
+            ...(tool === 'scripta_crdt_mutate' && ['p-variant-image-insert', 'p-variant-image-replace'].includes(args.operation)
+                ? { args: { ...args.args, workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.args.assetId}.png` } }
+                : {}),
+        });
+
+        let current = await getScriptaContext(context, {
+            roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN,
+        });
+        const chapterId = current.paragraph.chapterId;
+        const paragraphId = current.paragraph.paragraphId;
+        const firstVariantId = current.paragraph.variants[0].id;
+        await mutateScripta(context, {
+            roomId: meeting.roomId,
+            operation: 'p-variant-add',
+            chapterId,
+            paragraphId,
+            text: 'Second variant',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        current = await getScriptaContext(context, {
+            roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN,
+        });
+        const secondVariantId = current.paragraph.variants[1].id;
+        await mutateScripta(context, {
+            roomId: meeting.roomId,
+            operation: 'p-variant-image-insert',
+            chapterId,
+            paragraphId,
+            variantId: firstVariantId,
+            assetId: 'asset_first_variant',
+            alt: 'First variant image',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        await mutateScripta(context, {
+            roomId: meeting.roomId,
+            operation: 'p-variant-image-insert',
+            chapterId,
+            paragraphId,
+            variantId: secondVariantId,
+            assetId: 'asset_second_variant',
+            alt: 'Second variant image',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        await focusScripta(context, {
+            roomId: meeting.roomId,
+            chapterId,
+            paragraphId,
+            variantId: firstVariantId,
+            mode: 'paragraph',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+
+        await executeRoboCommand(context, {
+            roomId: meeting.roomId,
+            text: '/robo aliniază la dreapta imaginea 1 din varianta 2',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        }, { intent: {
+            kind: 'mutation',
+            operation: 'p-variant-image-layout',
+            variantOrdinal: 2,
+            imageOrdinal: 1,
+            alignment: 'right',
+            widthPercent: 55,
+        } });
+
+        current = await getScriptaContext(context, {
+            roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN,
+        });
+        const firstImage = current.paragraph.variants.find((variant) => variant.id === firstVariantId).images[0];
+        const secondImage = current.paragraph.variants.find((variant) => variant.id === secondVariantId).images[0];
+        assert.equal(current.paragraph.selectedVariantId, firstVariantId);
+        assert.equal(firstImage.layout.alignment, 'center');
+        assert.equal(firstImage.layout.widthPercent, 100);
+        assert.equal(secondImage.layout.alignment, 'right');
+        assert.equal(secondImage.layout.widthPercent, 55);
     });
 });
 

@@ -13,16 +13,20 @@ const SCRIPTA_ACTIONS = new Set([
     'scripta-paragraph-open', 'scripta-document-view', 'scripta-paragraph-next', 'scripta-paragraph-previous',
     'scripta-p-variant-add', 'scripta-p-variant-select', 'scripta-p-variant-edit-start',
     'scripta-p-variant-edit-cancel', 'scripta-p-variant-edit', 'scripta-p-variant-delete',
+    'scripta-p-variant-image-insert', 'scripta-p-variant-image-replace',
+    'scripta-p-variant-image-delete', 'scripta-p-variant-image-layout',
     'scripta-p-variant-vote', 'scripta-p-variant-vote-withdraw', 'scripta-p-variant-reformulate',
     'scripta-undo', 'scripta-chapter-add', 'scripta-chapter-edit', 'scripta-chapter-delete',
     'scripta-chapter-move', 'scripta-paragraph-add', 'scripta-paragraph-delete', 'scripta-paragraph-move',
+    'scripta-media-insert',
 ]);
 
 function redact(value) {
     if (Array.isArray(value)) return value.map(redact);
     if (!value || typeof value !== 'object') return value;
     return Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => {
-        if (['path', 'folderPath', 'editorUrl', 'privateRoboContext', 'eventId', 'commandId', 'revision', 'version', 'expectedBoardVersion'].includes(key)) return [];
+        if (['path', 'folderPath', 'editorUrl', 'privateRoboContext', 'eventId', 'commandId', 'revision', 'version', 'expectedBoardVersion',
+            'resourceId', 'chapterId', 'paragraphId', 'variantId', 'imageId', 'assetId'].includes(key)) return [];
         if (['createdBy', 'updatedBy', 'requestedBy', 'executor', 'participantId', 'provenance'].includes(key)) return [];
         return [[key, redact(entry)]];
     }));
@@ -54,9 +58,10 @@ function summarize(result) {
     };
 }
 
-function scriptaIntent(event) {
+export function buildScriptaIntent(event) {
     const action = event.action.replace(/^scripta-/, '');
     const operation = action
+        .replace('media-insert', 'p-variant-image-insert')
         .replace('chapter-edit', 'chapter-rename')
         .replace('document-create', 'document-create')
         .replace('document-open', 'document-open')
@@ -69,6 +74,10 @@ function scriptaIntent(event) {
         operation,
         ...(action === 'paragraph-next' ? { direction: 'next' } : {}),
         ...(action === 'paragraph-previous' ? { direction: 'previous' } : {}),
+        ...(action === 'document-view' ? { mode: 'document' } : {}),
+        ...(action === 'paragraph-open' ? { mode: 'paragraph' } : {}),
+        ...(action === 'p-variant-edit-start' ? { editing: true } : {}),
+        ...(action === 'p-variant-edit-cancel' ? { editing: false } : {}),
     };
 }
 
@@ -93,7 +102,7 @@ async function interpret(deps, text, board) {
     return new BlackboardCommandInterpreter(deps.interpreterDeps).interpret({ text, board });
 }
 
-async function executeEvents(deps, context, input, events) {
+async function executeEvents(deps, context, input, events, board = null) {
     if (events.length === 1 && ['show', 'hide'].includes(events[0].action)) {
         return {
             ok: true,
@@ -109,6 +118,23 @@ async function executeEvents(deps, context, input, events) {
     }
     if (events.some((event) => SCRIPTA_ACTIONS.has(event.action))) {
         if (events.length !== 1) throw new Error('SCRIPTA events cannot be combined with generic blackboard events.');
+        const event = events[0];
+        if (event.action === 'scripta-media-insert') {
+            if (event.target?.type === 'group') {
+                const groupId = String(event.target.groupId || '').trim();
+                const members = (board?.widgets || []).filter((entry) => String(entry?.groupId || '') === groupId);
+                if (!groupId || members.length < 2) throw new Error('The selected Blackboard group no longer exists.');
+                return {
+                    ok: true,
+                    changed: false,
+                    clientAction: { type: 'scripta-insert-group', groupId, alt: String(event.payload?.alt || 'Blackboard diagram') }
+                };
+            }
+            const widget = (board?.widgets || []).find((entry) => entry?.id === event.target.widgetId);
+            const assetId = String(widget?.properties?.source?.assetId || '').trim();
+            if (widget?.type !== 'image' || !assetId) throw new Error('The selected Blackboard element is not a stored image.');
+            event.payload = { ...event.payload, assetId };
+        }
         return executeRoboCommand(context, {
             roomId: input.roomId,
             text: /^\/robo(?:\s|$)/i.test(String(input.eventInput || ''))
@@ -117,7 +143,7 @@ async function executeEvents(deps, context, input, events) {
             source: input.commandSource,
             participantId: input.participantId,
             authInfo: input.authInfo,
-        }, { intent: scriptaIntent(events[0]), reformulate: deps.reformulate });
+        }, { intent: buildScriptaIntent(event), reformulate: deps.reformulate });
     }
     if (typeof deps.applyRoomBlackboardEvents !== 'function') {
         throw new Error('Atomic blackboard event execution is unavailable.');
@@ -188,7 +214,7 @@ export async function executeBlackboardEvent(context, args = {}, deps = {}) {
             source: executionSource,
             commandSource,
             eventInput,
-        }, interpreted.events);
+        }, interpreted.events, boardResult.blackboard);
         const auditMessage = await updateAudit(deps, context, roomId, args.authInfo, audit, 'success', { events: redact(interpreted.events), result: summarize(result) }, canonicalAuditText(interpreted.events));
         return { ok: result?.ok !== false, events: interpreted.events, ...result, auditMessage };
     } catch (error) {

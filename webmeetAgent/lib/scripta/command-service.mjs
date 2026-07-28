@@ -11,9 +11,14 @@ import {
 } from './service.mjs';
 
 function projectInterpreterContext(context = {}) {
+    const selectedVariantId = String(context.view?.selectedVariantId || context.paragraph?.selectedVariantId || context.paragraph?.activeVariantId || '');
+    const selectedVariantOrdinal = (context.paragraph?.variants || []).findIndex((variant) => variant.id === selectedVariantId) + 1;
     return {
         activeResourceId: String(context.activeResourceId || ''),
-        view: context.view || { mode: 'document' },
+        view: {
+            ...(context.view || { mode: 'document' }),
+            ...(selectedVariantOrdinal ? { selectedVariantOrdinal } : {}),
+        },
         resources: (context.resources || []).map((resource) => ({ resourceId: resource.resourceId, title: resource.title })),
         documentOutline: (context.documentOutline || []).map((chapter) => ({
             chapterId: chapter.chapterId,
@@ -31,7 +36,17 @@ function projectInterpreterContext(context = {}) {
             paragraphOrdinal: context.paragraph.paragraphOrdinal,
             chapterTitle: context.paragraph.chapterTitle,
             currentText: context.paragraph.currentText,
-            variants: (context.paragraph.variants || []).map((variant, index) => ({ id: variant.id, ordinal: index + 1, text: variant.text })),
+            variants: (context.paragraph.variants || []).map((variant, index) => ({
+                id: variant.id,
+                ordinal: index + 1,
+                text: variant.text,
+                images: (variant.images || []).map((image, imageIndex) => ({
+                    ordinal: Math.max(1, Number(image?.ordinal || imageIndex + 1)),
+                    alt: String(image?.alt || 'Image'),
+                    position: Number(image?.position || 0),
+                    layout: image?.layout || null,
+                })),
+            })),
         } : null,
     };
 }
@@ -153,6 +168,12 @@ export async function executeRoboCommand(context, {
             variantId: mutation.variantId, variantOrdinal: mutation.variantOrdinal, type: mutation.type,
             title: mutation.title, text: mutation.text, targetChapterId: parsed.targetChapterId || targetChapter?.chapterId,
             targetIndex: parsed.targetIndex !== 0 && parsed.targetIndex ? parsed.targetIndex - 1 : parsed.targetIndex,
+            assetId: mutation.assetId, imageId: mutation.imageId, alt: mutation.alt,
+            imageOrdinal: mutation.imageOrdinal,
+            position: mutation.position,
+            widthPercent: mutation.widthPercent, aspectRatio: mutation.aspectRatio,
+            fit: mutation.fit, alignment: mutation.alignment,
+            showCaption: mutation.showCaption,
             authInfo,
         });
     }

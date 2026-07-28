@@ -350,7 +350,7 @@ export const blackboardExportMethods = {
         else globalThis.alert?.(message);
     },
 
-    async exportSelectedGroup({background = 'transparent'} = {}) {
+    async exportSelectedGroup({background = 'transparent', download = true, throwOnError = false} = {}) {
         const groupId = String(this.selectedGroupId || '').trim();
         if (!groupId || this.groupExportBusy) return;
         if (!['transparent', 'board'].includes(background)) {
@@ -418,14 +418,18 @@ export const blackboardExportMethods = {
             } finally {
                 stage.remove();
             }
-            triggerDownload(await canvasToPng(canvas), groupExportFilename(background));
+            const blob = await canvasToPng(canvas);
+            if (download) triggerDownload(blob, groupExportFilename(background));
             this.closeGroupExportMenu();
+            return blob;
         } catch (error) {
             console.error('[WebMeetBlackboard] Group export failed', error);
             this.showGroupExportError(error);
+            if (throwOnError) throw error;
         } finally {
             this.groupExportBusy = false;
             this.groupExportMenu?.querySelectorAll?.('button')?.forEach?.((button) => { button.disabled = false; });
         }
     },
+
 };

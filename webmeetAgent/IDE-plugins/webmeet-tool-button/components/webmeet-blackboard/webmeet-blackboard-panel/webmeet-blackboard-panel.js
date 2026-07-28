@@ -46,6 +46,7 @@ export class WebMeetBlackboardPanel {
         this.pendingScriptaDraft = null;
         this.scriptaDraftTimer = null;
         this.scriptaEditStartPromise = Promise.resolve();
+        this.scriptaImageInspector = null;
 
         this.bindPointerHandlers();
         this.handleConnectEvent = (event) => this.connect(event.detail || {});
@@ -88,6 +89,35 @@ export class WebMeetBlackboardPanel {
         this.handlePanelKeydownEvent = (event) => this.handlePanelKeydown(event);
         this.handleDocumentKeydownEvent = (event) => this.handlePanelKeydown(event);
         this.handleBoardPointerDown = (event) => this.handleBoardPointerDownCapture(event);
+        this.handleSelectWidgetEvent = (event) => {
+            const widgetId = String(event.detail?.widgetId || '').trim();
+            if (!widgetId || !(this.blackboard?.widgets || []).some((widget) => widget?.id === widgetId)) return;
+            this.selection = widgetId;
+            this.selectedGroupId = '';
+            this.selectedWidgetIds.clear();
+            this.renderWidgets();
+            this.widgetNodes.get(widgetId)?.scrollIntoView?.({block: 'center', inline: 'center'});
+        };
+        this.handleInsertGroupScriptaEvent = async (event) => {
+            const detail = event.detail || {};
+            try {
+                const groupId = String(detail.groupId || '').trim();
+                const members = (this.blackboard?.widgets || []).filter((widget) => String(widget?.groupId || '') === groupId);
+                if (!groupId || members.length < 2) throw new Error('The selected Blackboard group no longer exists.');
+                this.selectedGroupId = groupId;
+                this.selection = '';
+                this.selectedWidgetIds.clear();
+                this.renderWidgets();
+                await this.insertSelectedGroupIntoScripta({
+                    background: 'transparent',
+                    alt: String(detail.alt || 'Blackboard diagram'),
+                    throwOnError: true
+                });
+                detail.resolve?.();
+            } catch (error) {
+                detail.reject?.(error);
+            }
+        };
         this.invalidate();
     }
 
@@ -145,6 +175,8 @@ export class WebMeetBlackboardPanel {
         this.element.removeEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
         this.element.removeEventListener('webmeet-blackboard-disconnect', this.handleDisconnectEvent);
         this.element.removeEventListener('webmeet-blackboard-robo-status', this.handleRoboStatusEvent);
+        this.element.removeEventListener('webmeet-blackboard-select-widget', this.handleSelectWidgetEvent);
+        this.element.removeEventListener('webmeet-blackboard-insert-group-scripta', this.handleInsertGroupScriptaEvent);
         this.element.removeEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.removeEventListener('keydown', this.handleDocumentKeydownEvent, true);
@@ -153,6 +185,8 @@ export class WebMeetBlackboardPanel {
         this.element.addEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
         this.element.addEventListener('webmeet-blackboard-disconnect', this.handleDisconnectEvent);
         this.element.addEventListener('webmeet-blackboard-robo-status', this.handleRoboStatusEvent);
+        this.element.addEventListener('webmeet-blackboard-select-widget', this.handleSelectWidgetEvent);
+        this.element.addEventListener('webmeet-blackboard-insert-group-scripta', this.handleInsertGroupScriptaEvent);
         this.element.addEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.addEventListener('keydown', this.handleDocumentKeydownEvent, true);
@@ -192,6 +226,8 @@ export class WebMeetBlackboardPanel {
         this.unsubscribeAdapter = this.adapter.subscribe((payload) => {
             if (payload.kind === 'blackboard') {
                 this.applyBlackboard(payload.object || {widgets: []});
+            } else if (payload.kind === 'blackboard-state') {
+                this.setBlackboardState(payload.object || {widgets: []});
             } else if (payload.kind === 'widget') {
                 this.applyWidgetObject(payload.object);
             } else if (payload.kind === 'scripta-presentation') {
@@ -223,14 +259,17 @@ export class WebMeetBlackboardPanel {
     }
 
     applyBlackboard(blackboard) {
-        if (blackboard) {
-            this.blackboard = blackboard;
-            this.selection = String(blackboard.interactionContext?.focusedWidgetId || '').trim();
-            this.selectedWidgetIds.clear();
-            const focused = (blackboard.widgets || []).find((widget) => String(widget.id) === this.selection);
-            this.selectedGroupId = String(focused?.groupId || '');
-        }
+        this.setBlackboardState(blackboard);
         this.renderWidgets();
+    }
+
+    setBlackboardState(blackboard) {
+        if (!blackboard) return;
+        this.blackboard = blackboard;
+        this.selection = String(blackboard.interactionContext?.focusedWidgetId || '').trim();
+        this.selectedWidgetIds.clear();
+        const focused = (blackboard.widgets || []).find((widget) => String(widget.id) === this.selection);
+        this.selectedGroupId = String(focused?.groupId || '');
     }
 
     applyWidgetObject(widget) {
@@ -285,6 +324,8 @@ export class WebMeetBlackboardPanel {
     }
 
     afterUnload() {
+        this.element.removeEventListener('webmeet-blackboard-select-widget', this.handleSelectWidgetEvent);
+        this.element.removeEventListener('webmeet-blackboard-insert-group-scripta', this.handleInsertGroupScriptaEvent);
         this.element.removeEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.removeEventListener('keydown', this.handleDocumentKeydownEvent, true);
