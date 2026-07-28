@@ -32,6 +32,10 @@ export const roomSessionMethods = {
     scheduleJoinMaterialRefresh() {
         window.clearTimeout(this.joinMaterialRefreshTimer);
         this.joinMaterialRefreshTimer = null;
+        const iceServers = Array.isArray(this.state.session?.rtcConfig?.iceServers)
+            ? this.state.session.rtcConfig.iceServers
+            : [];
+        if (iceServers.length === 0) return;
         const expiresAtMs = Date.parse(String(this.state.session?.turnExpiresAt || ''));
         if (!Number.isFinite(expiresAtMs)) {
             throw new Error('Join material is missing a valid TURN expiry.');

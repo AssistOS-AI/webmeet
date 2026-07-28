@@ -57,6 +57,49 @@ test('network refresh listeners are exact and removed when the dashboard unloads
     assert.deepEqual(reasons, ['network-transition', 'network-transition']);
 });
 
+test('local direct-UDP sessions do not schedule TURN credential refresh', () => {
+    setBrowserGlobals();
+    const presenter = {
+        state: {
+            session: {
+                rtcConfig: {
+                    iceTransportPolicy: 'all',
+                    iceServers: []
+                }
+            }
+        },
+        joinMaterialRefreshTimer: globalThis.setTimeout(() => {}, 60_000)
+    };
+
+    roomSessionMethods.scheduleJoinMaterialRefresh.call(presenter);
+
+    assert.equal(presenter.joinMaterialRefreshTimer, null);
+});
+
+test('TURN sessions still require an exact credential expiry', () => {
+    setBrowserGlobals();
+    const presenter = {
+        state: {
+            session: {
+                rtcConfig: {
+                    iceTransportPolicy: 'all',
+                    iceServers: [{
+                        urls: 'turn:turn.example:3478',
+                        username: 'temporary',
+                        credential: 'secret'
+                    }]
+                }
+            }
+        },
+        joinMaterialRefreshTimer: null
+    };
+
+    assert.throws(
+        () => roomSessionMethods.scheduleJoinMaterialRefresh.call(presenter),
+        /missing a valid TURN expiry/
+    );
+});
+
 test('credential refresh recreates the room without attempting non-activated display capture', async () => {
     setBrowserGlobals();
     const calls = [];
