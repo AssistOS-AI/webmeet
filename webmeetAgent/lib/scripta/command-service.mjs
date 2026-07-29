@@ -51,12 +51,12 @@ function projectInterpreterContext(context = {}) {
     };
 }
 
-function presentation(roomId) {
+function presentation(roomId, boardId) {
     return {
         presenter: { participantId: ROBO_TEAM_PARTICIPANT_ID, name: 'RoboTeam' },
         visibilityPayload: {
             type: 'blackboard.visibility_changed', meetingId: roomId, participantId: ROBO_TEAM_PARTICIPANT_ID,
-            presenterName: 'RoboTeam', visible: true, boardId: 'agent:agent_robo_team',
+            presenterName: 'RoboTeam', visible: true, boardId: String(boardId || ''),
         },
     };
 }
@@ -79,7 +79,7 @@ function resolveIds(current, parsed) {
 }
 
 export async function executeRoboCommand(context, {
-    roomId, text, source = 'chat', participantId = '', authInfo = null,
+    roomId, boardId = '', text, source = 'chat', participantId = '', authInfo = null,
 } = {}, { reformulate = null, interpret = null, intent = null } = {}) {
     const normalizedSource = String(source || 'chat').trim().toLowerCase();
     if (!['chat', 'voice'].includes(normalizedSource)) throw new Error('Robo command source must be "chat" or "voice".');
@@ -177,5 +177,5 @@ export async function executeRoboCommand(context, {
             authInfo,
         });
     }
-    return { ...response, source: normalizedSource, ...presentation(roomId) };
+    return { ...response, source: normalizedSource, ...presentation(roomId, boardId) };
 }

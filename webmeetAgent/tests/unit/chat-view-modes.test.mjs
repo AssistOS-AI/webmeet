@@ -36,12 +36,35 @@ test('Full event rendering hides transport metadata and opaque identifiers', () 
     const entry = {
         kind: 'event',
         message: '/event raw',
-        metadata: { event: {
-            eventId: 'event-secret', commandId: 'command-secret', revision: 108,
-            target: { type: 'widget', boardId: 'board-secret', widgetId: 'widget-secret' },
-            action: 'scripta-document-delete',
-            payload: { resourceId: 'resource-secret', confirmed: true }
-        } }
+        metadata: {
+            boardId: 'board-secret',
+            boardTitle: 'Script',
+            event: {
+                eventId: 'event-secret', commandId: 'command-secret', revision: 108,
+                target: { type: 'widget', boardId: 'board-secret', widgetId: 'widget-secret' },
+                action: 'scripta-document-delete',
+                payload: { resourceId: 'resource-secret', confirmed: true }
+            },
+        }
     };
-    assert.equal(formatChatEntryMessage(entry), '/event scripta-document-delete {"confirmed":true}');
+    assert.equal(formatChatEntryMessage(entry), '/event scripta-document-delete {"confirmed":true} · Script');
+});
+
+test('Full event rendering adds the workspace name to every event in one audit', () => {
+    const entry = {
+        kind: 'event',
+        message: '/event stale',
+        metadata: {
+            boardId: 'board-2',
+            boardTitle: 'Diagram',
+            events: [
+                { action: 'create', payload: { widget: { type: 'shape', properties: {} } } },
+                { action: 'clear', payload: {} },
+            ],
+        },
+    };
+    assert.equal(
+        formatChatEntryMessage(entry),
+        '/event create {"widget":{"type":"shape","properties":{}}} · Diagram\n/event clear · Diagram',
+    );
 });

@@ -3,6 +3,7 @@ import { BLACKBOARD_GROUPABLE_WIDGET_TYPES } from './model.mjs';
 
 export const BLACKBOARD_PUBLIC_ACTIONS = Object.freeze([
     'create', 'update', 'delete', 'group', 'ungroup', 'clear', 'undo', 'redo', 'show', 'hide',
+    'board-create', 'board-rename', 'board-reorder', 'board-delete', 'board-activate', 'board-transfer',
     'submit', 'start', 'close', 'reorder',
     'scripta-document-create', 'scripta-document-open', 'scripta-document-delete',
     'scripta-paragraph-open', 'scripta-document-view', 'scripta-paragraph-next', 'scripta-paragraph-previous',
@@ -17,7 +18,7 @@ export const BLACKBOARD_PUBLIC_ACTIONS = Object.freeze([
     'scripta-media-insert',
 ]);
 
-export const BLACKBOARD_INTERNAL_ACTIONS = Object.freeze(['focus']);
+export const BLACKBOARD_INTERNAL_ACTIONS = Object.freeze(['focus', 'board-copy']);
 export const BLACKBOARD_SEMANTIC_ERROR_CODES = Object.freeze([
     'ambiguous_target',
     'missing_target',
@@ -459,10 +460,11 @@ export function parseEventInput(input) {
 function normalizeTarget(input, action, defaults = {}) {
     if (input?.boardId !== undefined) throw new Error('event.target.boardId is not part of the canonical event contract.');
     const targetType = requiredString(input?.type || defaults.targetType || (
-        ['create', 'group', 'clear', 'undo', 'redo', 'show', 'hide'].includes(action) ? 'blackboard' : 'widget'
+        action === 'board-create' ? 'workspace'
+            : ['create', 'group', 'clear', 'undo', 'redo', 'show', 'hide', 'board-rename', 'board-reorder', 'board-delete', 'board-activate', 'board-transfer', 'board-copy'].includes(action) ? 'blackboard' : 'widget'
     ), 'target.type');
-    if (!['blackboard', 'widget', 'group'].includes(targetType)) {
-        throw new Error('Event target.type must be "blackboard", "widget", or "group".');
+    if (!['workspace', 'blackboard', 'widget', 'group'].includes(targetType)) {
+        throw new Error('Event target.type must be "workspace", "blackboard", "widget", or "group".');
     }
     const widgetId = String(input?.widgetId || defaults.widgetId || (
         targetType === 'widget' && action.startsWith('scripta-') ? 'robo_scripta_document' : ''
@@ -481,7 +483,29 @@ function normalizeTarget(input, action, defaults = {}) {
 
 function validateActionShape(event) {
     const { action, target, payload } = event;
-    if (action === 'create') {
+    if (action === 'board-create') {
+        if (target.type !== 'workspace') throw new Error('board-create must target the workspace.');
+        assertOnlyKeys(payload, ['title'], 'event.payload');
+    } else if (action === 'board-rename') {
+        if (target.type !== 'blackboard') throw new Error('board-rename must target a blackboard.');
+        assertOnlyKeys(payload, ['targetBoardId', 'title'], 'event.payload');
+        if (payload.targetBoardId !== undefined) requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+        requiredString(payload.title, 'event.payload.title');
+    } else if (action === 'board-reorder') {
+        if (target.type !== 'blackboard') throw new Error('board-reorder must target a blackboard.');
+        assertOnlyKeys(payload, ['targetBoardId', 'targetIndex'], 'event.payload');
+        if (payload.targetBoardId !== undefined) requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+        if (!Number.isInteger(payload.targetIndex) || payload.targetIndex < 0) throw new Error('event.payload.targetIndex must be a non-negative integer.');
+    } else if (action === 'board-delete' || action === 'board-activate') {
+        if (target.type !== 'blackboard') throw new Error(`${action} must target a blackboard.`);
+        assertOnlyKeys(payload, ['targetBoardId'], 'event.payload');
+        if (payload.targetBoardId !== undefined) requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+    } else if (action === 'board-transfer' || action === 'board-copy') {
+        if (target.type !== 'blackboard') throw new Error(`${action} must target a blackboard.`);
+        assertOnlyKeys(payload, ['targetBoardId', 'widgetIds', 'placement'], 'event.payload');
+        requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+        if (!Array.isArray(payload.widgetIds) || !payload.widgetIds.length) throw new Error('event.payload.widgetIds must be a non-empty array.');
+    } else if (action === 'create') {
         if (target.type !== 'blackboard') throw new Error('create must target the blackboard.');
         const widget = plainObject(payload.widget, 'event.payload.widget');
         const widgetType = requiredString(widget.type, 'payload.widget.type');

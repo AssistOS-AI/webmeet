@@ -1,12 +1,11 @@
 import crypto from 'node:crypto';
 
 import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
-import { Blackboard } from '../blackboard/model.mjs';
+import { BlackboardWorkspace } from '../blackboard/workspace-model.mjs';
 import {
-    ROBO_TEAM_BLACKBOARD_BOARD_ID,
     ROBO_TEAM_PARTICIPANT_ID,
     ensureRoboTeamAgentPayload,
-    ensureRoboTeamBlackboardPayload,
+    ensureRoboTeamBlackboardWorkspacePayload,
 } from '../roboTeam/service.mjs';
 import {
     canViewMeetingRecord,
@@ -261,19 +260,27 @@ function updateBlackboardProjection(record, payload) {
     const scripta = ensureScriptaPayload(record, payload);
     const entry = activeEntry(scripta);
     const agent = ensureRoboTeamAgentPayload(payload, null, record.meetingId);
-    const blackboard = Blackboard.from({ ...ensureRoboTeamBlackboardPayload(agent, record.meetingId), roomId: record.meetingId });
+    const workspace = BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(agent, record.meetingId));
+    const blackboard = [...workspace.boards.values()]
+        .find((board) => board.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID))
+        || workspace.activeBoard;
     const initialRevision = blackboard.revision;
     if (!entry) {
-        if (blackboard.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID)) {
-            blackboard.removeWidget(SCRIPTA_DOCUMENT_WIDGET_ID, {
+        let changed = false;
+        for (const board of workspace.boards.values()) {
+            if (!board.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID)) continue;
+            const boardRevision = board.revision;
+            board.removeWidget(SCRIPTA_DOCUMENT_WIDGET_ID, {
                 participantId: ROBO_TEAM_PARTICIPANT_ID,
                 canModerateBlackboard: true,
                 record: false,
             });
-            blackboard.revision = initialRevision;
-            blackboard.bumpRevision();
+            board.revision = boardRevision;
+            board.bumpRevision();
+            changed = true;
         }
-        agent.blackboard = blackboard.serializePrivileged();
+        if (changed) workspace.bumpRevision();
+        agent.blackboardWorkspace = workspace.serializePrivileged();
         return blackboard;
     }
     const existing = blackboard.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID);
@@ -305,15 +312,17 @@ function updateBlackboardProjection(record, payload) {
             participantId: ROBO_TEAM_PARTICIPANT_ID,
             canModerateBlackboard: true,
             canManagePoll: true,
+            record: false,
         });
     }
     blackboard.revision = initialRevision;
     blackboard.bumpRevision();
-    agent.blackboard = blackboard.serializePrivileged();
+    workspace.bumpRevision();
+    agent.blackboardWorkspace = workspace.serializePrivileged();
     return blackboard;
 }
 
-function stageEvents(stageEvent, record, entry, participant, operation, blackboardRevision) {
+function stageEvents(stageEvent, record, entry, participant, operation, blackboard) {
     const base = {
         meetingId: record.meetingId,
         resourceId: entry?.resourceId || '',
@@ -330,8 +339,8 @@ function stageEvents(stageEvent, record, entry, participant, operation, blackboa
     stageEvent('meeting', WEBMEET_EVENT_TYPES.SCRIPTA_CONTEXT_CHANGED, base);
     stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
         ...base,
-        boardId: ROBO_TEAM_BLACKBOARD_BOARD_ID,
-        blackboardRevision,
+        boardId: blackboard.boardId,
+        blackboardRevision: blackboard.revision,
         changeType: 'update',
     });
 }
@@ -429,7 +438,7 @@ async function createScriptaDocumentImpl(context, {
             scripta.view = view;
             projectStoredView(entry, view);
             const blackboard = updateBlackboardProjection(record, payload);
-            stageEvents(stageEvent, record, entry, participant, 'document-create', blackboard.revision);
+            stageEvents(stageEvent, record, entry, participant, 'document-create', blackboard);
             output = {
                 ok: true,
                 resourceId,
@@ -527,7 +536,7 @@ async function openScriptaDocumentImpl(context, {
         scripta.view = view;
         projectStoredView(entry, view);
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, 'document-open', blackboard.revision);
+        stageEvents(stageEvent, record, entry, participant, 'document-open', blackboard);
         output = { ok: true, resourceId, blackboard: serializeBlackboard(blackboard, participant, authInfo) };
     });
     return output;
@@ -585,7 +594,7 @@ async function manageScriptaDocumentImpl(context, {
             replaceActiveDocument(scripta, payload, null);
             scripta.view = { mode: 'document', chapterId: '', paragraphId: '' };
             const blackboard = updateBlackboardProjection(freshRecord, payload);
-            stageEvents(stageEvent, freshRecord, originalEntry, participant, operation, blackboard.revision);
+            stageEvents(stageEvent, freshRecord, originalEntry, participant, operation, blackboard);
             output = { ok: true, resourceId: id, blackboard: serializeBlackboard(blackboard, participant, authInfo) };
         });
     } catch (error) {
@@ -801,7 +810,7 @@ export async function applyScriptaCollaboration(context, {
         });
         updateEntryFromCrdt(entry, result);
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, operation, blackboard.revision);
+        stageEvents(stageEvent, record, entry, participant, operation, blackboard);
         output = {
             ...publicCollaborationResult(result, expectedSessionId, entry.resourceId),
             blackboard: serializeBlackboard(blackboard, participant, authInfo),
@@ -972,7 +981,7 @@ export async function focusScripta(context, {
             projectStoredView(entry, paragraphView);
         }
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, 'focus', blackboard.revision);
+        stageEvents(stageEvent, record, entry, participant, 'focus', blackboard);
         output = {
             ok: true,
             focus: structuredClone(scripta.view),
@@ -1067,7 +1076,7 @@ export async function mutateScripta(context, {
         });
         scripta.audit = scripta.audit.slice(-MAX_AUDIT_ENTRIES);
         const blackboard = updateBlackboardProjection(record, payload);
-        stageEvents(stageEvent, record, entry, participant, operation, blackboard.revision);
+        stageEvents(stageEvent, record, entry, participant, operation, blackboard);
         output = {
             ok: true,
             operation,

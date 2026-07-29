@@ -48,12 +48,17 @@ test('blackboard group UI exposes rigid block selection and all contextual trans
     assert.match(panelSource, /selectedGroupId = ''/);
     assert.match(groupSource, /GROUPABLE_WIDGET_TYPES = new Set\(\['shape', 'line', 'text', 'image', 'card'\]\)/);
     assert.match(groupSource, /!this\.isGroupableWidget\(widget\)/);
-    assert.match(groupSource, /widgetIds\.length !== this\.selectedWidgetIds\.size/);
+    assert.match(groupSource, /expandCompositeSelectionWidgetIds/);
+    assert.match(groupSource, /for \(const member of this\.getGroupMembers\(this\.selectedGroupId\)\)/);
+    assert.match(groupSource, /const targetIds = expandCompositeSelectionWidgetIds/);
+    assert.doesNotMatch(groupSource, /widgetIds\.length !== this\.selectedWidgetIds\.size/);
     assert.match(interactionSource, /widget && this\.isGroupableWidget\(widget\).*event\.shiftKey/);
     assert.match(interactionSource, /event\.shiftKey \|\| event\.ctrlKey \|\| event\.metaKey/);
     assert.match(interactionSource, /beginMarqueeSelection\(event\)/);
     assert.match(interactionSource, /webmeet-blackboard-group-hit-area/);
     assert.match(interactionSource, /beginGroupDrag\(event, groupId, representative\)/);
+    assert.match(interactionSource, /groupOverlay\.classList\.contains\('is-group'\)/);
+    assert.match(interactionSource, /webmeet-blackboard-context-menu, \[data-group-resize-handle\]/);
     assert.match(renderingSource, /!widget\.groupId.*renderResizeHandles/);
     assert.match(renderingSource, /renderGroupHitAreas\(groupOrdinals\)/);
     assert.match(renderingSource, /getRoboTargetOrdinals\(widgets\)/);
@@ -75,6 +80,7 @@ test('blackboard group UI exposes rigid block selection and all contextual trans
     assert.match(groupSource, /targetType: 'group'.*group-resize/s);
     assert.match(groupSource, /targetType: 'group'.*group-rotate/s);
     assert.match(css, /\.webmeet-blackboard-group-overlay/);
+    assert.match(css, /\.webmeet-blackboard-group-overlay\.is-group[\s\S]*pointer-events:\s*auto/);
     assert.match(css, /\.webmeet-blackboard-group-ordinal/);
     assert.match(css, /\.webmeet-blackboard-group-hit-area[\s\S]*z-index:\s*1/);
     assert.doesNotMatch(css, /\.webmeet-blackboard-widget\.is-group-selected-member[\s\S]*box-shadow/);

@@ -7,13 +7,12 @@ import {
     loadRoomRecord,
     mutateRoom
 } from '../store/roomRecords.mjs';
-import { Blackboard } from '../blackboard/model.mjs';
+import { BlackboardWorkspace } from '../blackboard/workspace-model.mjs';
 import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 export const ROBO_TEAM_AGENT_TYPE = 'robo_team';
 export const ROBO_TEAM_MODE = 'blackboard_demo';
 export const ROBO_TEAM_PARTICIPANT_ID = 'agent_robo_team';
-export const ROBO_TEAM_BLACKBOARD_BOARD_ID = `agent:${ROBO_TEAM_PARTICIPANT_ID}`;
 
 export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     assistant: {
@@ -127,56 +126,8 @@ export function ensureRoboTeamSettingsPayload(payload) {
     return payload.roboTeamSettings;
 }
 
-function createRoboTeamBlackboard(roomId = '') {
-    const targetRoomId = String(roomId || '').trim();
-    return new Blackboard({
-        id: `blackboard_${ROBO_TEAM_PARTICIPANT_ID}${targetRoomId ? `_${targetRoomId}` : ''}`,
-        roomId: targetRoomId,
-        boardId: ROBO_TEAM_BLACKBOARD_BOARD_ID,
-        boardOwnerType: 'agent',
-        boardOwnerId: ROBO_TEAM_PARTICIPANT_ID,
-        boardVisibility: 'room',
-        metadata: {
-            boardId: ROBO_TEAM_BLACKBOARD_BOARD_ID,
-            boardOwnerType: 'agent',
-            boardOwnerId: ROBO_TEAM_PARTICIPANT_ID,
-            boardVisibility: 'room'
-        }
-    }).serializePrivileged();
-}
-
-function requireRoboTeamBlackboardField(blackboard = {}, fieldName = '') {
-    const value = String(blackboard?.[fieldName] || '').trim();
-    if (!value) {
-        throw new Error(`Invalid RoboTeam blackboard: missing ${fieldName}.`);
-    }
-    return value;
-}
-
-function normalizeRoboTeamBlackboardPayload(blackboard = {}, roomId = '') {
-    const targetRoomId = String(roomId || blackboard?.roomId || '').trim();
-    const boardId = requireRoboTeamBlackboardField(blackboard, 'boardId');
-    const boardOwnerType = requireRoboTeamBlackboardField(blackboard, 'boardOwnerType');
-    const boardOwnerId = requireRoboTeamBlackboardField(blackboard, 'boardOwnerId');
-    const boardVisibility = requireRoboTeamBlackboardField(blackboard, 'boardVisibility');
-    const metadata = blackboard?.metadata && typeof blackboard.metadata === 'object'
-        ? cloneJson(blackboard.metadata)
-        : {};
-    return {
-        ...cloneJson(blackboard),
-        roomId: targetRoomId,
-        boardId,
-        boardOwnerType,
-        boardOwnerId,
-        boardVisibility,
-        metadata: {
-            ...metadata,
-            boardId,
-            boardOwnerType,
-            boardOwnerId,
-            boardVisibility
-        }
-    };
+function createRoboTeamBlackboardWorkspace(roomId = '') {
+    return new BlackboardWorkspace({ roomId: String(roomId || '').trim() }).serializePrivileged();
 }
 
 export function getRoboTeamAgentPayload(payload) {
@@ -186,29 +137,33 @@ export function getRoboTeamAgentPayload(payload) {
         || null;
 }
 
-export function ensureRoboTeamBlackboardPayload(agent, roomId = '') {
+export function ensureRoboTeamBlackboardWorkspacePayload(agent, roomId = '') {
     if (!agent || typeof agent !== 'object') {
         throw new Error('RoboTeam agent is required for blackboard access.');
     }
-    if (!agent.blackboard || typeof agent.blackboard !== 'object') {
-        agent.blackboard = createRoboTeamBlackboard(roomId);
+    if (!agent.blackboardWorkspace || typeof agent.blackboardWorkspace !== 'object') {
+        agent.blackboardWorkspace = createRoboTeamBlackboardWorkspace(roomId);
     }
-    agent.blackboard = normalizeRoboTeamBlackboardPayload(agent.blackboard, roomId);
-    return agent.blackboard;
+    agent.blackboardWorkspace = BlackboardWorkspace.from({
+        ...agent.blackboardWorkspace,
+        roomId: String(roomId || agent.blackboardWorkspace.roomId || '').trim(),
+    }).serializePrivileged();
+    return agent.blackboardWorkspace;
 }
 
 export function getRoboTeamBlackboardRevision(payload) {
     const agent = getRoboTeamAgentPayload(payload);
-    return Number(agent?.blackboard?.revision || 0);
+    return Number(agent?.blackboardWorkspace?.revision || 0);
 }
 
 function buildRoboTeamAgent(settings = {}, previous = {}, meetingId = '') {
     const timestamp = nowIso();
-    const blackboard = previous?.blackboard && typeof previous.blackboard === 'object'
-        ? normalizeRoboTeamBlackboardPayload(previous.blackboard, meetingId)
-        : createRoboTeamBlackboard(meetingId);
+    const { blackboard: _removedSingleBoard, ...previousFields } = previous && typeof previous === 'object' ? previous : {};
+    const blackboardWorkspace = previous?.blackboardWorkspace && typeof previous.blackboardWorkspace === 'object'
+        ? BlackboardWorkspace.from({ ...previous.blackboardWorkspace, roomId: meetingId }).serializePrivileged()
+        : createRoboTeamBlackboardWorkspace(meetingId);
     return {
-        ...(previous && typeof previous === 'object' ? previous : {}),
+        ...previousFields,
         id: String(previous?.id || ROBO_TEAM_PARTICIPANT_ID).trim() || ROBO_TEAM_PARTICIPANT_ID,
         participantIdentity: ROBO_TEAM_PARTICIPANT_ID,
         agentType: ROBO_TEAM_AGENT_TYPE,
@@ -222,7 +177,7 @@ function buildRoboTeamAgent(settings = {}, previous = {}, meetingId = '') {
         settings: {
             blackboard: cloneJson(settings.blackboard)
         },
-        blackboard
+        blackboardWorkspace
     };
 }
 
@@ -244,6 +199,7 @@ export function ensureRoboTeamAgentPayload(payload, stageEvent = null, meetingId
             return existing;
         }
         Object.assign(existing, nextAgent);
+        delete existing.blackboard;
     } else {
         payload.agents.push(nextAgent);
         if (stageEvent && isRoboTeamEnabled(settings)) {
@@ -267,7 +223,7 @@ function addWidgetIfMissing(blackboard, widget) {
         widget,
         participantId: ROBO_TEAM_PARTICIPANT_ID,
         reason: 'robo_team_demo'
-    });
+    }, { participantId: ROBO_TEAM_PARTICIPANT_ID, record: false });
 }
 
 export function ensureRoboTeamDemoBlackboard(payload, roomId) {
@@ -276,13 +232,11 @@ export function ensureRoboTeamDemoBlackboard(payload, roomId) {
         return false;
     }
     const agent = ensureRoboTeamAgentPayload(payload, null, roomId);
-    const blackboard = Blackboard.from({
-        ...ensureRoboTeamBlackboardPayload(agent, roomId),
-        roomId
-    });
-    if (blackboard.widgets.length > 0) {
+    const workspace = BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(agent, roomId));
+    const blackboard = workspace.activeBoard;
+    if (blackboard.widgets.size > 0) {
         payload.roboTeamDemoCreated = true;
-        agent.blackboard = blackboard.serializePrivileged();
+        agent.blackboardWorkspace = workspace.serializePrivileged();
         return false;
     }
     addWidgetIfMissing(blackboard, {
@@ -319,7 +273,8 @@ export function ensureRoboTeamDemoBlackboard(payload, roomId) {
         },
         visibility: 'all'
     });
-    agent.blackboard = blackboard.serializePrivileged();
+    workspace.bumpRevision();
+    agent.blackboardWorkspace = workspace.serializePrivileged();
     payload.roboTeamDemoCreated = true;
     return true;
 }
@@ -377,12 +332,11 @@ export async function updateRoboTeamSettings(context, { roomId, settings, authIn
         if (normalized.blackboard.enabled) {
             const demoCreated = ensureRoboTeamDemoBlackboard(payload, targetRoomId);
             if (demoCreated) {
-                const blackboard = Blackboard.from({
-                    ...ensureRoboTeamBlackboardPayload(agent, targetRoomId),
-                    roomId: targetRoomId
-                });
+                const workspace = BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(agent, targetRoomId));
+                const blackboard = workspace.activeBoard;
                 stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
                     meetingId: targetRoomId,
+                    boardId: blackboard.boardId,
                     blackboardRevision: blackboard.revision,
                     changeType: 'create',
                     targetType: 'blackboard',

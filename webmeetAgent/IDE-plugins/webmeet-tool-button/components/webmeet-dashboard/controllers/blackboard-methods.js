@@ -36,10 +36,6 @@ function getParticipantName(dashboard, participantId = '') {
     ).trim();
 }
 
-function getRoboTeamBlackboardBoardId() {
-    return 'agent:agent_robo_team';
-}
-
 function dispatchBlackboardPanelEvent(panel, type, detail = {}) {
     if (!panel) return;
     panel.dispatchEvent(new CustomEvent(type, {
@@ -77,11 +73,11 @@ export const blackboardMethods = {
     async updateRoboCommandStatus(input = {}, { publish = false } = {}) {
         const meetingId = String(input.meetingId || getMeetingId(this)).trim();
         const selectedMeetingId = getMeetingId(this);
-        const boardId = String(input.boardId || getRoboTeamBlackboardBoardId()).trim();
+        const boardId = String(input.boardId || this.blackboardAdapter?.boardId || '').trim();
         const commandId = String(input.commandId || '').trim();
         const participantId = String(input.participantId || '').trim();
         const state = String(input.state || '').trim();
-        if (!meetingId || meetingId !== selectedMeetingId || boardId !== getRoboTeamBlackboardBoardId()) return;
+        if (!meetingId || meetingId !== selectedMeetingId || !boardId) return;
         if (!commandId || !participantId || !['started', 'success', 'error'].includes(state)) return;
 
         if (state === 'started') {
@@ -208,7 +204,6 @@ export const blackboardMethods = {
 
     async ensureBlackboardAdapter() {
         const roomId = getMeetingId(this);
-        const boardId = getRoboTeamBlackboardBoardId();
         const participantId = getParticipantId(this);
         const participantName = getParticipantName(this, participantId);
         if (!roomId || !participantId) {
@@ -217,7 +212,6 @@ export const blackboardMethods = {
         if (
             this.blackboardAdapter
             && this.blackboardAdapter.roomId === roomId
-            && this.blackboardAdapter.boardId === boardId
             && this.blackboardAdapter.participantId === participantId
         ) {
             this.blackboardAdapter.participantName = participantName;
@@ -226,7 +220,6 @@ export const blackboardMethods = {
         this.blackboardAdapter?.unsubscribe?.();
         this.blackboardAdapter = new BlackboardNetworkAdapter({
             roomId,
-            boardId,
             participantId,
             participantName,
             runTool: runWebMeetTool,
@@ -242,6 +235,10 @@ export const blackboardMethods = {
         });
         this.blackboardAdapter.subscribe((payload) => {
             const panel = this.blackboardPanel;
+            if (payload.kind === 'workspace' && panel) {
+                dispatchBlackboardPanelEvent(panel, 'webmeet-blackboard-update', { workspace: payload.object });
+                return;
+            }
             if (payload.kind === 'blackboard' && panel) {
                 dispatchBlackboardPanelEvent(panel, 'webmeet-blackboard-update', {
                     blackboard: payload.object
@@ -271,7 +268,8 @@ export const blackboardMethods = {
         const blackboard = await adapter.loadInitialBlackboard();
         dispatchBlackboardPanelEvent(this.blackboardPanel, 'webmeet-blackboard-connect', {
             adapter,
-            blackboard
+            blackboard,
+            workspace: adapter.workspace,
         });
     },
 
@@ -290,6 +288,9 @@ export const blackboardMethods = {
         }
         if (!this.state.blackboard?.visible) return;
         const adapter = await this.ensureBlackboardAdapter();
+        if (result.workspace) {
+            adapter.applyWorkspaceProjection(result.workspace, { reason: 'command-result' });
+        }
         if (result.blackboard) {
             adapter.applyBlackboardProjection(result.blackboard, { reason: 'command-result' });
         }

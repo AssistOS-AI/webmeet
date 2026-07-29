@@ -361,14 +361,26 @@
       "env": { "TOOL_NAME": "webmeet_scripta_workspace_list" }
     },
     {
-      "name": "webmeet_blackboard_get",
-      "title": "WebMeet Get Blackboard",
-      "description": "Read the filtered blackboard state for a room participant. Use boardId \"agent:agent_robo_team\" for the RoboTeam public blackboard.",
+      "name": "webmeet_blackboard_workspace_get",
+      "title": "WebMeet Get Blackboard Workspace",
+      "description": "Read the ordered shared Blackboard workspace and its active board projection.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
-        "boardId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": true }
+      },
+      "env": { "TOOL_NAME": "webmeet_blackboard_workspace_get" }
+    },
+    {
+      "name": "webmeet_blackboard_get",
+      "title": "WebMeet Get Blackboard",
+      "description": "Read the Blackboard workspace and the filtered active or requested zone for a room participant.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "boardId": { "type": "string", "optional": true },
         "participantId": { "type": "string", "optional": true }
       },
       "env": { "TOOL_NAME": "webmeet_blackboard_get" }
@@ -453,6 +465,7 @@
       "cwd": "workspace",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
+        "boardId": { "type": "string", "optional": false },
         "event": { "type": "string", "optional": true },
         "source": { "type": "string", "optional": true, "enum": ["event", "robo", "ui"] },
         "commandSource": { "type": "string", "optional": true, "enum": ["chat", "voice"] },

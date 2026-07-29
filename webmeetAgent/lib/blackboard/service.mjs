@@ -12,20 +12,18 @@ import {
 } from '../store/roomRecords.mjs';
 import { WEBMEET_EVENT_TYPES } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { Blackboard, BlackboardWidget, cloneJson, normalizeFreeLineProperties } from './model.mjs';
+import { BlackboardWorkspace } from './workspace-model.mjs';
 import { assertCanonicalWidgetPatch, newEventId } from './event-contract.mjs';
 import { buildBlackboardProtocolPayload } from './protocol.mjs';
 import {
-    ROBO_TEAM_BLACKBOARD_BOARD_ID,
     ROBO_TEAM_PARTICIPANT_ID,
     ensureRoboTeamAgentPayload,
-    ensureRoboTeamBlackboardPayload,
+    ensureRoboTeamBlackboardWorkspacePayload,
     getRoboTeamAgentPayload
 } from '../roboTeam/service.mjs';
 import { scriptaOwnerHash } from '../scripta/identity.mjs';
 import { scriptaExplorer } from '../scripta/explorer-crdt-client.mjs';
 import { calculateContentBounds } from './semantic-context.mjs';
-
-export const DEFAULT_BLACKBOARD_BOARD_ID = ROBO_TEAM_BLACKBOARD_BOARD_ID;
 
 function imageGeometry(blackboard, asset) {
     const bounds = calculateContentBounds([...blackboard.widgets.values()].map((widget) => widget.serializePrivileged()));
@@ -66,7 +64,7 @@ export async function publishRoomImage(context, {
     authInfo = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
-    const targetBoardId = assertSupportedBoardId(boardId);
+    const targetBoardId = assertBoardId(boardId);
     const roomRecord = await loadRoomRecord(context, targetRoomId);
     assertCanMutateBlackboard(roomRecord, authInfo);
     const roomPayload = decryptRoomPayload(context, roomRecord);
@@ -86,8 +84,9 @@ export async function publishRoomImage(context, {
         const member = (Array.isArray(payload.members) ? payload.members : [])
             .find((entry) => String(entry?.id || '') === effectiveParticipantId);
         const authorName = String(member?.displayName || member?.name || 'User');
-        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
-        const before = blackboard.serializePrivileged();
+        const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
+        let blackboard = workspace.requireBoard(targetBoardId);
+        const before = workspace.snapshot();
         const widgetId = newEventId('widget');
         const routeUrl = `/workspace-files/${asset.workspaceUrl.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
         const widget = blackboard.applyFinalChange({
@@ -105,9 +104,12 @@ export async function publishRoomImage(context, {
                 }
             }
         }, { participantId: effectiveParticipantId, ownerParticipantId: effectiveParticipantId, record: false });
-        blackboard.history.record('command', before, blackboard.serializePrivileged());
         blackboard.updateInteractionContext([widgetId], { participantId: effectiveParticipantId });
-        const serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+        workspace.activeBoardId = blackboard.boardId;
+        workspace.bumpRevision();
+        workspace.record('image-publish', before);
+        saveWorkspaceToPayload(payload, targetRoomId, workspace);
+        const serializedBlackboard = blackboard.serializePrivileged();
         payload.resources = Array.isArray(payload.resources) ? payload.resources : [];
         if (!payload.resources.some((entry) => entry?.assetId === asset.assetId)) {
             payload.resources.push({ ...asset, resourceId: asset.assetId, roomId: targetRoomId, createdAt: new Date().toISOString() });
@@ -116,7 +118,7 @@ export async function publishRoomImage(context, {
             id: newEventId('chat'), meetingId: targetRoomId,
             authorId: effectiveParticipantId, authorName,
             message: asset.filename, kind: 'user', createdAt: new Date().toISOString(),
-            metadata: { attachments: [{ ...asset }], blackboardWidgetId: widgetId }
+            metadata: { attachments: [{ ...asset }], blackboardWidgetId: widgetId, boardId: blackboard.boardId }
         };
         payload.chatMessages = Array.isArray(payload.chatMessages) ? payload.chatMessages : [];
         payload.chatMessages.push(chatMessage);
@@ -130,19 +132,17 @@ export async function publishRoomImage(context, {
             ok: true, asset, message: chatMessage,
             widget: widget.serialize(buildViewerContext(authInfo, effectiveParticipantId)),
             blackboard: Blackboard.from(serializedBlackboard).serialize(buildViewerContext(authInfo, effectiveParticipantId)),
+            workspace: workspace.serialize(buildViewerContext(authInfo, effectiveParticipantId)),
             broadcast: buildBroadcastPayload(targetRoomId, blackboard, serializedBlackboard, 'blackboard')
         };
     });
     return result;
 }
 
-function assertSupportedBoardId(boardId = '') {
+function assertBoardId(boardId = '') {
     const normalized = String(boardId || '').trim();
     if (!normalized) {
         throw new Error('Missing required blackboard boardId.');
-    }
-    if (normalized !== DEFAULT_BLACKBOARD_BOARD_ID) {
-        throw new Error(`Unsupported blackboard boardId "${normalized}". Participant-owned blackboards are not enabled yet.`);
     }
     return normalized;
 }
@@ -180,20 +180,27 @@ function buildViewerContext(authInfo = null, participantId = '') {
     };
 }
 
-function loadBlackboardFromPayload(payload, roomId, boardId = '') {
-    assertSupportedBoardId(boardId);
+function loadWorkspaceFromPayload(payload, roomId) {
     const agent = getRoboTeamAgentPayload(payload) || ensureRoboTeamAgentPayload(payload, null, roomId);
-    return Blackboard.from({
-        ...ensureRoboTeamBlackboardPayload(agent, roomId),
-        roomId
-    });
+    return BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(agent, roomId));
 }
 
-function saveBlackboardToPayload(payload, roomId, blackboard, boardId = '') {
-    assertSupportedBoardId(boardId);
+function saveWorkspaceToPayload(payload, roomId, workspace) {
     const agent = getRoboTeamAgentPayload(payload) || ensureRoboTeamAgentPayload(payload, null, roomId);
-    agent.blackboard = blackboard.serializePrivileged();
-    return agent.blackboard;
+    agent.blackboardWorkspace = BlackboardWorkspace.from(workspace).serializePrivileged();
+    return agent.blackboardWorkspace;
+}
+
+function loadBlackboardFromPayload(payload, roomId, boardId = '') {
+    const workspace = loadWorkspaceFromPayload(payload, roomId);
+    return workspace.requireBoard(boardId || workspace.activeBoardId);
+}
+
+function saveBlackboardToPayload(payload, roomId, blackboard) {
+    const workspace = loadWorkspaceFromPayload(payload, roomId);
+    workspace.boards.set(blackboard.boardId, Blackboard.from(blackboard));
+    saveWorkspaceToPayload(payload, roomId, workspace);
+    return blackboard.serializePrivileged();
 }
 
 function assertCanAccessBlackboard(record, authInfo) {
@@ -316,16 +323,18 @@ async function readRoomBlackboard(context, {
     authInfo = null,
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
-    const targetBoardId = assertSupportedBoardId(boardId);
+    const targetBoardId = String(boardId || '').trim();
     const record = await loadRoomRecord(context, targetRoomId);
     assertCanAccessBlackboard(record, authInfo);
     const payload = decryptRoomPayload(context, record);
-    const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+    const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
+    const blackboard = workspace.requireBoard(targetBoardId || workspace.activeBoardId);
     if (blackboard.interactionContext.focusedWidgetId && !blackboard.getWidget(blackboard.interactionContext.focusedWidgetId)) {
         blackboard.interactionContext.focusedWidgetId = '';
     }
     const effectiveParticipantId = authorizeOwnParticipantId(payload, authInfo, participantId, targetRoomId);
     return {
+        workspace: workspace.serialize(buildViewerContext(authInfo, effectiveParticipantId)),
         blackboard: blackboard.serialize(buildViewerContext(authInfo, effectiveParticipantId)),
     };
 }
@@ -336,6 +345,94 @@ export async function getRoomBlackboard(context, input = {}) {
 
 export async function getRoomBlackboardForCommand(context, input = {}) {
     return readRoomBlackboard(context, input);
+}
+
+export async function applyRoomBlackboardWorkspaceAction(context, {
+    roomId,
+    action = '',
+    boardId = '',
+    targetBoardId = '',
+    title = '',
+    targetIndex = 0,
+    widgetIds = [],
+    placement = null,
+    participantId = '',
+    authInfo = null,
+} = {}) {
+    const targetRoomId = String(roomId || '').trim();
+    const normalizedAction = String(action || '').trim();
+    let result = null;
+    await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
+        assertCanMutateBlackboard(record, authInfo);
+        const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
+        const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
+        let affectedBoardIds = [];
+        if (normalizedAction === 'board-create') {
+            const board = workspace.createBoard({ title });
+            affectedBoardIds = [board.boardId];
+        } else if (normalizedAction === 'board-rename') {
+            workspace.renameBoard(assertBoardId(boardId), title);
+            affectedBoardIds = [boardId];
+        } else if (normalizedAction === 'board-reorder') {
+            workspace.reorderBoard(assertBoardId(boardId), targetIndex);
+            affectedBoardIds = [boardId];
+        } else if (normalizedAction === 'board-delete') {
+            workspace.deleteBoard(assertBoardId(boardId));
+            affectedBoardIds = [boardId, workspace.activeBoardId];
+        } else if (normalizedAction === 'board-activate') {
+            workspace.activateBoard(assertBoardId(boardId));
+            affectedBoardIds = [boardId];
+        } else if (normalizedAction === 'board-transfer') {
+            const transfer = workspace.transferWidgets({
+                sourceBoardId: assertBoardId(boardId),
+                targetBoardId: assertBoardId(targetBoardId),
+                widgetIds,
+                placement,
+            }, { participantId: effectiveParticipantId });
+            affectedBoardIds = [...new Set([transfer.source.boardId, transfer.target.boardId])];
+        } else if (normalizedAction === 'board-copy') {
+            const copied = workspace.copyWidgets({
+                sourceBoardId: assertBoardId(boardId),
+                targetBoardId: assertBoardId(targetBoardId),
+                widgetIds,
+                placement,
+            }, {participantId: effectiveParticipantId});
+            affectedBoardIds = [copied.target.boardId];
+        } else if (normalizedAction === 'undo' || normalizedAction === 'redo') {
+            const changed = normalizedAction === 'undo' ? workspace.undo() : workspace.redo();
+            if (!changed) {
+                result = { ok: true, changed: false };
+                return;
+            }
+            affectedBoardIds = [...workspace.boardOrder];
+        } else {
+            throw new Error(`Unsupported Blackboard workspace action "${normalizedAction}".`);
+        }
+        saveWorkspaceToPayload(payload, targetRoomId, workspace);
+        const viewerContext = buildViewerContext(authInfo, effectiveParticipantId);
+        const activeBoard = workspace.activeBoard;
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+            meetingId: targetRoomId,
+            workspaceRevision: workspace.revision,
+            boardId: activeBoard.boardId,
+            affectedBoardIds,
+            activeBoardId: workspace.activeBoardId,
+            blackboardRevision: activeBoard.revision,
+            changeType: normalizedAction,
+            targetType: 'workspace',
+            targetRef: workspace.activeBoardId,
+            objectKind: 'workspace',
+        });
+        result = {
+            ok: true,
+            changed: true,
+            workspace: workspace.serialize(viewerContext),
+            blackboard: activeBoard.serialize(viewerContext),
+            affectedBoardIds,
+            broadcast: buildBroadcastPayload(targetRoomId, activeBoard, activeBoard.serializePrivileged(), 'blackboard'),
+        };
+    });
+    return result;
 }
 
 function resolveEndpoint(endpoint = {}, refs = new Map()) {
@@ -431,7 +528,7 @@ export async function applyRoomBlackboardEvents(context, {
     source = 'ui',
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
-    const targetBoardId = assertSupportedBoardId(boardId);
+    const targetBoardId = assertBoardId(boardId);
     if (!Array.isArray(events) || !events.length) throw new Error('At least one blackboard event is required.');
     if (events.some((event) => ['show', 'hide'].includes(event.action))) {
         throw new Error('show and hide cannot be combined with persistent blackboard events.');
@@ -444,6 +541,7 @@ export async function applyRoomBlackboardEvents(context, {
     }
     const canonicalEvents = await canonicalizeImageAssetEvents(context, targetRoomId, events);
     let serializedBlackboard;
+    let serializedWorkspace;
     let broadcast;
     let effectiveParticipantId = '';
     let changed = true;
@@ -452,8 +550,9 @@ export async function applyRoomBlackboardEvents(context, {
     await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
         assertCanMutateBlackboard(record, authInfo);
         effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
-        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
-        const before = blackboard.serializePrivileged();
+        const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
+        let blackboard = workspace.requireBoard(targetBoardId);
+        const before = workspace.snapshot();
         const initialRevision = blackboard.revision;
         const refs = new Map();
         const affectedIds = [];
@@ -466,12 +565,13 @@ export async function applyRoomBlackboardEvents(context, {
             const event = resolveEvent(rawEvent, refs);
             if (event.action === 'undo' || event.action === 'redo') {
                 if (canonicalEvents.length !== 1) throw new Error(`${event.action} cannot be combined with other events.`);
-                const result = event.action === 'undo' ? blackboard.undo() : blackboard.redo();
+                const result = event.action === 'undo' ? workspace.undo() : workspace.redo();
                 appliedEvents.push(event);
                 if (!result) {
                     changed = false;
                     break;
                 }
+                blackboard = workspace.requireBoard(workspace.activeBoardId);
                 continue;
             }
             if (['show', 'hide'].includes(event.action)) {
@@ -510,24 +610,28 @@ export async function applyRoomBlackboardEvents(context, {
             affectedIds.push(...eventAffectedIds(event, result));
             appliedEvents.push({ ...event, ...(rawEvent.ref ? { ref: rawEvent.ref } : {}) });
         }
-        blackboard.revision = initialRevision;
+        const isHistoryMove = ['undo', 'redo'].includes(canonicalEvents[0].action);
+        if (!isHistoryMove) blackboard.revision = initialRevision;
         if (!changed) {
-            serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+            serializedWorkspace = saveWorkspaceToPayload(payload, targetRoomId, workspace);
+            serializedBlackboard = blackboard.serializePrivileged();
             broadcast = null;
             return;
         }
         blackboard.bumpRevision();
-        if (!['undo', 'redo'].includes(canonicalEvents[0].action)) {
+        if (!isHistoryMove) {
             if (canonicalEvents.at(-1).action === 'clear' && !affectedIds.length) {
                 blackboard.interactionContext = { focusedWidgetId: '', lastAffectedWidgetIds: [], updatedBy: '', updatedAt: '' };
             } else {
                 blackboard.updateInteractionContext(affectedIds, { participantId: actorId });
             }
             if (!events.every((event) => event.action === 'focus')) {
-                blackboard.history.record('command', before, blackboard.serializePrivileged());
+                workspace.bumpRevision();
+                workspace.record('command', before);
             }
         }
-        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+        serializedWorkspace = saveWorkspaceToPayload(payload, targetRoomId, workspace);
+        serializedBlackboard = blackboard.serializePrivileged();
         broadcast = buildBroadcastPayload(targetRoomId, blackboard, blackboard.serializePrivileged(), 'blackboard');
         stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
             meetingId: targetRoomId,
@@ -545,6 +649,7 @@ export async function applyRoomBlackboardEvents(context, {
         changed,
         events: appliedEvents,
         blackboard: Blackboard.from(serializedBlackboard).serialize(buildViewerContext(authInfo, effectiveParticipantId)),
+        workspace: BlackboardWorkspace.from(serializedWorkspace).serialize(buildViewerContext(authInfo, effectiveParticipantId)),
         broadcast,
     };
 }
@@ -557,7 +662,7 @@ export async function applyRoomBlackboardChange(context, {
     authInfo = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
-    const targetBoardId = assertSupportedBoardId(boardId);
+    const targetBoardId = assertBoardId(boardId);
     let serializedBlackboard = null;
     let serializedObject = null;
     let broadcast = null;
@@ -569,7 +674,9 @@ export async function applyRoomBlackboardChange(context, {
         normalizedChange = normalizeChange(change, authInfo);
         normalizedChange.participantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
         sanitizeChangeAuthority(normalizedChange, authInfo);
-        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
+        const blackboard = workspace.requireBoard(targetBoardId);
+        const before = workspace.snapshot();
         if (normalizedChange.changeType === 'submit') {
             const targetRef = String(normalizedChange.targetRef || '').trim();
             const targetWidget = blackboard.getWidget(targetRef);
@@ -579,7 +686,10 @@ export async function applyRoomBlackboardChange(context, {
                     canManagePoll: true,
                     record: false
                 });
-                serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+                workspace.bumpRevision();
+                workspace.record('poll-close', before);
+                saveWorkspaceToPayload(payload, targetRoomId, workspace);
+                serializedBlackboard = blackboard.serializePrivileged();
                 serializedObject = result.serializePrivileged();
                 broadcast = buildBroadcastPayload(targetRoomId, blackboard, serializedObject, 'widget');
                 stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, buildBlackboardEventData(
@@ -595,9 +705,13 @@ export async function applyRoomBlackboardChange(context, {
         const result = blackboard.applyFinalChange(normalizedChange, {
             participantId: normalizedChange.participantId,
             canManagePoll: isAdminAuthInfo(authInfo),
-            canModerateBlackboard: isAdminAuthInfo(authInfo)
+            canModerateBlackboard: isAdminAuthInfo(authInfo),
+            record: false,
         });
-        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+        workspace.bumpRevision();
+        workspace.record('command', before);
+        saveWorkspaceToPayload(payload, targetRoomId, workspace);
+        serializedBlackboard = blackboard.serializePrivileged();
         const returnsBoardProjection = normalizedChange.changeType === 'clear'
             || normalizedChange.targetType === 'blackboard'
             || normalizedChange.targetType === 'group';
@@ -662,7 +776,7 @@ async function applyHistoryMove(context, {
     direction
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
-    const targetBoardId = assertSupportedBoardId(boardId);
+    assertBoardId(boardId);
     let serializedBlackboard = null;
     let changed = false;
     let broadcast = null;
@@ -671,11 +785,13 @@ async function applyHistoryMove(context, {
     await mutateRoom(context, targetRoomId, (record, payload, stageEvent) => {
         assertCanMutateBlackboard(record, authInfo);
         effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
-        const blackboard = loadBlackboardFromPayload(payload, targetRoomId, targetBoardId);
+        const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
+        const result = direction === 'redo' ? workspace.redo() : workspace.undo();
+        const blackboard = workspace.activeBoard;
         const viewerContext = buildViewerContext(authInfo, effectiveParticipantId);
-        const result = direction === 'redo' ? blackboard.redo(viewerContext) : blackboard.undo(viewerContext);
         changed = Boolean(result);
-        serializedBlackboard = saveBlackboardToPayload(payload, targetRoomId, blackboard, targetBoardId);
+        saveWorkspaceToPayload(payload, targetRoomId, workspace);
+        serializedBlackboard = blackboard.serializePrivileged();
         broadcast = changed ? buildBroadcastPayload(targetRoomId, blackboard, blackboard.serializePrivileged(), 'blackboard') : null;
         if (changed) {
             stageEvent('meeting', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {

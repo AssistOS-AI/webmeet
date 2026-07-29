@@ -67,6 +67,7 @@ import {
 import {
     applyRoomBlackboardChange as applyRoomBlackboardChangeImpl,
     applyRoomBlackboardEvents as applyRoomBlackboardEventsImpl,
+    applyRoomBlackboardWorkspaceAction as applyRoomBlackboardWorkspaceActionImpl,
     getRoomBlackboard as getRoomBlackboardImpl,
     getRoomBlackboardForCommand as getRoomBlackboardForCommandImpl,
     publishRoomImage as publishRoomImageImpl,
@@ -244,6 +245,10 @@ export async function getRoomBlackboard(context, { roomId, boardId = '', partici
 export async function getRoomBlackboardForCommand(context, { roomId, boardId = '', participantId = '', authInfo = null } = {}) {
     await repairScriptaBlackboardProjectionImpl(context, { roomId, participantId, authInfo });
     return await getRoomBlackboardForCommandImpl(context, { roomId, boardId, participantId, authInfo });
+}
+
+export async function applyRoomBlackboardWorkspaceAction(context, input = {}) {
+    return await applyRoomBlackboardWorkspaceActionImpl(context, input);
 }
 
 export async function authorizeMeetingParticipant(context, {

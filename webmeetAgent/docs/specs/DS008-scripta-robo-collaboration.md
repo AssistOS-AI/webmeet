@@ -12,6 +12,8 @@ summary: Defines workspace-backed SCRIPTA documents, the singleton document widg
 
 WebMeet integrates SCRIPTA through one native `scripta-document` blackboard widget. Workspace Markdown state is authoritative; room state contains attachment metadata, the active resource, and the shared document/paragraph view focus.
 
+The multi-zone Blackboard workspace contains at most one SCRIPTA widget. It is mounted on the explicitly active board and may be transferred atomically to another board without changing its CRDT resource. SCRIPTA reads use `webmeet_blackboard_workspace_get` or board-specific `webmeet_blackboard_get`; every mutation command carries the target `boardId`, and no fixed RoboTeam board id exists.
+
 ## Core Content
 
 Creating a room idempotently creates `/WebMeet/<room-slug>-<short-room-id>/`. Renaming the room does not move this folder. Room creation does not create an implicit document. A participant may create a document in the room folder, while an authenticated workspace user may also open a workspace Markdown path. A canonical path may be attached to only one room at a time.

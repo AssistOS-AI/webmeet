@@ -42,6 +42,7 @@ function makeComponent(overrides = {}) {
         publishRealtimePayload: async () => {},
         loadMeetingDetails: async () => {},
         getRoom: () => null,
+        getActiveBoardId: () => 'board-1',
         runTool: async (name, args) => {
             calls.push({ name, args });
             if (name === 'webmeet_chat_send') {
@@ -351,6 +352,24 @@ test('/robo reports the explicit server error as its terminal status', async () 
     assert.equal(statuses[1].errorMessage, 'There are multiple lines.');
 });
 
+test('/robo reports an active workspace lookup failure without rejecting sendChat', async () => {
+    let errorMessage = '';
+    const { component } = makeComponent({
+        getActiveBoardId: () => '',
+        setError: (message) => { errorMessage = message; },
+        runTool: async (name) => {
+            assert.equal(name, 'webmeet_blackboard_workspace_get');
+            throw new Error('Workspace read failed.');
+        },
+    });
+    component.elements = { chatInput: { value: '/robo move the shape' } };
+
+    await assert.doesNotReject(() => component.sendChat());
+
+    assert.match(errorMessage, /Workspace read failed/);
+    assert.equal(component.elements.chatInput.value, '/robo move the shape');
+});
+
 test('/robo event error remains available as an audit message', async () => {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
     let errorMessage = '';
@@ -362,6 +381,7 @@ test('/robo event error remains available as an audit message', async () => {
         renderFeedLists: () => {},
         loadMeetingDetails: async () => {},
         getRoom: () => null,
+        getActiveBoardId: () => 'board-1',
         setError: (message) => { errorMessage = message; },
         runTool: async () => ({
             ok: false,
@@ -389,7 +409,7 @@ test('/robo command applies the open blackboard and broadcasts its revision', as
             ok: true,
             auditMessage: { id: 'chat-live', kind: 'event', message: args.event, metadata: { status: 'success' } },
             visibilityPayload: { type: 'blackboard.visibility_changed', visible: true },
-            blackboard: { boardId: 'agent:agent_robo_team', revision: 42, widgets: [] }
+            blackboard: { boardId: 'board-1', revision: 42, widgets: [] }
         };
     };
     component.elements = { chatInput: { value: '/robo go to next paragraph' } };
@@ -399,7 +419,7 @@ test('/robo command applies the open blackboard and broadcasts its revision', as
     assert.equal(state.chat[0].message, '/robo go to next paragraph');
     assert.equal(refreshResult.blackboard.revision, 42);
     const update = published.find((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
-    assert.equal(update.boardId, 'agent:agent_robo_team');
+    assert.equal(update.boardId, 'board-1');
     assert.equal(update.blackboardRevision, 42);
     assert.equal(published.some((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED), false);
 });

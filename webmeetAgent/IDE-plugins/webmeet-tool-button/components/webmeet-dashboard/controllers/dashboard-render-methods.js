@@ -31,7 +31,8 @@ function renderChatAttachments(entry = {}) {
     return attachments.filter((attachment) => attachment?.kind === 'image' && attachment?.workspaceUrl).map((attachment) => {
         const route = `/workspace-files/${String(attachment.workspaceUrl).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
         const widgetId = String(entry?.metadata?.blackboardWidgetId || '');
-        return `<button type="button" class="webmeet-chat-attachment-button" data-chat-blackboard-widget="${escapeHtml(widgetId)}" aria-label="Open image on Blackboard"><img class="webmeet-chat-attachment-image" src="${escapeHtml(route)}" alt="${escapeHtml(attachment.filename || 'Image')}" loading="lazy"></button>`;
+        const boardId = String(entry?.metadata?.boardId || '');
+        return `<button type="button" class="webmeet-chat-attachment-button" data-chat-blackboard-widget="${escapeHtml(widgetId)}" data-chat-blackboard-board="${escapeHtml(boardId)}" aria-label="Open image on Blackboard"><img class="webmeet-chat-attachment-image" src="${escapeHtml(route)}" alt="${escapeHtml(attachment.filename || 'Image')}" loading="lazy"></button>`;
     }).join('');
 }
 
@@ -53,8 +54,29 @@ function safeEventValue(value) {
         .map(([key, entry]) => [key, safeEventValue(entry)]));
 }
 
+function formatWorkspaceEvent(event, boardTitle = '') {
+    if (!event?.action) return '';
+    const payload = safeEventValue(event.payload || {});
+    const payloadText = Object.keys(payload).length ? ` ${JSON.stringify(payload)}` : '';
+    const workspaceText = String(boardTitle || '').trim() ? ` · ${String(boardTitle).trim()}` : '';
+    return `/event ${event.action}${payloadText}${workspaceText}`;
+}
+
+function appendWorkspaceTitle(message, boardTitle = '') {
+    const title = String(boardTitle || '').trim();
+    if (!title) return String(message || '');
+    return String(message || '').split('\n')
+        .map((line) => line ? `${line} · ${title}` : line)
+        .join('\n');
+}
+
 export function formatChatEntryMessage(entry = {}) {
     if (String(entry.kind || '') !== 'event') return String(entry.message || '');
+    const boardTitle = String(entry.metadata?.boardTitle || '').trim();
+    const events = Array.isArray(entry.metadata?.events) ? entry.metadata.events : [];
+    if (events.length) {
+        return events.map((event) => formatWorkspaceEvent(event, boardTitle)).filter(Boolean).join('\n');
+    }
     let event = entry.metadata?.event;
     if (!event || typeof event !== 'object') {
         const raw = String(entry.message || '').replace(/^\/(?:event|robo)\s*/i, '').trim();
@@ -62,10 +84,8 @@ export function formatChatEntryMessage(entry = {}) {
             try { event = JSON.parse(raw); } catch { event = null; }
         }
     }
-    if (!event?.action) return String(entry.message || '');
-    const payload = safeEventValue(event.payload || {});
-    const payloadText = Object.keys(payload).length ? ` ${JSON.stringify(payload)}` : '';
-    return `/event ${event.action}${payloadText}`;
+    if (!event?.action) return appendWorkspaceTitle(entry.message, boardTitle);
+    return formatWorkspaceEvent(event, boardTitle);
 }
 
 export const dashboardRenderMethods = {

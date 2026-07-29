@@ -4,9 +4,7 @@ import {
 import {
     buildRtcConfig
 } from '../store/rtcConfig.mjs';
-import {
-    Blackboard
-} from '../blackboard/model.mjs';
+import { BlackboardWorkspace } from '../blackboard/workspace-model.mjs';
 import {
     createLiveKitToken,
     getLiveKitParticipantIdentity,
@@ -92,13 +90,15 @@ function needsRoboTeamPayloadNormalization(payload, meetingId = '') {
     if (stringifyStableJson(agent.settings?.blackboard || null) !== stringifyStableJson(normalizedSettings.blackboard || null)) {
         return true;
     }
-    if (!agent.blackboard || typeof agent.blackboard !== 'object') {
+    if (!agent.blackboardWorkspace || typeof agent.blackboardWorkspace !== 'object') {
         return true;
     }
-    if (needsBlackboardHistoryCompaction(agent.blackboard)) {
+    if (needsBlackboardHistoryCompaction(agent.blackboardWorkspace)) {
         return true;
     }
-    const widgets = Array.isArray(agent.blackboard.widgets) ? agent.blackboard.widgets : [];
+    const widgets = Array.isArray(agent.blackboardWorkspace.boards)
+        ? agent.blackboardWorkspace.boards.flatMap((board) => Array.isArray(board.widgets) ? board.widgets : [])
+        : [];
     const shouldCreateDemo = enabled
         && normalizedSettings.blackboard?.enabled
         && payload?.roboTeamDemoCreated !== true
@@ -132,15 +132,15 @@ function needsBlackboardHistoryCompaction(blackboard = {}) {
 
 function compactRoboTeamBlackboardHistory(payload, meetingId = '') {
     const agent = getRoboTeamAgentPayload(payload);
-    if (!agent?.blackboard || typeof agent.blackboard !== 'object') {
+    if (!agent?.blackboardWorkspace || typeof agent.blackboardWorkspace !== 'object') {
         return false;
     }
-    if (!needsBlackboardHistoryCompaction(agent.blackboard)) {
+    if (!needsBlackboardHistoryCompaction(agent.blackboardWorkspace)) {
         return false;
     }
-    agent.blackboard = Blackboard.from({
-        ...agent.blackboard,
-        roomId: String(agent.blackboard.roomId || meetingId || '').trim()
+    agent.blackboardWorkspace = BlackboardWorkspace.from({
+        ...agent.blackboardWorkspace,
+        roomId: String(agent.blackboardWorkspace.roomId || meetingId || '').trim()
     }).serializePrivileged();
     return true;
 }
@@ -349,12 +349,13 @@ function appendRoboTeamParticipant(payload, participants, meetingId = '') {
 }
 
 function projectRoomAgentForDetails(agent = {}) {
-    const blackboard = agent?.blackboard && typeof agent.blackboard === 'object'
+    const blackboard = agent?.blackboardWorkspace && typeof agent.blackboardWorkspace === 'object'
         ? {
-            id: String(agent.blackboard.id || '').trim(),
-            roomId: String(agent.blackboard.roomId || '').trim(),
-            revision: Number(agent.blackboard.revision || 0),
-            widgetCount: Array.isArray(agent.blackboard.widgets) ? agent.blackboard.widgets.length : 0
+            id: String(agent.blackboardWorkspace.id || '').trim(),
+            roomId: String(agent.blackboardWorkspace.roomId || '').trim(),
+            revision: Number(agent.blackboardWorkspace.revision || 0),
+            boardCount: Array.isArray(agent.blackboardWorkspace.boards) ? agent.blackboardWorkspace.boards.length : 0,
+            activeBoardId: String(agent.blackboardWorkspace.activeBoardId || '').trim(),
         }
         : null;
     return {

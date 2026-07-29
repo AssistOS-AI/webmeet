@@ -412,7 +412,8 @@ export class WebmeetDashboard {
             updateRoboCommandStatus: (status) => this.updateRoboCommandStatus(status, { publish: true }),
             updateRoboDraftState: (active) => this.setRoboCommandDraftActive(active),
             loadMeetingDetails: () => this.loadMeetingDetails(),
-            getRoom: () => this.room
+            getRoom: () => this.room,
+            getActiveBoardId: () => this.blackboardAdapter?.boardId || '',
         });
 
     }
@@ -575,13 +576,17 @@ export class WebmeetDashboard {
         const attachment = event.target?.closest?.('[data-chat-blackboard-widget]');
         if (attachment) {
             const widgetId = String(attachment.dataset.chatBlackboardWidget || '').trim();
+            const boardId = String(attachment.dataset.chatBlackboardBoard || '').trim();
             void this.applyBlackboardVisibility({
                 meetingId: this.selectedMeeting?.id || '',
                 participantId: this.state.session?.participantIdentity || '',
                 visible: true,
                 presenterId: 'agent_robo_team',
                 presenterName: 'RoboTeam'
-            }).then(() => {
+            }).then(async () => {
+                if (boardId && boardId !== this.blackboardAdapter?.boardId) {
+                    await this.blackboardAdapter?.sendWorkspaceAction?.('board-activate', { boardId });
+                }
                 this.blackboardPanel?.dispatchEvent?.(new CustomEvent('webmeet-blackboard-select-widget', {detail: {widgetId}}));
             });
             return;

@@ -46,9 +46,6 @@ export class BlackboardNetworkAdapter {
     } = {}) {
         this.roomId = String(roomId || '').trim();
         this.boardId = String(boardId || '').trim();
-        if (!this.boardId) {
-            throw new Error('Missing blackboard boardId.');
-        }
         this.participantId = String(participantId || '').trim();
         this.participantName = String(participantName || '').trim();
         this.runTool = runTool;
@@ -59,19 +56,75 @@ export class BlackboardNetworkAdapter {
         this.seenMessageIds = new Set();
         this.locallyAppliedScriptaRevisions = new Set();
         this.currentRevision = 0;
+        this.workspace = null;
+        this.workspaceRevision = 0;
         this.unsubscribeRoom = null;
         this.scriptaReplica = new ScriptaCrdtReplica(this);
     }
 
-    async loadInitialBlackboard(roomId = this.roomId) {
-        const response = await this.runTool('webmeet_blackboard_get', {
+    async loadInitialBlackboard(roomId = this.roomId, boardId = '') {
+        const response = await this.runTool(String(boardId || '').trim() ? 'webmeet_blackboard_get' : 'webmeet_blackboard_workspace_get', {
             roomId,
-            boardId: this.boardId,
+            ...(String(boardId || '').trim() ? { boardId: String(boardId).trim() } : {}),
             participantId: this.participantId
         });
+        this.applyWorkspaceProjection(response?.workspace, { emit: false });
+        this.boardId = String(response?.blackboard?.boardId || response?.workspace?.activeBoardId || this.boardId).trim();
         const revision = Number(response?.blackboard?.revision || 0);
-        this.currentRevision = Math.max(this.currentRevision, revision);
+        this.currentRevision = revision;
         return response?.blackboard || { roomId, revision: 0, widgets: [] };
+    }
+
+    applyWorkspaceProjection(workspace, { emit = true, reason = 'workspace-update' } = {}) {
+        if (!workspace || typeof workspace !== 'object') return false;
+        const revision = Number(workspace.revision || 0);
+        if (!Number.isSafeInteger(revision) || revision < this.workspaceRevision) return false;
+        this.workspaceRevision = revision;
+        this.workspace = workspace;
+        this.boardId = String(workspace.activeBoardId || this.boardId).trim();
+        if (emit) this.emit({ kind: 'workspace', object: workspace, revision, reason });
+        return true;
+    }
+
+    async loadBoard(boardId, { activate = false } = {}) {
+        const targetBoardId = String(boardId || '').trim();
+        if (!targetBoardId) throw new Error('Missing Blackboard workspace zone id.');
+        if (activate && targetBoardId !== this.boardId) {
+            return this.sendWorkspaceAction('board-activate', { boardId: targetBoardId });
+        }
+        const blackboard = await this.loadInitialBlackboard(this.roomId, targetBoardId);
+        this.applyBlackboardProjection(blackboard, { reason: 'board-load' });
+        return { workspace: this.workspace, blackboard };
+    }
+
+    async fetchBoardProjection(boardId) {
+        const targetBoardId = String(boardId || '').trim();
+        if (!targetBoardId) throw new Error('Missing Blackboard workspace zone id.');
+        const response = await this.runTool('webmeet_blackboard_get', {
+            roomId: this.roomId,
+            boardId: targetBoardId,
+            participantId: this.participantId,
+        });
+        return response?.blackboard || null;
+    }
+
+    async sendWorkspaceAction(action, input = {}) {
+        const target = action === 'board-create' ? { type: 'workspace' } : { type: 'blackboard' };
+        const sourceBoardId = String(input.boardId || this.boardId).trim();
+        const payload = {};
+        for (const key of ['title', 'targetIndex', 'targetBoardId', 'widgetIds', 'placement']) {
+            if (input[key] !== undefined) payload[key] = input[key];
+        }
+        const response = await this.runEvent(this.createEvent({ target, action, payload }), sourceBoardId);
+        await this.publishAudit(response);
+        if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard workspace action failed.');
+        this.applyWorkspaceProjection(response.workspace, { reason: action });
+        if (response.blackboard) {
+            this.currentRevision = 0;
+            this.applyBlackboardProjection(response.blackboard, { reason: action });
+        }
+        await this.publishFinalUpdate(response, action);
+        return response;
     }
 
     applyBlackboardProjection(blackboard, { kind = 'blackboard', reason = 'update' } = {}) {
@@ -115,6 +168,7 @@ export class BlackboardNetworkAdapter {
         const response = await this.runEvent(event);
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard event failed.');
+        this.applyWorkspaceProjection(response?.workspace, { reason: action });
         const projectionApplied = this.applyBlackboardProjection(response?.blackboard, { reason: action });
         if (projectionApplied) await this.publishFinalUpdate(response, change?.changeType || 'update');
         return response;
@@ -128,6 +182,7 @@ export class BlackboardNetworkAdapter {
             }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || response?.message || 'Blackboard event failed.');
+        this.applyWorkspaceProjection(response?.workspace, { reason: action });
         const projectionApplied = this.applyBlackboardProjection(response?.blackboard, {
             kind: projectionMode === 'state' ? 'blackboard-state' : 'blackboard',
             reason: action
@@ -213,9 +268,10 @@ export class BlackboardNetworkAdapter {
         return { target, action, payload };
     }
 
-    async runEvent(event) {
+    async runEvent(event, boardId = this.boardId) {
         return this.runTool('webmeet_event_command', {
             roomId: this.roomId,
+            boardId: String(boardId || '').trim(),
             participantId: this.participantId,
             selectedWidgetId: event.target?.widgetId || '',
             source: 'ui',
@@ -231,6 +287,7 @@ export class BlackboardNetworkAdapter {
         }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard undo failed.');
+        this.applyWorkspaceProjection(response?.workspace, { reason: 'undo' });
         const projectionApplied = this.applyBlackboardProjection(response?.blackboard, { reason: 'undo' });
         if (response?.changed && projectionApplied) {
             await this.publishFinalUpdate(response, 'undo');
@@ -244,6 +301,7 @@ export class BlackboardNetworkAdapter {
         }));
         await this.publishAudit(response);
         if (!response?.ok) throw new Error(response?.error?.message || 'Blackboard redo failed.');
+        this.applyWorkspaceProjection(response?.workspace, { reason: 'redo' });
         const projectionApplied = this.applyBlackboardProjection(response?.blackboard, { reason: 'redo' });
         if (response?.changed && projectionApplied) {
             await this.publishFinalUpdate(response, 'redo');
@@ -300,6 +358,12 @@ export class BlackboardNetworkAdapter {
         }
         const revision = Number(parsed.payload?.blackboardRevision || 0);
         const eventBoardId = String(parsed.payload?.boardId || '').trim();
+        if (parsed.payload?.objectKind === 'workspace') {
+            const blackboard = await this.loadInitialBlackboard(this.roomId);
+            this.applyWorkspaceProjection(this.workspace, { reason: 'realtime-workspace' });
+            this.applyBlackboardProjection(blackboard, { reason: 'realtime-workspace' });
+            return 'applied';
+        }
         if (!eventBoardId || eventBoardId !== this.boardId) {
             return 'wrong-board';
         }
@@ -478,6 +542,9 @@ export class BlackboardNetworkAdapter {
             type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
             meetingId: this.roomId,
             boardId: this.boardId,
+            workspaceRevision: Number(response?.workspace?.revision || this.workspaceRevision || 0),
+            activeBoardId: String(response?.workspace?.activeBoardId || this.boardId),
+            affectedBoardIds: Array.isArray(response?.affectedBoardIds) ? response.affectedBoardIds : [this.boardId],
             boardOwnerType: String(broadcastPayload.boardOwnerType || 'agent').trim(),
             boardOwnerId: String(broadcastPayload.boardOwnerId || 'agent_robo_team').trim(),
             boardVisibility: String(broadcastPayload.boardVisibility || 'room').trim(),
@@ -485,7 +552,7 @@ export class BlackboardNetworkAdapter {
             changeType: String(response?.change?.changeType || fallbackChangeType || 'update').trim(),
             targetType: String(response?.change?.targetType || 'blackboard').trim(),
             targetRef: String(response?.change?.targetRef || response?.object?.id || '').trim(),
-            objectKind: broadcastPayload.kind || (response?.object?.id ? 'widget' : 'blackboard'),
+            objectKind: response?.workspace ? 'workspace' : broadcastPayload.kind || (response?.object?.id ? 'widget' : 'blackboard'),
             blackboardMessage
         });
     }

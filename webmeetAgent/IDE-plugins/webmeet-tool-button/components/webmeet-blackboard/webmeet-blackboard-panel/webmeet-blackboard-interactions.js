@@ -24,12 +24,27 @@ export const blackboardInteractionMethods = {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !this.board.contains(target)) return;
-        if (target.closest?.('.webmeet-blackboard-group-overlay')) return;
+        const groupOverlay = target.closest?.('.webmeet-blackboard-group-overlay');
+        if (groupOverlay) {
+            const ownsGesture = groupOverlay.classList.contains('is-group')
+                && !target.closest('.webmeet-blackboard-context-menu, [data-group-resize-handle]');
+            const groupId = String(groupOverlay.dataset.groupId || '');
+            const representative = ownsGesture ? this.getGroupMembers(groupId).at(-1) : null;
+            if (!representative || event.shiftKey || event.ctrlKey || event.metaKey) return;
+            this.beginGroupDrag(event, groupId, representative);
+            return;
+        }
         const groupHitArea = target.closest?.('.webmeet-blackboard-group-hit-area');
         if (groupHitArea) {
             const groupId = String(groupHitArea.dataset.groupId || '');
             const representative = this.getGroupMembers(groupId).at(-1);
             if (!representative) return;
+            if (event.shiftKey || event.ctrlKey || event.metaKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleWidgetMultiSelection(representative);
+                return;
+            }
             this.selectGroup(groupId, representative.id);
             if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: representative.id}).catch(() => {});
             this.beginGroupDrag(event, groupId, representative);
@@ -372,15 +387,28 @@ export const blackboardInteractionMethods = {
         const y = this.dragState.originY + event.clientY - this.dragState.startY;
         this.dragState.node.style.left = `${x}px`;
         this.dragState.node.style.top = `${y}px`;
+        const tabShell = document.elementFromPoint?.(event.clientX, event.clientY)?.closest?.('.webmeet-blackboard-tab-shell');
+        const targetBoardId = String(tabShell?.dataset?.boardId || '').trim();
+        this.dragState.targetBoardId = targetBoardId && targetBoardId !== this.workspace?.activeBoardId ? targetBoardId : '';
+        this.scheduleWorkspaceTabActivation?.(this.dragState.targetBoardId);
+        for (const shell of this.workspaceTabs?.querySelectorAll?.('.is-drag-over') || []) shell.classList.remove('is-drag-over');
+        if (this.dragState.targetBoardId) tabShell.classList.add('is-drag-over');
     },
 
     async finishLocalDrag() {
         if (!this.dragState) return;
-        const {widget, node, originX, originY} = this.dragState;
+        const {widget, node, originX, originY, targetBoardId} = this.dragState;
         const x = Number.parseFloat(node.style.left) || originX;
         const y = Number.parseFloat(node.style.top) || originY;
         this.detachDragListeners(node);
         this.dragState = null;
+        this.clearWorkspaceTabActivation?.();
+        for (const shell of this.workspaceTabs?.querySelectorAll?.('.is-drag-over') || []) shell.classList.remove('is-drag-over');
+        if (targetBoardId) {
+            node.style.left = `${originX}px`;
+            node.style.top = `${originY}px`;
+            return;
+        }
         const response = await this.adapter?.sendChange({
             changeType: 'update',
             targetType: 'widget',
@@ -409,6 +437,7 @@ export const blackboardInteractionMethods = {
         node.style.top = `${originY}px`;
         this.detachDragListeners(node);
         this.dragState = null;
+        this.clearWorkspaceTabActivation?.();
     },
 
     detachDragListeners(node) {

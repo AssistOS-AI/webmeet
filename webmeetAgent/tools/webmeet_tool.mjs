@@ -4,6 +4,7 @@ import {
     archiveMeeting,
     applyRoomBlackboardChange,
     applyRoomBlackboardEvents,
+    applyRoomBlackboardWorkspaceAction,
     attachMeetingAgent,
     authorizeMeetingParticipant,
     appendMeetingChat,
@@ -328,10 +329,16 @@ export async function dispatch(toolName, args, context, authInfo) {
         });
     case 'webmeet_room_public_get':
         return await getPublicGuestMeeting(context, getRequiredString(args, 'roomId'));
+    case 'webmeet_blackboard_workspace_get':
+        return await getRoomBlackboard(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            participantId: String(args?.participantId || '').trim(),
+            authInfo
+        });
     case 'webmeet_blackboard_get':
         return await getRoomBlackboard(context, {
             roomId: getRequiredString(args, 'roomId'),
-            boardId: getRequiredString(args, 'boardId'),
+            boardId: String(args?.boardId || '').trim(),
             participantId: String(args?.participantId || '').trim(),
             authInfo
         });
@@ -384,6 +391,7 @@ export async function dispatch(toolName, args, context, authInfo) {
         const author = assertUserChatAuthor(args, authInfo);
         return await executeBlackboardEvent(context, {
             roomId: getRequiredString(args, 'roomId'),
+            boardId: getRequiredString(args, 'boardId'),
             event: args?.event,
             source: String(args?.source || 'event').trim(),
             commandSource: String(args?.commandSource || 'chat').trim(),
@@ -399,6 +407,7 @@ export async function dispatch(toolName, args, context, authInfo) {
             getRoomBlackboard: getRoomBlackboardForCommand,
             getScriptaContext,
             applyRoomBlackboardEvents,
+            applyRoomBlackboardWorkspaceAction,
             applyRoomBlackboardChange,
             undoRoomBlackboard,
             redoRoomBlackboard,

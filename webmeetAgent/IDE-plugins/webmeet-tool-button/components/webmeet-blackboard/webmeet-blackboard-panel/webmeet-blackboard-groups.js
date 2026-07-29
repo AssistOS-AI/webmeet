@@ -46,6 +46,23 @@ function intersects(a, b) {
         && a.y <= b.y + b.height && a.y + a.height >= b.y;
 }
 
+export function expandCompositeSelectionWidgetIds(widgets = [], widgetIds = []) {
+    const requestedIds = new Set([...widgetIds].map((id) => String(id || '').trim()).filter(Boolean));
+    const selectedGroupIds = new Set(
+        widgets
+            .filter((widget) => requestedIds.has(String(widget?.id || '')))
+            .map((widget) => String(widget?.groupId || '').trim())
+            .filter(Boolean),
+    );
+    return widgets
+        .filter((widget) => (
+            requestedIds.has(String(widget?.id || ''))
+            || selectedGroupIds.has(String(widget?.groupId || '').trim())
+        ))
+        .map((widget) => String(widget?.id || '').trim())
+        .filter(Boolean);
+}
+
 export const blackboardGroupMethods = {
     getRoboTargetOrdinals(widgets = this.blackboard?.widgets || []) {
         const widgetOrdinals = new Map();
@@ -81,9 +98,12 @@ export const blackboardGroupMethods = {
     },
 
     getSelectedWidgets() {
-        const ids = this.selectedWidgetIds || new Set();
+        const ids = new Set(expandCompositeSelectionWidgetIds(
+            this.blackboard?.widgets || [],
+            this.selectedWidgetIds || new Set(),
+        ));
         return (this.blackboard?.widgets || []).filter((widget) => (
-            ids.has(String(widget.id)) && !widget.groupId && this.isGroupableWidget(widget)
+            ids.has(String(widget.id)) && this.isGroupableWidget(widget)
         ));
     },
 
@@ -111,12 +131,23 @@ export const blackboardGroupMethods = {
     },
 
     toggleWidgetMultiSelection(widget) {
-        if (!widget?.id || widget.groupId || !this.isGroupableWidget(widget)) return false;
+        if (!widget?.id || !this.isGroupableWidget(widget)) return false;
+        if (this.selectedGroupId) {
+            for (const member of this.getGroupMembers(this.selectedGroupId)) {
+                this.selectedWidgetIds.add(String(member.id));
+            }
+        }
         this.selectedGroupId = '';
-        const id = String(widget.id);
-        if (this.selectedWidgetIds.has(id)) this.selectedWidgetIds.delete(id);
-        else this.selectedWidgetIds.add(id);
-        this.selection = this.selectedWidgetIds.has(id) ? id : [...this.selectedWidgetIds].at(-1) || '';
+        const targetIds = expandCompositeSelectionWidgetIds(
+            this.blackboard?.widgets || [],
+            [String(widget.id)],
+        );
+        const removeTarget = targetIds.every((id) => this.selectedWidgetIds.has(id));
+        for (const id of targetIds) {
+            if (removeTarget) this.selectedWidgetIds.delete(id);
+            else this.selectedWidgetIds.add(id);
+        }
+        this.selection = !removeTarget ? String(widget.id) : [...this.selectedWidgetIds].at(-1) || '';
         this.renderWidgets();
         return true;
     },
@@ -243,7 +274,7 @@ export const blackboardGroupMethods = {
     async groupSelectedWidgets() {
         const selectedWidgets = this.getSelectedWidgets();
         const widgetIds = selectedWidgets.map((widget) => String(widget.id));
-        if (widgetIds.length < 2 || widgetIds.length !== this.selectedWidgetIds.size || this.busy) return;
+        if (widgetIds.length < 2 || this.busy) return;
         const representativeId = widgetIds.at(-1);
         const response = await this.runFinalChange({
             changeType: 'group',
@@ -314,6 +345,12 @@ export const blackboardGroupMethods = {
             this.groupOverlay.style.left = `${bounds.x + dx}px`;
             this.groupOverlay.style.top = `${bounds.y + dy}px`;
         }
+        const tabShell = document.elementFromPoint?.(event.clientX, event.clientY)?.closest?.('.webmeet-blackboard-tab-shell');
+        const targetBoardId = String(tabShell?.dataset?.boardId || '').trim();
+        this.groupDragState.targetBoardId = targetBoardId && targetBoardId !== this.workspace?.activeBoardId ? targetBoardId : '';
+        this.scheduleWorkspaceTabActivation?.(this.groupDragState.targetBoardId);
+        for (const shell of this.workspaceTabs?.querySelectorAll?.('.is-drag-over') || []) shell.classList.remove('is-drag-over');
+        if (this.groupDragState.targetBoardId) tabShell.classList.add('is-drag-over');
     },
 
     async finishGroupDrag(event) {
@@ -323,6 +360,11 @@ export const blackboardGroupMethods = {
         const dy = event.clientY - state.startY;
         this.detachGroupDrag(state);
         this.groupDragState = null;
+        this.clearWorkspaceTabActivation?.();
+        for (const shell of this.workspaceTabs?.querySelectorAll?.('.is-drag-over') || []) shell.classList.remove('is-drag-over');
+        if (state.targetBoardId) {
+            return this.renderWidgets();
+        }
         if (!dx && !dy) return this.renderWidgets();
         try {
             await this.runFinalChange({
@@ -339,6 +381,7 @@ export const blackboardGroupMethods = {
         if (!state) return;
         this.detachGroupDrag(state);
         this.groupDragState = null;
+        this.clearWorkspaceTabActivation?.();
         this.renderWidgets();
     },
 
@@ -549,13 +592,20 @@ export const blackboardGroupMethods = {
         const hits = (this.blackboard?.widgets || []).filter((widget) => (
             (widget.groupId || this.isGroupableWidget(widget)) && intersects(selectionBounds, finiteGeometry(widget))
         ));
-        const groupedHit = hits.find((widget) => widget.groupId);
-        if (groupedHit) this.selectGroup(groupedHit.groupId, groupedHit.id);
-        else {
-            this.selectedWidgetIds = new Set(hits.map((widget) => String(widget.id)));
-            this.selection = [...this.selectedWidgetIds].at(-1) || '';
-            this.renderWidgets();
+        const hitIds = hits.map((widget) => String(widget.id));
+        const expandedIds = expandCompositeSelectionWidgetIds(this.blackboard?.widgets || [], hitIds);
+        const expandedWidgets = (this.blackboard?.widgets || []).filter((widget) => expandedIds.includes(String(widget.id)));
+        const groupIds = new Set(expandedWidgets.map((widget) => String(widget.groupId || '')).filter(Boolean));
+        const hasUngroupedWidget = expandedWidgets.some((widget) => !widget.groupId);
+        if (groupIds.size === 1 && !hasUngroupedWidget) {
+            const groupId = [...groupIds][0];
+            this.selectGroup(groupId, expandedWidgets.at(-1)?.id);
+            return;
         }
+        this.selectedGroupId = '';
+        this.selectedWidgetIds = new Set(expandedIds);
+        this.selection = expandedIds.at(-1) || '';
+        this.renderWidgets();
     },
 
     cancelMarqueeSelection() {

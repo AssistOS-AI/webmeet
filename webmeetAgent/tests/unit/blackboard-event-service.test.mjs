@@ -17,7 +17,7 @@ import {
     getBlackboardStructuredResultSchema,
     normalizeBlackboardStructuredResult,
 } from '../../lib/blackboard/structured-result-schema.mjs';
-import { buildSemanticBoardContext, calculateContentBounds, calculateLineFromCenter } from '../../lib/blackboard/semantic-context.mjs';
+import { buildSemanticBoardContext, buildSemanticWorkspaceContext, calculateContentBounds, calculateLineFromCenter } from '../../lib/blackboard/semantic-context.mjs';
 import { Blackboard, BlackboardWidget } from '../../lib/blackboard/model.mjs';
 import { action as interpretBlackboardSkill } from '../../skills/blackboard-event/src/index.mjs';
 
@@ -35,6 +35,11 @@ function makeDeps(overrides = {}) {
         },
         getRoomBlackboard: async () => ({
             blackboard: { boardId: 'agent:agent_robo_team', revision: 2, widgets: [], interactionContext: { focusedWidgetId: '', lastAffectedWidgetIds: [] } },
+            workspace: {
+                activeBoardId: 'agent:agent_robo_team',
+                boardOrder: ['agent:agent_robo_team'],
+                boards: [{ boardId: 'agent:agent_robo_team', title: 'Workspace 1', widgetCount: 0 }],
+            },
         }),
         applyRoomBlackboardEvents: async (_context, input) => ({
             ok: true,
@@ -182,6 +187,7 @@ test('structured result schema covers every public action and both terminal resu
     assert.deepEqual(eventSchema.properties.action.enum, [...eventSchema.properties.action.enum]);
     assert.deepEqual(new Set(eventSchema.properties.action.enum), new Set([
         'create', 'update', 'delete', 'group', 'ungroup', 'clear', 'undo', 'redo', 'show', 'hide',
+        'board-create', 'board-rename', 'board-reorder', 'board-delete', 'board-activate', 'board-transfer',
         'submit', 'start', 'close', 'reorder',
         'scripta-document-create', 'scripta-document-open', 'scripta-document-delete',
         'scripta-paragraph-open', 'scripta-document-view', 'scripta-paragraph-next', 'scripta-paragraph-previous',
@@ -194,6 +200,47 @@ test('structured result schema covers every public action and both terminal resu
         'scripta-chapter-move', 'scripta-paragraph-add', 'scripta-paragraph-delete', 'scripta-paragraph-move',
         'scripta-media-insert',
     ]));
+});
+
+test('board copy is accepted only as a canonical UI-internal workspace action', () => {
+    const event = {
+        action: 'board-copy',
+        target: {type: 'blackboard'},
+        payload: {targetBoardId: 'board-2', widgetIds: ['widget-1'], placement: {x: 120, y: 80}},
+    };
+    assert.throws(() => normalizeBlackboardEvent(event), /Unsupported blackboard event action/);
+    assert.deepEqual(normalizeBlackboardEvent(event, {}, {allowInternal: true}), event);
+});
+
+test('UI board copy routes source, destination, selection, and placement to the workspace service', async () => {
+    let workspaceAction = null;
+    const deps = makeDeps({
+        applyRoomBlackboardWorkspaceAction: async (_context, input) => {
+            workspaceAction = input;
+            return {
+                ok: true,
+                workspace: {activeBoardId: 'board-target', boardOrder: ['board-source', 'board-target'], boards: []},
+                blackboard: {boardId: 'board-target', revision: 3, widgets: [], interactionContext: {}},
+            };
+        },
+    });
+    const result = await executeBlackboardEvent({}, {
+        roomId: 'room-1',
+        boardId: 'board-source',
+        participantId: 'participant-1',
+        source: 'ui',
+        event: {
+            action: 'board-copy',
+            target: {type: 'blackboard'},
+            payload: {targetBoardId: 'board-target', widgetIds: ['widget-1'], placement: {x: 120, y: 80}},
+        },
+    }, deps);
+    assert.equal(result.ok, true);
+    assert.equal(workspaceAction.action, 'board-copy');
+    assert.equal(workspaceAction.boardId, 'board-source');
+    assert.equal(workspaceAction.targetBoardId, 'board-target');
+    assert.deepEqual(workspaceAction.widgetIds, ['widget-1']);
+    assert.deepEqual(workspaceAction.placement, {x: 120, y: 80});
 });
 
 test('structured result normalization removes nullable transport fields and restores poll answer maps', () => {
@@ -274,6 +321,39 @@ test('blackboard skill preserves strict structured output on older Achilles prom
     assert.equal(calls[0].params.response_format.json_schema.strict, true);
     assert.equal(calls[0].params.response_format.json_schema.name, 'webmeet_blackboard_result');
     assert.equal(result.events[0].action, 'clear');
+});
+
+test('blackboard skill instructs Robo to resolve workspace names and ordinals to existing ids', async () => {
+    const prompts = [];
+    const result = await interpretBlackboardSkill({
+        promptText: 'deschide tabul Diagram',
+        context: {
+            board: { widgets: [] },
+            workspace: {
+                activeBoardId: 'board-1',
+                boards: [
+                    { boardId: 'board-1', ordinal: 1, title: 'Document', widgetCount: 0, active: true },
+                    { boardId: 'board-2', ordinal: 2, title: 'Diagram', widgetCount: 2, active: false },
+                ],
+            },
+        },
+        llmAgent: {
+            executeStructuredPrompt: async (prompt) => {
+                prompts.push(prompt);
+                return {
+                    events: [{
+                        action: 'board-activate', target: { type: 'blackboard' }, payload: { targetBoardId: 'board-2' },
+                    }],
+                    error: null,
+                };
+            },
+        },
+    });
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[0], /Context workspace\.boards is the complete ordered workspace list/);
+    assert.match(prompts[0], /board-delete and board-activate target \{type:"blackboard"\} with payload\.targetBoardId/);
+    assert.match(prompts[0], /"title":"Diagram"/);
+    assert.equal(result.events[0].payload.targetBoardId, 'board-2');
 });
 
 test('blackboard skill retries one rejected structured result through the same strict channel', async () => {
@@ -381,13 +461,128 @@ test('natural commands execute an atomic event list and expose only revision ord
             return { ok: true, blackboard: { boardId: input.boardId, revision: 3, widgets: [], interactionContext: {} } };
         },
     });
-    const result = await executeBlackboardEvent({}, { roomId: 'room-1', event: 'creează Vision și mută-l sus', source: 'event' }, deps);
+    const result = await executeBlackboardEvent({}, { roomId: 'room-1', boardId: 'board-1', event: 'creează Vision și mută-l sus', source: 'event' }, deps);
     assert.equal(result.ok, true);
     assert.equal(executed.events.length, 2);
     assert.equal('revision' in interpretationContext.board, false);
     assert.equal('expectedBoardVersion' in executed, false);
     assert.equal(executed.source, 'robo');
     assert.equal(result.auditMessage.metadata.result.boardRevision, 3);
+});
+
+test('event audits persist the source workspace id and display-name snapshot', async () => {
+    const deps = makeDeps({
+        getRoomBlackboard: async () => ({
+            workspace: {
+                activeBoardId: 'board-1',
+                boardOrder: ['board-1'],
+                boards: [{ boardId: 'board-1', title: 'Diagram', widgetCount: 2 }],
+            },
+            blackboard: { boardId: 'board-1', revision: 2, widgets: [], interactionContext: {} },
+        }),
+    });
+    const result = await executeBlackboardEvent({}, {
+        roomId: 'room-1',
+        boardId: 'board-1',
+        participantId: 'participant-1',
+        source: 'ui',
+        event: { action: 'clear', target: { type: 'blackboard' }, payload: {} },
+    }, deps);
+
+    assert.equal(result.auditMessage.metadata.boardId, 'board-1');
+    assert.equal(result.auditMessage.metadata.boardTitle, 'Diagram');
+    assert.equal(result.auditMessage.message, '/event clear');
+});
+
+test('board creation audits use the newly created workspace name', async () => {
+    const deps = makeDeps({
+        getRoomBlackboard: async () => ({
+            workspace: {
+                activeBoardId: 'board-1',
+                boardOrder: ['board-1'],
+                boards: [{ boardId: 'board-1', title: 'Script', widgetCount: 1 }],
+            },
+            blackboard: { boardId: 'board-1', revision: 2, widgets: [], interactionContext: {} },
+        }),
+        applyRoomBlackboardWorkspaceAction: async () => ({
+            ok: true,
+            workspace: {
+                activeBoardId: 'board-2',
+                boardOrder: ['board-1', 'board-2'],
+                boards: [
+                    { boardId: 'board-1', title: 'Script', widgetCount: 1 },
+                    { boardId: 'board-2', title: 'Images', widgetCount: 0 },
+                ],
+            },
+            blackboard: { boardId: 'board-2', revision: 0, widgets: [], interactionContext: {} },
+        }),
+    });
+    const result = await executeBlackboardEvent({}, {
+        roomId: 'room-1',
+        boardId: 'board-1',
+        participantId: 'participant-1',
+        source: 'ui',
+        event: { action: 'board-create', target: { type: 'workspace' }, payload: { title: 'Images' } },
+    }, deps);
+
+    assert.equal(result.auditMessage.metadata.boardId, 'board-2');
+    assert.equal(result.auditMessage.metadata.boardTitle, 'Images');
+});
+
+test('Robo workspace commands receive every tab and mutate the explicitly resolved board', async () => {
+    let interpretationContext = null;
+    let workspaceAction = null;
+    const workspace = {
+        activeBoardId: 'board-1',
+        boardOrder: ['board-1', 'board-2'],
+        boards: [
+            { boardId: 'board-1', title: 'Document', widgetCount: 1 },
+            { boardId: 'board-2', title: 'Diagram', widgetCount: 3 },
+        ],
+    };
+    const deps = makeDeps({
+        getRoomBlackboard: async () => ({
+            workspace,
+            blackboard: { boardId: 'board-1', revision: 2, widgets: [], interactionContext: {} },
+        }),
+        interpretBlackboardCommand: async (_text, context) => {
+            interpretationContext = context;
+            return { events: [{
+                action: 'board-rename',
+                target: { type: 'blackboard' },
+                payload: { targetBoardId: 'board-2', title: 'Architecture' },
+            }] };
+        },
+        applyRoomBlackboardWorkspaceAction: async (_context, input) => {
+            workspaceAction = input;
+            return {
+                ok: true,
+                workspace: {
+                    ...workspace,
+                    boards: workspace.boards.map((board) => board.boardId === 'board-2'
+                        ? { ...board, title: 'Architecture' }
+                        : board),
+                    activeBoard: null,
+                },
+                blackboard: { boardId: input.boardId, revision: 3, widgets: [], interactionContext: {} },
+            };
+        },
+    });
+
+    const result = await executeBlackboardEvent({}, {
+        roomId: 'room-1', boardId: 'board-1', event: 'redenumește tabul Diagram în Architecture', source: 'robo',
+    }, deps);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(interpretationContext.workspace.boards, [
+        { boardId: 'board-1', ordinal: 1, title: 'Document', widgetCount: 1, active: true },
+        { boardId: 'board-2', ordinal: 2, title: 'Diagram', widgetCount: 3, active: false },
+    ]);
+    assert.equal(workspaceAction.action, 'board-rename');
+    assert.equal(workspaceAction.boardId, 'board-2');
+    assert.equal(workspaceAction.title, 'Architecture');
+    assert.equal(result.auditMessage.metadata.boardId, 'board-2');
+    assert.equal(result.auditMessage.metadata.boardTitle, 'Architecture');
 });
 
 test('semantic ambiguity returns an explicit error and never executes events', async () => {
@@ -398,14 +593,14 @@ test('semantic ambiguity returns an explicit error and never executes events', a
         }),
         applyRoomBlackboardEvents: async () => { executed = true; },
     });
-    const result = await executeBlackboardEvent({}, { roomId: 'room-1', event: 'șterge elipsa', source: 'robo' }, deps);
+    const result = await executeBlackboardEvent({}, { roomId: 'room-1', boardId: 'board-1', event: 'șterge elipsa', source: 'robo' }, deps);
     assert.equal(result.ok, false);
     assert.equal(result.error.code, 'ambiguous_target');
     assert.match(result.error.message, /mai multe elipse/);
     assert.equal(result.auditMessage.metadata.status, 'error');
     assert.equal(executed, false);
     await assert.rejects(
-        executeBlackboardEvent({}, { roomId: 'room-1', source: 'ui', clarificationResponse: { clarificationId: 'old' } }, deps),
+        executeBlackboardEvent({}, { roomId: 'room-1', boardId: 'board-1', source: 'ui', clarificationResponse: { clarificationId: 'old' } }, deps),
         /not supported/,
     );
 });
@@ -424,7 +619,7 @@ test('SCRIPTA group insertion is delegated to the requesting browser renderer', 
         }),
     });
     const result = await executeBlackboardEvent({}, {
-        roomId: 'room-1', source: 'event', participantId: 'participant-1',
+        roomId: 'room-1', boardId: 'board-1', source: 'event', participantId: 'participant-1',
         event: {
             action: 'scripta-media-insert',
             target: { type: 'group', groupId: 'group-1' },
@@ -609,6 +804,23 @@ test('semantic context exposes canonical widget rotation for relative rotation c
         interactionContext: { focusedWidgetId: 'line-1', lastAffectedWidgetIds: ['line-1'] },
     });
     assert.equal(semantic.widgets[0].rotation, 30);
+});
+
+test('semantic workspace context exposes ordered safe tab references for Robo', () => {
+    assert.deepEqual(buildSemanticWorkspaceContext({
+        activeBoardId: 'board-b',
+        boardOrder: ['board-a', 'board-b'],
+        boards: [
+            { boardId: 'board-b', title: 'Images', widgetCount: 4, revision: 9 },
+            { boardId: 'board-a', title: 'Script', widgetCount: 1, revision: 7 },
+        ],
+    }), {
+        activeBoardId: 'board-b',
+        boards: [
+            { boardId: 'board-a', ordinal: 1, title: 'Script', widgetCount: 1, active: false },
+            { boardId: 'board-b', ordinal: 2, title: 'Images', widgetCount: 4, active: true },
+        ],
+    });
 });
 
 test('SCRIPTA semantic context exposes safe active focus and uses it when no ordinal is supplied', async () => {
@@ -858,6 +1070,33 @@ test('groups move together, resize independently, and dissolve when one member r
     assert.equal(board.getWidget('b').properties.geometry.width, 100);
     board.removeWidget('a', { record: false });
     assert.equal(board.getWidget('b').groupId, '');
+});
+
+test('existing groups and independent widgets merge atomically into one group', () => {
+    const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
+    for (const id of ['a', 'b', 'c', 'd', 'e']) {
+        board.addWidget(new BlackboardWidget({ id, type: 'shape' }), { record: false });
+    }
+    board.groupWidgets(['a', 'b'], { groupId: 'group-1', record: false });
+    board.groupWidgets(['c', 'd'], { groupId: 'group-2', record: false });
+
+    board.groupWidgets(['a', 'c', 'e'], { groupId: 'merged-group' });
+    assert.deepEqual(
+        ['a', 'b', 'c', 'd', 'e'].map((id) => board.getWidget(id).groupId),
+        ['merged-group', 'merged-group', 'merged-group', 'merged-group', 'merged-group'],
+    );
+    assert.equal(board.history.undoStack.at(-1).operation, 'group');
+
+    board.undo();
+    assert.deepEqual(
+        ['a', 'b', 'c', 'd', 'e'].map((id) => board.getWidget(id).groupId),
+        ['group-1', 'group-1', 'group-2', 'group-2', ''],
+    );
+    board.redo();
+    assert.deepEqual(
+        ['a', 'b', 'c', 'd', 'e'].map((id) => board.getWidget(id).groupId),
+        ['merged-group', 'merged-group', 'merged-group', 'merged-group', 'merged-group'],
+    );
 });
 
 test('canonical group targets move, resize, rotate, ungroup, and delete rigid blocks', () => {

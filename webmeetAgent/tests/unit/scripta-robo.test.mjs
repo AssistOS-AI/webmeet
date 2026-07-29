@@ -7,6 +7,7 @@ import path from 'node:path';
 
 import {
     applyRoomBlackboardChange,
+    applyRoomBlackboardWorkspaceAction,
     createMeeting,
     createScriptaDocument,
     createStoreContext,
@@ -114,6 +115,11 @@ async function withStore(fn) {
         else process.env.PLOINKY_WEBMEET_MASTER_KEY = previousMasterKey;
         await fs.rm(root, { recursive: true, force: true });
     }
+}
+
+async function getActiveBoardId(context, roomId, participantId, authInfo) {
+    const projection = await getRoomBlackboard(context, { roomId, participantId, authInfo });
+    return projection.workspace.activeBoardId;
 }
 
 test('WebMeet delegates SCRIPTA persistence to Explorer without a local state or filesystem fallback', async () => {
@@ -381,7 +387,6 @@ test('a missing attached SCRIPTA file is detached instead of persisting an empty
 
         const board = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
             participantId: 'admin',
             authInfo: ADMIN,
         });
@@ -412,7 +417,7 @@ test('General creation produces one empty document and one singleton blackboard 
         assert.equal(current.document.chapters[0].chapterTitle, 'Chapter 1');
         assert.equal(current.document.chapters[0].paragraphs.length, 1);
         assert.equal(current.document.chapters[0].paragraphs[0].text, '');
-        const board = await getRoomBlackboard(context, { roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo: ADMIN });
+        const board = await getRoomBlackboard(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
         const scriptaWidgets = board.blackboard.widgets.filter((widget) => widget.type.startsWith('scripta-'));
         assert.equal(scriptaWidgets.length, 1);
         assert.equal(scriptaWidgets[0].id, 'robo_scripta_document');
@@ -465,9 +470,11 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
             participantId: 'admin',
             authInfo: ADMIN,
         });
+        const boardId = await getActiveBoardId(context, meeting.roomId, 'admin', ADMIN);
 
         const result = await dispatch('webmeet_event_command', {
             roomId: meeting.roomId,
+            boardId,
             event: 'scripta-chapter-edit {"title":"Chapter 1 test zzzzzzz"}',
             source: 'event',
             commandSource: 'chat',
@@ -492,6 +499,7 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
         };
         const editStarted = await dispatch('webmeet_event_command', {
             roomId: meeting.roomId,
+            boardId,
             event: `scripta-p-variant-edit-start ${JSON.stringify(editTarget)}`,
             source: 'ui',
             commandSource: 'chat',
@@ -503,6 +511,7 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
 
         const editCancelled = await dispatch('webmeet_event_command', {
             roomId: meeting.roomId,
+            boardId,
             event: `scripta-p-variant-edit-cancel ${JSON.stringify(editTarget)}`,
             source: 'ui',
             commandSource: 'chat',
@@ -514,6 +523,7 @@ test('semantic /event SCRIPTA command executes directly and finalizes its audit'
 
         const documentView = await dispatch('webmeet_event_command', {
             roomId: meeting.roomId,
+            boardId,
             event: 'scripta-document-view {}',
             source: 'ui',
             commandSource: 'chat',
@@ -897,13 +907,11 @@ test('paragraph variant ownership controls edit and delete but not voting', asyn
 
         const ownerBoardBeforeDelete = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
             participantId: 'user',
             authInfo: USER,
         });
         const otherBoardBeforeDelete = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
             participantId: 'victim',
             authInfo: VICTIM,
         });
@@ -934,7 +942,6 @@ test('paragraph variant ownership controls edit and delete but not voting', asyn
 
         const ownerBoard = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
             participantId: 'user',
             authInfo: USER,
         });
@@ -954,6 +961,7 @@ test('SCRIPTA image mutations apply only to the selected owned variant', async (
         await createScriptaDocument(context, {
             roomId: meeting.roomId, name: 'Illustrated', template: 'general', participantId: 'admin', authInfo: ADMIN,
         });
+        const boardId = await getActiveBoardId(context, meeting.roomId, 'admin', ADMIN);
         const originalExplorer = context.scriptaExplorerClient;
         context.scriptaExplorerClient = (tool, args) => originalExplorer(tool, {
             ...args,
@@ -1004,6 +1012,7 @@ test('SCRIPTA image mutations apply only to the selected owned variant', async (
 
         const deleted = await dispatch('webmeet_event_command', {
             roomId: meeting.roomId,
+            boardId,
             participantId: 'admin',
             source: 'ui',
             commandSource: 'chat',
@@ -1152,10 +1161,11 @@ test('SCRIPTA content projections preserve user-resized widget geometry', async 
             participantId: 'admin',
             authInfo: ADMIN,
         });
+        const boardId = await getActiveBoardId(context, meeting.roomId, 'admin', ADMIN);
         const resizedGeometry = { x: 72, y: 56, width: 840, height: 560 };
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'admin',
             authInfo: ADMIN,
             change: {
@@ -1177,12 +1187,69 @@ test('SCRIPTA content projections preserve user-resized widget geometry', async 
 
         const projectedBoard = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'admin',
             authInfo: ADMIN,
         });
         const widget = projectedBoard.blackboard.widgets.find((entry) => entry.id === 'robo_scripta_document');
         assert.deepEqual(widget.properties.geometry, resizedGeometry);
+    });
+});
+
+test('SCRIPTA updates follow its widget after the document is moved to another workspace zone', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Moved SCRIPTA', authInfo: ADMIN });
+        await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: 'Moved Draft',
+            template: 'general',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const sourceBoardId = await getActiveBoardId(context, meeting.roomId, 'admin', ADMIN);
+        const createdZone = await applyRoomBlackboardWorkspaceAction(context, {
+            roomId: meeting.roomId,
+            action: 'board-create',
+            title: 'Diagram',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const targetBoardId = createdZone.workspace.activeBoardId;
+        await applyRoomBlackboardWorkspaceAction(context, {
+            roomId: meeting.roomId,
+            action: 'board-transfer',
+            boardId: sourceBoardId,
+            targetBoardId,
+            widgetIds: ['robo_scripta_document'],
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        await applyRoomBlackboardWorkspaceAction(context, {
+            roomId: meeting.roomId,
+            action: 'board-activate',
+            boardId: sourceBoardId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+
+        await mutateScripta(context, {
+            roomId: meeting.roomId,
+            operation: 'p-variant-add',
+            text: 'Updated after transfer',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+
+        const source = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, boardId: sourceBoardId, participantId: 'admin', authInfo: ADMIN,
+        });
+        const target = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, boardId: targetBoardId, participantId: 'admin', authInfo: ADMIN,
+        });
+        assert.equal(source.blackboard.widgets.some((widget) => widget.id === 'robo_scripta_document'), false);
+        const widget = target.blackboard.widgets.find((entry) => entry.id === 'robo_scripta_document');
+        assert.ok(widget);
+        assert.equal(widget.properties.paragraph.variants.some((variant) => variant.text === 'Updated after transfer'), true);
     });
 });
 
@@ -1398,7 +1465,6 @@ test('failed deletion commit restores both the CRDT document and room attachment
         assert.equal((await fs.stat(path.join(root, payload.scripta.folderPath, 'rollback-draft.md'))).isFile(), true);
         const board = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
             participantId: 'admin',
             authInfo: ADMIN,
         });
@@ -1438,7 +1504,7 @@ test('guest projections omit workspace paths and physical deletion requires conf
         const created = await createScriptaDocument(context, { roomId: meeting.roomId, name: 'Guest Draft', template: 'general', folderPath: '/private-choice', participantId: 'guest', authInfo: GUEST });
         const resources = await listRoomResources(context, meeting.roomId, GUEST);
         assert.ok(resources.resources.every((resource) => resource.path === undefined));
-        const board = await getRoomBlackboard(context, { roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'guest', authInfo: GUEST });
+        const board = await getRoomBlackboard(context, { roomId: meeting.roomId, participantId: 'guest', authInfo: GUEST });
         assert.equal(JSON.stringify(board.blackboard).includes('/WebMeet/'), false);
         assert.equal(board.blackboard.widgets.find((widget) => widget.type === 'scripta-document').properties.canBrowseWorkspace, false);
         await assert.rejects(listScriptaWorkspaceEntries(context, { roomId: meeting.roomId, authInfo: GUEST }), /cannot browse/);
@@ -1465,7 +1531,7 @@ test('guest projections omit workspace paths and physical deletion requires conf
         await assert.rejects(manageScriptaDocument(context, { roomId: meeting.roomId, operation: 'document-delete', resourceId: created.resourceId, participantId: 'guest', authInfo: GUEST }), /confirmation/);
         const deleted = await manageScriptaDocument(context, { roomId: meeting.roomId, operation: 'document-delete', resourceId: created.resourceId, confirmed: true, participantId: 'guest', authInfo: GUEST });
         assert.equal(deleted.blackboard.widgets.some((widget) => widget.type === 'scripta-document'), false);
-        const boardAfterDelete = await getRoomBlackboard(context, { roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'guest', authInfo: GUEST });
+        const boardAfterDelete = await getRoomBlackboard(context, { roomId: meeting.roomId, participantId: 'guest', authInfo: GUEST });
         assert.equal(boardAfterDelete.blackboard.widgets.some((widget) => widget.type === 'scripta-document'), false);
         const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
         assert.equal(Object.keys(payload.scripta.documents).length, 0);

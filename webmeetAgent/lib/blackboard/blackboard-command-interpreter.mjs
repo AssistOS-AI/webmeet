@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeBlackboardEventResult } from './event-contract.mjs';
-import { buildSemanticBoardContext } from './semantic-context.mjs';
+import { buildSemanticBoardContext, buildSemanticWorkspaceContext } from './semantic-context.mjs';
 
 const AGENT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const DEFAULT_COMMAND_INTERPRETATION_TIMEOUT_MS = 60_000;
@@ -34,7 +34,7 @@ export class BlackboardCommandInterpreter {
         this.deps = deps;
     }
 
-    async interpret({ text, board } = {}) {
+    async interpret({ text, board, workspace } = {}) {
         const deps = this.deps;
         const Agent = deps.MainAgent || (await import('achillesAgentLib/MainAgent')).MainAgent;
         const agent = new Agent({
@@ -47,6 +47,9 @@ export class BlackboardCommandInterpreter {
         const context = {
             instruction: String(text || ''),
             board: board?.contentBounds ? structuredClone(board) : buildSemanticBoardContext(board || {}),
+            workspace: workspace?.boards?.every?.((entry) => Number.isInteger(entry?.ordinal))
+                ? structuredClone(workspace)
+                : buildSemanticWorkspaceContext(workspace || {}),
         };
         let timer;
         try {
@@ -70,5 +73,5 @@ export class BlackboardCommandInterpreter {
 
 export async function interpretBlackboardCommand(text, context = {}, deps = {}) {
     const board = context.board?.widgets ? context.board : (context.board || {});
-    return new BlackboardCommandInterpreter(deps).interpret({ text, board });
+    return new BlackboardCommandInterpreter(deps).interpret({ text, board, workspace: context.workspace || {} });
 }

@@ -1188,23 +1188,31 @@ export class Blackboard {
 
     groupWidgets(widgetIds = [], options = {}) {
         const ids = [...new Set((Array.isArray(widgetIds) ? widgetIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
-        if (ids.length < 2) throw new Error('A group requires at least two widgets.');
-        const widgets = ids.map((id) => {
+        if (!ids.length) throw new Error('A group requires at least two widgets.');
+        const requestedWidgets = ids.map((id) => {
             const widget = this.getWidget(id);
             if (!widget) {
                 const error = new Error(`Blackboard widget "${id}" was not found.`);
                 error.code = 'widget_not_found';
                 throw error;
             }
-            if (widget.groupId) throw new Error(`Blackboard widget "${id}" already belongs to a group.`);
+            return widget;
+        });
+        const selectedGroupIds = new Set(requestedWidgets.map((widget) => widget.groupId).filter(Boolean));
+        const expandedIds = new Set(ids);
+        for (const candidate of this.widgets.values()) {
+            if (candidate.groupId && selectedGroupIds.has(candidate.groupId)) expandedIds.add(candidate.id);
+        }
+        const widgets = [...this.widgets.values()].filter((widget) => expandedIds.has(widget.id));
+        if (widgets.length < 2) throw new Error('A group requires at least two widgets.');
+        for (const widget of widgets) {
             if (!BLACKBOARD_GROUPABLE_WIDGET_TYPES.includes(widget.type)) {
                 const error = new Error(`Interactive blackboard widget type "${widget.type}" cannot be grouped.`);
                 error.code = 'widget_not_groupable';
                 throw error;
             }
-            return widget;
-        });
-        const selectedIds = new Set(ids);
+        }
+        const selectedIds = new Set(widgets.map((widget) => widget.id));
         for (const widget of widgets) {
             const connection = widget.properties?.connection;
             if (connection && (!selectedIds.has(connection.from?.widgetId) || !selectedIds.has(connection.to?.widgetId))) {

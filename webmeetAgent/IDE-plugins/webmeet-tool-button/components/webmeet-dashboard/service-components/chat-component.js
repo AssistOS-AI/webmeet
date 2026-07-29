@@ -45,6 +45,7 @@ export class ChatComponent {
         this.updateRoboDraftState = options.updateRoboDraftState || (() => {});
         this.loadMeetingDetails = options.loadMeetingDetails || (() => Promise.resolve());
         this.getRoom = options.getRoom || (() => null);
+        this.getActiveBoardId = options.getActiveBoardId || (() => '');
         this.runTool = typeof options.runTool === 'function' ? options.runTool : runTool;
         this.callExplorerTool = typeof options.callExplorerTool === 'function'
             ? options.callExplorerTool
@@ -69,6 +70,16 @@ export class ChatComponent {
 
     getKnownAgentTokens() {
         return [];
+    }
+
+    async resolveActiveBoardId(meeting, session) {
+        const current = String(this.getActiveBoardId() || '').trim();
+        if (current) return current;
+        const response = await this.runTool('webmeet_blackboard_workspace_get', {
+            roomId: String(meeting?.id || '').trim(),
+            participantId: String(session?.participantIdentity || '').trim(),
+        });
+        return String(response?.workspace?.activeBoardId || response?.blackboard?.boardId || '').trim();
     }
 
     getComposerMentionTokens() {
@@ -246,6 +257,8 @@ export class ChatComponent {
             return;
         }
         try {
+            const boardId = await this.resolveActiveBoardId(meeting, session);
+            if (!boardId) throw new Error('The active Blackboard workspace is unavailable.');
             const upload = await fetch('/blobs/explorer', {
                 method: 'POST',
                 headers: {
@@ -259,7 +272,7 @@ export class ChatComponent {
             const staged = await upload.json();
             const result = await this.runTool('webmeet_image_publish', {
                 roomId: meeting.id,
-                boardId: 'agent:agent_robo_team',
+                boardId,
                 participantId: session.participantIdentity,
                 blobRef: {
                     id: staged.id,
@@ -283,7 +296,7 @@ export class ChatComponent {
                 await this.publishRealtimePayload({
                     type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
                     meetingId: meeting.id,
-                    boardId: 'agent:agent_robo_team',
+                    boardId,
                     blackboardRevision: Number(result.blackboard.revision || 0),
                     changeType: 'create'
                 }).catch(() => {});
@@ -531,12 +544,13 @@ export class ChatComponent {
         const isRobo = /^\/robo(?:\s|$)/i.test(message);
         const commandId = `command_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`}`;
         const participantId = String(session.participantIdentity || '').trim();
+        let boardId = '';
         const notifyStatus = (state, errorMessage = '') => {
-            if (!isRobo) return;
+            if (!isRobo || !boardId) return;
             try {
                 void Promise.resolve(this.updateRoboCommandStatus({
                     meetingId: meeting.id,
-                    boardId: 'agent:agent_robo_team',
+                    boardId,
                     commandId,
                     participantId,
                     state,
@@ -544,13 +558,16 @@ export class ChatComponent {
                 })).catch(() => {});
             } catch (_) {}
         };
-        notifyStatus('started');
         try {
+            boardId = await this.resolveActiveBoardId(meeting, session);
+            if (!boardId) throw new Error('The active Blackboard workspace is unavailable.');
+            notifyStatus('started');
             this.elements.chatInput.value = '';
             this.updateComposerMentionOverlay();
             const eventInput = isRobo ? message : message.replace(/^\/event\s*/i, '').trim();
             const result = await this.runTool('webmeet_event_command', {
                 roomId: meeting.id,
+                boardId,
                 event: eventInput,
                 source: isRobo ? 'robo' : 'event',
                 commandSource: 'chat',
@@ -581,7 +598,7 @@ export class ChatComponent {
                     await this.publishRealtimePayload({
                         type: WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
                         meetingId: meeting.id,
-                        boardId: 'agent:agent_robo_team',
+                        boardId,
                         blackboardRevision: Number(result.blackboard.revision || 0),
                         changeType: 'update'
                     }).catch(() => {});

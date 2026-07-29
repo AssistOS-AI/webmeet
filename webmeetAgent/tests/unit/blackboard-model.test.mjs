@@ -45,6 +45,7 @@ import {
     getBlackboardThemeOptions
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-theme-presets.js';
 import { blackboardScriptaActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-scripta-actions.js';
+import { expandCompositeSelectionWidgetIds } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-groups.js';
 
 const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-panel.js',
@@ -57,6 +58,18 @@ const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-scripta-actions.js',
     'webmeet-blackboard-scripta-rendering.js'
 ];
+
+test('composite selection expands every selected rigid group', () => {
+    const widgets = [
+        { id: 'a', groupId: 'group-1' },
+        { id: 'b', groupId: 'group-1' },
+        { id: 'c', groupId: 'group-2' },
+        { id: 'd', groupId: 'group-2' },
+        { id: 'e', groupId: '' },
+    ];
+    assert.deepEqual(expandCompositeSelectionWidgetIds(widgets, ['a', 'd', 'e']), ['a', 'b', 'c', 'd', 'e']);
+    assert.deepEqual(expandCompositeSelectionWidgetIds(widgets, ['e']), ['e']);
+});
 
 async function readBlackboardPanelSource() {
     const panelDir = path.resolve(
@@ -711,9 +724,14 @@ test('SCRIPTA realtime updates reload the authenticated viewer projection', asyn
         boardId: 'agent:agent_robo_team',
         participantId: 'participant_other',
         runTool: async (name) => {
-            assert.equal(name, 'webmeet_blackboard_get');
+            assert.equal(name, 'webmeet_blackboard_workspace_get');
             resyncCount += 1;
             return {
+                workspace: {
+                    activeBoardId: 'agent:agent_robo_team',
+                    boardOrder: ['agent:agent_robo_team'],
+                    boards: [{ boardId: 'agent:agent_robo_team', title: 'Workspace 1', revision: 5, widgetCount: 1 }],
+                },
                 blackboard: {
                     boardId: 'agent:agent_robo_team',
                     revision: 5,
@@ -2593,9 +2611,13 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             throw new Error(`Unexpected Explorer tool ${tool}`);
         };
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
+        const initialProjection = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, participantId: 'admin', authInfo,
+        });
+        const boardId = initialProjection.workspace.activeBoardId;
 
         const publishedImage = await publishRoomImage(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin',
+            roomId: meeting.roomId, boardId, participantId: 'admin',
             blobRef: {
                 id: 'b'.repeat(48),
                 agent: 'explorer',
@@ -2610,12 +2632,12 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.equal(publishedImage.widget.properties.geometry.rotation, 0);
 
         let beforeEmptyUndo = await getRoomBlackboard(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
         });
         let emptyUndo;
         for (let attempt = 0; attempt < 10; attempt += 1) {
             emptyUndo = await applyRoomBlackboardEvents(context, {
-                roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+                roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
                 events: [{ action: 'undo', target: { type: 'blackboard' }, payload: {} }],
             });
             if (!emptyUndo.changed) break;
@@ -2627,7 +2649,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'create',
@@ -2641,7 +2663,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         });
 
         const lineCreated = await applyRoomBlackboardEvents(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo, source: 'robo',
             events: [{
                 ref: 'line', action: 'create', target: { type: 'blackboard' },
                 payload: { widget: { type: 'line', properties: { line: { x1: 100, y1: 200, x2: 300, y2: 200, markerEnd: 'arrow' } } } },
@@ -2651,7 +2673,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.deepEqual(lineWidget.properties.geometry, { x: 99.5, y: 199.5, width: 201, height: 1, rotation: 0 });
         assert.deepEqual(lineWidget.properties.line, { x1: 0.5, y1: 0.5, x2: 200.5, y2: 0.5, markerEnd: 'arrow' });
         const lineMoved = await applyRoomBlackboardEvents(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo, source: 'robo',
             events: [{ action: 'update', target: { type: 'widget', widgetId: lineWidget.id }, payload: { patch: { properties: { geometryDelta: { x: 0, y: -50 } } } } }],
         });
         const movedLine = lineMoved.blackboard.widgets.find((widget) => widget.id === lineWidget.id);
@@ -2659,7 +2681,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.deepEqual(movedLine.properties.line, lineWidget.properties.line);
 
         const imageCreated = await applyRoomBlackboardEvents(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
             events: [{
                 action: 'create', target: { type: 'blackboard' },
                 payload: { widget: { type: 'image', properties: {
@@ -2678,11 +2700,11 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const response = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo
         });
         const commandProjection = await getRoomBlackboardForCommand(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
         });
         assert.equal('clarification' in commandProjection, false);
         const events = await listMeetingEvents(context, meeting.roomId);
@@ -2691,17 +2713,18 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         const roboTeam = payload.agents.find((agent) => agent.id === 'agent_robo_team');
 
         assert.ok(response.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
-        assert.equal(response.blackboard.boardId, 'agent:agent_robo_team');
+        assert.equal(response.blackboard.boardId, boardId);
         assert.equal('privateRoboContext' in response.blackboard, false);
         assert.equal(payload.blackboard, undefined);
-        assert.ok(roboTeam.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
-        assert.equal(roboTeam.blackboard.boardId, 'agent:agent_robo_team');
-        assert.equal(roboTeam.blackboard.metadata.boardOwnerType, 'agent');
+        const persistedBoard = roboTeam.blackboardWorkspace.boards.find((board) => board.boardId === boardId);
+        assert.ok(persistedBoard.widgets.some((widget) => widget.id === 'shape_1'));
+        assert.equal(roboTeam.blackboardWorkspace.activeBoardId, boardId);
+        assert.equal(persistedBoard.boardOwnerType, 'room');
         assert.ok(events.some((event) => parseWebMeetEvent(event).type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED));
-        assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === 'agent:agent_robo_team'));
+        assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === boardId));
         const later = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'update',
@@ -2715,7 +2738,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'create',
@@ -2729,7 +2752,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         });
         const grouped = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'group',
@@ -2742,7 +2765,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const movedGroup = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'update',
@@ -2757,7 +2780,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const ungrouped = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: { changeType: 'ungroup', targetType: 'group', targetRef: groupId }
         });
@@ -2767,7 +2790,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const regrouped = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'group',
@@ -2778,7 +2801,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         const regroupedId = regrouped.blackboard.widgets.find((widget) => widget.id === 'shape_1').groupId;
         const deletedGroup = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: { changeType: 'delete', targetType: 'group', targetRef: regroupedId }
         });
@@ -2825,12 +2848,18 @@ test('webmeet event tool decodes canonical serialized blackboard events from tra
         await joinMeeting(context, {
             meetingId: meeting.roomId, participantId: 'admin', displayName: 'Admin', authInfo,
         });
+        const workspaceProjection = await dispatch('webmeet_blackboard_workspace_get', {
+            roomId: meeting.roomId,
+            participantId: 'admin',
+        }, context, authInfo);
+        const boardId = workspaceProjection.workspace.activeBoardId;
         let sequence = 0;
         const dispatchEvent = async (event) => {
             sequence += 1;
             return dispatch('webmeet_event_command', {
                 roomId: meeting.roomId,
                 participantId: 'admin',
+                boardId,
                 source: 'ui',
                 commandId: `command-${sequence}`,
                 event: JSON.stringify(event),
@@ -2865,16 +2894,16 @@ test('webmeet event tool decodes canonical serialized blackboard events from tra
         assert.equal(response.broadcast.revision, response.blackboard.revision);
         assert.equal(response.broadcast.ownerParticipantId, 'agent_robo_team');
         assert.ok(response.broadcast.blackboardId);
-        assert.equal(response.broadcast.boardId, 'agent:agent_robo_team');
-        assert.equal(response.broadcast.boardOwnerType, 'agent');
-        assert.equal(response.broadcast.boardOwnerId, 'agent_robo_team');
+        assert.equal(response.broadcast.boardId, boardId);
+        assert.equal(response.broadcast.boardOwnerType, 'room');
+        assert.equal(response.broadcast.boardOwnerId, meeting.roomId);
         assert.equal(response.broadcast.boardVisibility, 'room');
 
         await assert.rejects(dispatch('webmeet_blackboard_get', {
             roomId: meeting.roomId,
             boardId: 'participant:participant-admin',
             participantId: 'participant-admin'
-        }, context, authInfo), /Participant-owned blackboards are not enabled yet/);
+        }, context, authInfo), /workspace zone .* was not found/);
 
         const backgroundResponse = await dispatchEvent({
             action: 'update',
@@ -2916,6 +2945,10 @@ test('webmeet blackboard submit derives participant authority from joined partic
             return { ok: true, folderPath: args.folderPath };
         };
         const meeting = await createMeeting(context, { name: 'Blackboard spoof test', authInfo: adminAuth });
+        const initialProjection = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, authInfo: adminAuth,
+        });
+        const boardId = initialProjection.workspace.activeBoardId;
         await joinMeeting(context, {
             meetingId: meeting.roomId,
             participantId: 'participant_user_1',
@@ -2924,7 +2957,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
         });
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'participant_admin',
             authInfo: adminAuth,
             change: {
@@ -2940,7 +2973,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'participant_user_1',
             authInfo: userAuth,
             change: {
@@ -2954,7 +2987,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
 
         const moderatorView = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo: adminAuth
         });
         const card = moderatorView.blackboard.widgets.find((widget) => widget.id === 'card_1');
@@ -2986,6 +3019,10 @@ test('webmeet blackboard strips non-admin visibility authority from final change
             return { ok: true, folderPath: args.folderPath };
         };
         const meeting = await createMeeting(context, { name: 'Blackboard visibility test', authInfo: adminAuth });
+        const initialProjection = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, authInfo: adminAuth,
+        });
+        const boardId = initialProjection.workspace.activeBoardId;
         await joinMeeting(context, {
             meetingId: meeting.roomId,
             participantId: 'participant_user_1',
@@ -2995,7 +3032,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'participant_user_1',
             authInfo: userAuth,
             change: {
@@ -3012,7 +3049,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
 
         const adminView = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo: adminAuth
         });
         const widget = adminView.blackboard.widgets.find((entry) => entry.id === 'shape_private');
