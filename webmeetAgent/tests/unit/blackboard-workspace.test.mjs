@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { BlackboardWorkspace } from '../../lib/blackboard/workspace-model.mjs';
+import { WebMeetBlackboardPanel } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.js';
 import {
     blackboardWorkspaceMethods,
     getFilmstripGroupPreviews,
@@ -177,6 +178,11 @@ test('workspace UI keeps stable WebSkel templates and declarative click actions'
     assert.match(html, /data-role="filmstrip-line"/);
     assert.match(html, /data-role="filmstrip-image"/);
     assert.match(html, /data-role="filmstrip-content"/);
+    assert.match(html, /data-template="file-widget"/);
+    assert.match(html, /data-template="file-context-download"/);
+    assert.match(html, /data-local-action="downloadBlackboardFile"/);
+    assert.doesNotMatch(html, /class="webmeet-blackboard-file-download"/);
+    assert.match(html, /data-role="file-drop-overlay"/);
     assert.match(html, /class="webmeet-blackboard-transition-layer"[^>]*aria-hidden="true"[^>]*hidden/);
     assert.match(html, /data-local-action="createWorkspaceBoard"/);
     assert.match(html, /data-local-action="activateWorkspaceBoard"/);
@@ -483,6 +489,111 @@ test('filmstrip view projects real widget content instead of generic placeholder
     assert.equal(getFilmstripWidgetView({
         type: 'image', properties: { source: { url: '/workspace-files/image.png', name: 'Diagram' } },
     }).imageUrl, '/workspace-files/image.png');
+    assert.deepEqual(getFilmstripWidgetView({
+        type: 'file', properties: { source: { name: 'agenda.pdf', extension: 'pdf', mimeType: 'application/pdf', size: 4096 } },
+    }), {
+        type: 'file', kicker: 'PDF', title: 'agenda.pdf', body: 'application/pdf · 4.0 KB', items: [],
+        imageUrl: '', imageAlt: '', shapeKind: 'rectangle', fill: '', stroke: '', textColor: '',
+    });
+});
+
+test('filmstrip external file drop publishes at the exact target workspace position', async () => {
+    const calls = [];
+    const card = {
+        dataset: {boardId: 'board-target'},
+        classList: {remove() {}},
+        querySelector: () => ({
+            dataset: {logicalWidth: '1200', logicalHeight: '800'},
+            getBoundingClientRect: () => ({left: 100, top: 50, width: 300, height: 200}),
+        }),
+    };
+    const file = {name: 'agenda.pdf'};
+    const presenter = {
+        filmstripDragState: null,
+        hasTransferredFiles: () => true,
+        getTransferredFiles: () => [file],
+        publishTransferredFiles: (files, options) => calls.push({files, options}),
+    };
+    let prevented = 0;
+    let stopped = 0;
+    await blackboardWorkspaceMethods.handleFilmstripDrop.call(presenter, {
+        target: {closest: () => card},
+        dataTransfer: {files: [file]},
+        clientX: 250,
+        clientY: 150,
+        preventDefault: () => { prevented += 1; },
+        stopPropagation: () => { stopped += 1; },
+    });
+    assert.equal(prevented, 1);
+    assert.equal(stopped, 1);
+    assert.deepEqual(calls, [{
+        files: [file],
+        options: {boardId: 'board-target', position: {x: 600, y: 400}},
+    }]);
+});
+
+test('normal Blackboard drop and paste emit the shared attachment publication event', () => {
+    const PreviousCustomEvent = globalThis.CustomEvent;
+    const PreviousElement = globalThis.Element;
+    class TestElement {
+        closest() { return null; }
+    }
+    globalThis.CustomEvent = class {
+        constructor(type, options = {}) {
+            this.type = type;
+            Object.assign(this, options);
+        }
+    };
+    globalThis.Element = TestElement;
+    const emitted = [];
+    const target = new TestElement();
+    const presenter = Object.create(WebMeetBlackboardPanel.prototype);
+    Object.assign(presenter, {
+        workspace: {activeBoardId: 'board-active'},
+        element: {
+            contains: (candidate) => candidate === target,
+            dispatchEvent: (event) => emitted.push(event),
+        },
+        board: {getBoundingClientRect: () => ({left: 10, top: 20, width: 600, height: 400})},
+        fileDropOverlay: {hidden: false, setAttribute() {}},
+        fileDragDepth: 1,
+        getBoardPointFromEvent: (event) => ({x: event.clientX - 10, y: event.clientY - 20}),
+    });
+    const dropped = {name: 'drop.pdf'};
+    const pasted = {name: 'paste.docx'};
+    try {
+        let dropPrevented = 0;
+        presenter.handleBoardFileDrop({
+            dataTransfer: {files: [dropped]},
+            clientX: 210,
+            clientY: 170,
+            preventDefault: () => { dropPrevented += 1; },
+            stopPropagation() {},
+        });
+        assert.equal(dropPrevented, 1);
+        assert.deepEqual(emitted[0].detail, {
+            files: [dropped], boardId: 'board-active', position: {x: 200, y: 150},
+        });
+
+        let pastePrevented = 0;
+        presenter.handlePanelPaste({
+            defaultPrevented: false,
+            target,
+            clipboardData: {files: [pasted]},
+            preventDefault: () => { pastePrevented += 1; },
+            stopPropagation() {},
+        });
+        assert.equal(pastePrevented, 1);
+        assert.deepEqual(emitted[1].detail, {
+            files: [pasted], boardId: 'board-active', position: {x: 300, y: 200},
+        });
+        assert.ok(emitted.every((event) => event.type === 'webmeet-blackboard-attachment-upload'));
+    } finally {
+        if (PreviousCustomEvent === undefined) delete globalThis.CustomEvent;
+        else globalThis.CustomEvent = PreviousCustomEvent;
+        if (PreviousElement === undefined) delete globalThis.Element;
+        else globalThis.Element = PreviousElement;
+    }
 });
 
 test('filmstrip drag resolves a widget, its rigid group, or the active multi-selection', () => {

@@ -127,6 +127,7 @@ export const BLACKBOARD_WIDGET_CAPABILITIES = Object.freeze({
     text: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'text'], domainActions: [] },
     line: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'line', 'connection'], domainActions: [] },
     image: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'alt'], domainActions: [] },
+    file: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES], domainActions: [] },
     card: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'text'], domainActions: [] },
     embed: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title'], domainActions: [] },
     poll: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'description', 'resultsVisibility', 'questions', 'allowPollChange', 'anonymous', 'durationSeconds'], domainActions: ['submit', 'start', 'close'] },
@@ -254,14 +255,18 @@ function validateStructuredWidgetProperties(widgetType, properties, { creating =
     if (properties.line !== undefined) validateLine(properties.line, `${label}.line`, {
         requireCoordinates: creating && widgetType === 'line' && properties.connection === undefined,
     });
-    if (widgetType === 'image' && properties.source !== undefined) {
+    if (['image', 'file'].includes(widgetType) && properties.source !== undefined) {
         const source = plainObject(properties.source, `${label}.source`);
-        assertOnlyKeys(source, ['kind', 'assetId', 'url', 'name', 'mimeType'], `${label}.source`);
+        assertOnlyKeys(source, ['kind', 'assetId', 'url', 'name', 'mimeType', 'extension', 'size'], `${label}.source`);
         if (String(source.kind || '') !== 'explorer-media' || !/^asset_[a-zA-Z0-9-]+$/.test(String(source.assetId || ''))) {
             throw new Error(`${label}.source must reference an Explorer media asset.`);
         }
         if (!String(source.url || '').startsWith('/workspace-files/document-multimedia/webmeet/')) {
             throw new Error(`${label}.source.url must use the WebMeet workspace media route.`);
+        }
+        if (source.size !== undefined) {
+            source.size = finiteNumber(source.size, `${label}.source.size`);
+            if (source.size < 0) throw new Error(`${label}.source.size must not be negative.`);
         }
     }
     if (widgetType === 'image' && properties.naturalSize !== undefined) {

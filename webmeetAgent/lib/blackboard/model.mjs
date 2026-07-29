@@ -3,6 +3,7 @@ export const BLACKBOARD_WIDGET_TYPES = Object.freeze([
     'line',
     'text',
     'image',
+    'file',
     'card',
     'poll',
     'bullets',
@@ -15,6 +16,7 @@ export const BLACKBOARD_GROUPABLE_WIDGET_TYPES = Object.freeze([
     'line',
     'text',
     'image',
+    'file',
     'card'
 ]);
 
@@ -34,6 +36,7 @@ export const BLACKBOARD_CHANGE_TYPES = Object.freeze([
 
 export const DEFAULT_BLACKBOARD_HISTORY_DEPTH = 5;
 export const MIN_BLACKBOARD_HISTORY_DEPTH = 3;
+export const BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE = Object.freeze({width: 160, height: 100});
 
 const PRIVILEGED_ROLES = new Set(['admin', 'moderator', 'agent', 'evaluator']);
 
@@ -74,6 +77,24 @@ function cloneHistorySnapshot(value) {
 
 function isPlainObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function enforceFileWidgetMinimumSize(type, properties = {}) {
+    if (type !== 'file' || !isPlainObject(properties?.geometry)) return properties;
+    const width = Number(properties.geometry.width);
+    const height = Number(properties.geometry.height);
+    if (
+        (!Number.isFinite(width) || width >= BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.width)
+        && (!Number.isFinite(height) || height >= BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.height)
+    ) return properties;
+    return {
+        ...properties,
+        geometry: {
+            ...properties.geometry,
+            ...(Number.isFinite(width) ? {width: Math.max(width, BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.width)} : {}),
+            ...(Number.isFinite(height) ? {height: Math.max(height, BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.height)} : {}),
+        },
+    };
 }
 
 function finiteLineCoordinates(value = {}) {
@@ -143,7 +164,8 @@ function resetThemeStyleProperties(properties = {}, widgetType = '') {
         bullets: ['fill', 'stroke', 'textColor'],
         'scripta-document': ['fill', 'stroke', 'textColor'],
         embed: ['fill', 'stroke', 'textColor'],
-        image: ['stroke']
+        image: ['stroke'],
+        file: ['fill', 'stroke', 'textColor']
     };
     const keys = keysByType[String(widgetType || '').trim()] || ['fill', 'stroke', 'textColor'];
     let changed = false;
@@ -550,6 +572,7 @@ function translateWidget(widget, dx, dy, options = {}) {
 
 const GROUP_WIDGET_MINIMUM_SIZE = Object.freeze({
     line: { width: 1, height: 1 },
+    file: BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE,
     poll: { width: 260, height: 132 },
     bullets: { width: 320, height: 190 },
     'scripta-document': { width: 600, height: 400 },
@@ -654,6 +677,7 @@ export class BlackboardWidget {
         this.properties = this.type === 'line'
             ? normalizeFreeLineProperties(input.properties || {})
             : cloneJson(input.properties || {});
+        this.properties = enforceFileWidgetMinimumSize(this.type, this.properties);
         this.groupId = String(input.groupId || '').trim();
         this.visibility = normalizeVisibility(input.visibility || 'all');
         this.locked = Boolean(input.locked);
@@ -676,6 +700,7 @@ export class BlackboardWidget {
         if (patch.properties !== undefined) {
             this.properties = mergePlainObject(this.properties, patch.properties);
         }
+        this.properties = enforceFileWidgetMinimumSize(this.type, this.properties);
         if (patch.groupId !== undefined) this.groupId = String(patch.groupId || '').trim();
         if (patch.visibility !== undefined) {
             this.visibility = normalizeVisibility(patch.visibility);

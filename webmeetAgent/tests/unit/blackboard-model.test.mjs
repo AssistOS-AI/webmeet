@@ -28,7 +28,7 @@ import {
     getRoomBlackboardForCommand,
     joinMeeting,
     listMeetingEvents,
-    publishRoomImage
+    publishRoomAttachment
 } from '../../lib/webmeetStore.mjs';
 import {
     decryptRoomPayload,
@@ -52,6 +52,7 @@ const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-actions.js',
     'webmeet-blackboard-geometry.js',
     'webmeet-blackboard-graphics-rendering.js',
+    'webmeet-blackboard-attachment-rendering.js',
     'webmeet-blackboard-interactions.js',
     'webmeet-blackboard-rendering.js',
     'webmeet-blackboard-collaboration-rendering.js',
@@ -110,6 +111,17 @@ test('blackboard applies final create, patch and delete operations', () => {
     });
 
     assert.equal(blackboard.getWidget('shape_1'), null);
+});
+
+test('file widget geometry cannot become smaller than its card content', () => {
+    const widget = new BlackboardWidget({
+        id: 'file-minimum',
+        type: 'file',
+        properties: {geometry: {x: 20, y: 30, width: 80, height: 40}},
+    });
+    assert.deepEqual(widget.properties.geometry, {x: 20, y: 30, width: 160, height: 100});
+    widget.patchProperties({geometry: {width: 120, height: 60}});
+    assert.deepEqual(widget.properties.geometry, {x: 20, y: 30, width: 160, height: 100});
 });
 
 test('blackboard applies final background changes to board metadata', () => {
@@ -1786,15 +1798,15 @@ test('blackboard opens as the focused item inside the participant video layout',
     assert.match(dashboardCss, /\.webmeet-blackboard-surface webmeet-blackboard-panel[\s\S]*display: flex[\s\S]*overflow: hidden/);
 });
 
-test('blackboard widgets support final resize changes for shape line card text and image', async () => {
+test('blackboard widgets support final resize changes for shape line card text image and file', async () => {
     const source = await readBlackboardPanelSource();
     const css = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
         'utf8'
     );
 
-    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'\]\.includes/);
-    assert.match(source, /getWidgetMinimumSize\(widget\)[\s\S]*widget\?\.type === 'poll'[\s\S]*widget\?\.type === 'bullets'[\s\S]*widget\?\.type === 'scripta-document'/);
+    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'file', 'poll', 'bullets', 'scripta-document'\]\.includes/);
+    assert.match(source, /getWidgetMinimumSize\(widget\)[\s\S]*widget\?\.type === 'file'[\s\S]*minWidth: 160, minHeight: 100[\s\S]*widget\?\.type === 'poll'[\s\S]*widget\?\.type === 'bullets'[\s\S]*widget\?\.type === 'scripta-document'/);
     assert.match(source, /const minimumSize = this\.getWidgetMinimumSize\(widget\)/);
     assert.match(source, /\.\.\.minimumSize/);
     assert.match(source, /const minWidth = Number\(state\.minWidth \|\| 48\)/);
@@ -1806,6 +1818,9 @@ test('blackboard widgets support final resize changes for shape line card text a
     assert.match(source, /event\.target\?\.closest\?\.\('\[data-resize-handle\]'\)/);
     assert.match(css, /\.webmeet-blackboard-resize-handle/);
     assert.match(css, /\.webmeet-blackboard-widget\[aria-selected="true"\] \.webmeet-blackboard-resize-handle/);
+    assert.match(css, /\.webmeet-blackboard-widget\.file[\s\S]*min-width: 160px[\s\S]*min-height: 100px/);
+    assert.match(source, /const minFileWidth = widget\.type === 'file' \? 160 : 1/);
+    assert.match(source, /const minFileHeight = widget\.type === 'file' \? 100 : 1/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*overflow: auto/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*width: auto[\s\S]*min-width: 0[\s\S]*overflow: auto/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*scrollbar-gutter: stable/);
@@ -1992,7 +2007,7 @@ test('blackboard supports image upload widgets', async () => {
     assert.match(panelSource, /widget\.type === 'image'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image-frame'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image'/);
-    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'\]\.includes/);
+    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'file', 'poll', 'bullets', 'scripta-document'\]\.includes/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame[\s\S]*border: var\(--stroke-width/);
 });
@@ -2200,6 +2215,9 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /getLineEndpointResize\(state, event\)/);
     assert.match(panelSource, /movingEndpoint: handle === 'line-start' \? 'start' : 'end'/);
     assert.match(panelSource, /canRotateWidget\(widget\)[\s\S]*\['shape', 'line', 'text', 'image'\]\.includes/);
+    assert.match(panelSource, /if \(widget\.type !== 'file' && this\.canEditWidget\(widget\)\)/);
+    assert.match(panelSource, /appendFileContextDownload\(menu, widget\)/);
+    assert.match(panelSource, /widget\?\.type !== 'file'[\s\S]*file-context-download[\s\S]*data-local-action="downloadBlackboardFile"/);
     assert.match(panelCss, /\.webmeet-blackboard-line-svg/);
     assert.match(panelCss, /\.webmeet-blackboard-resize-handle\.line-endpoint/);
     assert.doesNotMatch(editorHtml, /data-role="shapeKind"/);
@@ -2589,13 +2607,20 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         context.scriptaExplorerClient = async (tool, args) => {
             if (tool === 'scripta_crdt_ensure_folder') return { ok: true, folderPath: args.folderPath };
             if (tool === 'webmeet_media_commit') {
+                if (args.blobRef.id === 'c'.repeat(48)) {
+                    return { ok: true, asset: {
+                        assetId: 'asset_file-1', kind: 'file', filename: 'agenda.pdf', mimeType: 'application/pdf',
+                        extension: 'pdf', size: 4096,
+                        workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/asset_file-1.pdf`
+                    } };
+                }
                 assert.deepEqual(args.blobRef, {
                     id: 'b'.repeat(48),
                     agent: 'explorer',
                     localPath: `blobs/${'b'.repeat(48)}`
                 });
                 return { ok: true, asset: {
-                    assetId: 'asset_chat-1', filename: 'chat.png', mimeType: 'image/png', size: 24,
+                    assetId: 'asset_chat-1', kind: 'image', filename: 'chat.png', mimeType: 'image/png', size: 24,
                     width: 800, height: 600,
                     workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/asset_chat-1.png`
                 } };
@@ -2603,7 +2628,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             if (tool === 'webmeet_media_get') return {
                 ok: true,
                 asset: {
-                    assetId: args.assetId, filename: 'photo.png', mimeType: 'image/png', size: 24,
+                    assetId: args.assetId, kind: 'image', filename: 'photo.png', mimeType: 'image/png', size: 24,
                     width: 640, height: 480,
                     workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.assetId}.png`
                 }
@@ -2616,20 +2641,46 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         });
         const boardId = initialProjection.workspace.activeBoardId;
 
-        const publishedImage = await publishRoomImage(context, {
+        const publishedImage = await publishRoomAttachment(context, {
             roomId: meeting.roomId, boardId, participantId: 'admin',
             blobRef: {
                 id: 'b'.repeat(48),
                 agent: 'explorer',
                 localPath: `blobs/${'b'.repeat(48)}`
             },
-            filename: 'chat.png', authInfo
+            authInfo
         });
         assert.equal(publishedImage.message.metadata.attachments[0].assetId, 'asset_chat-1');
         assert.equal(publishedImage.widget.type, 'image');
         assert.equal(publishedImage.widget.properties.geometry.width, 360);
         assert.equal(publishedImage.widget.properties.geometry.height, 270);
         assert.equal(publishedImage.widget.properties.geometry.rotation, 0);
+        assert.equal(publishedImage.message.metadata.boardTitle, 'Workspace 1');
+
+        const publishedFile = await publishRoomAttachment(context, {
+            roomId: meeting.roomId, boardId, participantId: 'admin',
+            blobRef: {
+                id: 'c'.repeat(48),
+                agent: 'explorer',
+                localPath: `blobs/${'c'.repeat(48)}`
+            },
+            position: {x: 500, y: 400},
+            authInfo
+        });
+        assert.equal(publishedFile.message.metadata.attachments[0].kind, 'file');
+        assert.equal(publishedFile.widget.type, 'file');
+        assert.deepEqual(publishedFile.widget.properties.geometry, {
+            x: 340, y: 320, width: 320, height: 160, rotation: 0
+        });
+        assert.deepEqual(publishedFile.widget.properties.source, {
+            kind: 'explorer-media',
+            assetId: 'asset_file-1',
+            url: `/workspace-files/document-multimedia/webmeet/${meeting.roomId}/assets/asset_file-1.pdf`,
+            name: 'agenda.pdf',
+            mimeType: 'application/pdf',
+            extension: 'pdf',
+            size: 4096
+        });
 
         let beforeEmptyUndo = await getRoomBlackboard(context, {
             roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,

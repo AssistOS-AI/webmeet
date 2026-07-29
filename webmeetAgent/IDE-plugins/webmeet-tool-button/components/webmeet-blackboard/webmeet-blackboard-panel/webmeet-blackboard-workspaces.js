@@ -10,6 +10,14 @@ function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
 }
 
+function formatFileSize(value) {
+    const bytes = Math.max(0, Number(value || 0));
+    if (bytes < 1024) return `${bytes} B`;
+    const megabytes = bytes / (1024 * 1024);
+    if (megabytes >= 1) return `${megabytes >= 10 ? megabytes.toFixed(0) : megabytes.toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(bytes >= 10 * 1024 ? 0 : 1)} KB`;
+}
+
 export function getFilmstripSelectionBounds(widgets = [], widgetIds = []) {
     const selectedIds = new Set([...widgetIds].map((id) => String(id || '').trim()).filter(Boolean));
     const geometries = widgets
@@ -122,6 +130,11 @@ export function getFilmstripWidgetView(widget = {}) {
         const source = properties.source || {};
         view.imageUrl = text(source.url || source.downloadUrl || properties.src);
         view.imageAlt = text(properties.alt || source.name) || 'Image';
+    } else if (type === 'file') {
+        const source = properties.source || {};
+        view.kicker = text(source.extension).toUpperCase() || 'FILE';
+        view.title = text(source.name) || 'File';
+        view.body = `${text(source.mimeType) || 'application/octet-stream'} · ${formatFileSize(source.size)}`;
     } else if (type === 'text') {
         view.body = text(properties.text);
     } else if (type === 'card') {
@@ -1039,7 +1052,15 @@ export const blackboardWorkspaceMethods = {
     handleFilmstripDragOver(event) {
         const card = event.target?.closest?.('.webmeet-blackboard-filmstrip-card');
         const targetBoardId = String(card?.dataset?.boardId || '').trim();
-        if (!card || !this.filmstripDragState || !targetBoardId) return;
+        if (!card || !targetBoardId) return;
+        if (this.hasTransferredFiles?.(event.dataTransfer)) {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+            for (const item of this.workspaceFilmstripTrack.querySelectorAll('.is-drag-over')) item.classList.remove('is-drag-over');
+            card.classList.add('is-drag-over');
+            return;
+        }
+        if (!this.filmstripDragState) return;
         event.preventDefault();
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
         for (const item of this.workspaceFilmstripTrack.querySelectorAll('.is-drag-over')) item.classList.remove('is-drag-over');
@@ -1056,7 +1077,26 @@ export const blackboardWorkspaceMethods = {
         const card = event.target?.closest?.('.webmeet-blackboard-filmstrip-card');
         const targetBoardId = String(card?.dataset?.boardId || '').trim();
         const transfer = this.filmstripDragState;
-        if (!card || !transfer || !targetBoardId) return;
+        if (!card || !targetBoardId) return;
+        if (this.hasTransferredFiles?.(event.dataTransfer)) {
+            event.preventDefault();
+            event.stopPropagation?.();
+            const preview = card.querySelector('[data-role="filmstrip-preview"]');
+            const position = getFilmstripLogicalPoint(
+                event.clientX,
+                event.clientY,
+                preview?.getBoundingClientRect?.() || {},
+                Number(preview?.dataset?.logicalWidth || 1200),
+                Number(preview?.dataset?.logicalHeight || 800),
+            );
+            card.classList.remove('is-drag-over');
+            this.publishTransferredFiles?.(this.getTransferredFiles?.(event.dataTransfer), {
+                boardId: targetBoardId,
+                position
+            });
+            return;
+        }
+        if (!transfer) return;
         event.preventDefault();
         const preview = card.querySelector('[data-role="filmstrip-preview"]');
         const placement = resolveFilmstripDropPlacement({

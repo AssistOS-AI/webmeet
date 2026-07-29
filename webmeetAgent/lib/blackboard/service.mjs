@@ -25,17 +25,25 @@ import { scriptaOwnerHash } from '../scripta/identity.mjs';
 import { scriptaExplorer } from '../scripta/explorer-crdt-client.mjs';
 import { calculateContentBounds } from './semantic-context.mjs';
 
-function imageGeometry(blackboard, asset) {
+function attachmentGeometry(blackboard, asset, position = null) {
     const bounds = calculateContentBounds([...blackboard.widgets.values()].map((widget) => widget.serializePrivileged()));
-    const naturalWidth = Math.max(1, Number(asset.width || 1));
-    const naturalHeight = Math.max(1, Number(asset.height || 1));
-    const naturalMax = Math.max(naturalWidth, naturalHeight);
-    const scale = naturalMax > 360 ? 360 / naturalMax : naturalMax < 180 ? 180 / naturalMax : 1;
-    const width = Math.max(1, Math.round(naturalWidth * scale));
-    const height = Math.max(1, Math.round(naturalHeight * scale));
+    let width = 320;
+    let height = 160;
+    if (asset.kind === 'image') {
+        const naturalWidth = Math.max(1, Number(asset.width || 1));
+        const naturalHeight = Math.max(1, Number(asset.height || 1));
+        const naturalMax = Math.max(naturalWidth, naturalHeight);
+        const scale = naturalMax > 360 ? 360 / naturalMax : naturalMax < 180 ? 180 / naturalMax : 1;
+        width = Math.max(1, Math.round(naturalWidth * scale));
+        height = Math.max(1, Math.round(naturalHeight * scale));
+    }
+    const requestedX = Number(position?.x);
+    const requestedY = Number(position?.y);
+    const centerX = Number.isFinite(requestedX) ? requestedX : bounds.centerX;
+    const centerY = Number.isFinite(requestedY) ? requestedY : bounds.centerY;
     return {
-        x: Math.round(bounds.centerX - width / 2),
-        y: Math.round(bounds.centerY - height / 2),
+        x: Math.max(0, Math.round(centerX - width / 2)),
+        y: Math.max(0, Math.round(centerY - height / 2)),
         width,
         height,
         rotation: 0
@@ -43,24 +51,29 @@ function imageGeometry(blackboard, asset) {
 }
 
 function publicMediaAsset(asset = {}) {
-    return {
+    const kind = asset.kind === 'image' ? 'image' : 'file';
+    const view = {
         assetId: String(asset.assetId || ''),
-        kind: 'image',
-        filename: String(asset.filename || 'Image'),
+        kind,
+        filename: String(asset.filename || (kind === 'image' ? 'Image' : 'File')),
         mimeType: String(asset.mimeType || ''),
+        extension: String(asset.extension || ''),
         size: Number(asset.size || 0),
-        width: Number(asset.width || 0),
-        height: Number(asset.height || 0),
         workspaceUrl: String(asset.workspaceUrl || '')
     };
+    if (kind === 'image') {
+        view.width = Number(asset.width || 0);
+        view.height = Number(asset.height || 0);
+    }
+    return view;
 }
 
-export async function publishRoomImage(context, {
+export async function publishRoomAttachment(context, {
     roomId,
     boardId = '',
     participantId = '',
     blobRef = null,
-    filename = '',
+    position = null,
     authInfo = null
 } = {}) {
     const targetRoomId = String(roomId || '').trim();
@@ -72,7 +85,6 @@ export async function publishRoomImage(context, {
     const assetResult = await scriptaExplorer.commitMedia(context, {
         roomId: targetRoomId,
         blobRef,
-        filename: String(filename || 'Image'),
         createdBy: authorizedParticipantId
     });
     const asset = publicMediaAsset(assetResult?.asset || assetResult);
@@ -89,25 +101,35 @@ export async function publishRoomImage(context, {
         const before = workspace.snapshot();
         const widgetId = newEventId('widget');
         const routeUrl = `/workspace-files/${asset.workspaceUrl.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
+        const source = {
+            kind: 'explorer-media', assetId: asset.assetId, url: routeUrl,
+            name: asset.filename, mimeType: asset.mimeType, extension: asset.extension, size: asset.size
+        };
+        const properties = asset.kind === 'image'
+            ? {
+                source,
+                alt: asset.filename,
+                naturalSize: { width: asset.width, height: asset.height },
+                geometry: attachmentGeometry(blackboard, asset, position)
+            }
+            : {
+                source,
+                geometry: attachmentGeometry(blackboard, asset, position)
+            };
         const widget = blackboard.applyFinalChange({
             changeType: 'create',
             targetType: 'widget',
-            reason: 'chatImageUpload',
+            reason: 'attachmentUpload',
             widget: {
                 id: widgetId,
-                type: 'image',
-                properties: {
-                    source: { kind: 'explorer-media', assetId: asset.assetId, url: routeUrl, name: asset.filename, mimeType: asset.mimeType },
-                    alt: asset.filename,
-                    naturalSize: { width: asset.width, height: asset.height },
-                    geometry: imageGeometry(blackboard, asset)
-                }
+                type: asset.kind,
+                properties
             }
         }, { participantId: effectiveParticipantId, ownerParticipantId: effectiveParticipantId, record: false });
         blackboard.updateInteractionContext([widgetId], { participantId: effectiveParticipantId });
         workspace.activeBoardId = blackboard.boardId;
         workspace.bumpRevision();
-        workspace.record('image-publish', before);
+        workspace.record('attachment-publish', before);
         saveWorkspaceToPayload(payload, targetRoomId, workspace);
         const serializedBlackboard = blackboard.serializePrivileged();
         payload.resources = Array.isArray(payload.resources) ? payload.resources : [];
@@ -118,7 +140,12 @@ export async function publishRoomImage(context, {
             id: newEventId('chat'), meetingId: targetRoomId,
             authorId: effectiveParticipantId, authorName,
             message: asset.filename, kind: 'user', createdAt: new Date().toISOString(),
-            metadata: { attachments: [{ ...asset }], blackboardWidgetId: widgetId, boardId: blackboard.boardId }
+            metadata: {
+                attachments: [{ ...asset }],
+                blackboardWidgetId: widgetId,
+                boardId: blackboard.boardId,
+                boardTitle: String(blackboard.metadata?.title || '')
+            }
         };
         payload.chatMessages = Array.isArray(payload.chatMessages) ? payload.chatMessages : [];
         payload.chatMessages.push(chatMessage);

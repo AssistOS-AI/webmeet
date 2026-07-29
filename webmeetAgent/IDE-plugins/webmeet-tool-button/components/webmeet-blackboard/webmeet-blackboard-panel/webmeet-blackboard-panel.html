@@ -86,6 +86,26 @@
     </div>
 </template>
 
+<template data-template="file-widget">
+    <article class="webmeet-blackboard-file-card">
+        <span class="webmeet-blackboard-file-extension" data-role="file-extension" aria-hidden="true"></span>
+        <span class="webmeet-blackboard-file-details">
+            <strong class="webmeet-blackboard-file-name" data-role="file-name"></strong>
+            <span class="webmeet-blackboard-file-meta" data-role="file-meta"></span>
+        </span>
+    </article>
+</template>
+
+<template data-template="file-context-download">
+    <button type="button"
+            class="webmeet-blackboard-context-button download"
+            data-local-action="downloadBlackboardFile"
+            title="Download file"
+            aria-label="Download file">
+        <span class="webmeet-blackboard-context-icon download" aria-hidden="true"></span>
+    </button>
+</template>
+
 <div class="webmeet-blackboard-selection-context-menu"
      data-role="selection-context-menu"
      role="menu"
@@ -295,6 +315,10 @@
 </section>
 
 <div class="webmeet-blackboard-stage" data-role="workspace-stage">
+    <div class="webmeet-blackboard-file-drop-overlay" data-role="file-drop-overlay" aria-hidden="true" hidden>
+        <strong>Drop files here</strong>
+        <span>Each file will also be added to chat.</span>
+    </div>
     <div class="webmeet-blackboard-transition-layer" data-role="transition-layer" aria-hidden="true" hidden></div>
-    <div class="webmeet-blackboard-board" part="board" data-role="board" role="tabpanel"></div>
+    <div class="webmeet-blackboard-board" part="board" data-role="board" role="tabpanel" tabindex="0"></div>
 </div>

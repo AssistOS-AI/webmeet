@@ -655,6 +655,78 @@
     cursor: pointer;
 }
 
+.webmeet-chat-file-attachment {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    width: min(300px, 100%);
+    margin-top: 8px;
+    padding: 8px;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--surface) 90%, var(--accent) 10%);
+}
+
+.webmeet-chat-file-open {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.webmeet-chat-file-extension {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 48px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    color: var(--accent);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+}
+
+.webmeet-chat-file-details {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.webmeet-chat-file-details > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-chat-file-details span {
+    color: var(--text-soft);
+    font-size: .7rem;
+}
+
+.webmeet-chat-file-download {
+    min-height: 30px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-radius: 999px;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
 .webmeet-compose.webmeet-collapsible.expanded {
     margin-top: 10px;
     padding: 10px;
@@ -779,7 +851,7 @@
     display: none;
 }
 
-#webmeetChatSidebar .webmeet-compose.is-image-drag-active {
+#webmeetChatSidebar .webmeet-compose.is-attachment-drag-active {
     border-top-color: color-mix(in srgb, var(--accent) 70%, var(--border-strong) 30%);
 }
 
@@ -912,6 +984,7 @@
 #webmeetChatSidebar .webmeet-compose .general-button svg {
     width: 16px;
     height: 16px;
+    margin: unset;
 }
 
 .webmeet-chat-action-button .webmeet-chat-action-icon {

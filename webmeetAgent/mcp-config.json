@@ -191,9 +191,9 @@
       "env": { "TOOL_NAME": "webmeet_chat_send" }
     },
     {
-      "name": "webmeet_image_publish",
-      "title": "WebMeet Publish Image",
-      "description": "Commit an Explorer image and publish it atomically to room chat and Blackboard.",
+      "name": "webmeet_attachment_publish",
+      "title": "WebMeet Publish Attachment",
+      "description": "Commit an Explorer file and publish it atomically to room chat and a selected Blackboard workspace.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
@@ -209,14 +209,21 @@
             "localPath": { "type": "string", "optional": false }
           }
         },
-        "filename": { "type": "string", "optional": true }
+        "position": {
+          "type": "object",
+          "optional": true,
+          "properties": {
+            "x": { "type": "number", "optional": false },
+            "y": { "type": "number", "optional": false }
+          }
+        }
       },
-      "env": { "TOOL_NAME": "webmeet_image_publish" }
+      "env": { "TOOL_NAME": "webmeet_attachment_publish" }
     },
     {
       "name": "webmeet_media_commit",
       "title": "WebMeet Commit Media",
-      "description": "Commit a staged Explorer image for an authorized room without publishing a chat message.",
+      "description": "Commit a staged Explorer media asset for an authorized room without publishing a chat message.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
@@ -230,8 +237,7 @@
             "agent": { "type": "string", "optional": false },
             "localPath": { "type": "string", "optional": false }
           }
-        },
-        "filename": { "type": "string", "optional": true }
+        }
       },
       "env": { "TOOL_NAME": "webmeet_media_commit" }
     },

@@ -223,7 +223,16 @@ export class WebmeetDashboard {
         this.handleBlackboardPanelReadyEvent = (event) => {
             void this.handleBlackboardPanelReady?.(event);
         };
+        this.handleBlackboardAttachmentUploadEvent = (event) => {
+            const detail = event?.detail || {};
+            event.stopPropagation?.();
+            void this.chatComponent?.publishAttachments?.(detail.files, {
+                boardId: detail.boardId,
+                position: detail.position
+            });
+        };
         this.element.addEventListener('webmeet-blackboard-panel-ready', this.handleBlackboardPanelReadyEvent);
+        this.element.addEventListener('webmeet-blackboard-attachment-upload', this.handleBlackboardAttachmentUploadEvent);
         this.element.addEventListener('click', this.handleClick);
         this.element.addEventListener('keydown', this.handleChatInputKeydown);
         this.element.addEventListener('change', this.handleArchivedRoomsToggleChange);
@@ -512,7 +521,9 @@ export class WebmeetDashboard {
                 'toggleVideoGridFullscreen',
                 'toggleChatSidebar',
                 'toggleChatAddMenu',
-                'selectChatAddImage',
+                'selectChatAddFile',
+                'openChatAttachment',
+                'downloadChatAttachment',
                 'toggleMediaSettings',
                 'closeMediaSettings',
                 'setSettingsTab',
@@ -556,7 +567,7 @@ export class WebmeetDashboard {
             && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
         ) {
             event.preventDefault();
-            this.chatAddImageOption?.focus?.();
+            this.chatAddFileOption?.focus?.();
             return;
         }
         if (!event.target?.matches?.('#webmeetChatInput')) return;
@@ -572,24 +583,6 @@ export class WebmeetDashboard {
             && !event.target?.closest?.('.webmeet-chat-add-control')
         ) {
             this.closeChatAddMenu();
-        }
-        const attachment = event.target?.closest?.('[data-chat-blackboard-widget]');
-        if (attachment) {
-            const widgetId = String(attachment.dataset.chatBlackboardWidget || '').trim();
-            const boardId = String(attachment.dataset.chatBlackboardBoard || '').trim();
-            void this.applyBlackboardVisibility({
-                meetingId: this.selectedMeeting?.id || '',
-                participantId: this.state.session?.participantIdentity || '',
-                visible: true,
-                presenterId: 'agent_robo_team',
-                presenterName: 'RoboTeam'
-            }).then(async () => {
-                if (boardId && boardId !== this.blackboardAdapter?.boardId) {
-                    await this.blackboardAdapter?.sendWorkspaceAction?.('board-activate', { boardId });
-                }
-                this.blackboardPanel?.dispatchEvent?.(new CustomEvent('webmeet-blackboard-select-widget', {detail: {widgetId}}));
-            });
-            return;
         }
         if (
             this.state.avatarQuickMenuVisible
@@ -639,10 +632,10 @@ export class WebmeetDashboard {
         this.chatComposer = this.element.querySelector('#webmeetChatComposer');
         this.chatInput = this.element.querySelector('#webmeetChatInput');
         this.chatActionButton = this.element.querySelector('#webmeetChatActionButton');
-        this.chatImageButton = this.element.querySelector('#webmeetChatImageButton');
-        this.chatImageInput = this.element.querySelector('#webmeetChatImageInput');
+        this.chatAttachmentButton = this.element.querySelector('#webmeetChatAttachmentButton');
+        this.chatFileInput = this.element.querySelector('#webmeetChatFileInput');
         this.chatAddMenu = this.element.querySelector('#webmeetChatAddMenu');
-        this.chatAddImageOption = this.element.querySelector('#webmeetChatAddImageOption');
+        this.chatAddFileOption = this.element.querySelector('#webmeetChatAddFileOption');
         this.chatDropOverlay = this.element.querySelector('#webmeetChatDropOverlay');
         this.chatSpeechStatus = this.element.querySelector('#webmeetChatSpeechStatus');
         this.chatViewMode = this.element.querySelector('#webmeetChatViewMode');
@@ -697,8 +690,8 @@ export class WebmeetDashboard {
             chatComposer: this.chatComposer,
             chatInput: this.chatInput,
             chatActionButton: this.chatActionButton,
-            chatImageButton: this.chatImageButton,
-            chatImageInput: this.chatImageInput,
+            chatAttachmentButton: this.chatAttachmentButton,
+            chatFileInput: this.chatFileInput,
             chatDropOverlay: this.chatDropOverlay,
             chatSpeechStatus: this.chatSpeechStatus
         });
@@ -712,6 +705,7 @@ export class WebmeetDashboard {
 
     afterUnload() {
         this.element.removeEventListener('webmeet-blackboard-panel-ready', this.handleBlackboardPanelReadyEvent);
+        this.element.removeEventListener('webmeet-blackboard-attachment-upload', this.handleBlackboardAttachmentUploadEvent);
         this.element.removeEventListener('click', this.handleClick);
         this.element.removeEventListener('submit', this.handleSubmitEvent);
         this.element.removeEventListener('keydown', this.handleChatInputKeydown);

@@ -70,7 +70,7 @@ import {
     applyRoomBlackboardWorkspaceAction as applyRoomBlackboardWorkspaceActionImpl,
     getRoomBlackboard as getRoomBlackboardImpl,
     getRoomBlackboardForCommand as getRoomBlackboardForCommandImpl,
-    publishRoomImage as publishRoomImageImpl,
+    publishRoomAttachment as publishRoomAttachmentImpl,
     redoRoomBlackboard as redoRoomBlackboardImpl,
     undoRoomBlackboard as undoRoomBlackboardImpl
 } from './blackboard/service.mjs';
@@ -312,11 +312,11 @@ export async function applyRoomBlackboardEvents(context, input = {}) {
     return await applyRoomBlackboardEventsImpl(context, input);
 }
 
-export async function publishRoomImage(context, input = {}) {
-    return await publishRoomImageImpl(context, input);
+export async function publishRoomAttachment(context, input = {}) {
+    return await publishRoomAttachmentImpl(context, input);
 }
 
-export async function commitRoomMedia(context, { roomId, participantId = '', blobRef, filename = '', authInfo = null } = {}) {
+export async function commitRoomMedia(context, { roomId, participantId = '', blobRef, authInfo = null } = {}) {
     const record = await loadMeetingRecord(context, roomId);
     if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
     const payload = decryptMeetingPayload(context, record);
@@ -324,7 +324,6 @@ export async function commitRoomMedia(context, { roomId, participantId = '', blo
     return await scriptaExplorer.commitMedia(context, {
         roomId,
         blobRef,
-        filename,
         createdBy: effectiveParticipantId
     });
 }

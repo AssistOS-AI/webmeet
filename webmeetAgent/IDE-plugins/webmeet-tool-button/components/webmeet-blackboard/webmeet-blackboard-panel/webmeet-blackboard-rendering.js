@@ -1,4 +1,5 @@
 import { TEXT_DEFAULT_STYLE } from './webmeet-blackboard-text-style.js';
+
 export const blackboardRenderingMethods = {
     renderWidgets() {
         if (!this.board) return;
@@ -44,14 +45,16 @@ export const blackboardRenderingMethods = {
         node.style.top = `${Number(geometry.y || 0)}px`;
         const widgetWidth = Number(geometry.width || 120);
         const widgetHeight = Number(geometry.height || 64);
+        const minFileWidth = widget.type === 'file' ? 160 : 1;
+        const minFileHeight = widget.type === 'file' ? 100 : 1;
         const minPollWidth = widget.type === 'poll' ? 260 : 1;
         const minPollHeight = widget.type === 'poll' ? 132 : 1;
         const minBulletsWidth = widget.type === 'bullets' ? 320 : 1;
         const minBulletsHeight = widget.type === 'bullets' ? 190 : 1;
         const minScriptaWidth = widget.type === 'scripta-document' ? 600 : 1;
         const minScriptaHeight = widget.type === 'scripta-document' ? 400 : 1;
-        node.style.width = `${Math.max(widgetWidth, minPollWidth, minBulletsWidth, minScriptaWidth)}px`;
-        node.style.height = `${Math.max(widgetHeight, minPollHeight, minBulletsHeight, minScriptaHeight)}px`;
+        node.style.width = `${Math.max(widgetWidth, minFileWidth, minPollWidth, minBulletsWidth, minScriptaWidth)}px`;
+        node.style.height = `${Math.max(widgetHeight, minFileHeight, minPollHeight, minBulletsHeight, minScriptaHeight)}px`;
         const rotation = this.getWidgetRotation(widget);
         node.style.transform = rotation ? `rotate(${rotation}deg)` : '';
         node.style.transformOrigin = 'center center';
@@ -140,6 +143,8 @@ export const blackboardRenderingMethods = {
         moveHandle.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
         menu.append(moveHandle);
 
+        this.appendFileContextDownload(menu, widget);
+
         if (widget.type === 'scripta-document' && widget.properties?.resourceId) {
             const deleteButton = this.createContextButton('delete', 'Delete document file', 'Delete document file', 'delete');
             deleteButton.addEventListener('click', (event) => {
@@ -152,7 +157,7 @@ export const blackboardRenderingMethods = {
         }
 
         this.appendImageScriptaButton(menu, widget);
-        if (this.canEditWidget(widget)) {
+        if (widget.type !== 'file' && this.canEditWidget(widget)) {
             const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
             settingsButton.addEventListener('click', (event) => {
                 event.preventDefault();
@@ -212,10 +217,11 @@ export const blackboardRenderingMethods = {
         if (!widget || widget.locked) return false;
         if (widget.type === 'poll' && !this.canEditWidget(widget)) return false;
         const widgetType = String(widget.type || 'shape').trim() || 'shape';
-        return ['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'].includes(widgetType);
+        return ['shape', 'line', 'card', 'text', 'image', 'file', 'poll', 'bullets', 'scripta-document'].includes(widgetType);
     },
 
     getWidgetMinimumSize(widget) {
+        if (widget?.type === 'file') return {minWidth: 160, minHeight: 100};
         if (widget?.type === 'poll') return {minWidth: 260, minHeight: 132};
         if (widget?.type === 'bullets') return {minWidth: 320, minHeight: 190};
         if (widget?.type === 'scripta-document') return {minWidth: 600, minHeight: 400};
@@ -279,17 +285,8 @@ export const blackboardRenderingMethods = {
             node.append(this.createLineSvg(widget));
             return;
         }
-        if (widget.type === 'image') {
-            const frame = document.createElement('div');
-            frame.className = 'webmeet-blackboard-image-frame';
-            const image = document.createElement('img');
-            const source = widget.properties?.source || {};
-            image.className = 'webmeet-blackboard-image';
-            image.alt = String(widget.properties?.alt || source.name || 'Image');
-            image.draggable = false;
-            image.src = String(source.url || source.downloadUrl || widget.properties?.src || '');
-            frame.append(image);
-            node.append(frame);
+        if (widget.type === 'image' || widget.type === 'file') {
+            this.renderAttachmentWidgetContent(node, widget);
             return;
         }
         if (widget.type === 'poll') {

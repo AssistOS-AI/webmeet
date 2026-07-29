@@ -2,7 +2,7 @@ import { TEXT_DEFAULT_STYLE, TEXT_FONT_FAMILIES, TEXT_MIN_FONT_SIZE, TEXT_MAX_FO
 
 const TEXT_WIDGET_TYPES = new Set(['text', 'card']);
 const CHOICE_WIDGET_TYPES = new Set(['poll']);
-const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'poll', 'bullets', 'embed', 'image']);
+const SURFACE_WIDGET_TYPES = new Set(['shape', 'card', 'text', 'poll', 'bullets', 'embed', 'image', 'file']);
 const TEXT_COLOR_WIDGET_TYPES = new Set(['text', 'card', 'poll', 'bullets', 'embed']);
 
 function readJsonAttribute(element, attributeName) {
@@ -100,6 +100,7 @@ function getWidgetEditorTitle(type = '') {
         shape: 'Edit shape',
         line: 'Edit line',
         image: 'Edit image',
+        file: 'Edit file',
         embed: 'Edit embed'
     };
     return titles[String(type || '').trim()] || 'Edit widget';

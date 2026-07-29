@@ -209,7 +209,7 @@ export class BlackboardNetworkAdapter {
         return this.runTool('webmeet_scripta_workspace_list', { roomId: this.roomId });
     }
 
-    async commitMediaBlob(stagedBlob, filename) {
+    async commitMediaBlob(stagedBlob) {
         const response = await this.runTool('webmeet_media_commit', {
             roomId: this.roomId,
             participantId: this.participantId,
@@ -217,8 +217,7 @@ export class BlackboardNetworkAdapter {
                 id: stagedBlob?.id,
                 agent: stagedBlob?.agent,
                 localPath: stagedBlob?.localPath
-            },
-            filename
+            }
         });
         return response?.asset || response;
     }

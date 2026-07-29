@@ -1,4 +1,4 @@
-const GROUPABLE_WIDGET_TYPES = new Set(['shape', 'line', 'text', 'image', 'card']);
+const GROUPABLE_WIDGET_TYPES = new Set(['shape', 'line', 'text', 'image', 'file', 'card']);
 export const GROUP_SELECTION_PADDING = 8;
 
 export function padGroupSelectionBounds(bounds = {}, padding = GROUP_SELECTION_PADDING) {

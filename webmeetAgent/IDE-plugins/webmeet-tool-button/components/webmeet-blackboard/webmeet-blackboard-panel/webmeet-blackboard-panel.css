@@ -45,7 +45,7 @@ webmeet-blackboard-panel {
     align-items: flex-end;
     min-width: 0;
     min-height: 39px;
-    gap: 0;
+    gap: 5px;
     overflow-x: auto;
     padding: 0 10px;
     margin-bottom: -1px;
@@ -53,6 +53,7 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-tab-shell {
+    --bb-tab-fill: color-mix(in srgb, var(--bb-widget-text) 7%, var(--bb-panel-bg));
     position: relative;
     z-index: 1;
     display: inline-flex;
@@ -60,64 +61,46 @@ webmeet-blackboard-panel {
     align-items: center;
     min-height: 36px;
     padding: 0;
-    border: 1px solid transparent;
+    border: 1px solid color-mix(in srgb, var(--bb-board-border) 88%, transparent);
     border-bottom: 0;
     border-radius: 10px 10px 0 0;
-    background: transparent;
+    background: var(--bb-tab-fill);
+    box-shadow: 0 -2px 8px color-mix(in srgb, var(--bb-widget-text) 5%, transparent);
     transition: background-color 130ms ease, color 130ms ease;
 }
 
-.webmeet-blackboard-tab-shell:not(:has(.webmeet-blackboard-tab[aria-selected="true"]))::after {
-    position: absolute;
-    right: -1px;
-    top: 10px;
-    width: 1px;
-    height: 17px;
-    background: color-mix(in srgb, var(--bb-board-border) 72%, transparent);
-    content: '';
-    opacity: 0.72;
-}
-
 .webmeet-blackboard-tab-shell:not(:has(.webmeet-blackboard-tab[aria-selected="true"])):hover {
-    background: color-mix(in srgb, var(--bb-widget-text) 7%, transparent);
-    border-radius: 9px;
-}
-
-.webmeet-blackboard-tab-shell:not(:has(.webmeet-blackboard-tab[aria-selected="true"])):hover::after {
-    opacity: 0;
+    --bb-tab-fill: color-mix(in srgb, var(--bb-widget-text) 11%, var(--bb-panel-bg));
 }
 
 .webmeet-blackboard-tab-shell:has(.webmeet-blackboard-tab[aria-selected="true"]) {
-    z-index: 3;
-    border-color: color-mix(in srgb, var(--bb-board-border) 88%, transparent);
-    background: var(--bb-board-bg);
-    box-shadow: 0 -2px 8px color-mix(in srgb, var(--bb-widget-text) 5%, transparent);
+    --bb-tab-fill: var(--bb-board-bg);
 }
 
-.webmeet-blackboard-tab-shell:has(.webmeet-blackboard-tab[aria-selected="true"])::before,
-.webmeet-blackboard-tab-shell:has(.webmeet-blackboard-tab[aria-selected="true"])::after {
+.webmeet-blackboard-tab-shell::before,
+.webmeet-blackboard-tab-shell::after {
     position: absolute;
     bottom: 0;
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
     content: '';
     pointer-events: none;
 }
 
-.webmeet-blackboard-tab-shell:has(.webmeet-blackboard-tab[aria-selected="true"])::before {
-    left: -10px;
-    border-bottom-right-radius: 10px;
-    box-shadow: 5px 5px 0 5px var(--bb-board-bg);
+.webmeet-blackboard-tab-shell::before {
+    left: -6px;
+    border-bottom-right-radius: 6px;
+    box-shadow: 3px 3px 0 3px var(--bb-tab-fill);
 }
 
-.webmeet-blackboard-tab-shell:has(.webmeet-blackboard-tab[aria-selected="true"])::after {
-    right: -10px;
-    border-bottom-left-radius: 10px;
-    box-shadow: -5px 5px 0 5px var(--bb-board-bg);
+.webmeet-blackboard-tab-shell::after {
+    right: -6px;
+    border-bottom-left-radius: 6px;
+    box-shadow: -3px 3px 0 3px var(--bb-tab-fill);
 }
 
 .webmeet-blackboard-tab-shell.is-drag-over {
-    background: color-mix(in srgb, var(--bb-selection) 16%, var(--bb-panel-bg));
+    --bb-tab-fill: color-mix(in srgb, var(--bb-selection) 16%, var(--bb-panel-bg));
     box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bb-selection) 72%, transparent);
 }
 
@@ -337,10 +320,33 @@ webmeet-blackboard-panel {
     animation: webmeet-board-slide-in-left 220ms ease both;
 }
 
-@keyframes webmeet-board-slide-out-left { to { transform: translateX(-28%); opacity: 0; } }
-@keyframes webmeet-board-slide-in-right { from { transform: translateX(28%); opacity: 0; } }
-@keyframes webmeet-board-slide-out-right { to { transform: translateX(28%); opacity: 0; } }
-@keyframes webmeet-board-slide-in-left { from { transform: translateX(-28%); opacity: 0; } }
+@keyframes webmeet-board-slide-out-left {
+    to {
+        transform: translateX(-28%);
+        opacity: 0;
+    }
+}
+
+@keyframes webmeet-board-slide-in-right {
+    from {
+        transform: translateX(28%);
+        opacity: 0;
+    }
+}
+
+@keyframes webmeet-board-slide-out-right {
+    to {
+        transform: translateX(28%);
+        opacity: 0;
+    }
+}
+
+@keyframes webmeet-board-slide-in-left {
+    from {
+        transform: translateX(-28%);
+        opacity: 0;
+    }
+}
 
 .webmeet-blackboard-filmstrip {
     flex: 1 1 auto;
@@ -552,7 +558,9 @@ webmeet-blackboard-panel {
     white-space: nowrap;
 }
 
-.webmeet-blackboard-filmstrip-content-title { font-size: 6px; }
+.webmeet-blackboard-filmstrip-content-title {
+    font-size: 6px;
+}
 
 .webmeet-blackboard-filmstrip-content-list {
     display: grid;
@@ -604,8 +612,16 @@ webmeet-blackboard-panel {
     padding: 8px 12px 0;
 }
 
-.webmeet-blackboard-filmstrip-title { font-weight: 750; }
-.webmeet-blackboard-filmstrip-count { padding-top: 0; padding-bottom: 10px; font-size: 12px; opacity: 0.7; }
+.webmeet-blackboard-filmstrip-title {
+    font-weight: 750;
+}
+
+.webmeet-blackboard-filmstrip-count {
+    padding-top: 0;
+    padding-bottom: 10px;
+    font-size: 12px;
+    opacity: 0.7;
+}
 
 @media (prefers-reduced-motion: reduce) {
     .webmeet-blackboard-stage.is-slide-forward .webmeet-blackboard-transition-layer,
@@ -628,9 +644,9 @@ webmeet-blackboard-panel {
     scrollbar-gutter: stable;
     background-color: var(--bb-board-bg);
     background-image: radial-gradient(
-        circle,
-        color-mix(in srgb, var(--bb-grid-color) 62%, transparent) 0.8px,
-        transparent 0.9px
+            circle,
+            color-mix(in srgb, var(--bb-grid-color) 62%, transparent) 0.8px,
+            transparent 0.9px
     );
     background-position: 10px 10px;
     background-size: 20px 20px;
@@ -1673,6 +1689,83 @@ webmeet-blackboard-panel {
     background: transparent;
 }
 
+.webmeet-blackboard-widget.file {
+    min-width: 160px;
+    min-height: 100px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.webmeet-blackboard-file-card {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 5px;
+    border: var(--stroke-width, 1px) solid var(--stroke);
+    border-radius: 14px;
+    background: var(--fill, var(--bb-widget-bg));
+    color: var(--text-color, var(--bb-widget-text));
+}
+
+.webmeet-blackboard-file-extension {
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 68px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bb-selection) 12%, var(--bb-widget-bg));
+    color: var(--bb-selection);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .06em;
+}
+
+.webmeet-blackboard-file-details {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.webmeet-blackboard-file-name,
+.webmeet-blackboard-file-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-blackboard-file-name {
+    font-size: 15px;
+}
+
+.webmeet-blackboard-file-meta {
+    color: color-mix(in srgb, var(--bb-widget-text) 62%, transparent);
+    font-size: 11px;
+}
+
+.webmeet-blackboard-file-drop-overlay {
+    position: absolute;
+    z-index: 30;
+    inset: 16px;
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    border: 2px dashed var(--bb-selection);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bb-selection) 10%, var(--bb-board-bg));
+    color: var(--bb-widget-text);
+    text-align: center;
+    pointer-events: none;
+}
+
+.webmeet-blackboard-file-drop-overlay[hidden] {
+    display: none;
+}
+
 .webmeet-blackboard-widget[aria-selected="true"] {
     overflow: visible;
 }
@@ -1963,6 +2056,11 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-context-icon.export {
+    -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/export.svg');
+    mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/export.svg');
+}
+
+.webmeet-blackboard-context-icon.download {
     -webkit-mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/export.svg');
     mask-image: url('/webmeetAgent/IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-toolbar/icons/export.svg');
 }

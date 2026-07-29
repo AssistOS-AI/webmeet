@@ -62,10 +62,10 @@ export class ChatComponent {
         this.mentionOverlayHandlers = null;
         this.selectedMentionTokens = new Set();
         this.roboSpeechInput = null;
-        this.imageUploadHandlers = null;
-        this.imageUploadQueue = [];
-        this.imageUploadDrainPromise = null;
-        this.imageDragDepth = 0;
+        this.attachmentUploadHandlers = null;
+        this.attachmentUploadQueue = [];
+        this.attachmentUploadDrainPromise = null;
+        this.attachmentDragDepth = 0;
     }
 
     getKnownAgentTokens() {
@@ -90,18 +90,18 @@ export class ChatComponent {
     }
 
     setElements(elements) {
-        this.destroyImageUpload();
+        this.destroyAttachmentUpload();
         this.destroyRoboSpeechInput();
         this.elements = elements;
         this.syncRoboDraftState();
         this.initChatAutocomplete();
         this.initRoboSpeechInput();
-        this.initImageUpload();
-        this.setImageUploadBusy(Boolean(this.imageUploadDrainPromise));
+        this.initAttachmentUpload();
+        this.setAttachmentUploadBusy(Boolean(this.attachmentUploadDrainPromise));
     }
 
-    initImageUpload() {
-        const input = this.elements?.chatImageInput;
+    initAttachmentUpload() {
+        const input = this.elements?.chatFileInput;
         const composer = this.elements?.chatComposer
             || this.elements?.chatInput?.closest?.('.webmeet-compose')
             || null;
@@ -109,40 +109,40 @@ export class ChatComponent {
         const onChange = () => {
             const files = Array.from(input.files || []);
             input.value = '';
-            if (files.length) void this.publishImages(files);
+            if (files.length) void this.publishAttachments(files);
         };
         const onPaste = (event) => {
             const files = this.getTransferredFiles(event.clipboardData);
             if (!files.length) return;
             event.preventDefault();
-            void this.publishImages(files);
+            void this.publishAttachments(files);
         };
         const onDragEnter = (event) => {
             if (!this.hasTransferredFiles(event.dataTransfer)) return;
             event.preventDefault();
-            this.imageDragDepth += 1;
-            this.setImageDropActive(true);
+            this.attachmentDragDepth += 1;
+            this.setAttachmentDropActive(true);
         };
         const onDragOver = (event) => {
             if (!this.hasTransferredFiles(event.dataTransfer)) return;
             event.preventDefault();
             if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-            this.setImageDropActive(true);
+            this.setAttachmentDropActive(true);
         };
         const onDragLeave = (event) => {
-            if (!this.imageDragDepth) return;
+            if (!this.attachmentDragDepth) return;
             event.preventDefault();
-            this.imageDragDepth = Math.max(0, this.imageDragDepth - 1);
-            if (!this.imageDragDepth) this.setImageDropActive(false);
+            this.attachmentDragDepth = Math.max(0, this.attachmentDragDepth - 1);
+            if (!this.attachmentDragDepth) this.setAttachmentDropActive(false);
         };
         const onDrop = (event) => {
             if (!this.hasTransferredFiles(event.dataTransfer)) return;
             event.preventDefault();
             event.stopPropagation?.();
             const files = this.getTransferredFiles(event.dataTransfer);
-            this.imageDragDepth = 0;
-            this.setImageDropActive(false);
-            if (files.length) void this.publishImages(files);
+            this.attachmentDragDepth = 0;
+            this.setAttachmentDropActive(false);
+            if (files.length) void this.publishAttachments(files);
         };
         input.addEventListener('change', onChange);
         composer.addEventListener('paste', onPaste);
@@ -150,7 +150,7 @@ export class ChatComponent {
         composer.addEventListener('dragover', onDragOver);
         composer.addEventListener('dragleave', onDragLeave);
         composer.addEventListener('drop', onDrop);
-        this.imageUploadHandlers = {
+        this.attachmentUploadHandlers = {
             input,
             composer,
             onChange,
@@ -162,17 +162,17 @@ export class ChatComponent {
         };
     }
 
-    destroyImageUpload() {
-        const handlers = this.imageUploadHandlers;
+    destroyAttachmentUpload() {
+        const handlers = this.attachmentUploadHandlers;
         handlers?.input?.removeEventListener?.('change', handlers.onChange);
         handlers?.composer?.removeEventListener?.('paste', handlers.onPaste);
         handlers?.composer?.removeEventListener?.('dragenter', handlers.onDragEnter);
         handlers?.composer?.removeEventListener?.('dragover', handlers.onDragOver);
         handlers?.composer?.removeEventListener?.('dragleave', handlers.onDragLeave);
         handlers?.composer?.removeEventListener?.('drop', handlers.onDrop);
-        this.imageDragDepth = 0;
-        this.setImageDropActive(false);
-        this.imageUploadHandlers = null;
+        this.attachmentDragDepth = 0;
+        this.setAttachmentDropActive(false);
+        this.attachmentUploadHandlers = null;
     }
 
     getTransferredFiles(transfer = null) {
@@ -189,9 +189,9 @@ export class ChatComponent {
         return Array.from(transfer?.types || []).includes('Files');
     }
 
-    setImageDropActive(active) {
+    setAttachmentDropActive(active) {
         const isActive = active === true;
-        this.elements?.chatComposer?.classList?.toggle?.('is-image-drag-active', isActive);
+        this.elements?.chatComposer?.classList?.toggle?.('is-attachment-drag-active', isActive);
         const overlay = this.elements?.chatDropOverlay;
         if (overlay) {
             overlay.hidden = !isActive;
@@ -199,78 +199,75 @@ export class ChatComponent {
         }
     }
 
-    setImageUploadBusy(busy) {
-        const button = this.elements?.chatImageButton;
+    setAttachmentUploadBusy(busy) {
+        const button = this.elements?.chatAttachmentButton;
         if (!button) return;
         button.disabled = busy === true;
         button.classList.toggle('is-loading', busy === true);
         button.setAttribute('aria-busy', busy === true ? 'true' : 'false');
     }
 
-    publishImage(file) {
-        return this.publishImages([file]);
-    }
-
-    publishImages(files = []) {
+    publishAttachments(files = [], {boardId = '', position = null} = {}) {
         const nextFiles = Array.from(files || []).filter(Boolean);
         if (!nextFiles.length) return Promise.resolve();
-        this.imageUploadQueue.push(...nextFiles);
-        if (!this.imageUploadDrainPromise) {
-            this.imageUploadDrainPromise = this.drainImageUploadQueue()
+        nextFiles.forEach((file, index) => this.attachmentUploadQueue.push({
+            file,
+            boardId: String(boardId || '').trim(),
+            position: position && Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y))
+                ? {x: Number(position.x) + index * 24, y: Number(position.y) + index * 24}
+                : null
+        }));
+        if (!this.attachmentUploadDrainPromise) {
+            this.attachmentUploadDrainPromise = this.drainAttachmentUploadQueue()
                 .finally(() => {
-                    this.imageUploadDrainPromise = null;
+                    this.attachmentUploadDrainPromise = null;
                 });
         }
-        return this.imageUploadDrainPromise;
+        return this.attachmentUploadDrainPromise;
     }
 
-    async drainImageUploadQueue() {
-        this.setImageUploadBusy(true);
+    async drainAttachmentUploadQueue() {
+        this.setAttachmentUploadBusy(true);
         try {
-            while (this.imageUploadQueue.length) {
-                const file = this.imageUploadQueue.shift();
+            while (this.attachmentUploadQueue.length) {
+                const upload = this.attachmentUploadQueue.shift();
                 try {
-                    await this.publishImageFile(file);
+                    await this.publishAttachmentFile(upload.file, upload);
                 } catch (error) {
-                    this.setError(`Failed to publish image: ${error.message}`);
+                    this.setError(`Failed to publish file: ${error.message}`);
                 }
             }
         } finally {
-            this.setImageUploadBusy(false);
+            this.setAttachmentUploadBusy(false);
         }
     }
 
-    async publishImageFile(file) {
+    async publishAttachmentFile(file, {boardId: requestedBoardId = '', position = null} = {}) {
         const meeting = this.getSelectedMeeting();
         const session = this.getSession();
         if (!meeting || !session?.participantIdentity) {
-            this.setError('Join the meeting before uploading an image.');
-            return;
-        }
-        const allowed = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-        if (!allowed.has(String(file?.type || '').toLowerCase())) {
-            this.setError('Choose a PNG, JPEG, WebP, or GIF image.');
+            this.setError('Join the meeting before uploading a file.');
             return;
         }
         if (Number(file?.size || 0) > 15 * 1024 * 1024) {
-            this.setError('Images may not exceed 15 MB.');
+            this.setError('Files may not exceed 15 MB.');
             return;
         }
         try {
-            const boardId = await this.resolveActiveBoardId(meeting, session);
+            const boardId = requestedBoardId || await this.resolveActiveBoardId(meeting, session);
             if (!boardId) throw new Error('The active Blackboard workspace is unavailable.');
             const upload = await fetch('/blobs/explorer', {
                 method: 'POST',
                 headers: {
                     'Content-Type': file.type || 'application/octet-stream',
                     'X-Mime-Type': file.type || 'application/octet-stream',
-                    'X-File-Name': encodeURIComponent(file.name || 'image')
+                    'X-File-Name': encodeURIComponent(file.name || 'file')
                 },
                 body: file
             });
-            if (!upload.ok) throw new Error((await upload.text().catch(() => '')) || `Image upload failed (${upload.status}).`);
+            if (!upload.ok) throw new Error((await upload.text().catch(() => '')) || `File upload failed (${upload.status}).`);
             const staged = await upload.json();
-            const result = await this.runTool('webmeet_image_publish', {
+            const result = await this.runTool('webmeet_attachment_publish', {
                 roomId: meeting.id,
                 boardId,
                 participantId: session.participantIdentity,
@@ -279,16 +276,16 @@ export class ChatComponent {
                     agent: staged.agent,
                     localPath: staged.localPath
                 },
-                filename: file.name || 'Image'
+                ...(position ? {position} : {})
             });
-            if (!result?.message || !result?.blackboard) throw new Error('Image publishing returned an incomplete result.');
+            if (!result?.message || !result?.blackboard) throw new Error('File publishing returned an incomplete result.');
             const state = this.getState();
             state.chat = Array.isArray(state.chat) ? state.chat : [];
             if (!state.chat.some((entry) => entry?.id === result.message.id)) state.chat.push(result.message);
             try {
                 await this.refreshBlackboard(result, { ensureVisible: true });
             } catch (error) {
-                this.setError(`Image was published, but Blackboard could not be opened: ${error.message}`);
+                this.setError(`File was published, but Blackboard could not be opened: ${error.message}`);
             }
             this.renderFeedLists();
             if (this.getRoom()?.localParticipant) {
@@ -302,7 +299,7 @@ export class ChatComponent {
                 }).catch(() => {});
             }
         } catch (error) {
-            this.setError(`Failed to publish image: ${error.message}`);
+            this.setError(`Failed to publish file: ${error.message}`);
         }
     }
 
@@ -336,7 +333,7 @@ export class ChatComponent {
     }
 
     destroy() {
-        this.destroyImageUpload();
+        this.destroyAttachmentUpload();
         this.destroyRoboSpeechInput();
         this.destroyChatAutocomplete();
     }

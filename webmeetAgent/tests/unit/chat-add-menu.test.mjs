@@ -19,28 +19,29 @@ test('chat add control declares reusable menu structure and WebSkel actions in H
         fs.readFile(chatComponentUrl, 'utf8'),
     ]);
 
-    assert.match(html, /id="webmeetChatImageButton"[\s\S]*data-local-action="toggleChatAddMenu"/);
+    assert.match(html, /id="webmeetChatAttachmentButton"[\s\S]*data-local-action="toggleChatAddMenu"/);
     assert.match(html, /id="webmeetChatAddMenu"[\s\S]*role="menu"[\s\S]*hidden/);
-    assert.match(html, /data-local-action="selectChatAddImage"[\s\S]*<span>Add image<\/span>/);
+    assert.match(html, /data-local-action="selectChatAddFile"[\s\S]*<span>Add file<\/span>/);
     assert.match(html, /webmeet-chat-add-control[\s\S]*webmeet-chat-input-shell[\s\S]*webmeet-compose-actions/);
-    assert.match(html, /id="webmeetChatComposer"[\s\S]*id="webmeetChatDropOverlay"[\s\S]*Drop images to upload/);
+    assert.match(html, /id="webmeetChatComposer"[\s\S]*id="webmeetChatDropOverlay"[\s\S]*Drop files to upload/);
+    assert.match(html, /data-template="chat-file-attachment"[\s\S]*data-local-action="downloadChatAttachment"/);
     assert.doesNotMatch(chatSource, /button\.addEventListener\(['"]click['"]/);
     assert.doesNotMatch(chatSource, /createElement\(['"]div['"]\)[\s\S]*webmeet-chat-input-shell/);
 });
 
-test('chat add presenter actions project menu state and open the image picker', () => {
+test('chat add presenter actions project menu state and open the file picker', () => {
     let optionFocusCount = 0;
     let pickerClickCount = 0;
     const attributes = new Map();
     const dashboard = Object.assign({}, dashboardChromeMethods, {
         state: { chatAddMenuVisible: false },
         chatAddMenu: { hidden: true },
-        chatImageButton: {
+        chatAttachmentButton: {
             setAttribute: (name, value) => attributes.set(name, value),
             focus() {},
         },
-        chatAddImageOption: { focus: () => { optionFocusCount += 1; } },
-        chatImageInput: { click: () => { pickerClickCount += 1; } },
+        chatAddFileOption: { focus: () => { optionFocusCount += 1; } },
+        chatFileInput: { click: () => { pickerClickCount += 1; } },
     });
 
     dashboard.toggleChatAddMenu();
@@ -48,7 +49,7 @@ test('chat add presenter actions project menu state and open the image picker', 
     assert.equal(attributes.get('aria-expanded'), 'true');
     assert.equal(optionFocusCount, 1);
 
-    dashboard.selectChatAddImage();
+    dashboard.selectChatAddFile();
     assert.equal(dashboard.chatAddMenu.hidden, true);
     assert.equal(attributes.get('aria-expanded'), 'false');
     assert.equal(pickerClickCount, 1);

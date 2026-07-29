@@ -4,7 +4,7 @@ import {
     WEBMEET_ROOMS_CATEGORY_ID,
     WEBMEET_ROOMS_CATEGORY_NAME
 } from '../services/dashboard-utils.js';
-import { renderMessageWithMentionHighlights } from '../services/chat-autocomplete/index.js';
+import { findMentionRanges } from '../services/chat-autocomplete/index.js';
 import {
     renderWebMeetAvatarPreview,
     WEBMEET_AVATAR_PRESETS
@@ -26,14 +26,112 @@ function formatAvatarOptionLabel(value = '') {
     return formatSharedAvatarOptionLabel(value);
 }
 
-function renderChatAttachments(entry = {}) {
+function formatFileSize(value) {
+    const bytes = Math.max(0, Number(value || 0));
+    if (bytes < 1024) return `${bytes} B`;
+    const megabytes = bytes / (1024 * 1024);
+    if (megabytes >= 1) return `${megabytes >= 10 ? megabytes.toFixed(0) : megabytes.toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(bytes >= 10 * 1024 ? 0 : 1)} KB`;
+}
+
+function attachmentRoute(attachment = {}) {
+    const workspaceUrl = String(attachment.workspaceUrl || '').trim();
+    return workspaceUrl
+        ? `/workspace-files/${workspaceUrl.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`
+        : '';
+}
+
+function cloneDashboardTemplate(owner, name, selector) {
+    return owner.element?.querySelector?.(`template[data-template="${name}"]`)
+        ?.content?.cloneNode(true)?.querySelector?.(selector) || null;
+}
+
+function appendChatText(container, value, knownTokens) {
+    const text = String(value || '');
+    const known = new Set(Array.from(knownTokens || []).map(String));
+    const ranges = findMentionRanges(text);
+    let cursor = 0;
+    for (const range of ranges) {
+        if (range.start > cursor) container.append(document.createTextNode(text.slice(cursor, range.start)));
+        if (known.has(range.token)) {
+            const mention = document.createElement('strong');
+            mention.className = 'webmeet-chat-mention';
+            mention.textContent = range.token;
+            container.append(mention);
+        } else {
+            container.append(document.createTextNode(range.token));
+        }
+        cursor = range.end;
+    }
+    if (cursor < text.length) container.append(document.createTextNode(text.slice(cursor)));
+}
+
+function appendChatAttachments(owner, container, entry) {
     const attachments = Array.isArray(entry?.metadata?.attachments) ? entry.metadata.attachments : [];
-    return attachments.filter((attachment) => attachment?.kind === 'image' && attachment?.workspaceUrl).map((attachment) => {
-        const route = `/workspace-files/${String(attachment.workspaceUrl).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
-        const widgetId = String(entry?.metadata?.blackboardWidgetId || '');
-        const boardId = String(entry?.metadata?.boardId || '');
-        return `<button type="button" class="webmeet-chat-attachment-button" data-chat-blackboard-widget="${escapeHtml(widgetId)}" data-chat-blackboard-board="${escapeHtml(boardId)}" aria-label="Open image on Blackboard"><img class="webmeet-chat-attachment-image" src="${escapeHtml(route)}" alt="${escapeHtml(attachment.filename || 'Image')}" loading="lazy"></button>`;
-    }).join('');
+    const widgetId = String(entry?.metadata?.blackboardWidgetId || '');
+    const boardId = String(entry?.metadata?.boardId || '');
+    for (const attachment of attachments) {
+        const route = attachmentRoute(attachment);
+        if (!route) continue;
+        if (attachment?.kind === 'image') {
+            const button = cloneDashboardTemplate(owner, 'chat-image-attachment', '.webmeet-chat-attachment-button');
+            if (!button) continue;
+            button.dataset.chatBlackboardWidget = widgetId;
+            button.dataset.chatBlackboardBoard = boardId;
+            button.setAttribute('aria-label', `Open ${String(attachment.filename || 'image')} on Blackboard`);
+            const image = button.querySelector('[data-role="attachment-image"]');
+            image.src = route;
+            image.alt = String(attachment.filename || 'Image');
+            container.append(button);
+            continue;
+        }
+        const card = cloneDashboardTemplate(owner, 'chat-file-attachment', '.webmeet-chat-file-attachment');
+        if (!card) continue;
+        const open = card.querySelector('[data-local-action="openChatAttachment"]');
+        open.dataset.chatBlackboardWidget = widgetId;
+        open.dataset.chatBlackboardBoard = boardId;
+        open.setAttribute('aria-label', `Open ${String(attachment.filename || 'file')} on Blackboard`);
+        card.querySelector('[data-role="attachment-extension"]').textContent = String(attachment.extension || 'FILE').toUpperCase();
+        card.querySelector('[data-role="attachment-name"]').textContent = String(attachment.filename || 'File');
+        card.querySelector('[data-role="attachment-meta"]').textContent = [
+            String(attachment.mimeType || 'application/octet-stream'),
+            formatFileSize(attachment.size)
+        ].join(' · ');
+        const download = card.querySelector('[data-local-action="downloadChatAttachment"]');
+        download.dataset.attachmentUrl = route;
+        download.dataset.attachmentName = String(attachment.filename || 'file');
+        download.setAttribute('aria-label', `Download ${String(attachment.filename || 'file')}`);
+        container.append(card);
+    }
+}
+
+function renderChatFeed(owner, target, entries, {emptyMessage, knownTokens, participantId} = {}) {
+    const fragment = document.createDocumentFragment();
+    for (const entry of entries) {
+        const item = cloneDashboardTemplate(owner, 'chat-entry', '.webmeet-feed-item');
+        if (!item) continue;
+        const chatEntry = item.querySelector('.webmeet-chat-entry');
+        const isEvent = String(entry?.kind || '') === 'event';
+        chatEntry.classList.toggle('webmeet-chat-entry-event', isEvent);
+        chatEntry.classList.toggle('webmeet-chat-entry-self', String(entry?.authorId || '').trim() === String(participantId || '').trim());
+        item.querySelector('[data-role="chat-author"]').textContent = String(entry?.authorName || entry?.authorId || 'unknown');
+        item.querySelector('[data-role="chat-time"]').textContent = formatDate(entry?.createdAt);
+        const status = item.querySelector('[data-role="chat-event-status"]');
+        status.hidden = !isEvent;
+        status.textContent = isEvent ? String(entry?.metadata?.status || 'pending') : '';
+        const textContainer = item.querySelector('[data-role="chat-text"]');
+        appendChatText(textContainer, formatChatEntryMessage(entry), knownTokens);
+        appendChatAttachments(owner, textContainer, entry);
+        fragment.append(item);
+    }
+    if (!fragment.childNodes.length) {
+        const empty = document.createElement('div');
+        empty.className = 'webmeet-chat-empty';
+        empty.textContent = emptyMessage;
+        fragment.append(empty);
+    }
+    target.replaceChildren(fragment);
+    target.scrollTop = target.scrollHeight;
 }
 
 export function filterChatEntries(entries, mode = 'normal') {
@@ -553,7 +651,6 @@ export const dashboardRenderMethods = {
         };
 
         const knownAgentTokens = this.chatComponent?.getKnownAgentTokens?.() || [];
-        const chatMessageHtml = (message) => renderMessageWithMentionHighlights(message || '', knownAgentTokens);
         const meeting = this.selectedMeeting;
         const isArchiveReadOnlyView = Boolean(
             this.canManageRooms()
@@ -564,26 +661,13 @@ export const dashboardRenderMethods = {
         const chatViewMode = this.state.chatViewMode === 'full' ? 'full' : 'normal';
         if (this.chatViewMode) this.chatViewMode.checked = chatViewMode === 'full';
         const visibleChat = filterChatEntries(this.state.chat, chatViewMode);
-        renderFeed(this.chatList, visibleChat, (entry) => `
-            <div class="webmeet-feed-item">
-                <div class="webmeet-chat-entry ${String(entry.kind || '') === 'event' ? 'webmeet-chat-entry-event' : ''} ${
-                    String(entry.authorId || '').trim() === String(this.state.session?.participantIdentity || '').trim()
-                        ? 'webmeet-chat-entry-self'
-                        : ''
-                }">
-                    <div class="webmeet-chat-message-content">
-                        <div class="webmeet-chat-meta">
-                            <strong class="webmeet-chat-author">${escapeHtml(entry.authorName || entry.authorId || 'unknown')}</strong>
-                            ${String(entry.kind || '') === 'event' ? `<span class="webmeet-chat-event-status">${escapeHtml(entry.metadata?.status || 'pending')}</span>` : ''}
-                            <span class="webmeet-chat-time">${escapeHtml(formatDate(entry.createdAt))}</span>
-                        </div>
-                        <div class="webmeet-chat-text">${chatMessageHtml(formatChatEntryMessage(entry))}${renderChatAttachments(entry)}</div>
-                    </div>
-                </div>
-            </div>
-        `, true, isArchiveReadOnlyView
-            ? '<div class="webmeet-chat-empty">No messages in this archived room.</div>'
-            : '<div class="webmeet-chat-empty">No messages yet. Start the conversation.</div>');
+        if (this.chatList) renderChatFeed(this, this.chatList, visibleChat, {
+            knownTokens: knownAgentTokens,
+            participantId: this.state.session?.participantIdentity,
+            emptyMessage: isArchiveReadOnlyView
+                ? 'No messages in this archived room.'
+                : 'No messages yet. Start the conversation.'
+        });
 
     }
 
