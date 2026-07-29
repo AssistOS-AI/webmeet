@@ -155,6 +155,18 @@
       "env": { "TOOL_NAME": "webmeet_room_archive" }
     },
     {
+      "name": "webmeet_room_delete",
+      "title": "WebMeet Delete Room",
+      "description": "Permanently delete a room and all WebMeet-owned data. Requires an authenticated administrator and explicit confirmation.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "confirmed": { "type": "boolean", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_delete" }
+    },
+    {
       "name": "webmeet_room_events_list",
       "title": "WebMeet List Room Events",
       "description": "List room events after an optional event id.",

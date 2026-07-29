@@ -11,6 +11,7 @@ import {
 } from './eventLogs.mjs';
 import {
     WEBMEET_EVENT_TYPES,
+    parseWebMeetEvent,
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 
 const MASTER_KEY_VAR = 'PLOINKY_WEBMEET_MASTER_KEY';
@@ -20,6 +21,7 @@ const DEFAULT_RETENTION_DAYS = 30;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
 const ROOM_SCHEMA_VERSION = 2;
 const ROOMS_WORKSPACE_ID = 'rooms';
+const PERMANENT_ROOM_ID_PATTERN = /^room_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function nowIso() {
     return new Date().toISOString();
@@ -107,6 +109,7 @@ export async function ensureStoreDirs(paths) {
         fs.mkdir(paths.meetingsDir, { recursive: true }),
         fs.mkdir(paths.resourcesDir, { recursive: true }),
         fs.mkdir(paths.eventsDir, { recursive: true }),
+        fs.mkdir(paths.deletionsDir, { recursive: true }),
         fs.mkdir(paths.meetingLocksDir, { recursive: true }),
         fs.mkdir(paths.jobsPendingDir, { recursive: true }),
         fs.mkdir(paths.jobsProcessingDir, { recursive: true }),
@@ -323,6 +326,145 @@ export async function removeRoomRecord(context, roomId) {
     await withQueuedRoomLock(context, key, async () => {
         await fs.rm(path.join(context.eventsDir, key), { recursive: true, force: true });
         await fs.rm(filePathFor(context.meetingsDir, key), { force: true });
+    });
+}
+
+function assertPermanentRoomId(roomId) {
+    const targetRoomId = String(roomId || '').trim();
+    if (!PERMANENT_ROOM_ID_PATTERN.test(targetRoomId)) {
+        throw new Error('Room not found.');
+    }
+    return targetRoomId;
+}
+
+async function listWorkspaceEventFiles(context, roomId) {
+    const workspaceEventsRoot = path.join(context.eventsDir, 'workspaces');
+    let workspaceIds = [];
+    try {
+        workspaceIds = await fs.readdir(workspaceEventsRoot, { withFileTypes: true });
+    } catch (error) {
+        if (error?.code === 'ENOENT') return [];
+        throw error;
+    }
+    const matches = [];
+    for (const workspaceEntry of workspaceIds) {
+        if (!workspaceEntry.isDirectory()) continue;
+        const workspaceDir = path.join(workspaceEventsRoot, workspaceEntry.name);
+        let eventNames = [];
+        try {
+            eventNames = await fs.readdir(workspaceDir);
+        } catch (error) {
+            if (error?.code === 'ENOENT') continue;
+            throw error;
+        }
+        for (const eventName of eventNames) {
+            if (!eventName.endsWith('.event')) continue;
+            const eventPath = path.join(workspaceDir, eventName);
+            let encodedEvent;
+            try {
+                encodedEvent = (await fs.readFile(eventPath, 'utf8')).trim();
+            } catch (error) {
+                if (error?.code === 'ENOENT') continue;
+                throw error;
+            }
+            try {
+                const parsed = parseWebMeetEvent(encodedEvent);
+                if (
+                    String(parsed?.payload?.meetingId || '').trim() === roomId
+                    || String(parsed?.payload?.roomId || '').trim() === roomId
+                ) {
+                    matches.push(eventPath);
+                }
+            } catch {
+                // A malformed or concurrently removed event is not attributed to this room.
+            }
+        }
+    }
+    return matches;
+}
+
+async function moveToDeletionStage(sourcePath, stagePath, moved, { required = false } = {}) {
+    try {
+        await fs.access(sourcePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT' && !required) return;
+        throw error;
+    }
+    await fs.mkdir(path.dirname(stagePath), { recursive: true });
+    try {
+        await fs.rename(sourcePath, stagePath);
+        moved.push({ sourcePath, stagePath });
+    } catch (error) {
+        if (error?.code !== 'ENOENT' || required) throw error;
+    }
+}
+
+async function rollbackDeletionStage(moved) {
+    const rollbackErrors = [];
+    for (const entry of [...moved].reverse()) {
+        try {
+            await fs.mkdir(path.dirname(entry.sourcePath), { recursive: true });
+            await fs.rename(entry.stagePath, entry.sourcePath);
+        } catch (error) {
+            if (error?.code !== 'ENOENT') {
+                rollbackErrors.push(error);
+            }
+        }
+    }
+    return rollbackErrors;
+}
+
+export async function deleteRoomRecord(context, roomId, beforeDelete = null) {
+    const key = assertPermanentRoomId(roomId);
+    return await withQueuedRoomLock(context, key, async () => {
+        const record = await loadRoomRecord(context, key);
+        const payload = decryptRoomPayload(context, record);
+        if (typeof beforeDelete === 'function') {
+            await beforeDelete(record, payload);
+        }
+
+        const workspaceEventFiles = await listWorkspaceEventFiles(context, key);
+        const stagingDir = path.join(context.deletionsDir, `${key}-${crypto.randomUUID()}`);
+        const moved = [];
+        await fs.mkdir(stagingDir, { recursive: true });
+        try {
+            await moveToDeletionStage(
+                filePathFor(context.meetingsDir, key),
+                path.join(stagingDir, 'room.json'),
+                moved,
+                { required: true }
+            );
+            await moveToDeletionStage(
+                path.join(context.resourcesDir, key),
+                path.join(stagingDir, 'resources'),
+                moved
+            );
+            await moveToDeletionStage(
+                path.join(context.eventsDir, key),
+                path.join(stagingDir, 'room-events'),
+                moved
+            );
+            for (const [index, eventPath] of workspaceEventFiles.entries()) {
+                await moveToDeletionStage(
+                    eventPath,
+                    path.join(stagingDir, 'workspace-events', `${index}-${path.basename(eventPath)}`),
+                    moved
+                );
+            }
+        } catch (error) {
+            const rollbackErrors = await rollbackDeletionStage(moved);
+            await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+            if (rollbackErrors.length) {
+                throw new AggregateError(
+                    [error, ...rollbackErrors],
+                    `Permanent deletion of room ${key} failed and could not be rolled back.`
+                );
+            }
+            throw error;
+        }
+
+        await fs.rm(stagingDir, { recursive: true, force: true });
+        return { record, payload };
     });
 }
 

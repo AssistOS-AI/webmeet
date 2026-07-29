@@ -26,6 +26,7 @@ import {
     loadRoomRecord as loadMeetingRecord,
     mutateRoom as mutateMeeting,
     purgeExpiredRooms as purgeExpiredMeetings,
+    deleteRoomRecord as permanentlyDeleteMeetingRecord,
     removeRoomRecord as rollbackMeetingRecord,
     recordWorkspaceEvent
 } from './store/roomRecords.mjs';
@@ -57,6 +58,9 @@ import {
 import {
     archiveRoom as archiveMeetingImpl
 } from './services/roomArchive.mjs';
+import {
+    deleteRoom as deleteMeetingImpl
+} from './services/roomDeletion.mjs';
 import {
     applyRoomBlackboardChange as applyRoomBlackboardChangeImpl,
     applyRoomBlackboardEvents as applyRoomBlackboardEventsImpl,
@@ -207,6 +211,10 @@ const messageServiceDeps = {
 
 const archiveServiceDeps = {
     detachActiveAgentsWhenRoomHasNoHumans
+};
+
+const deletionServiceDeps = {
+    deleteRoomRecord: permanentlyDeleteMeetingRecord
 };
 
 export async function getMeeting(context, meetingId, authInfo = null, options = {}) {
@@ -643,6 +651,14 @@ export async function detachMeetingAgent(context, { meetingId, agentId, authInfo
 
 export async function archiveMeeting(context, meetingId, authInfo = null) {
     return await archiveMeetingImpl(context, meetingId, authInfo, archiveServiceDeps);
+}
+
+export async function deleteMeeting(context, { meetingId, confirmed = false, authInfo = null } = {}) {
+    return await deleteMeetingImpl(context, {
+        meetingId,
+        confirmed,
+        authInfo
+    }, deletionServiceDeps);
 }
 
 export async function authorizeResourceUpload(context, { roomId, filename, mimeType = '', size = 0, authInfo = null }) {

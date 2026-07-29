@@ -32,7 +32,11 @@ WebMeet store operations are asynchronous. Meeting records, workspace records, a
 | `team` | Normal room. | Authenticated Explorer users enter through protected MCP paths. |
 | `guest` | Public link-enabled room. | An admin-created invite URL carries only `/<webmeetAgent>/roomLoader.html?roomId=<roomId>`. The router creates a guest session scoped to `webmeet:room:<roomId>` for unauthenticated visitors. |
 
-Admin users create, rename, archive, expose room links, attach and detach AI agents, and view administrative room data. Normal authenticated users can see and join active rooms allowed by policy, including public link rooms reached directly by URL. Guest users only receive the room-scoped actions allowed by guest capabilities for the room whose link they opened.
+Admin users create, rename, archive, permanently delete, expose room links, attach and detach AI agents, and view administrative room data. Normal authenticated users can see and join active rooms allowed by policy, including public link rooms reached directly by URL. Guest users only receive the room-scoped actions allowed by guest capabilities for the room whose link they opened.
+
+Archive and permanent deletion are distinct contracts. Archive makes a room read-only while retaining its encrypted payload and history. Permanent deletion requires a router-authenticated administrator, an exact `room_<uuid>` identifier, and `confirmed: true`. Under the cross-process room lock, WebMeet first asks LiveKit to delete the derived media room through the private generation-bound route. A structured LiveKit `not_found` response means the runtime state is already invalidated; a generic HTTP 404, route error, identity error, or other control-plane failure aborts deletion and leaves the durable room intact.
+
+After media invalidation succeeds, WebMeet stages same-filesystem moves for the room record, its room event directory, its WebMeet-local resource directory, and every workspace event whose decoded `meetingId` or `roomId` exactly matches the room. A staging failure rolls the moves back before returning an error; a successful stage is purged before success is returned. Removing the encrypted record removes durable participant membership, chat, AI agent metadata, blackboard history, and SCRIPTA attachment metadata together. Explorer-owned SCRIPTA documents and Explorer media are not deleted through direct filesystem access because Explorer remains their authoritative storage owner.
 
 Guest room creation does not store a separate invite token. The public URL has the form `/<webmeetAgent>/roomLoader.html?roomId=<roomId>`. Possession of the roomId link is necessary but not sufficient: unauthenticated requests must have a router-created guest session scoped exactly to `webmeet:room:<roomId>`, and WebMeet MCP validates that invocation scope before issuing a LiveKit participant JWT.
 
@@ -70,6 +74,11 @@ Response:
 
 Response:
 The previous lock-directory design created the directory before writing `owner.json`, so a competing process could observe a fresh but ownerless lock and incorrectly remove it as stale. A single atomically-created lock file removes that owner-write window. Stale cleanup still waits for file age to exceed the TTL and refuses to clean up a same-host owner process that is still alive.
+
+### Question #5: Why close LiveKit before moving the durable record?
+
+Response:
+The room lock prevents a concurrent room mutation or join from crossing the deletion boundary. Closing LiveKit first invalidates active media state while the durable record still exists for authorization and rollback. WebMeet moves persistent artifacts only after that strict control-plane operation succeeds, so an unavailable or misrouted LiveKit control path cannot silently delete the application record and leave an active room behind.
 
 ## Conclusion
 

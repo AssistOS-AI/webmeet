@@ -44,6 +44,7 @@ export function getWorkspacePaths(startDir = '') {
         meetingsDir: path.join(webmeetDir, 'rooms'),
         resourcesDir: webmeetDir,
         eventsDir: path.join(webmeetDir, 'events'),
+        deletionsDir: path.join(webmeetDir, 'deletions'),
         locksDir,
         meetingLocksDir: path.join(locksDir, 'rooms'),
         jobsDir,

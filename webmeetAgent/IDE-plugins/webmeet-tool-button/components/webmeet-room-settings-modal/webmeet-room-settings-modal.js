@@ -298,6 +298,18 @@ export class WebmeetRoomSettingsModal {
         });
     }
 
+    async deleteRoom() {
+        const confirmed = await assistOS.UI.showModal('confirm-action-modal', {
+            message: `Permanently delete "${this.roomTitle}" and all of its WebMeet history? This cannot be undone.`
+        }, true);
+        if (confirmed !== true) return;
+        assistOS.UI.closeModal(this.element, {
+            roomId: this.roomId,
+            delete: true,
+            confirmed: true
+        });
+    }
+
     saveSettings() {
         const name = String(this.titleInput?.value || '').trim();
         if (!name) {

@@ -249,6 +249,11 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
     gap: 12px;
 }
 
+.webmeet-room-settings-delete-section {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
 .webmeet-room-settings-section-title {
     font-size: 15px;
     font-weight: 600;
@@ -275,6 +280,22 @@ dialog.modal.webmeet-room-settings-modal-dialog.is-fullscreen .webmeet-room-sett
 
 .webmeet-room-settings-archive-button:hover {
     background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.webmeet-room-settings-delete-button {
+    align-self: flex-start;
+    border: 1px solid var(--danger);
+    border-radius: 6px;
+    padding: 8px 16px;
+    color: #fff;
+    background: var(--danger);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.webmeet-room-settings-delete-button:hover {
+    filter: brightness(0.92);
 }
 
 .webmeet-robo-tabs {

@@ -89,9 +89,17 @@ async function callLiveKitRoomApi(context, methodName, roomName, body) {
     }
     if (!response.ok) {
         const detail = parsed?.msg || parsed?.message || text || `${response.status} ${response.statusText}`;
-        throw new Error(`LiveKit room API failed: ${detail}`);
+        const error = new Error(`LiveKit room API failed: ${detail}`);
+        error.liveKitCode = String(parsed?.code || '').trim().toLowerCase();
+        error.httpStatus = Number(response.status || 0);
+        throw error;
     }
     return parsed || {};
+}
+
+function isMissingLiveKitRoom(error) {
+    return String(error?.liveKitCode || '').trim().toLowerCase() === 'not_found'
+        && Number(error?.httpStatus || 0) === 404;
 }
 
 export async function closeLiveKitRoom(context, roomName, { strict = false } = {}) {
@@ -101,6 +109,9 @@ export async function closeLiveKitRoom(context, roomName, { strict = false } = {
         }
         return await callLiveKitRoomApi(context, 'DeleteRoom', roomName, { room: roomName });
     } catch (error) {
+        if (isMissingLiveKitRoom(error)) {
+            return { ok: true, alreadyClosed: true };
+        }
         if (strict) {
             throw error;
         }

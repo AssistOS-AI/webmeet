@@ -18,6 +18,7 @@ import {
     AVATAR_SOURCE_MODES,
     deriveAvatarSourceMode
 } from '../services/avatar-settings-model.js';
+import { applyPermanentRoomDeletion } from './permanent-room-deletion.js';
 
 const runTool = runWebMeetTool;
 
@@ -101,6 +102,10 @@ export const meetingActionMethods = {
             roboTeamSettings
         }, true);
         if (!result) return;
+
+        if (await applyPermanentRoomDeletion(this, meeting, result, runTool)) {
+            return;
+        }
 
         if (result.archive === true) {
             await runTool('webmeet_room_archive', { roomId: meeting.id });

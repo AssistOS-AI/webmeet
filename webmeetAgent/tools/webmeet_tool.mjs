@@ -12,6 +12,7 @@ import {
     commitResourceUpload,
     createMeeting,
     createStoreContext,
+    deleteMeeting,
     detachMeetingAgent,
     getRoboTeamSettings,
     getScriptaContext,
@@ -502,6 +503,12 @@ export async function dispatch(toolName, args, context, authInfo) {
         });
     case 'webmeet_room_archive':
         return await archiveMeeting(context, getRequiredString(args, 'roomId'), authInfo);
+    case 'webmeet_room_delete':
+        return await deleteMeeting(context, {
+            meetingId: getRequiredString(args, 'roomId'),
+            confirmed: args?.confirmed === true,
+            authInfo
+        });
     case 'webmeet_resource_authorize_upload':
         return await authorizeResourceUpload(context, {
             roomId: getRequiredString(args, 'roomId'),
