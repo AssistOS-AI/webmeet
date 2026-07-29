@@ -7,6 +7,11 @@ import path from 'node:path';
 
 import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { closeLiveKitRoom } from '../../lib/runtime/livekitRuntime.mjs';
+import {
+    decryptRoomPayload,
+    loadRoomRecord,
+    mutateRoom
+} from '../../lib/store/roomRecords.mjs';
 import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
 
 const ADMIN_AUTH = { user: { id: 'local:admin', username: 'admin', roles: ['user', 'admin'] } };
@@ -45,6 +50,9 @@ async function createFixture() {
     const context = installEdgeJoinFixture(await store.createStoreContext(root));
     context.scriptaExplorerClient = async (tool, args) => {
         assert.equal(tool, 'scripta_crdt_ensure_folder');
+        await fs.mkdir(path.resolve(root, String(args.folderPath || '').replace(/^\/+/, '')), {
+            recursive: true
+        });
         return { ok: true, folderPath: args.folderPath };
     };
 
@@ -66,6 +74,15 @@ async function createFixture() {
             await fs.rm(root, { recursive: true, force: true });
         }
     };
+}
+
+async function roomWorkspaceDirectory(context, roomId) {
+    const record = await loadRoomRecord(context, roomId);
+    const payload = decryptRoomPayload(context, record);
+    return path.resolve(
+        context.workspaceRoot,
+        String(payload?.scripta?.folderPath || '').replace(/^\/+/, '')
+    );
 }
 
 test('administrator permanently deletes the complete WebMeet-owned room record set', async () => {
@@ -123,6 +140,8 @@ test('administrator permanently deletes the complete WebMeet-owned room record s
         const roomFile = path.join(context.meetingsDir, `${room.id}.json`);
         const roomEventsDir = path.join(context.eventsDir, room.id);
         const roomResourcesDir = path.join(context.resourcesDir, room.id);
+        const roomWorkspaceDir = await roomWorkspaceDirectory(context, room.id);
+        const unrelatedWorkspaceDir = await roomWorkspaceDirectory(context, unrelatedRoom.id);
         const liveKitCalls = [];
         const deletingContext = {
             ...context,
@@ -148,6 +167,8 @@ test('administrator permanently deletes the complete WebMeet-owned room record s
         assert.equal(await pathExists(roomFile), false);
         assert.equal(await pathExists(roomEventsDir), false);
         assert.equal(await pathExists(roomResourcesDir), false);
+        assert.equal(await pathExists(roomWorkspaceDir), false);
+        assert.equal(await pathExists(unrelatedWorkspaceDir), true);
         assert.deepEqual(await fs.readdir(context.deletionsDir), []);
         assert.equal((await store.listMeetings(context, '', ADMIN_AUTH)).some((entry) => entry.id === room.id), false);
         await assert.rejects(
@@ -167,6 +188,141 @@ test('administrator permanently deletes the complete WebMeet-owned room record s
             true,
             'deleting one room must preserve unrelated workspace history'
         );
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test('non-empty room workspace directory fails closed and rolls staged durable data back', async () => {
+    const fixture = await createFixture();
+    try {
+        const { context, store } = fixture;
+        const room = await store.createMeeting(context, {
+            title: 'Preserve Explorer content',
+            authInfo: ADMIN_AUTH
+        });
+        const workspaceDirectory = await roomWorkspaceDirectory(context, room.id);
+        const explorerDocument = path.join(workspaceDirectory, 'important.md');
+        await fs.writeFile(explorerDocument, '# Preserve me\n');
+        await store.appendMeetingChat(context, {
+            meetingId: room.id,
+            authorId: 'local:admin',
+            authorName: 'Administrator',
+            message: 'Must survive rollback',
+            authInfo: ADMIN_AUTH
+        });
+        const upload = await store.authorizeResourceUpload(context, {
+            roomId: room.id,
+            filename: 'rollback.txt',
+            mimeType: 'text/plain',
+            size: 8,
+            authInfo: ADMIN_AUTH
+        });
+        await fs.mkdir(path.dirname(upload.storagePath), { recursive: true });
+        await fs.writeFile(upload.storagePath, 'rollback');
+        await store.commitResourceUpload(context, {
+            ...upload,
+            authInfo: ADMIN_AUTH
+        });
+
+        await assert.rejects(
+            () => store.deleteMeeting({
+                ...context,
+                closeLiveKitRoom: async () => ({ ok: true })
+            }, {
+                meetingId: room.id,
+                confirmed: true,
+                authInfo: ADMIN_AUTH
+            }),
+            /not empty; Explorer-owned content was preserved/
+        );
+
+        assert.equal(await pathExists(path.join(context.meetingsDir, `${room.id}.json`)), true);
+        assert.equal(await pathExists(path.join(context.eventsDir, room.id)), true);
+        assert.equal(await pathExists(path.join(context.resourcesDir, room.id)), true);
+        assert.equal(await fs.readFile(explorerDocument, 'utf8'), '# Preserve me\n');
+        assert.equal((await store.listMeetingChat(context, room.id, ADMIN_AUTH)).length, 1);
+        assert.equal((await store.listRoomResources(context, room.id, ADMIN_AUTH)).resources.length, 1);
+        assert.deepEqual(await fs.readdir(context.deletionsDir), []);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test('room workspace cleanup rejects a different room directory and preserves both rooms', async () => {
+    const fixture = await createFixture();
+    try {
+        const { context, store } = fixture;
+        const targetRoom = await store.createMeeting(context, {
+            title: 'Target room',
+            authInfo: ADMIN_AUTH
+        });
+        const unrelatedRoom = await store.createMeeting(context, {
+            title: 'Unrelated room',
+            authInfo: ADMIN_AUTH
+        });
+        const targetWorkspaceDir = await roomWorkspaceDirectory(context, targetRoom.id);
+        const unrelatedWorkspaceDir = await roomWorkspaceDirectory(context, unrelatedRoom.id);
+        const unrelatedRecord = await loadRoomRecord(context, unrelatedRoom.id);
+        const unrelatedPayload = decryptRoomPayload(context, unrelatedRecord);
+        await mutateRoom(context, targetRoom.id, (_record, payload) => {
+            payload.scripta.folderPath = unrelatedPayload.scripta.folderPath;
+        });
+
+        await assert.rejects(
+            () => store.deleteMeeting({
+                ...context,
+                closeLiveKitRoom: async () => ({ ok: true })
+            }, {
+                meetingId: targetRoom.id,
+                confirmed: true,
+                authInfo: ADMIN_AUTH
+            }),
+            /workspace directory identity is invalid/
+        );
+
+        assert.equal(await pathExists(path.join(context.meetingsDir, `${targetRoom.id}.json`)), true);
+        assert.equal(await pathExists(path.join(context.meetingsDir, `${unrelatedRoom.id}.json`)), true);
+        assert.equal(await pathExists(targetWorkspaceDir), true);
+        assert.equal(await pathExists(unrelatedWorkspaceDir), true);
+        assert.deepEqual(await fs.readdir(context.deletionsDir), []);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test('room workspace cleanup rejects a symlink without touching its target', async () => {
+    const fixture = await createFixture();
+    try {
+        const { context, root, store } = fixture;
+        const room = await store.createMeeting(context, {
+            title: 'Symlink protected room',
+            authInfo: ADMIN_AUTH
+        });
+        const workspaceDirectory = await roomWorkspaceDirectory(context, room.id);
+        const unrelatedDirectory = path.join(root, 'unrelated-content');
+        const marker = path.join(unrelatedDirectory, 'marker.txt');
+        await fs.rm(workspaceDirectory, { recursive: true, force: true });
+        await fs.mkdir(unrelatedDirectory, { recursive: true });
+        await fs.writeFile(marker, 'untouched');
+        await fs.symlink(unrelatedDirectory, workspaceDirectory);
+
+        await assert.rejects(
+            () => store.deleteMeeting({
+                ...context,
+                closeLiveKitRoom: async () => ({ ok: true })
+            }, {
+                meetingId: room.id,
+                confirmed: true,
+                authInfo: ADMIN_AUTH
+            }),
+            /workspace directory identity is invalid/
+        );
+
+        assert.equal((await fs.lstat(workspaceDirectory)).isSymbolicLink(), true);
+        assert.equal(await fs.readFile(marker, 'utf8'), 'untouched');
+        assert.equal(await pathExists(path.join(context.meetingsDir, `${room.id}.json`)), true);
+        assert.deepEqual(await fs.readdir(context.deletionsDir), []);
     } finally {
         await fixture.cleanup();
     }
@@ -262,6 +418,7 @@ test('LiveKit invalidation failure leaves the durable room and its history intac
         assert.equal(await pathExists(path.join(context.meetingsDir, `${room.id}.json`)), true);
         assert.equal((await store.listMeetingChat(context, room.id, ADMIN_AUTH)).length, 1);
         assert.equal((await store.listMeetingEvents(context, room.id)).length > 0, true);
+        assert.equal(await pathExists(await roomWorkspaceDirectory(context, room.id)), true);
     } finally {
         await fixture.cleanup();
     }

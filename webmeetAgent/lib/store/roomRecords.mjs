@@ -337,6 +337,96 @@ function assertPermanentRoomId(roomId) {
     return targetRoomId;
 }
 
+function resolveRoomWorkspaceDirectory(context, record, payload) {
+    const folderPath = String(payload?.scripta?.folderPath || '').trim();
+    if (!folderPath) return '';
+
+    const roomId = String(record?.meetingId || record?.roomId || '').trim();
+    const shortRoomId = roomId.replace(/^room_/, '').slice(0, 8);
+    const segments = folderPath.split('/');
+    if (
+        folderPath.includes('\\')
+        || path.posix.normalize(folderPath) !== folderPath
+        || segments.length !== 3
+        || segments[0] !== ''
+        || segments[1] !== 'WebMeet'
+        || !segments[2]
+        || !segments[2].endsWith(`-${shortRoomId}`)
+    ) {
+        throw new Error('Room workspace directory identity is invalid.');
+    }
+
+    const workspaceRoot = String(context?.workspaceRoot || '').trim();
+    if (!workspaceRoot) {
+        throw new Error('Room workspace directory is unavailable.');
+    }
+    const workspaceDirectory = path.resolve(workspaceRoot);
+    const webMeetRoot = path.resolve(workspaceDirectory, 'WebMeet');
+    const roomDirectory = path.resolve(webMeetRoot, segments[2]);
+    if (
+        workspaceDirectory === webMeetRoot
+        || !webMeetRoot.startsWith(`${workspaceDirectory}${path.sep}`)
+        || path.dirname(roomDirectory) !== webMeetRoot
+    ) {
+        throw new Error('Room workspace directory identity is invalid.');
+    }
+    return { roomDirectory, webMeetRoot, workspaceDirectory };
+}
+
+async function stageEmptyRoomWorkspaceDirectory(context, record, payload, transactionId) {
+    const resolved = resolveRoomWorkspaceDirectory(context, record, payload);
+    if (!resolved) return null;
+    const {
+        roomDirectory: sourcePath,
+        webMeetRoot,
+        workspaceDirectory
+    } = resolved;
+
+    let stat;
+    try {
+        stat = await fs.lstat(sourcePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error('Room workspace directory identity is invalid.');
+    }
+    const [realWorkspaceDirectory, realWebMeetRoot] = await Promise.all([
+        fs.realpath(workspaceDirectory),
+        fs.realpath(webMeetRoot)
+    ]);
+    if (realWebMeetRoot !== path.join(realWorkspaceDirectory, 'WebMeet')) {
+        throw new Error('Room workspace directory identity is invalid.');
+    }
+    if ((await fs.readdir(sourcePath)).length > 0) {
+        throw new Error('Room workspace directory is not empty; Explorer-owned content was preserved.');
+    }
+
+    const stagePath = path.join(
+        path.dirname(sourcePath),
+        `.${path.basename(sourcePath)}.webmeet-delete-${transactionId}`
+    );
+    try {
+        await fs.rename(sourcePath, stagePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+    }
+    return { sourcePath, stagePath };
+}
+
+async function rollbackRoomWorkspaceDirectory(stagedDirectory) {
+    if (!stagedDirectory) return [];
+    try {
+        await fs.rename(stagedDirectory.stagePath, stagedDirectory.sourcePath);
+        return [];
+    } catch (error) {
+        if (error?.code === 'ENOENT') return [];
+        return [error];
+    }
+}
+
 async function listWorkspaceEventFiles(context, roomId) {
     const workspaceEventsRoot = path.join(context.eventsDir, 'workspaces');
     let workspaceIds = [];
@@ -424,8 +514,10 @@ export async function deleteRoomRecord(context, roomId, beforeDelete = null) {
         }
 
         const workspaceEventFiles = await listWorkspaceEventFiles(context, key);
-        const stagingDir = path.join(context.deletionsDir, `${key}-${crypto.randomUUID()}`);
+        const transactionId = crypto.randomUUID();
+        const stagingDir = path.join(context.deletionsDir, `${key}-${transactionId}`);
         const moved = [];
+        let stagedWorkspaceDirectory = null;
         await fs.mkdir(stagingDir, { recursive: true });
         try {
             await moveToDeletionStage(
@@ -451,8 +543,20 @@ export async function deleteRoomRecord(context, roomId, beforeDelete = null) {
                     moved
                 );
             }
+            stagedWorkspaceDirectory = await stageEmptyRoomWorkspaceDirectory(
+                context,
+                record,
+                payload,
+                transactionId
+            );
+            if (stagedWorkspaceDirectory) {
+                await fs.rmdir(stagedWorkspaceDirectory.stagePath);
+            }
         } catch (error) {
-            const rollbackErrors = await rollbackDeletionStage(moved);
+            const rollbackErrors = [
+                ...await rollbackRoomWorkspaceDirectory(stagedWorkspaceDirectory),
+                ...await rollbackDeletionStage(moved)
+            ];
             await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
             if (rollbackErrors.length) {
                 throw new AggregateError(
