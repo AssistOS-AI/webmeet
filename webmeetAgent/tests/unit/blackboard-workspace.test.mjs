@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { BlackboardWorkspace } from '../../lib/blackboard/workspace-model.mjs';
 import { WebMeetBlackboardPanel } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.js';
 import {
+    blackboardConnectionMethods,
+    getConnectionAnchorIndicatorPoint,
+} from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-connections.js';
+import {
     blackboardWorkspaceMethods,
     getFilmstripGroupPreviews,
     getFilmstripSelectionBounds,
@@ -149,6 +153,37 @@ test('workspace copy clones a complete group and remaps its attached connections
     assert.equal(workspace.getBoard(target.boardId).widgets.size, 0);
 });
 
+test('workspace copy remaps a group-target connector and preserves its free endpoint', () => {
+    const workspace = new BlackboardWorkspace({roomId: 'room-copy-group-connector'});
+    const source = workspace.activeBoard;
+    const target = workspace.createBoard({title: 'Target'}, {activate: false});
+    addWidget(source, 'a', 40, 60);
+    addWidget(source, 'b', 180, 60);
+    source.groupWidgets(['a', 'b'], {groupId: 'source-group', record: false});
+    source.addWidget({id: 'edge', type: 'line', properties: {
+        geometry: {x: 0, y: 0, width: 300, height: 200},
+        line: {x1: 280, y1: 90, x2: 300, y2: 200},
+        connection: {from: {groupId: 'source-group', anchor: 'bottom'}, to: null},
+    }}, {record: false});
+
+    const result = workspace.copyWidgets({
+        sourceBoardId: source.boardId,
+        targetBoardId: target.boardId,
+        widgetIds: ['a'],
+        placement: {x: 400, y: 300},
+    });
+
+    const copies = result.widgetIds.map((id) => target.getWidget(id));
+    const copiedLine = copies.find((widget) => widget.type === 'line');
+    const copiedGroupId = copies.find((widget) => widget.type === 'shape').groupId;
+    assert.ok(copiedLine);
+    assert.notEqual(copiedGroupId, 'source-group');
+    assert.deepEqual(copiedLine.properties.connection, {
+        from: {groupId: copiedGroupId, anchor: 'bottom'},
+        to: null,
+    });
+});
+
 test('workspace copy rejects the singleton SCRIPTA projection', () => {
     const workspace = new BlackboardWorkspace({roomId: 'room-copy-scripta'});
     const source = workspace.activeBoard;
@@ -164,11 +199,13 @@ test('workspace copy rejects the singleton SCRIPTA projection', () => {
 test('workspace UI keeps stable WebSkel templates and declarative click actions', () => {
     const html = fs.readFileSync(path.join(panelRoot, 'webmeet-blackboard-panel.html'), 'utf8');
     const source = fs.readFileSync(path.join(panelRoot, 'webmeet-blackboard-workspaces.js'), 'utf8');
+    const connectionsSource = fs.readFileSync(path.join(panelRoot, 'webmeet-blackboard-connections.js'), 'utf8');
     assert.match(html, /data-template="workspace-tab"/);
     assert.match(html, /data-template="workspace-filmstrip-card"/);
     assert.match(html, /data-template="workspace-filmstrip-list-item"/);
     assert.match(html, /data-template="workspace-filmstrip-group"/);
     assert.match(html, /data-template="workspace-transfer-ghost"/);
+    assert.match(html, /data-template="connection-anchor"/);
     assert.match(html, /data-role="selection-context-menu"/);
     assert.match(html, /data-local-action="copyContextSelection"/);
     assert.match(html, /data-local-action="cutContextSelection"/);
@@ -188,6 +225,7 @@ test('workspace UI keeps stable WebSkel templates and declarative click actions'
     assert.match(html, /data-local-action="activateWorkspaceBoard"/);
     assert.doesNotMatch(html, /data-local-action="renameWorkspaceBoard"/);
     assert.doesNotMatch(source, /innerHTML|insertAdjacentHTML|addEventListener\(['"]click/);
+    assert.doesNotMatch(connectionsSource, /innerHTML|insertAdjacentHTML|createElement|addEventListener\(['"]click/);
     assert.match(source, /addEventListener\('dblclick', this\.handleWorkspaceTabDoubleClickEvent\)/);
     assert.match(source, /removeEventListener\('dblclick', this\.handleWorkspaceTabDoubleClickEvent\)/);
     assert.match(source, /addEventListener\('focusout', this\.handleWorkspaceTitleFocusOutEvent\)/);
@@ -198,6 +236,63 @@ test('workspace UI keeps stable WebSkel templates and declarative click actions'
     assert.match(source, /shape\.removeAttribute\('hidden'\)/);
     assert.match(source, /toggleAttribute\('hidden', kind !== view\.shapeKind\)/);
     assert.match(source, /line\.removeAttribute\('hidden'\)/);
+});
+
+test('connector projection follows rotated widgets and axis-aligned group bounds', () => {
+    const line = {id: 'edge', type: 'line', properties: {
+        geometry: {x: 10, y: 20, width: 300, height: 180},
+        line: {x1: 0, y1: 0, x2: 300, y2: 180},
+        connection: {from: {widgetId: 'rotated', anchor: 'right'}, to: {groupId: 'group-1', anchor: 'bottom'}},
+    }};
+    const context = {
+        blackboard: {widgets: [
+            {id: 'rotated', type: 'shape', properties: {geometry: {x: 0, y: 0, width: 100, height: 50}, rotation: 90}},
+            {id: 'a', type: 'shape', groupId: 'group-1', properties: {geometry: {x: 200, y: 100, width: 80, height: 40}}},
+            {id: 'b', type: 'shape', groupId: 'group-1', properties: {geometry: {x: 320, y: 160, width: 60, height: 60}}},
+            line,
+        ]},
+        widgetNodes: new Map(),
+        ...blackboardConnectionMethods,
+    };
+
+    const projected = context.projectAttachedConnection(line);
+    const geometry = projected.properties.geometry;
+    const segment = projected.properties.line;
+    assert.deepEqual({x: geometry.x + segment.x1, y: geometry.y + segment.y1}, {x: 50, y: 75});
+    assert.deepEqual({x: geometry.x + segment.x2, y: geometry.y + segment.y2}, {x: 290, y: 220});
+});
+
+test('connection targets include line-only groups and group bounds ignore derived connectors', () => {
+    const context = {
+        blackboard: {widgets: [
+            {id: 'a', type: 'shape', groupId: 'mixed', properties: {geometry: {x: 500, y: 100, width: 100, height: 50}}},
+            {id: 'b', type: 'shape', groupId: 'mixed', properties: {geometry: {x: 700, y: 100, width: 100, height: 50}}},
+            {id: 'derived', type: 'line', groupId: 'mixed', properties: {
+                geometry: {x: 0, y: 0, width: 1, height: 1},
+                connection: {from: {widgetId: 'a', anchor: 'right'}, to: {widgetId: 'b', anchor: 'left'}},
+            }},
+            {id: 'free-a', type: 'line', groupId: 'lines', properties: {geometry: {x: 20, y: 30, width: 80, height: 20}}},
+            {id: 'free-b', type: 'line', groupId: 'lines', properties: {geometry: {x: 120, y: 50, width: 60, height: 30}}},
+        ]},
+        widgetNodes: new Map(),
+        ...blackboardConnectionMethods,
+    };
+
+    assert.deepEqual(context.getConnectionTargets(), [{groupId: 'mixed'}, {groupId: 'lines'}]);
+    assert.deepEqual(context.getConnectionTargetBounds({groupId: 'mixed'}), {
+        x: 500, y: 100, width: 300, height: 50, rotation: 0,
+    });
+    assert.deepEqual(getFilmstripGroupPreviews(context.blackboard.widgets).find((group) => group.groupId === 'mixed')?.bounds, {
+        x: 500, y: 100, width: 300, height: 50,
+    });
+});
+
+test('connection indicators sit outside and tangent to the centered target border', () => {
+    const bounds = {x: 100, y: 80, width: 200, height: 120, rotation: 0};
+    assert.deepEqual(getConnectionAnchorIndicatorPoint(bounds, 'left'), {x: 95, y: 140});
+    assert.deepEqual(getConnectionAnchorIndicatorPoint(bounds, 'right'), {x: 305, y: 140});
+    assert.deepEqual(getConnectionAnchorIndicatorPoint(bounds, 'top'), {x: 200, y: 75});
+    assert.deepEqual(getConnectionAnchorIndicatorPoint(bounds, 'bottom'), {x: 200, y: 205});
 });
 
 test('filmstrip projects each rigid group as one interactive preview region', () => {

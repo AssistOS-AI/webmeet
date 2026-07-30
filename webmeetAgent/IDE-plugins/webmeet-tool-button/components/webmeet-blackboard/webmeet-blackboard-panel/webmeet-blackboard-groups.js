@@ -318,6 +318,7 @@ export const blackboardGroupMethods = {
         const captureNode = event.currentTarget?.closest?.('.webmeet-blackboard-widget') || this.groupOverlay;
         this.groupDragState = {
             groupId,
+            representativeId: String(representative?.id || this.selection || ''),
             captureNode,
             pointerId: event.pointerId,
             startX: event.clientX,
@@ -345,6 +346,7 @@ export const blackboardGroupMethods = {
             this.groupOverlay.style.left = `${bounds.x + dx}px`;
             this.groupOverlay.style.top = `${bounds.y + dy}px`;
         }
+        this.refreshConnectedLinePreviews?.();
         const tabShell = document.elementFromPoint?.(event.clientX, event.clientY)?.closest?.('.webmeet-blackboard-tab-shell');
         const targetBoardId = String(tabShell?.dataset?.boardId || '').trim();
         this.groupDragState.targetBoardId = targetBoardId && targetBoardId !== this.workspace?.activeBoardId ? targetBoardId : '';
@@ -365,7 +367,12 @@ export const blackboardGroupMethods = {
         if (state.targetBoardId) {
             return this.renderWidgets();
         }
-        if (!dx && !dy) return this.renderWidgets();
+        if (!dx && !dy) {
+            if (state.representativeId && this.adapter?.sendEvent) {
+                void this.adapter.sendEvent('focus', {}, {widgetId: state.representativeId}).catch(() => {});
+            }
+            return this.renderWidgets();
+        }
         try {
             await this.runFinalChange({
                 changeType: 'update', targetType: 'group', targetRef: state.groupId, reason: 'group-move',
@@ -427,6 +434,7 @@ export const blackboardGroupMethods = {
             node.style.top = `${nextY - origin.height / 2}px`;
             node.style.transform = `rotate(${origin.rotation + state.delta}deg)`;
         }
+        this.refreshConnectedLinePreviews?.();
     },
 
     async finishGroupRotate(event) {
@@ -518,6 +526,7 @@ export const blackboardGroupMethods = {
             node.style.height = `${origin.height * scaleY}px`;
         }
         applyGroupSelectionBounds(this.groupOverlay, bounds);
+        this.refreshConnectedLinePreviews?.();
     },
 
     async finishGroupResize(event) {

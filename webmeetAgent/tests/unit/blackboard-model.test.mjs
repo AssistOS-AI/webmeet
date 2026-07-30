@@ -1646,6 +1646,76 @@ test('interactive controls inside movable widgets keep their click gesture', asy
     );
 });
 
+test('an unselected shape begins selection and drag on the first pointer gesture', async () => {
+    const { blackboardInteractionMethods } = await import(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-interactions.js')
+    );
+    const previousElement = globalThis.Element;
+    class MockElement {
+        constructor() {
+            this.dataset = {widgetId: 'shape-1'};
+            this.style = {};
+            this.listeners = [];
+            this.attributes = new Map();
+            this.classList = {contains: (name) => name === 'webmeet-blackboard-widget'};
+        }
+        closest(selector) {
+            return selector === '.webmeet-blackboard-widget' ? this : null;
+        }
+        setAttribute(name, value) { this.attributes.set(name, value); }
+        focus() {}
+        setPointerCapture(pointerId) { this.capturedPointerId = pointerId; }
+        addEventListener(type) { this.listeners.push(type); }
+    }
+    globalThis.Element = MockElement;
+    try {
+        const widget = {id: 'shape-1', type: 'shape', properties: {geometry: {x: 40, y: 60, width: 100, height: 80}}};
+        const node = new MockElement();
+        let focusEvents = 0;
+        let prevented = false;
+        const context = {
+            board: {contains: () => true},
+            blackboard: {widgets: [widget]},
+            selection: '',
+            selectedWidgetIds: new Set(),
+            widgetNodes: new Map([[widget.id, node]]),
+            activeTool: 'select',
+            adapter: {sendEvent: async () => { focusEvents += 1; }},
+            getWidgetById: () => widget,
+            isGroupableWidget: () => true,
+            clearGroupSelection() {},
+            updateToolbarState() {},
+            canMoveWidget: () => true,
+            isWidgetInteractiveControlEvent: blackboardInteractionMethods.isWidgetInteractiveControlEvent,
+            beginLocalDrag(event, selectedWidget) {
+                return blackboardInteractionMethods.beginLocalDrag.call(this, event, selectedWidget);
+            },
+        };
+        const event = {
+            button: 0,
+            pointerId: 17,
+            clientX: 120,
+            clientY: 140,
+            target: node,
+            currentTarget: context.board,
+            preventDefault() { prevented = true; },
+            stopPropagation() {},
+        };
+
+        blackboardInteractionMethods.handleBoardPointerDownCapture.call(context, event);
+
+        assert.equal(context.selection, widget.id);
+        assert.equal(context.dragState?.widget, widget);
+        assert.equal(context.dragState?.node, node);
+        assert.equal(node.capturedPointerId, 17);
+        assert.deepEqual(node.listeners, ['pointermove', 'pointerup', 'pointercancel']);
+        assert.equal(prevented, true);
+        assert.equal(focusEvents, 0, 'shared focus must not rerender the node during pointer capture');
+    } finally {
+        globalThis.Element = previousElement;
+    }
+});
+
 test('blackboard draws selected shape and line widgets from pointer drag', async () => {
     const { WebMeetBlackboardPanel } = await import(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.js')
@@ -2202,6 +2272,8 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /createShapeSvg\(widget\)/);
     assert.match(panelSource, /shapeKind === 'triangle'/);
     assert.match(panelSource, /createLineSvg\(widget\)/);
+    assert.match(panelSource, /webmeet-blackboard-line-hit-target/);
+    assert.match(panelSource, /Math\.max\(12, strokeWidth\)/);
     assert.match(panelSource, /marker-end/);
     assert.match(panelSource, /marker-start/);
     assert.match(panelSource, /widget\.properties\.line = \{/);
@@ -2212,13 +2284,16 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /dataResizeHandle = handle\.name|dataset\.resizeHandle = handle\.name/);
     assert.match(panelSource, /line-start/);
     assert.match(panelSource, /line-end/);
-    assert.match(panelSource, /getLineEndpointResize\(state, event\)/);
+    assert.match(panelSource, /getLineEndpointResize\(state, event, movingPointOverride = null\)/);
+    assert.match(panelSource, /findConnectionAnchorAtEvent/);
     assert.match(panelSource, /movingEndpoint: handle === 'line-start' \? 'start' : 'end'/);
     assert.match(panelSource, /canRotateWidget\(widget\)[\s\S]*\['shape', 'line', 'text', 'image'\]\.includes/);
     assert.match(panelSource, /if \(widget\.type !== 'file' && this\.canEditWidget\(widget\)\)/);
     assert.match(panelSource, /appendFileContextDownload\(menu, widget\)/);
     assert.match(panelSource, /widget\?\.type !== 'file'[\s\S]*file-context-download[\s\S]*data-local-action="downloadBlackboardFile"/);
     assert.match(panelCss, /\.webmeet-blackboard-line-svg/);
+    assert.match(panelCss, /\.webmeet-blackboard-widget\.line[\s\S]*pointer-events: none/);
+    assert.match(panelCss, /\.webmeet-blackboard-line-hit-target[\s\S]*pointer-events: stroke/);
     assert.match(panelCss, /\.webmeet-blackboard-resize-handle\.line-endpoint/);
     assert.doesNotMatch(editorHtml, /data-role="shapeKind"/);
     assert.match(editorHtml, /data-role="lineMarker"/);

@@ -85,6 +85,8 @@ export const blackboardActionMethods = {
 
     setPendingWidgetType(type = '') {
         this.pendingWidgetType = String(type || '').trim();
+        if (this.pendingWidgetType.startsWith('line')) this.renderConnectionAnchors?.();
+        else this.clearConnectionAnchors?.();
         this.updateToolbarState();
     },
 
@@ -532,6 +534,12 @@ export const blackboardActionMethods = {
             ...(widget.properties.line || {}),
             ...line
         };
+        if (placement.connection?.from || placement.connection?.to) {
+            widget.properties.connection = {
+                from: placement.connection.from || null,
+                to: placement.connection.to || null,
+            };
+        }
     },
 
     createWidgetId(type) {
@@ -558,6 +566,7 @@ export const blackboardActionMethods = {
     },
 
     canRotateWidget(widget) {
+        if (widget?.type === 'line' && widget.properties?.connection) return false;
         return !widget?.locked && ['shape', 'line', 'text', 'image'].includes(String(widget?.type || '').trim());
     },
 

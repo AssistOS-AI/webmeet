@@ -76,13 +76,14 @@ function lineSchema() {
 function endpointSchema() {
     return strictObject({
         widgetId: nullableString,
+        groupId: nullableString,
         ref: nullableString,
-        anchor: nullable({ type: 'string', enum: ['left', 'right', 'top', 'bottom', 'center'] }),
+        anchor: nullable({ type: 'string', enum: ['left', 'right', 'top', 'bottom'] }),
     });
 }
 
 function connectionSchema() {
-    return strictObject({ from: endpointSchema(), to: endpointSchema() });
+    return strictObject({ from: nullable(endpointSchema()), to: nullable(endpointSchema()) });
 }
 
 function pollQuestionSchema() {

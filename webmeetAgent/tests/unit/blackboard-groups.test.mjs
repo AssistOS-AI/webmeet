@@ -46,7 +46,7 @@ test('blackboard group UI exposes rigid block selection and all contextual trans
 
     assert.match(panelSource, /selectedWidgetIds = new Set\(\)/);
     assert.match(panelSource, /selectedGroupId = ''/);
-    assert.match(groupSource, /GROUPABLE_WIDGET_TYPES = new Set\(\['shape', 'line', 'text', 'image', 'card'\]\)/);
+    assert.match(groupSource, /GROUPABLE_WIDGET_TYPES = new Set\(\['shape', 'line', 'text', 'image', 'file', 'card'\]\)/);
     assert.match(groupSource, /!this\.isGroupableWidget\(widget\)/);
     assert.match(groupSource, /expandCompositeSelectionWidgetIds/);
     assert.match(groupSource, /for \(const member of this\.getGroupMembers\(this\.selectedGroupId\)\)/);

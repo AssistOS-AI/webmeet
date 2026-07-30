@@ -42,14 +42,20 @@ function resolveSelectedWidgetIds(board, widgetIds = []) {
             .filter(Boolean));
         for (const widget of board.widgets.values()) {
             if (widget.groupId && selectedGroupIds.has(widget.groupId)) selectedIds.add(widget.id);
-            const fromId = String(widget.properties?.connection?.from?.widgetId || '');
-            const toId = String(widget.properties?.connection?.to?.widgetId || '');
-            if (widget.type !== 'line' || !fromId || !toId) continue;
+            const endpoints = [widget.properties?.connection?.from, widget.properties?.connection?.to].filter(Boolean);
+            if (widget.type !== 'line' || !endpoints.length) continue;
             if (selectedIds.has(widget.id)) {
-                if (board.getWidget(fromId)) selectedIds.add(fromId);
-                if (board.getWidget(toId)) selectedIds.add(toId);
+                for (const endpoint of endpoints) {
+                    if (endpoint.widgetId && board.getWidget(endpoint.widgetId)) selectedIds.add(endpoint.widgetId);
+                    if (endpoint.groupId) {
+                        for (const member of board.widgets.values()) if (member.groupId === endpoint.groupId) selectedIds.add(member.id);
+                    }
+                }
             }
-            if (selectedIds.has(fromId) && selectedIds.has(toId)) selectedIds.add(widget.id);
+            const allTargetsSelected = endpoints.every((endpoint) => endpoint.widgetId
+                ? selectedIds.has(endpoint.widgetId)
+                : [...board.widgets.values()].filter((member) => member.groupId === endpoint.groupId).every((member) => selectedIds.has(member.id)));
+            if (allTargetsSelected) selectedIds.add(widget.id);
         }
         changed = selectedIds.size !== beforeSize;
     }
@@ -211,9 +217,12 @@ export class BlackboardWorkspace {
         const before = record ? this.snapshot() : null;
         const moving = [...selectedIds].map((id) => source.getWidget(id)).filter(Boolean).map((widget) => widget.serializePrivileged());
         const externalLineIds = [...source.widgets.values()].filter((widget) => {
-            const fromId = String(widget.properties?.connection?.from?.widgetId || '');
-            const toId = String(widget.properties?.connection?.to?.widgetId || '');
-            return widget.type === 'line' && Boolean(fromId && toId) && (selectedIds.has(fromId) !== selectedIds.has(toId));
+            const endpoints = [widget.properties?.connection?.from, widget.properties?.connection?.to].filter(Boolean);
+            if (widget.type !== 'line' || !endpoints.length) return false;
+            const targetSelected = endpoints.map((endpoint) => endpoint.widgetId
+                ? selectedIds.has(endpoint.widgetId)
+                : [...source.widgets.values()].filter((member) => member.groupId === endpoint.groupId).every((member) => selectedIds.has(member.id)));
+            return targetSelected.some(Boolean) && !targetSelected.every(Boolean);
         }).map((widget) => widget.id);
         const geometries = moving.map((widget) => widget.properties?.geometry).filter(Boolean);
         const minX = geometries.length ? Math.min(...geometries.map((geometry) => Number(geometry.x || 0))) : 0;
@@ -244,7 +253,10 @@ export class BlackboardWorkspace {
         for (const id of [...selectedIds, ...externalLineIds]) {
             if (source.getWidget(id)) source.removeWidget(id, { participantId, canModerateBlackboard: true, record: false });
         }
-        for (const serialized of moving) {
+        const insertionOrder = [...moving].sort((left, right) => (
+            Number(Boolean(left.properties?.connection)) - Number(Boolean(right.properties?.connection))
+        ));
+        for (const serialized of insertionOrder) {
             const geometry = serialized.properties?.geometry;
             if (geometry && (dx || dy)) serialized.properties.geometry = { ...geometry, x: Number(geometry.x || 0) + dx, y: Number(geometry.y || 0) + dy };
             target.addWidget(serialized, { participantId, record: false });
@@ -268,6 +280,10 @@ export class BlackboardWorkspace {
         const before = record ? this.snapshot() : null;
         const idMap = new Map(originals.map((widget) => [widget.id, newEventId('widget')]));
         const groupMap = new Map();
+        for (const widget of originals) {
+            const groupId = String(widget.groupId || '');
+            if (groupId && !groupMap.has(groupId)) groupMap.set(groupId, newEventId('group'));
+        }
         const geometries = originals.map((widget) => widget.properties?.geometry).filter(Boolean);
         const minX = geometries.length ? Math.min(...geometries.map((geometry) => Number(geometry.x || 0))) : 0;
         const minY = geometries.length ? Math.min(...geometries.map((geometry) => Number(geometry.y || 0))) : 0;
@@ -276,7 +292,10 @@ export class BlackboardWorkspace {
         const dx = Number.isFinite(targetX) ? targetX - minX : 0;
         const dy = Number.isFinite(targetY) ? targetY - minY : 0;
         const copiedIds = [];
-        for (const original of originals) {
+        const insertionOrder = [...originals].sort((left, right) => (
+            Number(Boolean(left.properties?.connection)) - Number(Boolean(right.properties?.connection))
+        ));
+        for (const original of insertionOrder) {
             const serialized = original.serializePrivileged();
             const properties = cloneJson(serialized.properties || {});
             if (properties.geometry && (dx || dy)) {
@@ -286,20 +305,18 @@ export class BlackboardWorkspace {
                     y: Number(properties.geometry.y || 0) + dy,
                 };
             }
+            const originalGroupId = String(serialized.groupId || '');
             if (properties.connection) {
+                const remapEndpoint = (endpoint) => endpoint ? {
+                    ...endpoint,
+                    ...(endpoint.widgetId ? {widgetId: idMap.get(String(endpoint.widgetId))} : {}),
+                    ...(endpoint.groupId ? {groupId: groupMap.get(String(endpoint.groupId))} : {}),
+                } : null;
                 properties.connection = {
-                    from: {
-                        ...properties.connection.from,
-                        widgetId: idMap.get(String(properties.connection.from?.widgetId || '')),
-                    },
-                    to: {
-                        ...properties.connection.to,
-                        widgetId: idMap.get(String(properties.connection.to?.widgetId || '')),
-                    },
+                    from: remapEndpoint(properties.connection.from),
+                    to: remapEndpoint(properties.connection.to),
                 };
             }
-            const originalGroupId = String(serialized.groupId || '');
-            if (originalGroupId && !groupMap.has(originalGroupId)) groupMap.set(originalGroupId, newEventId('group'));
             const copiedId = idMap.get(original.id);
             target.addWidget({
                 id: copiedId,

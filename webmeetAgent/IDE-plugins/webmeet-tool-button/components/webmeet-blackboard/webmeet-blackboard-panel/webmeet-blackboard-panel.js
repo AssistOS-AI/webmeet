@@ -10,6 +10,7 @@ import { blackboardCollaborationRenderingMethods } from './webmeet-blackboard-co
 import { blackboardScriptaActionMethods } from './webmeet-blackboard-scripta-actions.js';
 import { blackboardScriptaRenderingMethods } from './webmeet-blackboard-scripta-rendering.js';
 import { blackboardWorkspaceMethods } from './webmeet-blackboard-workspaces.js';
+import { blackboardConnectionMethods } from './webmeet-blackboard-connections.js';
 
 export class WebMeetBlackboardPanel {
     constructor(element, invalidate) {
@@ -606,6 +607,7 @@ Object.assign(
     WebMeetBlackboardPanel.prototype,
     blackboardGeometryMethods,
     blackboardGraphicsRenderingMethods,
+    blackboardConnectionMethods,
     blackboardAttachmentRenderingMethods,
     blackboardRenderingMethods,
     blackboardCollaborationRenderingMethods,

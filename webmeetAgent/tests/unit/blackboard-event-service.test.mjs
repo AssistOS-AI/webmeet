@@ -1267,6 +1267,90 @@ test('attached connections join a group only with both endpoints and remain deri
     });
 });
 
+test('connection endpoints can independently attach to a widget or group and detach to stored free geometry', () => {
+    const board = new Blackboard({boardId: 'connector-board'});
+    board.addWidget(new BlackboardWidget({id: 'a', type: 'shape', properties: {geometry: {x: 0, y: 0, width: 100, height: 50}}}), {record: false});
+    board.addWidget(new BlackboardWidget({id: 'b', type: 'shape', properties: {geometry: {x: 200, y: 0, width: 100, height: 50}}}), {record: false});
+    board.groupWidgets(['a', 'b'], {groupId: 'target-group', record: false});
+    board.addWidget(new BlackboardWidget({
+        id: 'hybrid-edge', type: 'line',
+        properties: {
+            geometry: {x: 0, y: 0, width: 400, height: 100},
+            line: {x1: 0, y1: 0, x2: 400, y2: 100, markerEnd: 'arrow'},
+            connection: {from: {groupId: 'target-group', anchor: 'right'}, to: null},
+        },
+    }), {record: false});
+
+    assert.throws(
+        () => board.groupWidgets(['a', 'b', 'hybrid-edge'], {groupId: 'invalid-hybrid', record: false}),
+        /free endpoint cannot become a rigid group member/,
+    );
+
+    board.transformGroup('target-group', {translation: {x: 50, y: 0}}, {record: false});
+    board.ungroupGroup('target-group', {record: false});
+
+    const edge = board.getWidget('hybrid-edge');
+    assert.equal(edge.properties.connection, null);
+    assert.deepEqual({
+        x: edge.properties.geometry.x + edge.properties.line.x1,
+        y: edge.properties.geometry.y + edge.properties.line.y1,
+    }, {x: 350, y: 25});
+    assert.deepEqual({
+        x: edge.properties.geometry.x + edge.properties.line.x2,
+        y: edge.properties.geometry.y + edge.properties.line.y2,
+    }, {x: 400, y: 100});
+    assert.equal(edge.properties.line.markerEnd, 'arrow');
+});
+
+test('group endpoint materialization ignores the raw geometry of internal attached connectors', () => {
+    const board = new Blackboard({boardId: 'group-geometry'});
+    board.addWidget(new BlackboardWidget({id: 'a', type: 'shape', properties: {geometry: {x: 500, y: 100, width: 100, height: 50}}}), {record: false});
+    board.addWidget(new BlackboardWidget({id: 'b', type: 'shape', properties: {geometry: {x: 700, y: 100, width: 100, height: 50}}}), {record: false});
+    board.addWidget(new BlackboardWidget({id: 'outside', type: 'shape', properties: {geometry: {x: 900, y: 100, width: 100, height: 50}}}), {record: false});
+    board.addWidget(new BlackboardWidget({
+        id: 'internal', type: 'line',
+        properties: {connection: {from: {widgetId: 'a', anchor: 'right'}, to: {widgetId: 'b', anchor: 'left'}}},
+    }), {record: false});
+    board.groupWidgets(['a', 'b', 'internal'], {groupId: 'target-group', record: false});
+    board.addWidget(new BlackboardWidget({
+        id: 'external', type: 'line',
+        properties: {connection: {from: {groupId: 'target-group', anchor: 'left'}, to: {widgetId: 'outside', anchor: 'left'}}},
+    }), {record: false});
+
+    board.ungroupGroup('target-group', {record: false});
+
+    const edge = board.getWidget('external');
+    assert.deepEqual({
+        x: edge.properties.geometry.x + edge.properties.line.x1,
+        y: edge.properties.geometry.y + edge.properties.line.y1,
+    }, {x: 500, y: 125});
+    assert.deepEqual(edge.properties.connection, {
+        from: null,
+        to: {widgetId: 'outside', anchor: 'left'},
+    });
+});
+
+test('canonical connections accept group targets and independently free endpoints', () => {
+    const event = normalizeBlackboardEvent({
+        action: 'create',
+        target: {type: 'blackboard'},
+        payload: {widget: {type: 'line', properties: {
+            line: {x1: 10, y1: 20, x2: 300, y2: 200},
+            connection: {from: {groupId: 'group-1', anchor: 'right'}, to: null},
+        }}},
+    });
+    assert.deepEqual(event.payload.widget.properties.connection, {
+        from: {groupId: 'group-1', anchor: 'right'},
+        to: null,
+    });
+    assert.throws(() => normalizeBlackboardEvent({
+        action: 'create', target: {type: 'blackboard'},
+        payload: {widget: {type: 'line', properties: {
+            connection: {from: {widgetId: 'widget-1', anchor: 'center'}, to: null},
+        }}},
+    }), /anchor is invalid/);
+});
+
 test('deleting a connection endpoint removes its dependent attached line', () => {
     const board = new Blackboard({ boardId: 'agent:agent_robo_team' });
     board.addWidget(new BlackboardWidget({ id: 'from', type: 'shape' }), { record: false });

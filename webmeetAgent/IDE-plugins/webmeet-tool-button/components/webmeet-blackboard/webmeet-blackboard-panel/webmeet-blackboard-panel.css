@@ -897,6 +897,32 @@ webmeet-blackboard-panel {
     cursor: grabbing;
 }
 
+.webmeet-blackboard-connection-anchor {
+    position: absolute;
+    z-index: 24;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    border: 2px solid var(--bb-selection);
+    border-radius: 50%;
+    background: var(--bb-board-bg);
+    box-shadow: 0 0 0 7px transparent;
+    transform: translate(-50%, -50%);
+    cursor: crosshair;
+}
+
+.webmeet-blackboard-connection-anchor::before {
+    position: absolute;
+    inset: -9px;
+    content: '';
+}
+
+.webmeet-blackboard-connection-anchor.is-snap-target {
+    background: var(--bb-selection);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--bb-selection) 20%, transparent);
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
 .webmeet-blackboard-widget.is-locked {
     opacity: 0.65;
 }
@@ -1454,6 +1480,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-widget.line {
     background: transparent;
     border: 0;
+    pointer-events: none;
 }
 
 .webmeet-blackboard-shape-svg,
@@ -1463,6 +1490,16 @@ webmeet-blackboard-panel {
     height: 100%;
     overflow: visible;
     pointer-events: none;
+}
+
+.webmeet-blackboard-widget.line .webmeet-blackboard-resize-handle,
+.webmeet-blackboard-widget.line .webmeet-blackboard-context-menu {
+    pointer-events: auto;
+}
+
+.webmeet-blackboard-line-hit-target {
+    cursor: pointer;
+    pointer-events: stroke;
 }
 
 .webmeet-blackboard-widget.text,

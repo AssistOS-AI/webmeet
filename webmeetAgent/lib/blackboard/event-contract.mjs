@@ -28,7 +28,7 @@ export const BLACKBOARD_SEMANTIC_ERROR_CODES = Object.freeze([
     'unsupported_request',
 ]);
 export const BLACKBOARD_EVENT_ACTIONS = Object.freeze(new Set(BLACKBOARD_PUBLIC_ACTIONS));
-export const BLACKBOARD_CONNECTION_ANCHORS = Object.freeze(new Set(['left', 'right', 'top', 'bottom', 'center']));
+export const BLACKBOARD_CONNECTION_ANCHORS = Object.freeze(new Set(['left', 'right', 'top', 'bottom']));
 export const BLACKBOARD_CREATABLE_WIDGET_TYPES = Object.freeze(new Set([
     'shape', 'line', 'text', 'image', 'card', 'poll', 'bullets', 'embed',
 ]));
@@ -362,28 +362,31 @@ function validateScriptaPayload(action, target, payload) {
 }
 
 function normalizeEndpoint(endpoint, label) {
+    if (endpoint === null) return null;
     plainObject(endpoint, label);
     const widgetId = String(endpoint.widgetId || '').trim();
+    const groupId = String(endpoint.groupId || '').trim();
     const ref = String(endpoint.ref || '').trim();
-    if (Boolean(widgetId) === Boolean(ref)) {
-        throw new Error(`${label} must contain exactly one of widgetId or ref.`);
+    if ([widgetId, groupId, ref].filter(Boolean).length !== 1) {
+        throw new Error(`${label} must contain exactly one of widgetId, groupId, or ref.`);
     }
-    const anchor = String(endpoint.anchor || 'center').trim();
+    const anchor = String(endpoint.anchor || '').trim();
     if (!BLACKBOARD_CONNECTION_ANCHORS.has(anchor)) {
         throw new Error(`${label}.anchor is invalid.`);
     }
-    return { ...(widgetId ? { widgetId } : { ref }), anchor };
+    return { ...(widgetId ? { widgetId } : groupId ? { groupId } : { ref }), anchor };
 }
 
 function normalizeConnection(properties = {}, label = 'properties.connection') {
     if (properties.connection === undefined) return properties;
+    if (properties.connection === null) return {...properties, connection: null};
     const connection = plainObject(properties.connection, label);
+    const from = normalizeEndpoint(connection.from ?? null, `${label}.from`);
+    const to = normalizeEndpoint(connection.to ?? null, `${label}.to`);
+    if (!from && !to) return {...properties, connection: null};
     return {
         ...properties,
-        connection: {
-            from: normalizeEndpoint(connection.from, `${label}.from`),
-            to: normalizeEndpoint(connection.to, `${label}.to`),
-        },
+        connection: {from, to},
     };
 }
 

@@ -97,11 +97,24 @@ export const blackboardGraphicsRenderingMethods = {
             defs.append(marker);
             svg.append(defs);
         }
+        const applyCoordinates = (target) => {
+            target.setAttribute('x1', String(x1));
+            target.setAttribute('y1', String(y1));
+            target.setAttribute('x2', String(x2));
+            target.setAttribute('y2', String(y2));
+        };
+        const hitTarget = this.createSvgElement('line');
+        hitTarget.setAttribute('class', 'webmeet-blackboard-line-hit-target');
+        applyCoordinates(hitTarget);
+        hitTarget.setAttribute('stroke', 'transparent');
+        hitTarget.setAttribute('stroke-width', String(Math.max(12, strokeWidth)));
+        hitTarget.setAttribute('stroke-linecap', 'round');
+        hitTarget.setAttribute('pointer-events', 'stroke');
+        svg.append(hitTarget);
+
         const segment = this.createSvgElement('line');
-        segment.setAttribute('x1', String(x1));
-        segment.setAttribute('y1', String(y1));
-        segment.setAttribute('x2', String(x2));
-        segment.setAttribute('y2', String(y2));
+        segment.setAttribute('class', 'webmeet-blackboard-line-segment');
+        applyCoordinates(segment);
         segment.setAttribute('stroke', stroke);
         segment.setAttribute('stroke-width', String(strokeWidth));
         segment.setAttribute('stroke-linecap', 'round');
@@ -111,6 +124,7 @@ export const blackboardGraphicsRenderingMethods = {
         if (markerEnd === 'arrow') {
             segment.setAttribute('marker-end', `url(#${markerIdBase})`);
         }
+        segment.setAttribute('pointer-events', 'none');
         svg.append(segment);
         return svg;
     },

@@ -462,7 +462,8 @@ export async function applyRoomBlackboardWorkspaceAction(context, {
     return result;
 }
 
-function resolveEndpoint(endpoint = {}, refs = new Map()) {
+function resolveEndpoint(endpoint = null, refs = new Map()) {
+    if (!endpoint) return null;
     if (!endpoint.ref) return endpoint;
     const widgetId = refs.get(String(endpoint.ref));
     if (!widgetId) throw new Error(`Unknown or forward local widget ref "${endpoint.ref}".`);

@@ -94,6 +94,73 @@ function text(value = '') {
     return String(value ?? '').trim();
 }
 
+function filmstripBounds(widgets = []) {
+    const geometries = widgets.map((widget) => widget?.properties?.geometry).filter(Boolean);
+    if (!geometries.length) return null;
+    const x = Math.min(...geometries.map((geometry) => Number(geometry.x || 0)));
+    const y = Math.min(...geometries.map((geometry) => Number(geometry.y || 0)));
+    const right = Math.max(...geometries.map((geometry) => Number(geometry.x || 0) + Number(geometry.width || 1)));
+    const bottom = Math.max(...geometries.map((geometry) => Number(geometry.y || 0) + Number(geometry.height || 1)));
+    return {x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y), rotation: 0};
+}
+
+function filmstripGroupGeometryMembers(widgets = []) {
+    return widgets.filter((widget) => !widget.properties?.connection);
+}
+
+function filmstripAnchorPoint(bounds, anchor = 'center') {
+    const center = {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2};
+    const point = {
+        left: {x: bounds.x, y: center.y},
+        right: {x: bounds.x + bounds.width, y: center.y},
+        top: {x: center.x, y: bounds.y},
+        bottom: {x: center.x, y: bounds.y + bounds.height},
+    }[String(anchor || '')] || center;
+    const radians = Number(bounds.rotation || 0) * Math.PI / 180;
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    return {
+        x: center.x + dx * Math.cos(radians) - dy * Math.sin(radians),
+        y: center.y + dx * Math.sin(radians) + dy * Math.cos(radians),
+    };
+}
+
+function projectFilmstripConnection(widget, widgets = []) {
+    const connection = widget?.properties?.connection;
+    if (widget?.type !== 'line' || !connection) return widget;
+    const endpointPoint = (endpoint) => {
+        if (!endpoint) return null;
+        if (endpoint.widgetId) {
+            const target = widgets.find((entry) => String(entry.id || '') === String(endpoint.widgetId));
+            if (!target || target.type === 'line') return null;
+            const geometry = target.properties?.geometry || {};
+            return filmstripAnchorPoint({
+                x: Number(geometry.x || 0), y: Number(geometry.y || 0),
+                width: Math.max(1, Number(geometry.width || 1)), height: Math.max(1, Number(geometry.height || 1)),
+                rotation: Number(target.properties?.rotation ?? geometry.rotation ?? 0),
+            }, endpoint.anchor);
+        }
+        const members = filmstripGroupGeometryMembers(
+            widgets.filter((entry) => String(entry.groupId || '') === String(endpoint.groupId || '')),
+        );
+        const bounds = filmstripBounds(members);
+        return bounds ? filmstripAnchorPoint(bounds, endpoint.anchor) : null;
+    };
+    const geometry = widget.properties?.geometry || {};
+    const line = widget.properties?.line || {};
+    const originX = Number(geometry.x || 0);
+    const originY = Number(geometry.y || 0);
+    const from = endpointPoint(connection.from) || {x: originX + Number(line.x1 ?? 0), y: originY + Number(line.y1 ?? Number(geometry.height || 1) / 2)};
+    const to = endpointPoint(connection.to) || {x: originX + Number(line.x2 ?? Number(geometry.width || 1)), y: originY + Number(line.y2 ?? Number(geometry.height || 1) / 2)};
+    const x = Math.min(from.x, to.x) - 0.5;
+    const y = Math.min(from.y, to.y) - 0.5;
+    return {...widget, properties: {...widget.properties,
+        geometry: {...geometry, x, y, width: Math.max(1, Math.abs(to.x - from.x) + 1), height: Math.max(1, Math.abs(to.y - from.y) + 1), rotation: 0},
+        rotation: 0,
+        line: {...line, x1: from.x - x, y1: from.y - y, x2: to.x - x, y2: to.y - y},
+    }};
+}
+
 function firstParagraphText(chapter = {}) {
     const paragraph = Array.isArray(chapter?.paragraphs) ? chapter.paragraphs[0] : null;
     if (!paragraph) return '';
@@ -204,7 +271,7 @@ export function getFilmstripGroupPreviews(widgets = []) {
     const previews = [];
     for (const [groupId, members] of groups) {
         if (members.length < 2) continue;
-        const bounds = getFilmstripSelectionBounds(members);
+        const bounds = getFilmstripSelectionBounds(filmstripGroupGeometryMembers(members));
         if (!bounds) continue;
         previews.push({
             groupId,
@@ -929,10 +996,11 @@ export const blackboardWorkspaceMethods = {
                     .filter((widget) => String(widget.groupId || '') === group.groupId)
                     .map((widget) => String(widget.id || ''))
             )));
-            const geometries = widgets.map((widget) => widget.properties?.geometry).filter(Boolean);
+            const projectedWidgets = widgets.map((widget) => projectFilmstripConnection(widget, widgets));
+            const geometries = projectedWidgets.map((widget) => widget.properties?.geometry).filter(Boolean);
             const right = Math.max(1200, ...geometries.map((geometry) => Number(geometry.x || 0) + Number(geometry.width || 1)));
             const bottom = Math.max(800, ...geometries.map((geometry) => Number(geometry.y || 0) + Number(geometry.height || 1)));
-            for (const widget of widgets) {
+            for (const widget of projectedWidgets) {
                 const geometry = widget.properties?.geometry;
                 if (!geometry) continue;
                 const widgetNode = this.renderFilmstripWidget(widget, { boardId });

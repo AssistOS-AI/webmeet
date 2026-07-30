@@ -98,12 +98,12 @@ export const blackboardGeometryMethods = {
         return {x, y, width, height};
     },
 
-    getLineEndpointResize(state, event) {
+    getLineEndpointResize(state, event, movingPointOverride = null) {
         const lineState = state.lineResize;
         const dx = event.clientX - lineState.startX;
         const dy = event.clientY - lineState.startY;
         const fixedPoint = lineState.fixedPoint;
-        const movingPoint = {
+        const movingPoint = movingPointOverride || {
             x: lineState.movingPoint.x + dx,
             y: lineState.movingPoint.y + dy
         };
@@ -148,12 +148,13 @@ export const blackboardGeometryMethods = {
         node.style.width = `${resize.geometry.width}px`;
         node.style.height = `${resize.geometry.height}px`;
         const svg = node.querySelector('.webmeet-blackboard-line-svg');
-        const segment = svg?.querySelector?.('line');
         svg?.setAttribute('viewBox', `0 0 ${resize.geometry.width} ${resize.geometry.height}`);
-        segment?.setAttribute('x1', String(resize.line.x1));
-        segment?.setAttribute('y1', String(resize.line.y1));
-        segment?.setAttribute('x2', String(resize.line.x2));
-        segment?.setAttribute('y2', String(resize.line.y2));
+        for (const segment of svg?.querySelectorAll?.('.webmeet-blackboard-line-hit-target, .webmeet-blackboard-line-segment') || []) {
+            segment.setAttribute('x1', String(resize.line.x1));
+            segment.setAttribute('y1', String(resize.line.y1));
+            segment.setAttribute('x2', String(resize.line.x2));
+            segment.setAttribute('y2', String(resize.line.y2));
+        }
         const startHandle = node.querySelector('[data-resize-handle="line-start"]');
         const endHandle = node.querySelector('[data-resize-handle="line-end"]');
         if (startHandle) {
