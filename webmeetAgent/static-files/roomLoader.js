@@ -3,6 +3,11 @@ import { initializeTheme } from '/explorer/shared/ui/theme.js';
 
 const ROOM_ID_PATTERN = /^room_[0-9a-fA-F-]{36}$/;
 const MCP_PROTOCOL_VERSION = '2025-06-18';
+const BROWSER_CSRF_HEADER = 'x-ploinky-browser-csrf-token';
+const BROWSER_MUTATION_RETRY_ERRORS = new Set([
+  'browser_csrf_invalid',
+  'edge_generation_changed'
+]);
 const COMPONENT_ROOT = new URL('../IDE-plugins/webmeet-tool-button/', import.meta.url);
 const PLUGIN_CONFIG_URL = new URL('config.json', COMPONENT_ROOT);
 
@@ -68,7 +73,12 @@ window.__WEBMEET_SHOW_ACCESS_DENIED__ = showAccessDenied;
 
 async function getAuthState() {
   try {
-    const response = await fetch('/auth/token', { cache: 'no-store', credentials: 'include' });
+    const proofUrl = new URL('/auth/token', window.location.href);
+    proofUrl.searchParams.set('mutationRoute', getWebMeetAgentName());
+    proofUrl.searchParams.set('mutationPath', window.location.pathname);
+    const roomId = getRoomIdParam();
+    if (roomId) proofUrl.searchParams.set('roomId', roomId);
+    const response = await fetch(proofUrl.toString(), { cache: 'no-store', credentials: 'include' });
     if (!response.ok) {
       return { authenticated: false, userAuthenticated: false, guest: false, user: null };
     }
@@ -108,14 +118,54 @@ function createJsonRpcAgentClient(agentId) {
   let connected = false;
   let connectPromise = null;
   let messageId = 0;
+  let browserMutationToken = '';
+  let browserMutationProofPromise = null;
+
+  async function loadBrowserMutationProof({ refresh = false } = {}) {
+    if (!refresh && browserMutationToken) return browserMutationToken;
+    if (!refresh && browserMutationProofPromise) return browserMutationProofPromise;
+
+    browserMutationProofPromise = (async () => {
+      const proofUrl = new URL('/auth/token', window.location.href);
+      proofUrl.searchParams.set('mutationRoute', agentId);
+      proofUrl.searchParams.set('mutationPath', window.location.pathname);
+      const roomId = getRoomIdParam();
+      if (roomId) proofUrl.searchParams.set('roomId', roomId);
+      const response = await fetch(proofUrl.toString(), {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { accept: 'application/json' }
+      });
+      const payload = await response.json().catch(() => ({}));
+      const proof = payload?.browserMutation;
+      if (
+        !response.ok
+        || !proof?.csrfToken
+        || proof.routeKey !== agentId
+        || proof.origin !== window.location.origin
+      ) {
+        const detail = payload?.error || `HTTP ${response.status}`;
+        throw new Error(`Browser mutation proof failed: ${detail}`);
+      }
+      browserMutationToken = proof.csrfToken;
+      return browserMutationToken;
+    })();
+
+    try {
+      return await browserMutationProofPromise;
+    } finally {
+      browserMutationProofPromise = null;
+    }
+  }
+
+  async function isBrowserMutationProofRejection(response) {
+    if (![403, 503].includes(response.status)) return false;
+    const payload = await response.clone().json().catch(() => null);
+    return BROWSER_MUTATION_RETRY_ERRORS.has(String(payload?.error || '').toLowerCase());
+  }
 
   async function send(method, params = {}, { notification = false } = {}) {
-    const headers = new Headers();
-    headers.set('content-type', 'application/json');
-    headers.set('accept', 'application/json');
-    if (sessionId) headers.set('mcp-session-id', sessionId);
-    if (protocolVersion) headers.set('mcp-protocol-version', protocolVersion);
-
     const payload = {
       jsonrpc: '2.0',
       method,
@@ -126,13 +176,28 @@ function createJsonRpcAgentClient(agentId) {
       payload.id = String(messageId);
     }
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      credentials: 'include',
-      cache: 'no-store'
-    });
+    const request = async (refreshProof = false) => {
+      const mutationToken = await loadBrowserMutationProof({ refresh: refreshProof });
+      const headers = new Headers();
+      headers.set('content-type', 'application/json');
+      headers.set('accept', 'application/json');
+      headers.set(BROWSER_CSRF_HEADER, mutationToken);
+      if (sessionId) headers.set('mcp-session-id', sessionId);
+      if (protocolVersion) headers.set('mcp-protocol-version', protocolVersion);
+      return fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        credentials: 'include',
+        cache: 'no-store'
+      });
+    };
+
+    let response = await request(false);
+    if (await isBrowserMutationProofRejection(response)) {
+      browserMutationToken = '';
+      response = await request(true);
+    }
 
     const receivedSession = response.headers.get('mcp-session-id');
     if (receivedSession) sessionId = receivedSession;

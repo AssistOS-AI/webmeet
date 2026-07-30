@@ -13,7 +13,9 @@
     "httpRoutes": [
       {
         "path": "/roomLoader.html",
-        "access": "guest"
+        "access": "guest",
+        "guestScope": "webmeet:room",
+        "guestScopeParam": "roomId"
       },
       {
         "path": "/static-files/*",

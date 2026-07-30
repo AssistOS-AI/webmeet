@@ -51,6 +51,7 @@ import {
     updateMeetingTitle
 } from '../lib/webmeetStore.mjs';
 import { withVerifiedGuestParticipantOwner } from '../lib/services/roomParticipants.mjs';
+import { hasWebmeetRoomScope } from '../lib/store/accessPolicy.mjs';
 import { executeBlackboardEvent } from '../lib/blackboard/event-service.mjs';
 import { generateScriptaContent } from '../lib/scripta/content-generator.mjs';
 
@@ -183,13 +184,8 @@ function assertUserChatAuthor(args, authInfo = null) {
 }
 
 function assertPublicRoomInvocation(authInfo, roomId) {
-    const invocationScopes = Array.isArray(authInfo?.invocation?.scope) ? authInfo.invocation.scope.map((scope) => String(scope || '').trim()) : [];
     const targetRoomId = String(roomId || '').trim();
-    const accepted = new Set([
-        `webmeet:room:${targetRoomId}`,
-        `public:webmeet:room:${targetRoomId}`
-    ]);
-    if (!invocationScopes.some((scope) => accepted.has(scope))) {
+    if (!hasWebmeetRoomScope(authInfo, targetRoomId)) {
         throw new Error('Public room join scope does not match this room.');
     }
 }

@@ -273,3 +273,37 @@ test('guest owner binding is exact to room scope and signed guest actor identity
         /verified guest session owner/
     );
 });
+
+test('a route-wide guest capability cannot enter guest or team rooms', async (t) => {
+    const context = await withStoreFixture(t);
+    const guestRoom = await createMeeting(context, {
+        title: 'Manifest guest room',
+        roomType: 'guest',
+        authInfo: ADMIN_AUTH
+    });
+    const teamRoom = await createMeeting(context, {
+        title: 'Manifest team room',
+        roomType: 'team',
+        authInfo: ADMIN_AUTH
+    });
+    const genericGuest = guestAuth(guestRoom.id, 'manifest-guest');
+    genericGuest.invocation.scope = ['public:webmeet:room'];
+
+    await assert.rejects(
+        () => dispatch('webmeet_room_join_guest', {
+            roomId: guestRoom.id,
+            displayName: 'Blocked Guest',
+            participantId: 'blocked-guest-participant'
+        }, context, genericGuest),
+        /scope does not match this room/
+    );
+
+    await assert.rejects(
+        () => dispatch('webmeet_room_join_guest', {
+            roomId: teamRoom.id,
+            displayName: 'Blocked Guest',
+            participantId: 'blocked-team-participant'
+        }, context, genericGuest),
+        /scope does not match this room/
+    );
+});
