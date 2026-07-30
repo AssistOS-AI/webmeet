@@ -52,11 +52,11 @@ const EXPLORER_MUTATION_ARGUMENT_KEYS = Object.freeze({
     'p-variant-delete': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal']),
     'p-variant-image-insert': Object.freeze([
         'chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'assetId', 'alt', 'position', 'widthPercent',
-        'aspectRatio', 'fit', 'alignment', 'showCaption', 'roomId',
+        'aspectRatio', 'fit', 'alignment', 'showCaption', 'roomId', 'roomFolderPath',
     ]),
     'p-variant-image-replace': Object.freeze([
         'chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal', 'assetId', 'alt', 'position', 'widthPercent',
-        'aspectRatio', 'fit', 'alignment', 'showCaption', 'roomId',
+        'aspectRatio', 'fit', 'alignment', 'showCaption', 'roomId', 'roomFolderPath',
     ]),
     'p-variant-image-delete': Object.freeze(['chapterId', 'paragraphId', 'variantId', 'variantOrdinal', 'imageId', 'imageOrdinal']),
     'p-variant-image-layout': Object.freeze([
@@ -67,7 +67,7 @@ const EXPLORER_MUTATION_ARGUMENT_KEYS = Object.freeze({
     'chapter-delete': Object.freeze(['chapterId']),
     'chapter-rename': Object.freeze(['chapterId', 'title']),
     'chapter-move': Object.freeze(['chapterId', 'targetIndex']),
-    'paragraph-add': Object.freeze(['chapterId', 'text', 'assetId', 'alt', 'roomId']),
+    'paragraph-add': Object.freeze(['chapterId', 'text', 'assetId', 'alt', 'roomId', 'roomFolderPath']),
     'paragraph-delete': Object.freeze(['chapterId', 'paragraphId']),
     'paragraph-move': Object.freeze(['chapterId', 'paragraphId', 'targetChapterId', 'targetIndex']),
     undo: Object.freeze([]),
@@ -144,10 +144,14 @@ function roomFolderPath(record) {
     return `/WebMeet/${slugify(record.name || record.title || 'room')}-${shortId}`;
 }
 
+export function getScriptaRoomFolderPath(record, payload = {}) {
+    return String(payload?.scripta?.folderPath || roomFolderPath(record)).trim();
+}
+
 function ensureScriptaPayload(record, payload) {
     payload.scripta = payload.scripta && typeof payload.scripta === 'object' ? payload.scripta : {};
     const scripta = payload.scripta;
-    scripta.folderPath ||= roomFolderPath(record);
+    scripta.folderPath ||= getScriptaRoomFolderPath(record, payload);
     scripta.documents = scripta.documents && typeof scripta.documents === 'object' ? scripta.documents : {};
     scripta.activeResourceId = String(scripta.activeResourceId || '');
     scripta.view = scripta.view && typeof scripta.view === 'object'
@@ -1033,7 +1037,7 @@ export async function mutateScripta(context, {
             ...(
                 ['p-variant-image-insert', 'p-variant-image-replace'].includes(operation)
                 || (operation === 'paragraph-add' && args.assetId)
-                    ? { roomId }
+                    ? { roomId, roomFolderPath: scripta.folderPath }
                     : {}
             ),
             ...(['p-variant-image-insert', 'p-variant-image-replace', 'p-variant-image-delete', 'p-variant-image-layout'].includes(operation)

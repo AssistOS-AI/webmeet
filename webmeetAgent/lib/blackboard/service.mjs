@@ -23,6 +23,7 @@ import {
 } from '../roboTeam/service.mjs';
 import { scriptaOwnerHash } from '../scripta/identity.mjs';
 import { scriptaExplorer } from '../scripta/explorer-crdt-client.mjs';
+import { getScriptaRoomFolderPath } from '../scripta/service.mjs';
 import { calculateContentBounds } from './semantic-context.mjs';
 
 function attachmentGeometry(blackboard, asset, position = null) {
@@ -84,8 +85,8 @@ export async function publishRoomAttachment(context, {
     const authorizedParticipantId = authorizeRoomParticipantId(roomPayload, authInfo, participantId, targetRoomId);
     const assetResult = await scriptaExplorer.commitMedia(context, {
         roomId: targetRoomId,
-        blobRef,
-        createdBy: authorizedParticipantId
+        roomFolderPath: getScriptaRoomFolderPath(roomRecord, roomPayload),
+        blobRef
     });
     const asset = publicMediaAsset(assetResult?.asset || assetResult);
     if (!asset.assetId || !asset.workspaceUrl) throw new Error('Explorer did not return a valid media asset.');
@@ -519,14 +520,14 @@ function normalizeCreatedWidget(widget = {}) {
     return normalized;
 }
 
-async function canonicalizeImageAssetEvents(context, roomId, events) {
+async function canonicalizeImageAssetEvents(context, roomId, roomFolderPath, events) {
     const canonical = cloneJson(events);
     for (const event of canonical) {
         if (event.action !== 'create' || event.payload?.widget?.type !== 'image') continue;
         const properties = event.payload.widget.properties || {};
         if (!properties.source) continue;
         const assetId = String(properties.source.assetId || '').trim();
-        const assetResult = await scriptaExplorer.getMedia(context, { roomId, assetId });
+        const assetResult = await scriptaExplorer.getMedia(context, {roomId, roomFolderPath, assetId});
         const asset = publicMediaAsset(assetResult?.asset || assetResult);
         if (!asset.assetId || !asset.workspaceUrl) throw new Error('Explorer did not return a valid image asset.');
         const routeUrl = `/workspace-files/${asset.workspaceUrl.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`;
@@ -561,13 +562,15 @@ export async function applyRoomBlackboardEvents(context, {
     if (events.some((event) => ['show', 'hide'].includes(event.action))) {
         throw new Error('show and hide cannot be combined with persistent blackboard events.');
     }
+    let roomFolderPath = '';
     if (requiresImageAssetResolution(events)) {
         const authorizationRecord = await loadRoomRecord(context, targetRoomId);
         assertCanMutateBlackboard(authorizationRecord, authInfo);
         const authorizationPayload = decryptRoomPayload(context, authorizationRecord);
         authorizeRoomParticipantId(authorizationPayload, authInfo, participantId, targetRoomId);
+        roomFolderPath = getScriptaRoomFolderPath(authorizationRecord, authorizationPayload);
     }
-    const canonicalEvents = await canonicalizeImageAssetEvents(context, targetRoomId, events);
+    const canonicalEvents = await canonicalizeImageAssetEvents(context, targetRoomId, roomFolderPath, events);
     let serializedBlackboard;
     let serializedWorkspace;
     let broadcast;

@@ -261,7 +261,7 @@ function validateStructuredWidgetProperties(widgetType, properties, { creating =
         if (String(source.kind || '') !== 'explorer-media' || !/^asset_[a-zA-Z0-9-]+$/.test(String(source.assetId || ''))) {
             throw new Error(`${label}.source must reference an Explorer media asset.`);
         }
-        if (!String(source.url || '').startsWith('/workspace-files/document-multimedia/webmeet/')) {
+        if (!/^\/workspace-files\/WebMeet\/[a-zA-Z0-9._-]+\/assets\/asset_[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/.test(String(source.url || ''))) {
             throw new Error(`${label}.source.url must use the WebMeet workspace media route.`);
         }
         if (source.size !== undefined) {

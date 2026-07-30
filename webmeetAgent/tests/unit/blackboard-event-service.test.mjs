@@ -68,7 +68,7 @@ test('canonical create is accepted while add, lock, unlock, transport ids, and p
     assert.throws(() => normalizeBlackboardEvent({ action: 'create', target: { type: 'blackboard' }, payload: { widget: { type: 'ellipse', properties: {} } } }), /specialized action/);
     assert.throws(() => assertCanonicalWidgetPatch(
         { type: 'image' },
-        { properties: { source: { kind: 'explorer-media', assetId: 'asset_forged', url: '/workspace-files/document-multimedia/webmeet/room/assets/asset_forged.png' } } }
+        { properties: { source: { kind: 'explorer-media', assetId: 'asset_forged', url: '/workspace-files/WebMeet/story-room/assets/asset_forged/forged.png' } } }
     ), /cannot update properties: source/);
     const circle = normalizeBlackboardEvent({
         action: 'create', target: { type: 'blackboard' },
@@ -651,7 +651,7 @@ test('interpreter cannot supply stored image authority fields', async () => {
             return { result: { events: [{
                 action: 'create', target: { type: 'blackboard' },
                 payload: { widget: { type: 'image', properties: {
-                    source: { kind: 'explorer-media', assetId: 'asset_forged', url: '/workspace-files/document-multimedia/webmeet/room/assets/asset_forged.png' }
+                    source: { kind: 'explorer-media', assetId: 'asset_forged', url: '/workspace-files/WebMeet/story-room/assets/asset_forged/forged.png' }
                 } } }
             }] } };
         }

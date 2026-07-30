@@ -102,6 +102,7 @@ import {
     applyScriptaCollaboration as applyScriptaCollaborationImpl,
     closeScriptaCollaboration as closeScriptaCollaborationImpl,
     repairScriptaBlackboardProjection as repairScriptaBlackboardProjectionImpl,
+    getScriptaRoomFolderPath,
 } from './scripta/service.mjs';
 import {
     WEBMEET_EVENT_TYPES,
@@ -320,11 +321,11 @@ export async function commitRoomMedia(context, { roomId, participantId = '', blo
     const record = await loadMeetingRecord(context, roomId);
     if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
     const payload = decryptMeetingPayload(context, record);
-    const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
+    authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
     return await scriptaExplorer.commitMedia(context, {
         roomId,
-        blobRef,
-        createdBy: effectiveParticipantId
+        roomFolderPath: getScriptaRoomFolderPath(record, payload),
+        blobRef
     });
 }
 

@@ -969,7 +969,7 @@ test('SCRIPTA image mutations apply only to the selected owned variant', async (
                 ['p-variant-image-insert', 'p-variant-image-replace'].includes(args.operation)
                 || (args.operation === 'paragraph-add' && args.args?.assetId)
             )
-                ? { args: { ...args.args, workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.args.assetId}.png` } }
+                ? { args: { ...args.args, workspaceUrl: `/WebMeet/test-room-12345678/assets/${args.args.assetId}/image.png` } }
                 : {}),
         });
         let current = await getScriptaContext(context, { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN });
@@ -1069,7 +1069,7 @@ test('an explicit variant ordinal outranks the UI-selected variant for Robo imag
         context.scriptaExplorerClient = (tool, args) => originalExplorer(tool, {
             ...args,
             ...(tool === 'scripta_crdt_mutate' && ['p-variant-image-insert', 'p-variant-image-replace'].includes(args.operation)
-                ? { args: { ...args.args, workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.args.assetId}.png` } }
+                ? { args: { ...args.args, workspaceUrl: `/WebMeet/test-room-12345678/assets/${args.args.assetId}/image.png` } }
                 : {}),
         });
 

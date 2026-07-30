@@ -2679,14 +2679,17 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
     try {
         const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const context = await createStoreContext(root);
+        let mediaRoomFolderPath = '';
         context.scriptaExplorerClient = async (tool, args) => {
             if (tool === 'scripta_crdt_ensure_folder') return { ok: true, folderPath: args.folderPath };
             if (tool === 'webmeet_media_commit') {
+                mediaRoomFolderPath = args.roomFolderPath;
+                assert.match(mediaRoomFolderPath, /^\/WebMeet\/blackboard-test-/);
                 if (args.blobRef.id === 'c'.repeat(48)) {
                     return { ok: true, asset: {
                         assetId: 'asset_file-1', kind: 'file', filename: 'agenda.pdf', mimeType: 'application/pdf',
                         extension: 'pdf', size: 4096,
-                        workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/asset_file-1.pdf`
+                        workspaceUrl: `${mediaRoomFolderPath}/assets/asset_file-1/report.pdf`
                     } };
                 }
                 assert.deepEqual(args.blobRef, {
@@ -2697,17 +2700,20 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
                 return { ok: true, asset: {
                     assetId: 'asset_chat-1', kind: 'image', filename: 'chat.png', mimeType: 'image/png', size: 24,
                     width: 800, height: 600,
-                    workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/asset_chat-1.png`
+                    workspaceUrl: `${mediaRoomFolderPath}/assets/asset_chat-1/chat.png`
                 } };
             }
-            if (tool === 'webmeet_media_get') return {
-                ok: true,
-                asset: {
-                    assetId: args.assetId, kind: 'image', filename: 'photo.png', mimeType: 'image/png', size: 24,
-                    width: 640, height: 480,
-                    workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.assetId}.png`
-                }
-            };
+            if (tool === 'webmeet_media_get') {
+                assert.equal(args.roomFolderPath, mediaRoomFolderPath);
+                return {
+                    ok: true,
+                    asset: {
+                        assetId: args.assetId, kind: 'image', filename: 'photo.png', mimeType: 'image/png', size: 24,
+                        width: 640, height: 480,
+                        workspaceUrl: `${mediaRoomFolderPath}/assets/${args.assetId}/image.png`
+                    }
+                };
+            }
             throw new Error(`Unexpected Explorer tool ${tool}`);
         };
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
@@ -2750,7 +2756,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.deepEqual(publishedFile.widget.properties.source, {
             kind: 'explorer-media',
             assetId: 'asset_file-1',
-            url: `/workspace-files/document-multimedia/webmeet/${meeting.roomId}/assets/asset_file-1.pdf`,
+            url: `/workspace-files${mediaRoomFolderPath}/assets/asset_file-1/report.pdf`,
             name: 'agenda.pdf',
             mimeType: 'application/pdf',
             extension: 'pdf',
@@ -2821,7 +2827,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             }]
         });
         const imageWidget = imageCreated.blackboard.widgets.find((widget) => widget.type === 'image');
-        assert.equal(imageWidget.properties.source.url, `/workspace-files/document-multimedia/webmeet/${meeting.roomId}/assets/asset_image-1.png`);
+        assert.equal(imageWidget.properties.source.url, `/workspace-files${mediaRoomFolderPath}/assets/asset_image-1/image.png`);
         assert.deepEqual(imageWidget.properties.naturalSize, { width: 640, height: 480 });
 
         const response = await getRoomBlackboard(context, {
