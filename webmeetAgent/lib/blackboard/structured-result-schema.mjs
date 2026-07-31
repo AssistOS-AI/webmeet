@@ -76,13 +76,14 @@ function lineSchema() {
 function endpointSchema() {
     return strictObject({
         widgetId: nullableString,
+        groupId: nullableString,
         ref: nullableString,
-        anchor: nullable({ type: 'string', enum: ['left', 'right', 'top', 'bottom', 'center'] }),
+        anchor: nullable({ type: 'string', enum: ['left', 'right', 'top', 'bottom'] }),
     });
 }
 
 function connectionSchema() {
-    return strictObject({ from: endpointSchema(), to: endpointSchema() });
+    return strictObject({ from: nullable(endpointSchema()), to: nullable(endpointSchema()) });
 }
 
 function pollQuestionSchema() {
@@ -174,6 +175,8 @@ function eventPayloadSchema() {
         targetChapterId: nullableString,
         targetChapterOrdinal: nullableNumber,
         targetIndex: nullableNumber,
+        targetBoardId: nullableString,
+        placement: nullable(strictObject({ x: nullableNumber, y: nullableNumber })),
         variantId: nullableString,
         variantOrdinal: nullableNumber,
         imageId: nullableString,
@@ -199,7 +202,7 @@ function eventSchema() {
         ref: nullableString,
         action: { type: 'string', enum: BLACKBOARD_PUBLIC_ACTIONS },
         target: strictObject({
-            type: { type: 'string', enum: ['blackboard', 'widget', 'group'] },
+            type: { type: 'string', enum: ['workspace', 'blackboard', 'widget', 'group'] },
             widgetId: nullableString,
             ref: nullableString,
             groupId: nullableString,

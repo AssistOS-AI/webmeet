@@ -28,7 +28,7 @@ import {
     getRoomBlackboardForCommand,
     joinMeeting,
     listMeetingEvents,
-    publishRoomImage
+    publishRoomAttachment
 } from '../../lib/webmeetStore.mjs';
 import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
 import {
@@ -46,18 +46,32 @@ import {
     getBlackboardThemeOptions
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-theme-presets.js';
 import { blackboardScriptaActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-scripta-actions.js';
+import { expandCompositeSelectionWidgetIds } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-groups.js';
 
 const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-panel.js',
     'webmeet-blackboard-actions.js',
     'webmeet-blackboard-geometry.js',
     'webmeet-blackboard-graphics-rendering.js',
+    'webmeet-blackboard-attachment-rendering.js',
     'webmeet-blackboard-interactions.js',
     'webmeet-blackboard-rendering.js',
     'webmeet-blackboard-collaboration-rendering.js',
     'webmeet-blackboard-scripta-actions.js',
     'webmeet-blackboard-scripta-rendering.js'
 ];
+
+test('composite selection expands every selected rigid group', () => {
+    const widgets = [
+        { id: 'a', groupId: 'group-1' },
+        { id: 'b', groupId: 'group-1' },
+        { id: 'c', groupId: 'group-2' },
+        { id: 'd', groupId: 'group-2' },
+        { id: 'e', groupId: '' },
+    ];
+    assert.deepEqual(expandCompositeSelectionWidgetIds(widgets, ['a', 'd', 'e']), ['a', 'b', 'c', 'd', 'e']);
+    assert.deepEqual(expandCompositeSelectionWidgetIds(widgets, ['e']), ['e']);
+});
 
 async function readBlackboardPanelSource() {
     const panelDir = path.resolve(
@@ -98,6 +112,17 @@ test('blackboard applies final create, patch and delete operations', () => {
     });
 
     assert.equal(blackboard.getWidget('shape_1'), null);
+});
+
+test('file widget geometry cannot become smaller than its card content', () => {
+    const widget = new BlackboardWidget({
+        id: 'file-minimum',
+        type: 'file',
+        properties: {geometry: {x: 20, y: 30, width: 80, height: 40}},
+    });
+    assert.deepEqual(widget.properties.geometry, {x: 20, y: 30, width: 160, height: 100});
+    widget.patchProperties({geometry: {width: 120, height: 60}});
+    assert.deepEqual(widget.properties.geometry, {x: 20, y: 30, width: 160, height: 100});
 });
 
 test('blackboard applies final background changes to board metadata', () => {
@@ -712,9 +737,14 @@ test('SCRIPTA realtime updates reload the authenticated viewer projection', asyn
         boardId: 'agent:agent_robo_team',
         participantId: 'participant_other',
         runTool: async (name) => {
-            assert.equal(name, 'webmeet_blackboard_get');
+            assert.equal(name, 'webmeet_blackboard_workspace_get');
             resyncCount += 1;
             return {
+                workspace: {
+                    activeBoardId: 'agent:agent_robo_team',
+                    boardOrder: ['agent:agent_robo_team'],
+                    boards: [{ boardId: 'agent:agent_robo_team', title: 'Workspace 1', revision: 5, widgetCount: 1 }],
+                },
                 blackboard: {
                     boardId: 'agent:agent_robo_team',
                     revision: 5,
@@ -1617,6 +1647,76 @@ test('interactive controls inside movable widgets keep their click gesture', asy
     );
 });
 
+test('an unselected shape begins selection and drag on the first pointer gesture', async () => {
+    const { blackboardInteractionMethods } = await import(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-interactions.js')
+    );
+    const previousElement = globalThis.Element;
+    class MockElement {
+        constructor() {
+            this.dataset = {widgetId: 'shape-1'};
+            this.style = {};
+            this.listeners = [];
+            this.attributes = new Map();
+            this.classList = {contains: (name) => name === 'webmeet-blackboard-widget'};
+        }
+        closest(selector) {
+            return selector === '.webmeet-blackboard-widget' ? this : null;
+        }
+        setAttribute(name, value) { this.attributes.set(name, value); }
+        focus() {}
+        setPointerCapture(pointerId) { this.capturedPointerId = pointerId; }
+        addEventListener(type) { this.listeners.push(type); }
+    }
+    globalThis.Element = MockElement;
+    try {
+        const widget = {id: 'shape-1', type: 'shape', properties: {geometry: {x: 40, y: 60, width: 100, height: 80}}};
+        const node = new MockElement();
+        let focusEvents = 0;
+        let prevented = false;
+        const context = {
+            board: {contains: () => true},
+            blackboard: {widgets: [widget]},
+            selection: '',
+            selectedWidgetIds: new Set(),
+            widgetNodes: new Map([[widget.id, node]]),
+            activeTool: 'select',
+            adapter: {sendEvent: async () => { focusEvents += 1; }},
+            getWidgetById: () => widget,
+            isGroupableWidget: () => true,
+            clearGroupSelection() {},
+            updateToolbarState() {},
+            canMoveWidget: () => true,
+            isWidgetInteractiveControlEvent: blackboardInteractionMethods.isWidgetInteractiveControlEvent,
+            beginLocalDrag(event, selectedWidget) {
+                return blackboardInteractionMethods.beginLocalDrag.call(this, event, selectedWidget);
+            },
+        };
+        const event = {
+            button: 0,
+            pointerId: 17,
+            clientX: 120,
+            clientY: 140,
+            target: node,
+            currentTarget: context.board,
+            preventDefault() { prevented = true; },
+            stopPropagation() {},
+        };
+
+        blackboardInteractionMethods.handleBoardPointerDownCapture.call(context, event);
+
+        assert.equal(context.selection, widget.id);
+        assert.equal(context.dragState?.widget, widget);
+        assert.equal(context.dragState?.node, node);
+        assert.equal(node.capturedPointerId, 17);
+        assert.deepEqual(node.listeners, ['pointermove', 'pointerup', 'pointercancel']);
+        assert.equal(prevented, true);
+        assert.equal(focusEvents, 0, 'shared focus must not rerender the node during pointer capture');
+    } finally {
+        globalThis.Element = previousElement;
+    }
+});
+
 test('blackboard draws selected shape and line widgets from pointer drag', async () => {
     const { WebMeetBlackboardPanel } = await import(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.js')
@@ -1769,15 +1869,15 @@ test('blackboard opens as the focused item inside the participant video layout',
     assert.match(dashboardCss, /\.webmeet-blackboard-surface webmeet-blackboard-panel[\s\S]*display: flex[\s\S]*overflow: hidden/);
 });
 
-test('blackboard widgets support final resize changes for shape line card text and image', async () => {
+test('blackboard widgets support final resize changes for shape line card text image and file', async () => {
     const source = await readBlackboardPanelSource();
     const css = await fs.readFile(
         path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-panel.css'),
         'utf8'
     );
 
-    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'\]\.includes/);
-    assert.match(source, /getWidgetMinimumSize\(widget\)[\s\S]*widget\?\.type === 'poll'[\s\S]*widget\?\.type === 'bullets'[\s\S]*widget\?\.type === 'scripta-document'/);
+    assert.match(source, /canResizeWidget\(widget\)[\s\S]*\['shape', 'line', 'card', 'text', 'image', 'file', 'poll', 'bullets', 'scripta-document'\]\.includes/);
+    assert.match(source, /getWidgetMinimumSize\(widget\)[\s\S]*widget\?\.type === 'file'[\s\S]*minWidth: 160, minHeight: 100[\s\S]*widget\?\.type === 'poll'[\s\S]*widget\?\.type === 'bullets'[\s\S]*widget\?\.type === 'scripta-document'/);
     assert.match(source, /const minimumSize = this\.getWidgetMinimumSize\(widget\)/);
     assert.match(source, /\.\.\.minimumSize/);
     assert.match(source, /const minWidth = Number\(state\.minWidth \|\| 48\)/);
@@ -1789,6 +1889,9 @@ test('blackboard widgets support final resize changes for shape line card text a
     assert.match(source, /event\.target\?\.closest\?\.\('\[data-resize-handle\]'\)/);
     assert.match(css, /\.webmeet-blackboard-resize-handle/);
     assert.match(css, /\.webmeet-blackboard-widget\[aria-selected="true"\] \.webmeet-blackboard-resize-handle/);
+    assert.match(css, /\.webmeet-blackboard-widget\.file[\s\S]*min-width: 160px[\s\S]*min-height: 100px/);
+    assert.match(source, /const minFileWidth = widget\.type === 'file' \? 160 : 1/);
+    assert.match(source, /const minFileHeight = widget\.type === 'file' \? 100 : 1/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*overflow: auto/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*width: auto[\s\S]*min-width: 0[\s\S]*overflow: auto/);
     assert.match(css, /\.webmeet-blackboard-board[\s\S]*scrollbar-gutter: stable/);
@@ -1975,7 +2078,7 @@ test('blackboard supports image upload widgets', async () => {
     assert.match(panelSource, /widget\.type === 'image'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image-frame'/);
     assert.match(panelSource, /className = 'webmeet-blackboard-image'/);
-    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'\]\.includes/);
+    assert.match(panelSource, /\['shape', 'line', 'card', 'text', 'image', 'file', 'poll', 'bullets', 'scripta-document'\]\.includes/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame/);
     assert.match(panelCss, /\.webmeet-blackboard-image-frame[\s\S]*border: var\(--stroke-width/);
 });
@@ -2170,6 +2273,8 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /createShapeSvg\(widget\)/);
     assert.match(panelSource, /shapeKind === 'triangle'/);
     assert.match(panelSource, /createLineSvg\(widget\)/);
+    assert.match(panelSource, /webmeet-blackboard-line-hit-target/);
+    assert.match(panelSource, /Math\.max\(12, strokeWidth\)/);
     assert.match(panelSource, /marker-end/);
     assert.match(panelSource, /marker-start/);
     assert.match(panelSource, /widget\.properties\.line = \{/);
@@ -2180,10 +2285,16 @@ test('blackboard supports shape variants angled lines and arrows', async () => {
     assert.match(panelSource, /dataResizeHandle = handle\.name|dataset\.resizeHandle = handle\.name/);
     assert.match(panelSource, /line-start/);
     assert.match(panelSource, /line-end/);
-    assert.match(panelSource, /getLineEndpointResize\(state, event\)/);
+    assert.match(panelSource, /getLineEndpointResize\(state, event, movingPointOverride = null\)/);
+    assert.match(panelSource, /findConnectionAnchorAtEvent/);
     assert.match(panelSource, /movingEndpoint: handle === 'line-start' \? 'start' : 'end'/);
     assert.match(panelSource, /canRotateWidget\(widget\)[\s\S]*\['shape', 'line', 'text', 'image'\]\.includes/);
+    assert.match(panelSource, /if \(widget\.type !== 'file' && this\.canEditWidget\(widget\)\)/);
+    assert.match(panelSource, /appendFileContextDownload\(menu, widget\)/);
+    assert.match(panelSource, /widget\?\.type !== 'file'[\s\S]*file-context-download[\s\S]*data-local-action="downloadBlackboardFile"/);
     assert.match(panelCss, /\.webmeet-blackboard-line-svg/);
+    assert.match(panelCss, /\.webmeet-blackboard-widget\.line[\s\S]*pointer-events: none/);
+    assert.match(panelCss, /\.webmeet-blackboard-line-hit-target[\s\S]*pointer-events: stroke/);
     assert.match(panelCss, /\.webmeet-blackboard-resize-handle\.line-endpoint/);
     assert.doesNotMatch(editorHtml, /data-role="shapeKind"/);
     assert.match(editorHtml, /data-role="lineMarker"/);
@@ -2569,54 +2680,97 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
     try {
         const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
         const context = installEdgeJoinFixture(await createStoreContext(root));
+        let mediaRoomFolderPath = '';
         context.scriptaExplorerClient = async (tool, args) => {
             if (tool === 'scripta_crdt_ensure_folder') return { ok: true, folderPath: args.folderPath };
             if (tool === 'webmeet_media_commit') {
+                mediaRoomFolderPath = args.roomFolderPath;
+                assert.match(mediaRoomFolderPath, /^\/WebMeet\/blackboard-test-/);
+                if (args.blobRef.id === 'c'.repeat(48)) {
+                    return { ok: true, asset: {
+                        assetId: 'asset_file-1', kind: 'file', filename: 'agenda.pdf', mimeType: 'application/pdf',
+                        extension: 'pdf', size: 4096,
+                        workspaceUrl: `${mediaRoomFolderPath}/assets/asset_file-1/report.pdf`
+                    } };
+                }
                 assert.deepEqual(args.blobRef, {
                     id: 'b'.repeat(48),
                     agent: 'explorer',
                     localPath: `blobs/${'b'.repeat(48)}`
                 });
                 return { ok: true, asset: {
-                    assetId: 'asset_chat-1', filename: 'chat.png', mimeType: 'image/png', size: 24,
+                    assetId: 'asset_chat-1', kind: 'image', filename: 'chat.png', mimeType: 'image/png', size: 24,
                     width: 800, height: 600,
-                    workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/asset_chat-1.png`
+                    workspaceUrl: `${mediaRoomFolderPath}/assets/asset_chat-1/chat.png`
                 } };
             }
-            if (tool === 'webmeet_media_get') return {
-                ok: true,
-                asset: {
-                    assetId: args.assetId, filename: 'photo.png', mimeType: 'image/png', size: 24,
-                    width: 640, height: 480,
-                    workspaceUrl: `/document-multimedia/webmeet/${meeting.roomId}/assets/${args.assetId}.png`
-                }
-            };
+            if (tool === 'webmeet_media_get') {
+                assert.equal(args.roomFolderPath, mediaRoomFolderPath);
+                return {
+                    ok: true,
+                    asset: {
+                        assetId: args.assetId, kind: 'image', filename: 'photo.png', mimeType: 'image/png', size: 24,
+                        width: 640, height: 480,
+                        workspaceUrl: `${mediaRoomFolderPath}/assets/${args.assetId}/image.png`
+                    }
+                };
+            }
             throw new Error(`Unexpected Explorer tool ${tool}`);
         };
         const meeting = await createMeeting(context, { name: 'Blackboard test', authInfo });
+        const initialProjection = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, participantId: 'admin', authInfo,
+        });
+        const boardId = initialProjection.workspace.activeBoardId;
 
-        const publishedImage = await publishRoomImage(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin',
+        const publishedImage = await publishRoomAttachment(context, {
+            roomId: meeting.roomId, boardId, participantId: 'admin',
             blobRef: {
                 id: 'b'.repeat(48),
                 agent: 'explorer',
                 localPath: `blobs/${'b'.repeat(48)}`
             },
-            filename: 'chat.png', authInfo
+            authInfo
         });
         assert.equal(publishedImage.message.metadata.attachments[0].assetId, 'asset_chat-1');
         assert.equal(publishedImage.widget.type, 'image');
         assert.equal(publishedImage.widget.properties.geometry.width, 360);
         assert.equal(publishedImage.widget.properties.geometry.height, 270);
         assert.equal(publishedImage.widget.properties.geometry.rotation, 0);
+        assert.equal(publishedImage.message.metadata.boardTitle, 'Workspace 1');
+
+        const publishedFile = await publishRoomAttachment(context, {
+            roomId: meeting.roomId, boardId, participantId: 'admin',
+            blobRef: {
+                id: 'c'.repeat(48),
+                agent: 'explorer',
+                localPath: `blobs/${'c'.repeat(48)}`
+            },
+            position: {x: 500, y: 400},
+            authInfo
+        });
+        assert.equal(publishedFile.message.metadata.attachments[0].kind, 'file');
+        assert.equal(publishedFile.widget.type, 'file');
+        assert.deepEqual(publishedFile.widget.properties.geometry, {
+            x: 340, y: 320, width: 320, height: 160, rotation: 0
+        });
+        assert.deepEqual(publishedFile.widget.properties.source, {
+            kind: 'explorer-media',
+            assetId: 'asset_file-1',
+            url: `/workspace-files${mediaRoomFolderPath}/assets/asset_file-1/report.pdf`,
+            name: 'agenda.pdf',
+            mimeType: 'application/pdf',
+            extension: 'pdf',
+            size: 4096
+        });
 
         let beforeEmptyUndo = await getRoomBlackboard(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
         });
         let emptyUndo;
         for (let attempt = 0; attempt < 10; attempt += 1) {
             emptyUndo = await applyRoomBlackboardEvents(context, {
-                roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+                roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
                 events: [{ action: 'undo', target: { type: 'blackboard' }, payload: {} }],
             });
             if (!emptyUndo.changed) break;
@@ -2628,7 +2782,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'create',
@@ -2642,7 +2796,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         });
 
         const lineCreated = await applyRoomBlackboardEvents(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo, source: 'robo',
             events: [{
                 ref: 'line', action: 'create', target: { type: 'blackboard' },
                 payload: { widget: { type: 'line', properties: { line: { x1: 100, y1: 200, x2: 300, y2: 200, markerEnd: 'arrow' } } } },
@@ -2652,7 +2806,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.deepEqual(lineWidget.properties.geometry, { x: 99.5, y: 199.5, width: 201, height: 1, rotation: 0 });
         assert.deepEqual(lineWidget.properties.line, { x1: 0.5, y1: 0.5, x2: 200.5, y2: 0.5, markerEnd: 'arrow' });
         const lineMoved = await applyRoomBlackboardEvents(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo, source: 'robo',
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo, source: 'robo',
             events: [{ action: 'update', target: { type: 'widget', widgetId: lineWidget.id }, payload: { patch: { properties: { geometryDelta: { x: 0, y: -50 } } } } }],
         });
         const movedLine = lineMoved.blackboard.widgets.find((widget) => widget.id === lineWidget.id);
@@ -2660,7 +2814,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         assert.deepEqual(movedLine.properties.line, lineWidget.properties.line);
 
         const imageCreated = await applyRoomBlackboardEvents(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
             events: [{
                 action: 'create', target: { type: 'blackboard' },
                 payload: { widget: { type: 'image', properties: {
@@ -2674,16 +2828,16 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
             }]
         });
         const imageWidget = imageCreated.blackboard.widgets.find((widget) => widget.type === 'image');
-        assert.equal(imageWidget.properties.source.url, `/workspace-files/document-multimedia/webmeet/${meeting.roomId}/assets/asset_image-1.png`);
+        assert.equal(imageWidget.properties.source.url, `/workspace-files${mediaRoomFolderPath}/assets/asset_image-1/image.png`);
         assert.deepEqual(imageWidget.properties.naturalSize, { width: 640, height: 480 });
 
         const response = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo
         });
         const commandProjection = await getRoomBlackboardForCommand(context, {
-            roomId: meeting.roomId, boardId: 'agent:agent_robo_team', participantId: 'admin', authInfo,
+            roomId: meeting.roomId, boardId, participantId: 'admin', authInfo,
         });
         assert.equal('clarification' in commandProjection, false);
         const events = await listMeetingEvents(context, meeting.roomId);
@@ -2692,17 +2846,18 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         const roboTeam = payload.agents.find((agent) => agent.id === 'agent_robo_team');
 
         assert.ok(response.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
-        assert.equal(response.blackboard.boardId, 'agent:agent_robo_team');
+        assert.equal(response.blackboard.boardId, boardId);
         assert.equal('privateRoboContext' in response.blackboard, false);
         assert.equal(payload.blackboard, undefined);
-        assert.ok(roboTeam.blackboard.widgets.some((widget) => widget.id === 'shape_1'));
-        assert.equal(roboTeam.blackboard.boardId, 'agent:agent_robo_team');
-        assert.equal(roboTeam.blackboard.metadata.boardOwnerType, 'agent');
+        const persistedBoard = roboTeam.blackboardWorkspace.boards.find((board) => board.boardId === boardId);
+        assert.ok(persistedBoard.widgets.some((widget) => widget.id === 'shape_1'));
+        assert.equal(roboTeam.blackboardWorkspace.activeBoardId, boardId);
+        assert.equal(persistedBoard.boardOwnerType, 'room');
         assert.ok(events.some((event) => parseWebMeetEvent(event).type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED));
-        assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === 'agent:agent_robo_team'));
+        assert.ok(events.some((event) => parseWebMeetEvent(event).payload.boardId === boardId));
         const later = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'update',
@@ -2716,7 +2871,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'create',
@@ -2730,7 +2885,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         });
         const grouped = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'group',
@@ -2743,7 +2898,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const movedGroup = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'update',
@@ -2758,7 +2913,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const ungrouped = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: { changeType: 'ungroup', targetType: 'group', targetRef: groupId }
         });
@@ -2768,7 +2923,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
 
         const regrouped = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: {
                 changeType: 'group',
@@ -2779,7 +2934,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
         const regroupedId = regrouped.blackboard.widgets.find((widget) => widget.id === 'shape_1').groupId;
         const deletedGroup = await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo,
             change: { changeType: 'delete', targetType: 'group', targetRef: regroupedId }
         });
@@ -2826,12 +2981,18 @@ test('webmeet event tool decodes canonical serialized blackboard events from tra
         await joinMeeting(context, {
             meetingId: meeting.roomId, participantId: 'admin', displayName: 'Admin', authInfo,
         });
+        const workspaceProjection = await dispatch('webmeet_blackboard_workspace_get', {
+            roomId: meeting.roomId,
+            participantId: 'admin',
+        }, context, authInfo);
+        const boardId = workspaceProjection.workspace.activeBoardId;
         let sequence = 0;
         const dispatchEvent = async (event) => {
             sequence += 1;
             return dispatch('webmeet_event_command', {
                 roomId: meeting.roomId,
                 participantId: 'admin',
+                boardId,
                 source: 'ui',
                 commandId: `command-${sequence}`,
                 event: JSON.stringify(event),
@@ -2866,16 +3027,16 @@ test('webmeet event tool decodes canonical serialized blackboard events from tra
         assert.equal(response.broadcast.revision, response.blackboard.revision);
         assert.equal(response.broadcast.ownerParticipantId, 'agent_robo_team');
         assert.ok(response.broadcast.blackboardId);
-        assert.equal(response.broadcast.boardId, 'agent:agent_robo_team');
-        assert.equal(response.broadcast.boardOwnerType, 'agent');
-        assert.equal(response.broadcast.boardOwnerId, 'agent_robo_team');
+        assert.equal(response.broadcast.boardId, boardId);
+        assert.equal(response.broadcast.boardOwnerType, 'room');
+        assert.equal(response.broadcast.boardOwnerId, meeting.roomId);
         assert.equal(response.broadcast.boardVisibility, 'room');
 
         await assert.rejects(dispatch('webmeet_blackboard_get', {
             roomId: meeting.roomId,
             boardId: 'participant:participant-admin',
             participantId: 'participant-admin'
-        }, context, authInfo), /Participant-owned blackboards are not enabled yet/);
+        }, context, authInfo), /workspace zone .* was not found/);
 
         const backgroundResponse = await dispatchEvent({
             action: 'update',
@@ -2917,6 +3078,10 @@ test('webmeet blackboard submit derives participant authority from joined partic
             return { ok: true, folderPath: args.folderPath };
         };
         const meeting = await createMeeting(context, { name: 'Blackboard spoof test', authInfo: adminAuth });
+        const initialProjection = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, authInfo: adminAuth,
+        });
+        const boardId = initialProjection.workspace.activeBoardId;
         await joinMeeting(context, {
             meetingId: meeting.roomId,
             participantId: 'participant_user_1',
@@ -2925,7 +3090,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
         });
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'participant_admin',
             authInfo: adminAuth,
             change: {
@@ -2941,7 +3106,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'participant_user_1',
             authInfo: userAuth,
             change: {
@@ -2955,7 +3120,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
 
         const moderatorView = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo: adminAuth
         });
         const card = moderatorView.blackboard.widgets.find((widget) => widget.id === 'card_1');
@@ -2987,6 +3152,10 @@ test('webmeet blackboard strips non-admin visibility authority from final change
             return { ok: true, folderPath: args.folderPath };
         };
         const meeting = await createMeeting(context, { name: 'Blackboard visibility test', authInfo: adminAuth });
+        const initialProjection = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, authInfo: adminAuth,
+        });
+        const boardId = initialProjection.workspace.activeBoardId;
         await joinMeeting(context, {
             meetingId: meeting.roomId,
             participantId: 'participant_user_1',
@@ -2996,7 +3165,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
 
         await applyRoomBlackboardChange(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             participantId: 'participant_user_1',
             authInfo: userAuth,
             change: {
@@ -3013,7 +3182,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
 
         const adminView = await getRoomBlackboard(context, {
             roomId: meeting.roomId,
-            boardId: 'agent:agent_robo_team',
+            boardId,
             authInfo: adminAuth
         });
         const widget = adminView.blackboard.widgets.find((entry) => entry.id === 'shape_private');

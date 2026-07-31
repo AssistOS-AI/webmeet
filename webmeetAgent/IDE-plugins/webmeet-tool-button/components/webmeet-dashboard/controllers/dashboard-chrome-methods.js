@@ -31,13 +31,13 @@ export const dashboardChromeMethods = {
         if (this.chatAddMenu) {
             this.chatAddMenu.hidden = !visible;
         }
-        if (this.chatImageButton) {
-            this.chatImageButton.setAttribute('aria-expanded', visible ? 'true' : 'false');
+        if (this.chatAttachmentButton) {
+            this.chatAttachmentButton.setAttribute('aria-expanded', visible ? 'true' : 'false');
         }
         if (visible && focusFirst) {
-            this.chatAddImageOption?.focus?.();
+            this.chatAddFileOption?.focus?.();
         } else if (!visible && restoreFocus) {
-            this.chatImageButton?.focus?.();
+            this.chatAttachmentButton?.focus?.();
         }
     },
 
@@ -52,9 +52,42 @@ export const dashboardChromeMethods = {
         this.applyChatAddMenuState({ restoreFocus });
     },
 
-    selectChatAddImage() {
+    selectChatAddFile() {
         this.closeChatAddMenu();
-        this.chatImageInput?.click?.();
+        this.chatFileInput?.click?.();
+    },
+
+    async openChatAttachment(target) {
+        const widgetId = String(target?.dataset?.chatBlackboardWidget || '').trim();
+        const boardId = String(target?.dataset?.chatBlackboardBoard || '').trim();
+        await this.applyBlackboardVisibility({
+            meetingId: this.selectedMeeting?.id || '',
+            participantId: this.state.session?.participantIdentity || '',
+            visible: true,
+            presenterId: 'agent_robo_team',
+            presenterName: 'RoboTeam'
+        });
+        if (boardId && boardId !== this.blackboardAdapter?.boardId) {
+            await this.blackboardAdapter?.sendWorkspaceAction?.('board-activate', {boardId});
+        }
+        this.blackboardPanel?.dispatchEvent?.(new CustomEvent('webmeet-blackboard-select-widget', {detail: {widgetId}}));
+    },
+
+    async downloadChatAttachment(target) {
+        const url = String(target?.dataset?.attachmentUrl || '').trim();
+        if (!url) return;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+            const objectUrl = URL.createObjectURL(await response.blob());
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = String(target?.dataset?.attachmentName || 'file');
+            link.click();
+            globalThis.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        } catch (error) {
+            this.setError(error?.message || 'Could not download the file.');
+        }
     },
 
     setMobilePanel(panelName) {

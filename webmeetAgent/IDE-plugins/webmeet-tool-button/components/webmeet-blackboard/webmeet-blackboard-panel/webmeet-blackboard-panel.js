@@ -5,9 +5,12 @@ import { blackboardInteractionMethods } from './webmeet-blackboard-interactions.
 import { blackboardGroupMethods } from './webmeet-blackboard-groups.js';
 import { blackboardExportMethods } from './webmeet-blackboard-export.js';
 import { blackboardRenderingMethods } from './webmeet-blackboard-rendering.js';
+import { blackboardAttachmentRenderingMethods } from './webmeet-blackboard-attachment-rendering.js';
 import { blackboardCollaborationRenderingMethods } from './webmeet-blackboard-collaboration-rendering.js';
 import { blackboardScriptaActionMethods } from './webmeet-blackboard-scripta-actions.js';
 import { blackboardScriptaRenderingMethods } from './webmeet-blackboard-scripta-rendering.js';
+import { blackboardWorkspaceMethods } from './webmeet-blackboard-workspaces.js';
+import { blackboardConnectionMethods } from './webmeet-blackboard-connections.js';
 
 export class WebMeetBlackboardPanel {
     constructor(element, invalidate) {
@@ -15,6 +18,18 @@ export class WebMeetBlackboardPanel {
         this.invalidate = invalidate;
         this.adapter = null;
         this.blackboard = {widgets: []};
+        this.workspace = { revision: 0, activeBoardId: '', boardOrder: [], boards: [] };
+        this.boardCache = new Map();
+        this.filmstripOpen = false;
+        this.workspaceTransitionTimer = null;
+        this.workspaceTabActivationTimer = null;
+        this.workspaceTabActivationBoardId = '';
+        this.workspaceDropState = null;
+        this.draggedWorkspaceBoardId = '';
+        this.filmstripDragState = null;
+        this.blackboardClipboard = null;
+        this.selectionContextState = null;
+        this.renamingWorkspaceBoardId = '';
         this.widgetNodes = new Map();
         this.selection = '';
         this.selectedWidgetIds = new Set();
@@ -47,6 +62,32 @@ export class WebMeetBlackboardPanel {
         this.scriptaDraftTimer = null;
         this.scriptaEditStartPromise = Promise.resolve();
         this.scriptaImageInspector = null;
+        this.fileDragDepth = 0;
+
+        this.handleWorkspaceTabDragStart = (event) => blackboardWorkspaceMethods.handleWorkspaceTabDragStart.call(this, event);
+        this.handleWorkspaceTabDragOver = (event) => blackboardWorkspaceMethods.handleWorkspaceTabDragOver.call(this, event);
+        this.handleWorkspaceTabDrop = (event) => void blackboardWorkspaceMethods.handleWorkspaceTabDrop.call(this, event);
+        this.handleWorkspaceTabDragEnd = () => blackboardWorkspaceMethods.handleWorkspaceTabDragEnd.call(this);
+        this.handleWorkspaceTitleChangeEvent = (event) => blackboardWorkspaceMethods.handleWorkspaceTitleChange.call(this, event);
+        this.handleWorkspaceTitleKeydownEvent = (event) => blackboardWorkspaceMethods.handleWorkspaceTitleKeydown.call(this, event);
+        this.handleWorkspaceTitleFocusOutEvent = (event) => blackboardWorkspaceMethods.handleWorkspaceTitleFocusOut.call(this, event);
+        this.handleWorkspaceTabDoubleClickEvent = (event) => blackboardWorkspaceMethods.handleWorkspaceTabDoubleClick.call(this, event);
+        this.handleFilmstripDragStartEvent = (event) => blackboardWorkspaceMethods.handleFilmstripDragStart.call(this, event);
+        this.handleFilmstripDragOverEvent = (event) => blackboardWorkspaceMethods.handleFilmstripDragOver.call(this, event);
+        this.handleFilmstripDragLeaveEvent = (event) => blackboardWorkspaceMethods.handleFilmstripDragLeave.call(this, event);
+        this.handleFilmstripDropEvent = (event) => void blackboardWorkspaceMethods.handleFilmstripDrop.call(this, event);
+        this.handleFilmstripDragEndEvent = () => blackboardWorkspaceMethods.handleFilmstripDragEnd.call(this);
+        this.handleBoardContextMenuEvent = (event) => blackboardWorkspaceMethods.handleBlackboardContextMenu.call(this, event);
+        this.handleFilmstripContextMenuEvent = (event) => blackboardWorkspaceMethods.handleFilmstripContextMenu.call(this, event);
+        this.handleSelectionContextOutsidePointerDownEvent = (event) => blackboardWorkspaceMethods.handleSelectionContextOutsidePointerDown.call(this, event);
+        this.handleWorkspaceDropPointerMoveEvent = (event) => blackboardWorkspaceMethods.handleWorkspaceDropPointerMove.call(this, event);
+        this.handleWorkspaceDropPointerUpEvent = (event) => void blackboardWorkspaceMethods.finishWorkspaceDrop.call(this, event);
+        this.handleWorkspaceDropPointerCancelEvent = () => blackboardWorkspaceMethods.cancelWorkspaceDrop.call(this);
+        this.handleBoardFileDragEnterEvent = (event) => this.handleBoardFileDragEnter(event);
+        this.handleBoardFileDragOverEvent = (event) => this.handleBoardFileDragOver(event);
+        this.handleBoardFileDragLeaveEvent = (event) => this.handleBoardFileDragLeave(event);
+        this.handleBoardFileDropEvent = (event) => this.handleBoardFileDrop(event);
+        this.handleDocumentPasteEvent = (event) => this.handlePanelPaste(event);
 
         this.bindPointerHandlers();
         this.handleConnectEvent = (event) => this.connect(event.detail || {});
@@ -129,6 +170,8 @@ export class WebMeetBlackboardPanel {
         this.bindToolbar();
         this.connectAdapter();
         this.renderWidgets();
+        this.renderWorkspaceTabs();
+        this.bindWorkspaceGestures();
         requestAnimationFrame(() => this.updateToolbarState());
         this.element.dispatchEvent(new CustomEvent('webmeet-blackboard-panel-ready', {
             bubbles: true,
@@ -168,6 +211,13 @@ export class WebMeetBlackboardPanel {
         this.board = this.element.querySelector('[data-role="board"]');
         this.toolbar = this.element.querySelector('webmeet-blackboard-toolbar');
         this.resultsPanel = this.element.querySelector('webmeet-blackboard-results-panel');
+        this.workspaceTabs = this.element.querySelector('[data-role="workspace-tabs"]');
+        this.workspaceStage = this.element.querySelector('[data-role="workspace-stage"]');
+        this.transitionLayer = this.element.querySelector('[data-role="transition-layer"]');
+        this.workspaceFilmstrip = this.element.querySelector('[data-role="workspace-filmstrip"]');
+        this.workspaceFilmstripTrack = this.element.querySelector('[data-role="workspace-filmstrip-track"]');
+        this.selectionContextMenu = this.element.querySelector('[data-role="selection-context-menu"]');
+        this.fileDropOverlay = this.element.querySelector('[data-role="file-drop-overlay"]');
     }
 
     bindHostEvents() {
@@ -180,6 +230,7 @@ export class WebMeetBlackboardPanel {
         this.element.removeEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.removeEventListener('keydown', this.handleDocumentKeydownEvent, true);
+            document.removeEventListener('paste', this.handleDocumentPasteEvent, true);
         }
         this.element.addEventListener('webmeet-blackboard-connect', this.handleConnectEvent);
         this.element.addEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
@@ -190,11 +241,124 @@ export class WebMeetBlackboardPanel {
         this.element.addEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.addEventListener('keydown', this.handleDocumentKeydownEvent, true);
+            document.addEventListener('paste', this.handleDocumentPasteEvent, true);
         }
         if (this.board) {
             this.board.removeEventListener?.('pointerdown', this.handleBoardPointerDown, true);
+            this.board.removeEventListener?.('contextmenu', this.handleBoardContextMenuEvent);
+            this.board.removeEventListener?.('dragenter', this.handleBoardFileDragEnterEvent);
+            this.board.removeEventListener?.('dragover', this.handleBoardFileDragOverEvent);
+            this.board.removeEventListener?.('dragleave', this.handleBoardFileDragLeaveEvent);
+            this.board.removeEventListener?.('drop', this.handleBoardFileDropEvent);
             this.board.addEventListener?.('pointerdown', this.handleBoardPointerDown, true);
+            this.board.addEventListener?.('contextmenu', this.handleBoardContextMenuEvent);
+            this.board.addEventListener?.('dragenter', this.handleBoardFileDragEnterEvent);
+            this.board.addEventListener?.('dragover', this.handleBoardFileDragOverEvent);
+            this.board.addEventListener?.('dragleave', this.handleBoardFileDragLeaveEvent);
+            this.board.addEventListener?.('drop', this.handleBoardFileDropEvent);
         }
+    }
+
+    getTransferredFiles(transfer = null) {
+        const itemFiles = Array.from(transfer?.items || [])
+            .filter((item) => item?.kind === 'file')
+            .map((item) => item.getAsFile?.())
+            .filter(Boolean);
+        return itemFiles.length ? itemFiles : Array.from(transfer?.files || []).filter(Boolean);
+    }
+
+    hasTransferredFiles(transfer = null) {
+        return Array.from(transfer?.items || []).some((item) => item?.kind === 'file')
+            || Array.from(transfer?.files || []).length > 0
+            || Array.from(transfer?.types || []).includes('Files');
+    }
+
+    setFileDropActive(active) {
+        const isActive = active === true;
+        if (this.fileDropOverlay) {
+            this.fileDropOverlay.hidden = !isActive;
+            this.fileDropOverlay.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        }
+    }
+
+    publishTransferredFiles(files, {boardId = '', position = null} = {}) {
+        const list = Array.from(files || []).filter(Boolean);
+        const targetBoardId = String(boardId || this.workspace?.activeBoardId || '').trim();
+        if (!list.length || !targetBoardId) return false;
+        this.element.dispatchEvent(new CustomEvent('webmeet-blackboard-attachment-upload', {
+            bubbles: true,
+            composed: true,
+            detail: {files: list, boardId: targetBoardId, position}
+        }));
+        return true;
+    }
+
+    handleBoardFileDragEnter(event) {
+        if (!this.hasTransferredFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        this.fileDragDepth += 1;
+        this.setFileDropActive(true);
+    }
+
+    handleBoardFileDragOver(event) {
+        if (!this.hasTransferredFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        this.setFileDropActive(true);
+    }
+
+    handleBoardFileDragLeave(event) {
+        if (!this.fileDragDepth) return;
+        event.preventDefault();
+        this.fileDragDepth = Math.max(0, this.fileDragDepth - 1);
+        if (!this.fileDragDepth) this.setFileDropActive(false);
+    }
+
+    handleBoardFileDrop(event) {
+        if (!this.hasTransferredFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const files = this.getTransferredFiles(event.dataTransfer);
+        const position = this.getBoardPointFromEvent(event);
+        this.fileDragDepth = 0;
+        this.setFileDropActive(false);
+        this.publishTransferredFiles(files, {position});
+    }
+
+    handlePanelPaste(event) {
+        if (event.defaultPrevented || this.isTextEditingTarget(event.target)) return;
+        const insidePanel = event.target === this.element || this.element?.contains?.(event.target);
+        if (!insidePanel) return;
+        const files = this.getTransferredFiles(event.clipboardData);
+        if (!files.length) {
+            if (!this.canPasteBlackboardSelection(event.target)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void this.pasteBlackboardSelection(event.target);
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.filmstripOpen) {
+            const focused = event.target?.closest?.('.webmeet-blackboard-filmstrip-card')
+                || document.activeElement?.closest?.('.webmeet-blackboard-filmstrip-card');
+            const preview = focused?.querySelector?.('[data-role="filmstrip-preview"]');
+            const position = preview ? {
+                x: Number(preview.dataset?.logicalWidth || 1200) / 2,
+                y: Number(preview.dataset?.logicalHeight || 800) / 2
+            } : null;
+            this.publishTransferredFiles(files, {
+                boardId: String(focused?.dataset?.boardId || this.workspace?.activeBoardId || ''),
+                position
+            });
+            return;
+        }
+        const rect = this.board?.getBoundingClientRect?.();
+        const position = rect ? this.getBoardPointFromEvent({
+            clientX: Number(rect.left || 0) + Number(rect.width || 0) / 2,
+            clientY: Number(rect.top || 0) + Number(rect.height || 0) / 2
+        }) : null;
+        this.publishTransferredFiles(files, {position});
     }
 
     bindToolbar() {
@@ -210,13 +374,14 @@ export class WebMeetBlackboardPanel {
         this.toolbar?.addEventListener('blackboard-theme', this.handleToolbarThemeEvent);
     }
 
-    connect({adapter, blackboard} = {}) {
+    connect({adapter, blackboard, workspace} = {}) {
         if (adapter && adapter !== this.adapter) {
             this.unsubscribeAdapter?.();
             this.unsubscribeAdapter = null;
             this.adapter = adapter;
         }
-        this.applyBlackboard(blackboard);
+        if (workspace) this.applyWorkspace(workspace, { animate: false });
+        else this.applyBlackboard(blackboard);
         this.connectAdapter();
         return this;
     }
@@ -224,7 +389,9 @@ export class WebMeetBlackboardPanel {
     connectAdapter() {
         if (!this.adapter || this.unsubscribeAdapter) return;
         this.unsubscribeAdapter = this.adapter.subscribe((payload) => {
-            if (payload.kind === 'blackboard') {
+            if (payload.kind === 'workspace') {
+                this.applyWorkspace(payload.object);
+            } else if (payload.kind === 'blackboard') {
                 this.applyBlackboard(payload.object || {widgets: []});
             } else if (payload.kind === 'blackboard-state') {
                 this.setBlackboardState(payload.object || {widgets: []});
@@ -237,6 +404,10 @@ export class WebMeetBlackboardPanel {
     }
 
     applyBlackboardUpdate(detail = {}) {
+        if (detail?.workspace) {
+            this.applyWorkspace(detail.workspace);
+            return;
+        }
         if (detail?.scriptaPresentation) {
             this.applyScriptaPresentation(detail.scriptaPresentation);
             return;
@@ -286,6 +457,56 @@ export class WebMeetBlackboardPanel {
     }
 
     handlePanelKeydown(event) {
+        if (event.defaultPrevented) return;
+        if (event.key === 'Escape' && this.selectionContextState) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeSelectionContextMenu();
+            return;
+        }
+        const focusedTab = event.target?.closest?.('[role="tab"]');
+        if (focusedTab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            const tabs = [...this.workspaceTabs?.querySelectorAll?.('[role="tab"]') || []];
+            const currentIndex = tabs.indexOf(focusedTab);
+            if (currentIndex >= 0 && tabs.length) {
+                event.preventDefault();
+                const nextIndex = event.key === 'Home' ? 0
+                    : event.key === 'End' ? tabs.length - 1
+                        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                tabs[nextIndex]?.focus?.();
+                void this.activateWorkspaceBoard(tabs[nextIndex]);
+            }
+            return;
+        }
+        if (event.key === 'Escape' && this.filmstripOpen) {
+            event.preventDefault();
+            this.setFilmstripOpen(false);
+            return;
+        }
+        const clipboardKey = String(event.key || '').toLowerCase();
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && ['c', 'x'].includes(clipboardKey)
+            && !this.isTextEditingTarget(event.target)) {
+            const insidePanel = event.target === this.element || this.element?.contains?.(event.target);
+            if (!insidePanel) return;
+            const handled = clipboardKey === 'c'
+                ? this.copyBlackboardSelection(event.target, {mode: 'copy'})
+                : this.copyBlackboardSelection(event.target, {mode: 'cut'});
+            if (!handled) return;
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        if ((event.ctrlKey || event.metaKey) && (event.key === 'PageUp' || event.key === 'PageDown') && !this.isTextEditingTarget(event.target)) {
+            const order = this.workspace?.boardOrder || [];
+            const index = order.indexOf(this.workspace?.activeBoardId);
+            if (order.length > 1 && index >= 0) {
+                event.preventDefault();
+                const delta = event.key === 'PageDown' ? 1 : -1;
+                const boardId = order[(index + delta + order.length) % order.length];
+                void this.activateWorkspaceBoard({ dataset: { boardId } });
+            }
+            return;
+        }
         if (event.key === 'Escape' && this.groupExportMenu) {
             event.preventDefault();
             event.stopPropagation();
@@ -329,10 +550,38 @@ export class WebMeetBlackboardPanel {
         this.element.removeEventListener('keydown', this.handlePanelKeydownEvent);
         if (typeof document !== 'undefined') {
             document.removeEventListener('keydown', this.handleDocumentKeydownEvent, true);
+            document.removeEventListener('paste', this.handleDocumentPasteEvent, true);
         }
         if (this.board) {
             this.board.removeEventListener?.('pointerdown', this.handleBoardPointerDown, true);
+            this.board.removeEventListener?.('contextmenu', this.handleBoardContextMenuEvent);
+            this.board.removeEventListener?.('dragenter', this.handleBoardFileDragEnterEvent);
+            this.board.removeEventListener?.('dragover', this.handleBoardFileDragOverEvent);
+            this.board.removeEventListener?.('dragleave', this.handleBoardFileDragLeaveEvent);
+            this.board.removeEventListener?.('drop', this.handleBoardFileDropEvent);
         }
+        if (this.workspaceTabs) {
+            this.workspaceTabs.removeEventListener('dragstart', this.handleWorkspaceTabDragStart);
+            this.workspaceTabs.removeEventListener('dragover', this.handleWorkspaceTabDragOver);
+            this.workspaceTabs.removeEventListener('drop', this.handleWorkspaceTabDrop);
+            this.workspaceTabs.removeEventListener('dragend', this.handleWorkspaceTabDragEnd);
+            this.workspaceTabs.removeEventListener('change', this.handleWorkspaceTitleChangeEvent);
+            this.workspaceTabs.removeEventListener('keydown', this.handleWorkspaceTitleKeydownEvent);
+            this.workspaceTabs.removeEventListener('focusout', this.handleWorkspaceTitleFocusOutEvent);
+            this.workspaceTabs.removeEventListener('dblclick', this.handleWorkspaceTabDoubleClickEvent);
+        }
+        if (this.workspaceFilmstripTrack) {
+            this.workspaceFilmstripTrack.removeEventListener('dragstart', this.handleFilmstripDragStartEvent);
+            this.workspaceFilmstripTrack.removeEventListener('dragover', this.handleFilmstripDragOverEvent);
+            this.workspaceFilmstripTrack.removeEventListener('dragleave', this.handleFilmstripDragLeaveEvent);
+            this.workspaceFilmstripTrack.removeEventListener('drop', this.handleFilmstripDropEvent);
+            this.workspaceFilmstripTrack.removeEventListener('dragend', this.handleFilmstripDragEndEvent);
+            this.workspaceFilmstripTrack.removeEventListener('contextmenu', this.handleFilmstripContextMenuEvent);
+        }
+        this.closeSelectionContextMenu?.();
+        this.detachWorkspaceDropListeners?.();
+        this.workspaceDropState?.ghost?.remove?.();
+        this.workspaceDropState = null;
         this.cancelPendingWidgetDraw?.();
         this.cancelGroupDrag?.();
         this.cancelGroupRotate?.();
@@ -343,9 +592,12 @@ export class WebMeetBlackboardPanel {
     }
 
     cleanup() {
+        this.cancelWorkspaceDrop?.();
         if (this.scriptaDraftTimer) clearTimeout(this.scriptaDraftTimer);
         this.scriptaDraftTimer = null;
         this.pendingScriptaDraft = null;
+        globalThis.clearTimeout(this.workspaceTransitionTimer);
+        this.clearWorkspaceTabActivation?.();
         this.unsubscribeAdapter?.();
         this.unsubscribeAdapter = null;
     }
@@ -355,10 +607,13 @@ Object.assign(
     WebMeetBlackboardPanel.prototype,
     blackboardGeometryMethods,
     blackboardGraphicsRenderingMethods,
+    blackboardConnectionMethods,
+    blackboardAttachmentRenderingMethods,
     blackboardRenderingMethods,
     blackboardCollaborationRenderingMethods,
     blackboardScriptaActionMethods,
     blackboardScriptaRenderingMethods,
+    blackboardWorkspaceMethods,
     blackboardExportMethods,
     blackboardGroupMethods,
     blackboardInteractionMethods,

@@ -26,6 +26,7 @@ function makeDashboard() {
         roboCommandStatusTimers: new Map(),
         roboCommandDraftActive: false,
         blackboardCommandStatus: null,
+        blackboardAdapter: { boardId: 'board-1' },
         blackboardPanel: {
             dispatchEvent(event) { panelEvents.push(event.detail); }
         },

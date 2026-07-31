@@ -3,6 +3,7 @@ import { BLACKBOARD_GROUPABLE_WIDGET_TYPES } from './model.mjs';
 
 export const BLACKBOARD_PUBLIC_ACTIONS = Object.freeze([
     'create', 'update', 'delete', 'group', 'ungroup', 'clear', 'undo', 'redo', 'show', 'hide',
+    'board-create', 'board-rename', 'board-reorder', 'board-delete', 'board-activate', 'board-transfer',
     'submit', 'start', 'close', 'reorder',
     'scripta-document-create', 'scripta-document-open', 'scripta-document-delete',
     'scripta-paragraph-open', 'scripta-document-view', 'scripta-paragraph-next', 'scripta-paragraph-previous',
@@ -17,7 +18,7 @@ export const BLACKBOARD_PUBLIC_ACTIONS = Object.freeze([
     'scripta-media-insert',
 ]);
 
-export const BLACKBOARD_INTERNAL_ACTIONS = Object.freeze(['focus']);
+export const BLACKBOARD_INTERNAL_ACTIONS = Object.freeze(['focus', 'board-copy']);
 export const BLACKBOARD_SEMANTIC_ERROR_CODES = Object.freeze([
     'ambiguous_target',
     'missing_target',
@@ -27,7 +28,7 @@ export const BLACKBOARD_SEMANTIC_ERROR_CODES = Object.freeze([
     'unsupported_request',
 ]);
 export const BLACKBOARD_EVENT_ACTIONS = Object.freeze(new Set(BLACKBOARD_PUBLIC_ACTIONS));
-export const BLACKBOARD_CONNECTION_ANCHORS = Object.freeze(new Set(['left', 'right', 'top', 'bottom', 'center']));
+export const BLACKBOARD_CONNECTION_ANCHORS = Object.freeze(new Set(['left', 'right', 'top', 'bottom']));
 export const BLACKBOARD_CREATABLE_WIDGET_TYPES = Object.freeze(new Set([
     'shape', 'line', 'text', 'image', 'card', 'poll', 'bullets', 'embed',
 ]));
@@ -126,6 +127,7 @@ export const BLACKBOARD_WIDGET_CAPABILITIES = Object.freeze({
     text: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'text'], domainActions: [] },
     line: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'line', 'connection'], domainActions: [] },
     image: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'alt'], domainActions: [] },
+    file: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES], domainActions: [] },
     card: { movable: true, resizable: true, deletable: true, groupable: true, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title', 'text'], domainActions: [] },
     embed: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'title'], domainActions: [] },
     poll: { movable: true, resizable: true, deletable: true, groupable: false, editableProperties: [...COMMON_EDITABLE_PROPERTIES, 'description', 'resultsVisibility', 'questions', 'allowPollChange', 'anonymous', 'durationSeconds'], domainActions: ['submit', 'start', 'close'] },
@@ -253,14 +255,18 @@ function validateStructuredWidgetProperties(widgetType, properties, { creating =
     if (properties.line !== undefined) validateLine(properties.line, `${label}.line`, {
         requireCoordinates: creating && widgetType === 'line' && properties.connection === undefined,
     });
-    if (widgetType === 'image' && properties.source !== undefined) {
+    if (['image', 'file'].includes(widgetType) && properties.source !== undefined) {
         const source = plainObject(properties.source, `${label}.source`);
-        assertOnlyKeys(source, ['kind', 'assetId', 'url', 'name', 'mimeType'], `${label}.source`);
+        assertOnlyKeys(source, ['kind', 'assetId', 'url', 'name', 'mimeType', 'extension', 'size'], `${label}.source`);
         if (String(source.kind || '') !== 'explorer-media' || !/^asset_[a-zA-Z0-9-]+$/.test(String(source.assetId || ''))) {
             throw new Error(`${label}.source must reference an Explorer media asset.`);
         }
-        if (!String(source.url || '').startsWith('/workspace-files/document-multimedia/webmeet/')) {
+        if (!/^\/workspace-files\/WebMeet\/[a-zA-Z0-9._-]+\/assets\/asset_[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/.test(String(source.url || ''))) {
             throw new Error(`${label}.source.url must use the WebMeet workspace media route.`);
+        }
+        if (source.size !== undefined) {
+            source.size = finiteNumber(source.size, `${label}.source.size`);
+            if (source.size < 0) throw new Error(`${label}.source.size must not be negative.`);
         }
     }
     if (widgetType === 'image' && properties.naturalSize !== undefined) {
@@ -356,28 +362,31 @@ function validateScriptaPayload(action, target, payload) {
 }
 
 function normalizeEndpoint(endpoint, label) {
+    if (endpoint === null) return null;
     plainObject(endpoint, label);
     const widgetId = String(endpoint.widgetId || '').trim();
+    const groupId = String(endpoint.groupId || '').trim();
     const ref = String(endpoint.ref || '').trim();
-    if (Boolean(widgetId) === Boolean(ref)) {
-        throw new Error(`${label} must contain exactly one of widgetId or ref.`);
+    if ([widgetId, groupId, ref].filter(Boolean).length !== 1) {
+        throw new Error(`${label} must contain exactly one of widgetId, groupId, or ref.`);
     }
-    const anchor = String(endpoint.anchor || 'center').trim();
+    const anchor = String(endpoint.anchor || '').trim();
     if (!BLACKBOARD_CONNECTION_ANCHORS.has(anchor)) {
         throw new Error(`${label}.anchor is invalid.`);
     }
-    return { ...(widgetId ? { widgetId } : { ref }), anchor };
+    return { ...(widgetId ? { widgetId } : groupId ? { groupId } : { ref }), anchor };
 }
 
 function normalizeConnection(properties = {}, label = 'properties.connection') {
     if (properties.connection === undefined) return properties;
+    if (properties.connection === null) return {...properties, connection: null};
     const connection = plainObject(properties.connection, label);
+    const from = normalizeEndpoint(connection.from ?? null, `${label}.from`);
+    const to = normalizeEndpoint(connection.to ?? null, `${label}.to`);
+    if (!from && !to) return {...properties, connection: null};
     return {
         ...properties,
-        connection: {
-            from: normalizeEndpoint(connection.from, `${label}.from`),
-            to: normalizeEndpoint(connection.to, `${label}.to`),
-        },
+        connection: {from, to},
     };
 }
 
@@ -459,10 +468,11 @@ export function parseEventInput(input) {
 function normalizeTarget(input, action, defaults = {}) {
     if (input?.boardId !== undefined) throw new Error('event.target.boardId is not part of the canonical event contract.');
     const targetType = requiredString(input?.type || defaults.targetType || (
-        ['create', 'group', 'clear', 'undo', 'redo', 'show', 'hide'].includes(action) ? 'blackboard' : 'widget'
+        action === 'board-create' ? 'workspace'
+            : ['create', 'group', 'clear', 'undo', 'redo', 'show', 'hide', 'board-rename', 'board-reorder', 'board-delete', 'board-activate', 'board-transfer', 'board-copy'].includes(action) ? 'blackboard' : 'widget'
     ), 'target.type');
-    if (!['blackboard', 'widget', 'group'].includes(targetType)) {
-        throw new Error('Event target.type must be "blackboard", "widget", or "group".');
+    if (!['workspace', 'blackboard', 'widget', 'group'].includes(targetType)) {
+        throw new Error('Event target.type must be "workspace", "blackboard", "widget", or "group".');
     }
     const widgetId = String(input?.widgetId || defaults.widgetId || (
         targetType === 'widget' && action.startsWith('scripta-') ? 'robo_scripta_document' : ''
@@ -481,7 +491,29 @@ function normalizeTarget(input, action, defaults = {}) {
 
 function validateActionShape(event) {
     const { action, target, payload } = event;
-    if (action === 'create') {
+    if (action === 'board-create') {
+        if (target.type !== 'workspace') throw new Error('board-create must target the workspace.');
+        assertOnlyKeys(payload, ['title'], 'event.payload');
+    } else if (action === 'board-rename') {
+        if (target.type !== 'blackboard') throw new Error('board-rename must target a blackboard.');
+        assertOnlyKeys(payload, ['targetBoardId', 'title'], 'event.payload');
+        if (payload.targetBoardId !== undefined) requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+        requiredString(payload.title, 'event.payload.title');
+    } else if (action === 'board-reorder') {
+        if (target.type !== 'blackboard') throw new Error('board-reorder must target a blackboard.');
+        assertOnlyKeys(payload, ['targetBoardId', 'targetIndex'], 'event.payload');
+        if (payload.targetBoardId !== undefined) requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+        if (!Number.isInteger(payload.targetIndex) || payload.targetIndex < 0) throw new Error('event.payload.targetIndex must be a non-negative integer.');
+    } else if (action === 'board-delete' || action === 'board-activate') {
+        if (target.type !== 'blackboard') throw new Error(`${action} must target a blackboard.`);
+        assertOnlyKeys(payload, ['targetBoardId'], 'event.payload');
+        if (payload.targetBoardId !== undefined) requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+    } else if (action === 'board-transfer' || action === 'board-copy') {
+        if (target.type !== 'blackboard') throw new Error(`${action} must target a blackboard.`);
+        assertOnlyKeys(payload, ['targetBoardId', 'widgetIds', 'placement'], 'event.payload');
+        requiredString(payload.targetBoardId, 'event.payload.targetBoardId');
+        if (!Array.isArray(payload.widgetIds) || !payload.widgetIds.length) throw new Error('event.payload.widgetIds must be a non-empty array.');
+    } else if (action === 'create') {
         if (target.type !== 'blackboard') throw new Error('create must target the blackboard.');
         const widget = plainObject(payload.widget, 'event.payload.widget');
         const widgetType = requiredString(widget.type, 'payload.widget.type');

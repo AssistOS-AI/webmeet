@@ -11,6 +11,28 @@ export const EMPTY_BLACKBOARD_BOUNDS = Object.freeze({
 });
 export const DEFAULT_LAYOUT_GAP = 40;
 
+export function buildSemanticWorkspaceContext(workspace = {}) {
+    const activeBoardId = String(workspace?.activeBoardId || '').trim();
+    const summaries = new Map((Array.isArray(workspace?.boards) ? workspace.boards : [])
+        .map((board) => [String(board?.boardId || '').trim(), board]));
+    const orderedIds = (Array.isArray(workspace?.boardOrder) ? workspace.boardOrder : [])
+        .map((boardId) => String(boardId || '').trim())
+        .filter(Boolean);
+    return {
+        activeBoardId,
+        boards: orderedIds.map((boardId, index) => {
+            const summary = summaries.get(boardId) || {};
+            return {
+                boardId,
+                ordinal: index + 1,
+                title: String(summary.title || `Workspace ${index + 1}`),
+                widgetCount: Math.max(0, Number(summary.widgetCount || 0)),
+                active: boardId === activeBoardId,
+            };
+        }),
+    };
+}
+
 export function calculateLineFromCenter({ centerX = 0, centerY = 0, length = 0, angle = 0 } = {}) {
     const radians = Number(angle || 0) * Math.PI / 180;
     const half = Math.max(0, Number(length || 0)) / 2;

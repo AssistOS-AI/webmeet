@@ -2,6 +2,27 @@ import { getBlackboardTheme, resolveBlackboardTheme } from '../webmeet-blackboar
 import { TEXT_DEFAULT_STYLE, TEXT_FONT_FAMILIES, TEXT_MIN_FONT_SIZE, TEXT_MAX_FONT_SIZE } from './webmeet-blackboard-text-style.js';
 
 export const blackboardActionMethods = {
+    async downloadBlackboardFile(target) {
+        const widgetId = String(target?.closest?.('.webmeet-blackboard-widget')?.dataset?.widgetId || '').trim();
+        const source = this.getWidgetById(widgetId)?.properties?.source || {};
+        const url = String(source.url || '').trim();
+        if (!url) return;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+            const objectUrl = URL.createObjectURL(await response.blob());
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = String(source.name || 'file');
+            link.click();
+            globalThis.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        } catch (error) {
+            const message = error?.message || 'Could not download the file.';
+            if (typeof globalThis.assistOS?.showToast === 'function') globalThis.assistOS.showToast(message, 'error', 3000);
+            else globalThis.alert?.(message);
+        }
+    },
+
     async submitInteractiveWidget(widget, data) {
         if (!widget?.id || this.busy) return;
         await this.runFinalChange({
@@ -64,6 +85,8 @@ export const blackboardActionMethods = {
 
     setPendingWidgetType(type = '') {
         this.pendingWidgetType = String(type || '').trim();
+        if (this.pendingWidgetType.startsWith('line')) this.renderConnectionAnchors?.();
+        else this.clearConnectionAnchors?.();
         this.updateToolbarState();
     },
 
@@ -511,6 +534,12 @@ export const blackboardActionMethods = {
             ...(widget.properties.line || {}),
             ...line
         };
+        if (placement.connection?.from || placement.connection?.to) {
+            widget.properties.connection = {
+                from: placement.connection.from || null,
+                to: placement.connection.to || null,
+            };
+        }
     },
 
     createWidgetId(type) {
@@ -537,6 +566,7 @@ export const blackboardActionMethods = {
     },
 
     canRotateWidget(widget) {
+        if (widget?.type === 'line' && widget.properties?.connection) return false;
         return !widget?.locked && ['shape', 'line', 'text', 'image'].includes(String(widget?.type || '').trim());
     },
 

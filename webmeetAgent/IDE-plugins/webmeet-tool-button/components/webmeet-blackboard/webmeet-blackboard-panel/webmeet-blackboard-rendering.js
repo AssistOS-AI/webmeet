@@ -1,4 +1,5 @@
 import { TEXT_DEFAULT_STYLE } from './webmeet-blackboard-text-style.js';
+
 export const blackboardRenderingMethods = {
     renderWidgets() {
         if (!this.board) return;
@@ -24,6 +25,9 @@ export const blackboardRenderingMethods = {
         this.board.replaceChildren(fragment);
         this.renderGroupHitAreas(groupOrdinals);
         this.renderSelectionOverlay();
+        if (String(this.pendingWidgetType || '').startsWith('line') || this.resizeState?.lineResize) {
+            this.renderConnectionAnchors();
+        }
         this.updateToolbarState();
     },
 
@@ -44,14 +48,16 @@ export const blackboardRenderingMethods = {
         node.style.top = `${Number(geometry.y || 0)}px`;
         const widgetWidth = Number(geometry.width || 120);
         const widgetHeight = Number(geometry.height || 64);
+        const minFileWidth = widget.type === 'file' ? 160 : 1;
+        const minFileHeight = widget.type === 'file' ? 100 : 1;
         const minPollWidth = widget.type === 'poll' ? 260 : 1;
         const minPollHeight = widget.type === 'poll' ? 132 : 1;
         const minBulletsWidth = widget.type === 'bullets' ? 320 : 1;
         const minBulletsHeight = widget.type === 'bullets' ? 190 : 1;
         const minScriptaWidth = widget.type === 'scripta-document' ? 600 : 1;
         const minScriptaHeight = widget.type === 'scripta-document' ? 400 : 1;
-        node.style.width = `${Math.max(widgetWidth, minPollWidth, minBulletsWidth, minScriptaWidth)}px`;
-        node.style.height = `${Math.max(widgetHeight, minPollHeight, minBulletsHeight, minScriptaHeight)}px`;
+        node.style.width = `${Math.max(widgetWidth, minFileWidth, minPollWidth, minBulletsWidth, minScriptaWidth)}px`;
+        node.style.height = `${Math.max(widgetHeight, minFileHeight, minPollHeight, minBulletsHeight, minScriptaHeight)}px`;
         const rotation = this.getWidgetRotation(widget);
         node.style.transform = rotation ? `rotate(${rotation}deg)` : '';
         node.style.transformOrigin = 'center center';
@@ -75,9 +81,6 @@ export const blackboardRenderingMethods = {
         }
         if (!isFullscreen && !widget.groupId) this.renderResizeHandles(node, widget);
         if (!isFullscreen && !widget.groupId && !multiSelected) this.renderContextMenu(node, widget);
-        if (!isFullscreen && this.canMoveWidget(widget)) {
-            node.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
-        }
         node.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -89,45 +92,6 @@ export const blackboardRenderingMethods = {
         return node;
     },
 
-    projectAttachedConnection(widget) {
-        const connection = widget?.properties?.connection;
-        if (widget?.type !== 'line' || !connection) return widget;
-        const widgets = this.blackboard?.widgets || [];
-        const anchorPoint = (endpoint) => {
-            const target = widgets.find((entry) => String(entry.id) === String(endpoint?.widgetId));
-            if (!target) return null;
-            const geometry = target.properties?.geometry || {};
-            const x = Number(geometry.x || 0);
-            const y = Number(geometry.y || 0);
-            const width = Number(geometry.width || 0);
-            const height = Number(geometry.height || 0);
-            const points = {
-                left: { x, y: y + height / 2 },
-                right: { x: x + width, y: y + height / 2 },
-                top: { x: x + width / 2, y },
-                bottom: { x: x + width / 2, y: y + height },
-                center: { x: x + width / 2, y: y + height / 2 },
-            };
-            return points[String(endpoint.anchor || 'center')] || points.center;
-        };
-        const from = anchorPoint(connection.from);
-        const to = anchorPoint(connection.to);
-        if (!from || !to) return widget;
-        const padding = 0.5;
-        const x = Math.min(from.x, to.x) - padding;
-        const y = Math.min(from.y, to.y) - padding;
-        const width = Math.max(1, Math.abs(to.x - from.x) + padding * 2);
-        const height = Math.max(1, Math.abs(to.y - from.y) + padding * 2);
-        return {
-            ...widget,
-            properties: {
-                ...widget.properties,
-                geometry: { x, y, width, height, rotation: 0 },
-                line: { ...(widget.properties.line || {}), x1: from.x - x, y1: from.y - y, x2: to.x - x, y2: to.y - y },
-            },
-        };
-    },
-
     renderContextMenu(node, widget) {
         if (!widget?.id || widget.locked) return;
         if (!this.canEditWidget(widget) && !this.canMoveWidget(widget)) return;
@@ -137,8 +101,9 @@ export const blackboardRenderingMethods = {
         menu.addEventListener('pointerdown', (event) => event.stopPropagation());
 
         const moveHandle = this.createContextButton('move', 'Move widget', 'Move', 'move');
-        moveHandle.addEventListener('pointerdown', (event) => this.beginLocalDrag(event, widget));
         menu.append(moveHandle);
+
+        this.appendFileContextDownload(menu, widget);
 
         if (widget.type === 'scripta-document' && widget.properties?.resourceId) {
             const deleteButton = this.createContextButton('delete', 'Delete document file', 'Delete document file', 'delete');
@@ -152,7 +117,7 @@ export const blackboardRenderingMethods = {
         }
 
         this.appendImageScriptaButton(menu, widget);
-        if (this.canEditWidget(widget)) {
+        if (widget.type !== 'file' && this.canEditWidget(widget)) {
             const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
             settingsButton.addEventListener('click', (event) => {
                 event.preventDefault();
@@ -212,10 +177,11 @@ export const blackboardRenderingMethods = {
         if (!widget || widget.locked) return false;
         if (widget.type === 'poll' && !this.canEditWidget(widget)) return false;
         const widgetType = String(widget.type || 'shape').trim() || 'shape';
-        return ['shape', 'line', 'card', 'text', 'image', 'poll', 'bullets', 'scripta-document'].includes(widgetType);
+        return ['shape', 'line', 'card', 'text', 'image', 'file', 'poll', 'bullets', 'scripta-document'].includes(widgetType);
     },
 
     getWidgetMinimumSize(widget) {
+        if (widget?.type === 'file') return {minWidth: 160, minHeight: 100};
         if (widget?.type === 'poll') return {minWidth: 260, minHeight: 132};
         if (widget?.type === 'bullets') return {minWidth: 320, minHeight: 190};
         if (widget?.type === 'scripta-document') return {minWidth: 600, minHeight: 400};
@@ -231,6 +197,7 @@ export const blackboardRenderingMethods = {
 
     canMoveWidget(widget) {
         if (!widget || widget.locked) return false;
+        if (widget.type === 'line' && widget.properties?.connection) return false;
         if (widget.type === 'poll') return this.canEditWidget(widget);
         return true;
     },
@@ -279,17 +246,8 @@ export const blackboardRenderingMethods = {
             node.append(this.createLineSvg(widget));
             return;
         }
-        if (widget.type === 'image') {
-            const frame = document.createElement('div');
-            frame.className = 'webmeet-blackboard-image-frame';
-            const image = document.createElement('img');
-            const source = widget.properties?.source || {};
-            image.className = 'webmeet-blackboard-image';
-            image.alt = String(widget.properties?.alt || source.name || 'Image');
-            image.draggable = false;
-            image.src = String(source.url || source.downloadUrl || widget.properties?.src || '');
-            frame.append(image);
-            node.append(frame);
+        if (widget.type === 'image' || widget.type === 'file') {
+            this.renderAttachmentWidgetContent(node, widget);
             return;
         }
         if (widget.type === 'poll') {

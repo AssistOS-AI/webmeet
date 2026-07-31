@@ -24,14 +24,28 @@ export const blackboardInteractionMethods = {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !this.board.contains(target)) return;
-        if (target.closest?.('.webmeet-blackboard-group-overlay')) return;
+        const groupOverlay = target.closest?.('.webmeet-blackboard-group-overlay');
+        if (groupOverlay) {
+            const ownsGesture = groupOverlay.classList.contains('is-group')
+                && !target.closest('.webmeet-blackboard-context-menu, [data-group-resize-handle]');
+            const groupId = String(groupOverlay.dataset.groupId || '');
+            const representative = ownsGesture ? this.getGroupMembers(groupId).at(-1) : null;
+            if (!representative || event.shiftKey || event.ctrlKey || event.metaKey) return;
+            this.beginGroupDrag(event, groupId, representative);
+            return;
+        }
         const groupHitArea = target.closest?.('.webmeet-blackboard-group-hit-area');
         if (groupHitArea) {
             const groupId = String(groupHitArea.dataset.groupId || '');
             const representative = this.getGroupMembers(groupId).at(-1);
             if (!representative) return;
+            if (event.shiftKey || event.ctrlKey || event.metaKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleWidgetMultiSelection(representative);
+                return;
+            }
             this.selectGroup(groupId, representative.id);
-            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: representative.id}).catch(() => {});
             this.beginGroupDrag(event, groupId, representative);
             return;
         }
@@ -63,29 +77,32 @@ export const blackboardInteractionMethods = {
         }
         if (widget?.groupId) {
             this.selectGroup(widget.groupId, widget.id);
-            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: widget.id}).catch(() => {});
+            this.beginGroupDrag(event, widget.groupId, widget);
             return;
         } else {
             this.clearGroupSelection();
             widgetNode?.setAttribute?.('aria-selected', 'true');
         }
-        if (this.selection === nextSelection) return;
-        const previousSelection = this.selection;
-        this.selection = nextSelection;
-        if (previousSelection && previousSelection !== this.selection) {
-            const previousNode = this.widgetNodes.get(previousSelection);
-            if (previousNode) {
-                previousNode.setAttribute('aria-selected', 'false');
+        if (this.selection !== nextSelection) {
+            const previousSelection = this.selection;
+            this.selection = nextSelection;
+            if (previousSelection && previousSelection !== this.selection) {
+                const previousNode = this.widgetNodes.get(previousSelection);
+                if (previousNode) {
+                    previousNode.setAttribute('aria-selected', 'false');
+                }
             }
-        }
-        if (this.selection) {
-            const nextNode = this.widgetNodes.get(this.selection);
-            if (nextNode) {
-                nextNode.setAttribute('aria-selected', 'true');
+            if (this.selection) {
+                const nextNode = this.widgetNodes.get(this.selection);
+                if (nextNode) {
+                    nextNode.setAttribute('aria-selected', 'true');
+                }
             }
+            this.updateToolbarState();
         }
-        this.updateToolbarState();
-        if (this.selection && this.adapter?.sendEvent) {
+        if (widget && this.beginLocalDrag(event, widget)) return;
+        const ownsSpecialGesture = target.closest?.('[data-resize-handle], .webmeet-blackboard-inline-text, .webmeet-blackboard-context-menu');
+        if (this.selection && !ownsSpecialGesture && !this.isWidgetInteractiveControlEvent(event) && this.adapter?.sendEvent) {
             void this.adapter.sendEvent('focus', {}, { widgetId: this.selection }).catch(() => {});
         }
     },
@@ -96,16 +113,21 @@ export const blackboardInteractionMethods = {
     },
 
     beginPendingWidgetDraw(event, type, startPoint) {
+        const isLine = String(type || '').trim().startsWith('line');
+        const startSnap = isLine ? this.findConnectionAnchorAtEvent?.(event) : null;
+        const resolvedStartPoint = startSnap?.point || startPoint;
         this.pendingCreateDragState = {
             type,
             pointerId: event.pointerId,
-            startPoint,
-            endPoint: startPoint,
+            startPoint: resolvedStartPoint,
+            endPoint: resolvedStartPoint,
+            startConnection: startSnap?.endpoint || null,
+            endConnection: null,
             previewNode: this.createPendingWidgetPreview(type)
         };
         if (this.pendingCreateDragState.previewNode) {
             this.board?.append?.(this.pendingCreateDragState.previewNode);
-            this.updatePendingWidgetPreview(this.pendingCreateDragState, startPoint);
+            this.updatePendingWidgetPreview(this.pendingCreateDragState, resolvedStartPoint);
         }
         this.board?.setPointerCapture?.(event.pointerId);
         this.board?.addEventListener?.('pointermove', this.handlePendingWidgetDrawMove);
@@ -115,21 +137,29 @@ export const blackboardInteractionMethods = {
 
     handlePendingWidgetDrawMove(event) {
         if (!this.pendingCreateDragState) return;
-        const point = this.getBoardPointFromEvent(event);
+        const isLine = String(this.pendingCreateDragState.type || '').startsWith('line');
+        const snap = isLine ? this.findConnectionAnchorAtEvent?.(event) : null;
+        const point = snap?.point || this.getBoardPointFromEvent(event);
         if (!point) return;
         this.pendingCreateDragState.endPoint = point;
+        this.pendingCreateDragState.endConnection = snap?.endpoint || null;
         this.updatePendingWidgetPreview(this.pendingCreateDragState, point);
     },
 
     async finishPendingWidgetDraw(event) {
         if (!this.pendingCreateDragState) return;
         const state = this.pendingCreateDragState;
-        const endPoint = this.getBoardPointFromEvent(event) || state.endPoint || state.startPoint;
+        const isLine = String(state.type || '').startsWith('line');
+        const endSnap = isLine ? this.findConnectionAnchorAtEvent?.(event) : null;
+        const endPoint = endSnap?.point || this.getBoardPointFromEvent(event) || state.endPoint || state.startPoint;
         this.detachPendingWidgetDrawListeners();
         this.removePendingWidgetPreview(state);
         this.pendingCreateDragState = null;
         this.setPendingWidgetType('');
         const placement = this.getPendingWidgetPlacement(state.type, state.startPoint, endPoint);
+        if (placement && isLine) {
+            placement.connection = {from: state.startConnection || null, to: endSnap?.endpoint || state.endConnection || null};
+        }
         await this.addWidget(state.type, placement || state.startPoint);
     },
 
@@ -295,28 +325,28 @@ export const blackboardInteractionMethods = {
     },
 
     beginLocalDrag(event, widget) {
-        if (!widget || widget.locked) return;
-        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        if (!widget || widget.locked) return false;
+        if (this.canMoveWidget?.(widget) === false) return false;
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return false;
         // Controls rendered inside movable widgets own their pointer gesture.
         // Starting a widget drag here calls preventDefault(), which suppresses
         // the subsequent click and makes navigation/forms appear unresponsive.
-        if (this.isWidgetInteractiveControlEvent(event)) return;
+        if (this.isWidgetInteractiveControlEvent(event)) return false;
         if (widget.groupId) {
             this.beginGroupDrag(event, widget.groupId, widget);
-            return;
+            return true;
         }
         this.selection = widget.id;
         this.updateToolbarState();
-        if (this.activeTool !== 'select') return;
-        if (event.target?.closest?.('.webmeet-blackboard-context-menu') && !event.target?.closest?.('[data-context-action="move"]')) return;
-        if (event.target?.closest?.('.webmeet-blackboard-inline-text')) return;
-        if (event.target?.closest?.('[data-resize-handle]')) return;
+        if (this.activeTool !== 'select') return false;
+        if (event.target?.closest?.('.webmeet-blackboard-context-menu') && !event.target?.closest?.('[data-context-action="move"]')) return false;
+        if (event.target?.closest?.('.webmeet-blackboard-inline-text')) return false;
+        if (event.target?.closest?.('[data-resize-handle]')) return false;
         event.preventDefault();
         event.stopPropagation();
-        const node = event.currentTarget?.classList?.contains('webmeet-blackboard-widget')
-            ? event.currentTarget
-            : event.currentTarget?.closest?.('.webmeet-blackboard-widget');
-        if (!node) return;
+        const node = event.target?.closest?.('.webmeet-blackboard-widget')
+            || (event.currentTarget?.classList?.contains('webmeet-blackboard-widget') ? event.currentTarget : null);
+        if (!node) return false;
         node.focus?.({preventScroll: true});
         const geometry = widget.properties?.geometry || {};
         this.dragState = {
@@ -326,12 +356,14 @@ export const blackboardInteractionMethods = {
             startX: event.clientX,
             startY: event.clientY,
             originX: Number(geometry.x || 0),
-            originY: Number(geometry.y || 0)
+            originY: Number(geometry.y || 0),
+            didMove: false,
         };
         node.setPointerCapture?.(event.pointerId);
         node.addEventListener('pointermove', this.handleLocalDrag);
         node.addEventListener('pointerup', this.finishLocalDrag);
         node.addEventListener('pointercancel', this.cancelLocalDrag);
+        return true;
     },
 
     beginLocalResize(event, widget, handle) {
@@ -360,6 +392,7 @@ export const blackboardInteractionMethods = {
             originHeight: Number(geometry.height || 64),
             ...minimumSize
         };
+        if (this.resizeState.lineResize) this.renderConnectionAnchors?.();
         node.setPointerCapture?.(event.pointerId);
         node.addEventListener('pointermove', this.handleLocalResize);
         node.addEventListener('pointerup', this.finishLocalResize);
@@ -368,19 +401,43 @@ export const blackboardInteractionMethods = {
 
     handleLocalDrag(event) {
         if (!this.dragState) return;
-        const x = this.dragState.originX + event.clientX - this.dragState.startX;
-        const y = this.dragState.originY + event.clientY - this.dragState.startY;
+        const dx = event.clientX - this.dragState.startX;
+        const dy = event.clientY - this.dragState.startY;
+        const x = this.dragState.originX + dx;
+        const y = this.dragState.originY + dy;
+        if (Math.hypot(dx, dy) >= 2) this.dragState.didMove = true;
         this.dragState.node.style.left = `${x}px`;
         this.dragState.node.style.top = `${y}px`;
+        this.refreshConnectedLinePreviews?.();
+        const tabShell = document.elementFromPoint?.(event.clientX, event.clientY)?.closest?.('.webmeet-blackboard-tab-shell');
+        const targetBoardId = String(tabShell?.dataset?.boardId || '').trim();
+        this.dragState.targetBoardId = targetBoardId && targetBoardId !== this.workspace?.activeBoardId ? targetBoardId : '';
+        this.scheduleWorkspaceTabActivation?.(this.dragState.targetBoardId);
+        for (const shell of this.workspaceTabs?.querySelectorAll?.('.is-drag-over') || []) shell.classList.remove('is-drag-over');
+        if (this.dragState.targetBoardId) tabShell.classList.add('is-drag-over');
     },
 
     async finishLocalDrag() {
         if (!this.dragState) return;
-        const {widget, node, originX, originY} = this.dragState;
+        const {widget, node, originX, originY, targetBoardId, didMove} = this.dragState;
         const x = Number.parseFloat(node.style.left) || originX;
         const y = Number.parseFloat(node.style.top) || originY;
         this.detachDragListeners(node);
         this.dragState = null;
+        this.clearWorkspaceTabActivation?.();
+        for (const shell of this.workspaceTabs?.querySelectorAll?.('.is-drag-over') || []) shell.classList.remove('is-drag-over');
+        if (!didMove) {
+            node.style.left = `${originX}px`;
+            node.style.top = `${originY}px`;
+            if (this.adapter?.sendEvent) void this.adapter.sendEvent('focus', {}, {widgetId: widget.id}).catch(() => {});
+            return;
+        }
+        if (targetBoardId) {
+            node.style.left = `${originX}px`;
+            node.style.top = `${originY}px`;
+            this.refreshConnectedLinePreviews?.();
+            return;
+        }
         const response = await this.adapter?.sendChange({
             changeType: 'update',
             targetType: 'widget',
@@ -409,6 +466,8 @@ export const blackboardInteractionMethods = {
         node.style.top = `${originY}px`;
         this.detachDragListeners(node);
         this.dragState = null;
+        this.clearWorkspaceTabActivation?.();
+        this.refreshConnectedLinePreviews?.();
     },
 
     detachDragListeners(node) {
@@ -420,7 +479,9 @@ export const blackboardInteractionMethods = {
     handleLocalResize(event) {
         if (!this.resizeState) return;
         if (this.resizeState.lineResize) {
-            this.applyLineResizePreview(this.resizeState.node, this.getLineEndpointResize(this.resizeState, event));
+            const snap = this.findConnectionAnchorAtEvent?.(event);
+            this.resizeState.connectionTarget = snap?.endpoint || null;
+            this.applyLineResizePreview(this.resizeState.node, this.getLineEndpointResize(this.resizeState, event, snap?.point || null));
             return;
         }
         const geometry = this.getResizedGeometry(this.resizeState, event);
@@ -428,13 +489,15 @@ export const blackboardInteractionMethods = {
         this.resizeState.node.style.top = `${geometry.y}px`;
         this.resizeState.node.style.width = `${geometry.width}px`;
         this.resizeState.node.style.height = `${geometry.height}px`;
+        this.refreshConnectedLinePreviews?.();
     },
 
     async finishLocalResize(event) {
         if (!this.resizeState) return;
         const {widget, node} = this.resizeState;
+        const snap = this.resizeState.lineResize ? this.findConnectionAnchorAtEvent?.(event) : null;
         const lineResize = this.resizeState.lineResize
-            ? this.getLineEndpointResize(this.resizeState, event)
+            ? this.getLineEndpointResize(this.resizeState, event, snap?.point || null)
             : null;
         const geometry = lineResize?.geometry || this.getResizedGeometry(this.resizeState, event);
         const nextProperties = {
@@ -449,9 +512,21 @@ export const blackboardInteractionMethods = {
                 ...currentLine,
                 ...(lineResize?.line || {})
             };
+            if (this.resizeState.lineResize) {
+                const endpointName = this.resizeState.lineResize.movingEndpoint === 'start' ? 'from' : 'to';
+                const currentConnection = widget.properties?.connection || {from: null, to: null};
+                const nextConnection = {
+                    from: currentConnection.from || null,
+                    to: currentConnection.to || null,
+                    [endpointName]: snap?.endpoint || null,
+                };
+                nextProperties.connection = nextConnection.from || nextConnection.to ? nextConnection : null;
+            }
         }
         this.detachResizeListeners(node);
         this.resizeState = null;
+        this.clearConnectionAnchors?.();
+        this.refreshConnectedLinePreviews?.();
         const response = await this.adapter?.sendChange({
             changeType: 'update',
             targetType: 'widget',
@@ -476,6 +551,8 @@ export const blackboardInteractionMethods = {
         node.style.height = `${originHeight}px`;
         this.detachResizeListeners(node);
         this.resizeState = null;
+        this.clearConnectionAnchors?.();
+        this.refreshConnectedLinePreviews?.();
     },
 
     detachResizeListeners(node) {
@@ -518,6 +595,7 @@ export const blackboardInteractionMethods = {
         this.rotateState.node.style.transform = `rotate(${nextRotation}deg)`;
         this.rotateState.node.style.setProperty('--widget-rotation', `${nextRotation}deg`);
         this.rotateState.node.style.setProperty('--widget-counter-rotation', `${-nextRotation}deg`);
+        this.refreshConnectedLinePreviews?.();
     },
 
     async finishLocalRotate(event) {
@@ -525,6 +603,7 @@ export const blackboardInteractionMethods = {
         const {widget, node, nextRotation, didMove} = this.rotateState;
         this.detachRotateListeners(node);
         this.rotateState = null;
+        this.refreshConnectedLinePreviews?.();
         if (!didMove) {
             await this.rotateWidgetByStep(widget, event?.shiftKey ? -15 : 15);
             return;
@@ -554,6 +633,7 @@ export const blackboardInteractionMethods = {
         node.style.setProperty('--widget-counter-rotation', `${-originRotation}deg`);
         this.detachRotateListeners(node);
         this.rotateState = null;
+        this.refreshConnectedLinePreviews?.();
     },
 
     detachRotateListeners(node) {

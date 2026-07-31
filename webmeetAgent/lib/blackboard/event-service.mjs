@@ -1,11 +1,10 @@
-import { DEFAULT_BLACKBOARD_BOARD_ID } from './service.mjs';
 import {
     newEventId,
     normalizeBlackboardEventResult,
     parseEventInput,
 } from './event-contract.mjs';
 import { BlackboardCommandInterpreter } from './blackboard-command-interpreter.mjs';
-import { buildSemanticBoardContext } from './semantic-context.mjs';
+import { buildSemanticBoardContext, buildSemanticWorkspaceContext } from './semantic-context.mjs';
 import { executeRoboCommand } from '../scripta/command-service.mjs';
 
 const SCRIPTA_ACTIONS = new Set([
@@ -20,6 +19,7 @@ const SCRIPTA_ACTIONS = new Set([
     'scripta-chapter-move', 'scripta-paragraph-add', 'scripta-paragraph-delete', 'scripta-paragraph-move',
     'scripta-media-insert',
 ]);
+const BOARD_ACTIONS = new Set(['board-create', 'board-rename', 'board-reorder', 'board-delete', 'board-activate', 'board-transfer', 'board-copy']);
 
 function redact(value) {
     if (Array.isArray(value)) return value.map(redact);
@@ -44,6 +44,43 @@ function canonicalAuditText(events) {
         const payload = safe.payload && Object.keys(safe.payload).length ? ` ${JSON.stringify(safe.payload)}` : '';
         return `/event ${safe.action}${payload}`;
     }).join('\n');
+}
+
+function workspaceBoardTitle(workspace, boardId = '') {
+    const targetBoardId = String(boardId || '').trim();
+    if (!targetBoardId || !Array.isArray(workspace?.boards)) return '';
+    const index = workspace.boards.findIndex((board) => String(board?.boardId || '').trim() === targetBoardId);
+    if (index < 0) return '';
+    return String(workspace.boards[index]?.title || `Workspace ${index + 1}`).trim();
+}
+
+function initialAuditBoardContext(boardResult, boardId = '') {
+    const targetBoardId = String(boardId || boardResult?.blackboard?.boardId || '').trim();
+    return {
+        boardId: targetBoardId,
+        boardTitle: workspaceBoardTitle(boardResult?.workspace, targetBoardId)
+            || String(boardResult?.blackboard?.metadata?.title || '').trim(),
+    };
+}
+
+function finalAuditBoardContext(events, inputBoardId, boardResult, result) {
+    const event = Array.isArray(events) && events.length === 1 ? events[0] : null;
+    const action = String(event?.action || '').trim();
+    let boardId = String(inputBoardId || '').trim();
+    if (action === 'board-create') {
+        boardId = String(result?.workspace?.activeBoardId || result?.blackboard?.boardId || boardId).trim();
+    } else if (['board-rename', 'board-reorder', 'board-delete', 'board-activate'].includes(action)) {
+        boardId = String(event?.payload?.targetBoardId || boardId).trim();
+    }
+    const boardTitle = workspaceBoardTitle(result?.workspace, boardId)
+        || workspaceBoardTitle(boardResult?.workspace, boardId)
+        || (String(result?.blackboard?.boardId || '').trim() === boardId
+            ? String(result?.blackboard?.metadata?.title || '').trim()
+            : '')
+        || (String(boardResult?.blackboard?.boardId || '').trim() === boardId
+            ? String(boardResult?.blackboard?.metadata?.title || '').trim()
+            : '');
+    return { boardId, boardTitle };
 }
 
 function publicError(error) {
@@ -91,15 +128,16 @@ async function updateAudit(deps, context, roomId, authInfo, audit, status, extra
     })).message;
 }
 
-async function interpret(deps, text, board) {
+async function interpret(deps, text, board, workspace) {
     if (deps.interpretBlackboardCommand) {
         const result = await deps.interpretBlackboardCommand(text, {
             instruction: String(text || ''),
             board: buildSemanticBoardContext(board),
+            workspace: buildSemanticWorkspaceContext(workspace),
         });
         return normalizeBlackboardEventResult(result);
     }
-    return new BlackboardCommandInterpreter(deps.interpreterDeps).interpret({ text, board });
+    return new BlackboardCommandInterpreter(deps.interpreterDeps).interpret({ text, board, workspace });
 }
 
 async function executeEvents(deps, context, input, events, board = null) {
@@ -112,7 +150,7 @@ async function executeEvents(deps, context, input, events, board = null) {
                 meetingId: input.roomId,
                 participantId: input.participantId,
                 visible: events[0].action === 'show',
-                boardId: DEFAULT_BLACKBOARD_BOARD_ID,
+                boardId: input.boardId,
             },
         };
     }
@@ -137,6 +175,7 @@ async function executeEvents(deps, context, input, events, board = null) {
         }
         return executeRoboCommand(context, {
             roomId: input.roomId,
+            boardId: input.boardId,
             text: /^\/robo(?:\s|$)/i.test(String(input.eventInput || ''))
                 ? input.eventInput
                 : `/robo ${String(input.eventInput || '')}`,
@@ -145,12 +184,31 @@ async function executeEvents(deps, context, input, events, board = null) {
             authInfo: input.authInfo,
         }, { intent: buildScriptaIntent(event), reformulate: deps.reformulate });
     }
+    if (events.length === 1 && BOARD_ACTIONS.has(events[0].action)) {
+        if (typeof deps.applyRoomBlackboardWorkspaceAction !== 'function') throw new Error('Blackboard workspace actions are unavailable.');
+        const event = events[0];
+        const selectedBoardId = ['board-transfer', 'board-copy'].includes(event.action)
+            ? input.boardId
+            : String(event.payload?.targetBoardId || input.boardId).trim();
+        return deps.applyRoomBlackboardWorkspaceAction(context, {
+            roomId: input.roomId,
+            action: event.action,
+            boardId: selectedBoardId,
+            targetBoardId: event.payload?.targetBoardId,
+            title: event.payload?.title,
+            targetIndex: event.payload?.targetIndex,
+            widgetIds: event.payload?.widgetIds,
+            placement: event.payload?.placement,
+            participantId: input.participantId,
+            authInfo: input.authInfo,
+        });
+    }
     if (typeof deps.applyRoomBlackboardEvents !== 'function') {
         throw new Error('Atomic blackboard event execution is unavailable.');
     }
     return deps.applyRoomBlackboardEvents(context, {
         roomId: input.roomId,
-        boardId: DEFAULT_BLACKBOARD_BOARD_ID,
+        boardId: input.boardId,
         events,
         participantId: input.participantId,
         authInfo: input.authInfo,
@@ -161,6 +219,8 @@ async function executeEvents(deps, context, input, events, board = null) {
 export async function executeBlackboardEvent(context, args = {}, deps = {}) {
     const roomId = String(args.roomId || '').trim();
     if (!roomId) throw new Error('Missing required roomId.');
+    const boardId = String(args.boardId || '').trim();
+    if (!boardId) throw new Error('Missing required boardId.');
     const source = String(args.source || 'event').trim().toLowerCase();
     if (!['event', 'robo', 'ui'].includes(source)) throw new Error('source must be "event", "robo", or "ui".');
     const commandSource = String(args.commandSource || 'chat').trim().toLowerCase();
@@ -172,22 +232,32 @@ export async function executeBlackboardEvent(context, args = {}, deps = {}) {
 
     const boardResult = await deps.getRoomBlackboard(context, {
         roomId,
-        boardId: DEFAULT_BLACKBOARD_BOARD_ID,
+        boardId,
         participantId,
         authInfo: args.authInfo,
     });
+    const eventInput = args.event;
+    const earlyParsed = source === 'robo' ? null : parseEventInput(eventInput);
+    const earlyInterpreted = earlyParsed
+        ? normalizeBlackboardEventResult(earlyParsed, { widgetId: args.selectedWidgetId }, { allowInternal: source === 'ui' })
+        : null;
+    if (source === 'ui' && earlyInterpreted?.events?.length === 1 && earlyInterpreted.events[0].action === 'board-activate') {
+        return executeEvents(deps, context, {
+            roomId, boardId, participantId, authInfo: args.authInfo, source, commandSource, eventInput,
+        }, earlyInterpreted.events, boardResult.blackboard);
+    }
     if (args.clarificationResponse !== undefined) {
         throw new Error('Blackboard clarification responses are not supported. Submit a complete new command.');
     }
-    const eventInput = args.event;
     const commandId = String(args.commandId || '').trim() || newEventId('command');
+    const initialBoardContext = initialAuditBoardContext(boardResult, boardId);
     const appended = await deps.appendMeetingChat(context, {
         meetingId: roomId,
         authorId: participantId,
         authorName: args.authorName || 'Participant',
         message: auditPendingText(source, eventInput),
         kind: 'event',
-        metadata: { status: 'pending', commandId, source },
+        metadata: { status: 'pending', commandId, source, ...initialBoardContext },
         dedupeCommandId: commandId,
         authInfo: args.authInfo,
     });
@@ -196,30 +266,42 @@ export async function executeBlackboardEvent(context, args = {}, deps = {}) {
         return { ok: audit.metadata?.status === 'success', deduplicated: true, auditMessage: audit };
     }
 
+    let interpreted = null;
+    let attemptedBoardContext = initialBoardContext;
     try {
-        const parsed = source === 'robo' ? null : parseEventInput(eventInput);
-        const interpreted = parsed
+        const parsed = earlyParsed;
+        interpreted = parsed
             ? normalizeBlackboardEventResult(parsed, { widgetId: args.selectedWidgetId }, { allowInternal: source === 'ui' })
-            : await interpret(deps, eventInput, boardResult.blackboard);
+            : await interpret(deps, eventInput, boardResult.blackboard, boardResult.workspace);
         if (interpreted.error) {
             const semanticFailure = new Error(interpreted.error.message);
             semanticFailure.code = interpreted.error.code;
             throw semanticFailure;
         }
+        attemptedBoardContext = finalAuditBoardContext(interpreted.events, boardId, boardResult, null);
         const executionSource = parsed ? source : 'robo';
         const result = await executeEvents(deps, context, {
             roomId,
+            boardId,
             participantId,
             authInfo: args.authInfo,
             source: executionSource,
             commandSource,
             eventInput,
         }, interpreted.events, boardResult.blackboard);
-        const auditMessage = await updateAudit(deps, context, roomId, args.authInfo, audit, 'success', { events: redact(interpreted.events), result: summarize(result) }, canonicalAuditText(interpreted.events));
+        const auditBoardContext = finalAuditBoardContext(interpreted.events, boardId, boardResult, result);
+        const auditMessage = await updateAudit(deps, context, roomId, args.authInfo, audit, 'success', {
+            events: redact(interpreted.events),
+            result: summarize(result),
+            ...auditBoardContext,
+        }, canonicalAuditText(interpreted.events));
         return { ok: result?.ok !== false, events: interpreted.events, ...result, auditMessage };
     } catch (error) {
         const failure = publicError(error);
-        const auditMessage = await updateAudit(deps, context, roomId, args.authInfo, audit, 'error', { error: failure });
+        const auditMessage = await updateAudit(deps, context, roomId, args.authInfo, audit, 'error', {
+            error: failure,
+            ...attemptedBoardContext,
+        });
         return { ok: false, error: failure, auditMessage };
     }
 }

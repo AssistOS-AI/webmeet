@@ -42,6 +42,7 @@ function makeComponent(overrides = {}) {
         publishRealtimePayload: async () => {},
         loadMeetingDetails: async () => {},
         getRoom: () => null,
+        getActiveBoardId: () => 'board-1',
         runTool: async (name, args) => {
             calls.push({ name, args });
             if (name === 'webmeet_chat_send') {
@@ -81,7 +82,7 @@ test('sendChat clears the chat input after a successful send', async () => {
     assert.equal(component.elements.chatInput.value, '');
 });
 
-test('chat image upload stages in Explorer and publishes one chat and Blackboard result', async () => {
+test('chat attachment upload stages in Explorer and publishes one chat and Blackboard result', async () => {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async () => ({
         ok: true,
@@ -99,13 +100,13 @@ test('chat image upload stages in Explorer and publishes one chat and Blackboard
         }
     });
     const classList = { toggle() {} };
-    component.elements = { chatImageButton: { disabled: false, classList, setAttribute() {} } };
+    component.elements = { chatAttachmentButton: { disabled: false, classList, setAttribute() {} } };
     try {
-        await component.publishImage({ name: 'photo.png', type: 'image/png', size: 24 });
+        await component.publishAttachments([{ name: 'photo.png', type: 'image/png', size: 24 }]);
     } finally {
         globalThis.fetch = previousFetch;
     }
-    assert.equal(calls[0].name, 'webmeet_image_publish');
+    assert.equal(calls[0].name, 'webmeet_attachment_publish');
     assert.deepEqual(calls[0].args.blobRef, {
         id: 'b'.repeat(48),
         agent: 'explorer',
@@ -115,7 +116,7 @@ test('chat image upload stages in Explorer and publishes one chat and Blackboard
     assert.deepEqual(refreshOptions, { ensureVisible: true });
 });
 
-test('chat image paste and composer drop publish every transferred file', async () => {
+test('chat paste and composer drop publish every transferred file', async () => {
     const { component } = makeComponent();
     const input = createListenerTarget();
     input.files = [];
@@ -127,11 +128,11 @@ test('chat image paste and composer drop publish every transferred file', async 
         setAttribute: (name, value) => overlayAttributes.set(name, value),
     };
     const batches = [];
-    component.publishImages = async (files) => { batches.push(files.map((file) => file.name)); };
+    component.publishAttachments = async (files) => { batches.push(files.map((file) => file.name)); };
     component.setElements({
         chatComposer: composer,
         chatInput: { value: '' },
-        chatImageInput: input,
+        chatFileInput: input,
         chatDropOverlay: overlay,
     });
 
@@ -162,7 +163,7 @@ test('chat image paste and composer drop publish every transferred file', async 
     composer.dispatch('dragover', { dataTransfer: dragTransfer, preventDefault() {} });
     assert.equal(dragTransfer.dropEffect, 'copy');
     assert.equal(overlay.hidden, false);
-    assert.equal(composer.classList.contains('is-image-drag-active'), true);
+    assert.equal(composer.classList.contains('is-attachment-drag-active'), true);
     composer.dispatch('dragleave', { preventDefault() {} });
     assert.equal(overlay.hidden, false, 'nested dragleave must not hide the overlay');
     let dropStopped = 0;
@@ -183,12 +184,12 @@ test('chat image paste and composer drop publish every transferred file', async 
     assert.deepEqual(batches[2], ['picker.png']);
     assert.equal(input.value, '');
 
-    component.destroyImageUpload();
+    component.destroyAttachmentUpload();
     assert.equal(composer.listeners.size, 0);
     assert.equal(input.listeners.size, 0);
 });
 
-test('image upload queue continues after one file fails and preserves order', async () => {
+test('attachment upload queue accepts generic files, continues after one failure and preserves order', async () => {
     const previousFetch = globalThis.fetch;
     const fetched = [];
     globalThis.fetch = async (_url, options) => {
@@ -209,16 +210,16 @@ test('image upload queue continues after one file fails and preserves order', as
         setError: (message) => { errors.push(message); },
         refreshBlackboard: async () => { refreshCount += 1; },
         runTool: async (_name, args) => {
-            published.push(args.filename);
+            published.push(args.blobRef.id);
             return {
-                message: { id: `chat-${args.filename}`, message: args.filename },
+                message: { id: `chat-${args.blobRef.id}`, message: args.blobRef.id },
                 blackboard: { revision: published.length, widgets: [] },
             };
         },
     });
     const busyStates = [];
     component.elements = {
-        chatImageButton: {
+        chatAttachmentButton: {
             disabled: false,
             classList: { toggle(_name, active) { busyStates.push(active); } },
             setAttribute() {},
@@ -226,7 +227,7 @@ test('image upload queue continues after one file fails and preserves order', as
     };
 
     try {
-        await component.publishImages([
+        await component.publishAttachments([
             { name: 'first.png', type: 'image/png', size: 10 },
             { name: 'notes.txt', type: 'text/plain', size: 10 },
             { name: 'broken.png', type: 'image/png', size: 10 },
@@ -236,12 +237,11 @@ test('image upload queue continues after one file fails and preserves order', as
         globalThis.fetch = previousFetch;
     }
 
-    assert.deepEqual(fetched, ['first.png', 'broken.png', 'last.jpg']);
-    assert.deepEqual(published, ['first.png', 'last.jpg']);
-    assert.equal(state.chat.length, 2);
-    assert.equal(refreshCount, 2);
-    assert.match(errors[0], /Choose a PNG/);
-    assert.match(errors[1], /temporary failure/);
+    assert.deepEqual(fetched, ['first.png', 'notes.txt', 'broken.png', 'last.jpg']);
+    assert.deepEqual(published, ['first.png', 'notes.txt', 'last.jpg']);
+    assert.equal(state.chat.length, 3);
+    assert.equal(refreshCount, 3);
+    assert.match(errors[0], /temporary failure/);
     assert.deepEqual(busyStates, [true, false]);
 });
 
@@ -351,6 +351,24 @@ test('/robo reports the explicit server error as its terminal status', async () 
     assert.equal(statuses[1].errorMessage, 'There are multiple lines.');
 });
 
+test('/robo reports an active workspace lookup failure without rejecting sendChat', async () => {
+    let errorMessage = '';
+    const { component } = makeComponent({
+        getActiveBoardId: () => '',
+        setError: (message) => { errorMessage = message; },
+        runTool: async (name) => {
+            assert.equal(name, 'webmeet_blackboard_workspace_get');
+            throw new Error('Workspace read failed.');
+        },
+    });
+    component.elements = { chatInput: { value: '/robo move the shape' } };
+
+    await assert.doesNotReject(() => component.sendChat());
+
+    assert.match(errorMessage, /Workspace read failed/);
+    assert.equal(component.elements.chatInput.value, '/robo move the shape');
+});
+
 test('/robo event error remains available as an audit message', async () => {
     const state = { chat: [], session: { participantIdentity: 'p-1', participant: { displayName: 'User One' } } };
     let errorMessage = '';
@@ -362,6 +380,7 @@ test('/robo event error remains available as an audit message', async () => {
         renderFeedLists: () => {},
         loadMeetingDetails: async () => {},
         getRoom: () => null,
+        getActiveBoardId: () => 'board-1',
         setError: (message) => { errorMessage = message; },
         runTool: async () => ({
             ok: false,
@@ -389,7 +408,7 @@ test('/robo command applies the open blackboard and broadcasts its revision', as
             ok: true,
             auditMessage: { id: 'chat-live', kind: 'event', message: args.event, metadata: { status: 'success' } },
             visibilityPayload: { type: 'blackboard.visibility_changed', visible: true },
-            blackboard: { boardId: 'agent:agent_robo_team', revision: 42, widgets: [] }
+            blackboard: { boardId: 'board-1', revision: 42, widgets: [] }
         };
     };
     component.elements = { chatInput: { value: '/robo go to next paragraph' } };
@@ -399,7 +418,7 @@ test('/robo command applies the open blackboard and broadcasts its revision', as
     assert.equal(state.chat[0].message, '/robo go to next paragraph');
     assert.equal(refreshResult.blackboard.revision, 42);
     const update = published.find((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED);
-    assert.equal(update.boardId, 'agent:agent_robo_team');
+    assert.equal(update.boardId, 'board-1');
     assert.equal(update.blackboardRevision, 42);
     assert.equal(published.some((payload) => payload.type === WEBMEET_EVENT_TYPES.BLACKBOARD_VISIBILITY_CHANGED), false);
 });

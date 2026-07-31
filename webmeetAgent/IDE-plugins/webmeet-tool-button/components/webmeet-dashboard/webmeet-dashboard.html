@@ -337,6 +337,41 @@
                         </label>
                     </div>
                     <div id="webmeetChatList" class="webmeet-scroll-list"></div>
+                    <template data-template="chat-entry">
+                        <div class="webmeet-feed-item">
+                            <div class="webmeet-chat-entry">
+                                <div class="webmeet-chat-message-content">
+                                    <div class="webmeet-chat-meta">
+                                        <strong class="webmeet-chat-author" data-role="chat-author"></strong>
+                                        <span class="webmeet-chat-event-status" data-role="chat-event-status" hidden></span>
+                                        <span class="webmeet-chat-time" data-role="chat-time"></span>
+                                    </div>
+                                    <div class="webmeet-chat-text" data-role="chat-text"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <template data-template="chat-image-attachment">
+                        <button type="button" class="webmeet-chat-attachment-button"
+                                data-local-action="openChatAttachment">
+                            <img class="webmeet-chat-attachment-image" data-role="attachment-image"
+                                 alt="" loading="lazy">
+                        </button>
+                    </template>
+                    <template data-template="chat-file-attachment">
+                        <article class="webmeet-chat-file-attachment">
+                            <button type="button" class="webmeet-chat-file-open"
+                                    data-local-action="openChatAttachment">
+                                <span class="webmeet-chat-file-extension" data-role="attachment-extension"></span>
+                                <span class="webmeet-chat-file-details">
+                                    <strong data-role="attachment-name"></strong>
+                                    <span data-role="attachment-meta"></span>
+                                </span>
+                            </button>
+                            <button type="button" class="webmeet-chat-file-download"
+                                    data-local-action="downloadChatAttachment">Download</button>
+                        </article>
+                    </template>
                     <div id="webmeetChatComposer" class="webmeet-compose">
                         <div id="webmeetChatDropOverlay" class="webmeet-chat-drop-overlay"
                              aria-hidden="true" hidden>
@@ -347,10 +382,10 @@
                                 <circle cx="8.5" cy="8.5" r="1.5"></circle>
                                 <path d="m21 15-5-5L5 21"></path>
                             </svg>
-                            <span>Drop images to upload</span>
+                            <span>Drop files to upload</span>
                         </div>
                         <div class="webmeet-chat-add-control">
-                            <button id="webmeetChatImageButton" type="button"
+                            <button id="webmeetChatAttachmentButton" type="button"
                                     class="general-button webmeet-chat-image-button"
                                     data-local-action="toggleChatAddMenu"
                                     title="Add attachment" aria-label="Add attachment"
@@ -364,9 +399,9 @@
                                 </svg>
                             </button>
                             <div id="webmeetChatAddMenu" class="webmeet-chat-add-menu" role="menu" hidden>
-                                <button id="webmeetChatAddImageOption" type="button"
+                                <button id="webmeetChatAddFileOption" type="button"
                                         class="webmeet-chat-add-option" role="menuitem"
-                                        data-local-action="selectChatAddImage">
+                                        data-local-action="selectChatAddFile">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                                          stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                          stroke-linejoin="round" aria-hidden="true">
@@ -374,11 +409,11 @@
                                         <circle cx="8.5" cy="8.5" r="1.5"></circle>
                                         <path d="m21 15-5-5L5 21"></path>
                                     </svg>
-                                    <span>Add image</span>
+                                    <span>Add file</span>
                                 </button>
                             </div>
-                            <input id="webmeetChatImageInput" class="webmeet-sr-only" type="file"
-                                   accept="image/png,image/jpeg,image/webp,image/gif" tabindex="-1">
+                            <input id="webmeetChatFileInput" class="webmeet-sr-only" type="file"
+                                   multiple tabindex="-1">
                         </div>
                         <div class="webmeet-chat-input-shell">
                             <textarea id="webmeetChatInput" class="form-input" rows="2"

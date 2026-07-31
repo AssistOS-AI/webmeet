@@ -3,6 +3,7 @@ export const BLACKBOARD_WIDGET_TYPES = Object.freeze([
     'line',
     'text',
     'image',
+    'file',
     'card',
     'poll',
     'bullets',
@@ -15,6 +16,7 @@ export const BLACKBOARD_GROUPABLE_WIDGET_TYPES = Object.freeze([
     'line',
     'text',
     'image',
+    'file',
     'card'
 ]);
 
@@ -34,6 +36,7 @@ export const BLACKBOARD_CHANGE_TYPES = Object.freeze([
 
 export const DEFAULT_BLACKBOARD_HISTORY_DEPTH = 5;
 export const MIN_BLACKBOARD_HISTORY_DEPTH = 3;
+export const BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE = Object.freeze({width: 160, height: 100});
 
 const PRIVILEGED_ROLES = new Set(['admin', 'moderator', 'agent', 'evaluator']);
 
@@ -74,6 +77,24 @@ function cloneHistorySnapshot(value) {
 
 function isPlainObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function enforceFileWidgetMinimumSize(type, properties = {}) {
+    if (type !== 'file' || !isPlainObject(properties?.geometry)) return properties;
+    const width = Number(properties.geometry.width);
+    const height = Number(properties.geometry.height);
+    if (
+        (!Number.isFinite(width) || width >= BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.width)
+        && (!Number.isFinite(height) || height >= BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.height)
+    ) return properties;
+    return {
+        ...properties,
+        geometry: {
+            ...properties.geometry,
+            ...(Number.isFinite(width) ? {width: Math.max(width, BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.width)} : {}),
+            ...(Number.isFinite(height) ? {height: Math.max(height, BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE.height)} : {}),
+        },
+    };
 }
 
 function finiteLineCoordinates(value = {}) {
@@ -143,7 +164,8 @@ function resetThemeStyleProperties(properties = {}, widgetType = '') {
         bullets: ['fill', 'stroke', 'textColor'],
         'scripta-document': ['fill', 'stroke', 'textColor'],
         embed: ['fill', 'stroke', 'textColor'],
-        image: ['stroke']
+        image: ['stroke'],
+        file: ['fill', 'stroke', 'textColor']
     };
     const keys = keysByType[String(widgetType || '').trim()] || ['fill', 'stroke', 'textColor'];
     let changed = false;
@@ -550,6 +572,7 @@ function translateWidget(widget, dx, dy, options = {}) {
 
 const GROUP_WIDGET_MINIMUM_SIZE = Object.freeze({
     line: { width: 1, height: 1 },
+    file: BLACKBOARD_FILE_WIDGET_MINIMUM_SIZE,
     poll: { width: 260, height: 132 },
     bullets: { width: 320, height: 190 },
     'scripta-document': { width: 600, height: 400 },
@@ -576,6 +599,93 @@ function widgetsBounds(widgets = []) {
     const right = Math.max(...geometries.map((geometry) => geometry.x + geometry.width));
     const bottom = Math.max(...geometries.map((geometry) => geometry.y + geometry.height));
     return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+}
+
+function groupGeometryMembers(widgets = []) {
+    return widgets.filter((widget) => !widget.properties?.connection);
+}
+
+function connectionTargetId(endpoint = {}) {
+    return String(endpoint?.widgetId || endpoint?.groupId || '').trim();
+}
+
+function rotatePoint(point, center, degrees = 0) {
+    const radians = Number(degrees || 0) * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    return {x: center.x + dx * cosine - dy * sine, y: center.y + dx * sine + dy * cosine};
+}
+
+function boundsAnchor(bounds, anchor = 'center', rotation = 0) {
+    const center = {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2};
+    const points = {
+        left: {x: bounds.x, y: center.y},
+        right: {x: bounds.x + bounds.width, y: center.y},
+        top: {x: center.x, y: bounds.y},
+        bottom: {x: center.x, y: bounds.y + bounds.height},
+        center,
+    };
+    return rotatePoint(points[String(anchor || 'center')] || center, center, rotation);
+}
+
+function resolveConnectionEndpoint(widgets, endpoint) {
+    if (!endpoint) return null;
+    if (endpoint.widgetId) {
+        const target = widgets.get(String(endpoint.widgetId));
+        if (!target) return null;
+        const geometry = widgetGeometry(target);
+        const rotation = Number(target.properties?.rotation ?? target.properties?.geometry?.rotation ?? 0);
+        return boundsAnchor(geometry, endpoint.anchor, rotation);
+    }
+    if (endpoint.groupId) {
+        const members = [...widgets.values()].filter((widget) => widget.groupId === String(endpoint.groupId));
+        const geometryMembers = groupGeometryMembers(members);
+        if (!geometryMembers.length) return null;
+        return boundsAnchor(widgetsBounds(geometryMembers), endpoint.anchor, 0);
+    }
+    return null;
+}
+
+function projectedLinePoints(widgets, lineWidget) {
+    const geometry = widgetGeometry(lineWidget);
+    const line = lineWidget.properties?.line || {};
+    const fallback = {
+        from: {x: geometry.x + Number(line.x1 ?? 0), y: geometry.y + Number(line.y1 ?? geometry.height / 2)},
+        to: {x: geometry.x + Number(line.x2 ?? geometry.width), y: geometry.y + Number(line.y2 ?? geometry.height / 2)},
+    };
+    const connection = lineWidget.properties?.connection;
+    return {
+        from: resolveConnectionEndpoint(widgets, connection?.from) || fallback.from,
+        to: resolveConnectionEndpoint(widgets, connection?.to) || fallback.to,
+    };
+}
+
+function setLineFromAbsolutePoints(lineWidget, from, to, connection) {
+    const padding = 0.5;
+    const x = Math.min(from.x, to.x) - padding;
+    const y = Math.min(from.y, to.y) - padding;
+    const currentLine = lineWidget.properties?.line || {};
+    lineWidget.patch({properties: {
+        geometry: {
+            ...(lineWidget.properties?.geometry || {}),
+            x,
+            y,
+            width: Math.max(1, Math.abs(to.x - from.x) + padding * 2),
+            height: Math.max(1, Math.abs(to.y - from.y) + padding * 2),
+            rotation: 0,
+        },
+        rotation: 0,
+        line: {
+            ...currentLine,
+            x1: from.x - x,
+            y1: from.y - y,
+            x2: to.x - x,
+            y2: to.y - y,
+        },
+        connection,
+    }});
 }
 
 function resizeWidgetInGroup(widget, sourceBounds, targetBounds, scaleX, scaleY, options = {}) {
@@ -654,6 +764,7 @@ export class BlackboardWidget {
         this.properties = this.type === 'line'
             ? normalizeFreeLineProperties(input.properties || {})
             : cloneJson(input.properties || {});
+        this.properties = enforceFileWidgetMinimumSize(this.type, this.properties);
         this.groupId = String(input.groupId || '').trim();
         this.visibility = normalizeVisibility(input.visibility || 'all');
         this.locked = Boolean(input.locked);
@@ -676,6 +787,7 @@ export class BlackboardWidget {
         if (patch.properties !== undefined) {
             this.properties = mergePlainObject(this.properties, patch.properties);
         }
+        this.properties = enforceFileWidgetMinimumSize(this.type, this.properties);
         if (patch.groupId !== undefined) this.groupId = String(patch.groupId || '').trim();
         if (patch.visibility !== undefined) {
             this.visibility = normalizeVisibility(patch.visibility);
@@ -885,6 +997,7 @@ export class Blackboard {
         } else if (normalized.type === 'bullets') {
             normalized.properties = normalizeBulletsProperties(normalized.properties);
         }
+        this.assertValidConnection(normalized, normalized.properties?.connection);
         this.widgets.set(normalized.id, normalized);
         this.bumpRevision(options.revision);
         if (options.record !== false) {
@@ -895,6 +1008,40 @@ export class Blackboard {
 
     getWidget(widgetId) {
         return this.widgets.get(String(widgetId || '').trim()) || null;
+    }
+
+    assertValidConnection(widget, connection) {
+        if (!connection) return true;
+        if (widget?.type !== 'line') throw new Error('Only line widgets may define a connection.');
+        for (const [name, endpoint] of Object.entries({from: connection.from, to: connection.to})) {
+            if (!endpoint) continue;
+            const targetId = connectionTargetId(endpoint);
+            if (endpoint.widgetId) {
+                const target = this.getWidget(targetId);
+                if (!target) throw new Error(`Connection ${name} widget "${targetId}" was not found.`);
+                if (target.id === widget.id || target.type === 'line') throw new Error(`Connection ${name} must target a non-line widget.`);
+            } else if (endpoint.groupId) {
+                const members = [...this.widgets.values()].filter((candidate) => candidate.groupId === targetId);
+                if (members.length < 2) throw new Error(`Connection ${name} group "${targetId}" was not found.`);
+                if (members.some((candidate) => candidate.id === widget.id)) throw new Error(`Connection ${name} cannot target its own group.`);
+            }
+        }
+        return true;
+    }
+
+    detachGroupConnectionEndpoints(groupId) {
+        const targetGroupId = String(groupId || '').trim();
+        if (!targetGroupId) return;
+        for (const candidate of this.widgets.values()) {
+            const connection = candidate.type === 'line' ? candidate.properties?.connection : null;
+            if (!connection || ![connection.from?.groupId, connection.to?.groupId].includes(targetGroupId)) continue;
+            const points = projectedLinePoints(this.widgets, candidate);
+            const nextConnection = {
+                from: connection.from?.groupId === targetGroupId ? null : connection.from || null,
+                to: connection.to?.groupId === targetGroupId ? null : connection.to || null,
+            };
+            setLineFromAbsolutePoints(candidate, points.from, points.to, nextConnection.from || nextConnection.to ? nextConnection : null);
+        }
     }
 
     patchWidget(widgetId, patch = {}, options = {}) {
@@ -908,6 +1055,9 @@ export class Blackboard {
         }
         const before = widget.serializePrivileged();
         const cleanPatch = sanitizeWidgetPatch(widget, patch);
+        if (cleanPatch?.properties && Object.prototype.hasOwnProperty.call(cleanPatch.properties, 'connection')) {
+            this.assertValidConnection(widget, cleanPatch.properties.connection);
+        }
         const delta = cleanPatch?.properties?.geometryDelta;
         if (delta && typeof delta === 'object') {
             const dx = Number(delta.x || 0);
@@ -1188,32 +1338,63 @@ export class Blackboard {
 
     groupWidgets(widgetIds = [], options = {}) {
         const ids = [...new Set((Array.isArray(widgetIds) ? widgetIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
-        if (ids.length < 2) throw new Error('A group requires at least two widgets.');
-        const widgets = ids.map((id) => {
+        if (!ids.length) throw new Error('A group requires at least two widgets.');
+        const requestedWidgets = ids.map((id) => {
             const widget = this.getWidget(id);
             if (!widget) {
                 const error = new Error(`Blackboard widget "${id}" was not found.`);
                 error.code = 'widget_not_found';
                 throw error;
             }
-            if (widget.groupId) throw new Error(`Blackboard widget "${id}" already belongs to a group.`);
+            return widget;
+        });
+        const selectedGroupIds = new Set(requestedWidgets.map((widget) => widget.groupId).filter(Boolean));
+        const expandedIds = new Set(ids);
+        for (const candidate of this.widgets.values()) {
+            if (candidate.groupId && selectedGroupIds.has(candidate.groupId)) expandedIds.add(candidate.id);
+        }
+        const widgets = [...this.widgets.values()].filter((widget) => expandedIds.has(widget.id));
+        if (widgets.length < 2) throw new Error('A group requires at least two widgets.');
+        for (const widget of widgets) {
             if (!BLACKBOARD_GROUPABLE_WIDGET_TYPES.includes(widget.type)) {
                 const error = new Error(`Interactive blackboard widget type "${widget.type}" cannot be grouped.`);
                 error.code = 'widget_not_groupable';
                 throw error;
             }
-            return widget;
-        });
-        const selectedIds = new Set(ids);
+        }
+        const selectedIds = new Set(widgets.map((widget) => widget.id));
+        const endpointIsSelected = (endpoint) => {
+            if (!endpoint) return true;
+            if (endpoint.widgetId) return selectedIds.has(String(endpoint.widgetId));
+            if (endpoint.groupId) {
+                const members = [...this.widgets.values()].filter((candidate) => candidate.groupId === String(endpoint.groupId));
+                return members.length >= 2 && members.every((candidate) => selectedIds.has(candidate.id));
+            }
+            return false;
+        };
         for (const widget of widgets) {
             const connection = widget.properties?.connection;
-            if (connection && (!selectedIds.has(connection.from?.widgetId) || !selectedIds.has(connection.to?.widgetId))) {
-                throw new Error('An attached connection can be grouped only together with both endpoint widgets.');
+            if (connection && (!connection.from || !connection.to)) {
+                throw new Error('A connector with a free endpoint cannot become a rigid group member.');
+            }
+            if (connection && (!endpointIsSelected(connection.from) || !endpointIsSelected(connection.to))) {
+                throw new Error('An attached connection can be grouped only together with both endpoint widgets/groups that are attached.');
             }
         }
         const before = options.record !== false ? this.serializePrivileged() : null;
         const groupId = String(options.groupId || randomId('group')).trim();
         widgets.forEach((widget) => { widget.groupId = groupId; });
+        if (selectedGroupIds.size) {
+            for (const candidate of this.widgets.values()) {
+                const connection = candidate.properties?.connection;
+                if (!connection) continue;
+                for (const endpointName of ['from', 'to']) {
+                    if (selectedGroupIds.has(String(connection[endpointName]?.groupId || ''))) {
+                        connection[endpointName] = {...connection[endpointName], groupId};
+                    }
+                }
+            }
+        }
         this.bumpRevision(options.revision);
         if (options.record !== false) {
             this.history.record('group', before, this.serializePrivileged());
@@ -1287,7 +1468,12 @@ export class Blackboard {
         const memberIds = new Set(members.map((widget) => widget.id));
         for (const candidate of this.widgets.values()) {
             const connection = candidate.properties?.connection;
-            if (connection && (memberIds.has(connection.from?.widgetId) || memberIds.has(connection.to?.widgetId))) {
+            if (connection && (
+                memberIds.has(connection.from?.widgetId)
+                || memberIds.has(connection.to?.widgetId)
+                || connection.from?.groupId === groupId
+                || connection.to?.groupId === groupId
+            )) {
                 memberIds.add(candidate.id);
             }
         }
@@ -1304,6 +1490,7 @@ export class Blackboard {
     ungroupGroup(groupId, options = {}) {
         const members = this.getGroupMembers(groupId);
         const before = options.record !== false ? this.serializePrivileged() : null;
+        this.detachGroupConnectionEndpoints(groupId);
         members.forEach((widget) => { widget.groupId = ''; });
         this.bumpRevision(options.revision);
         if (options.record !== false) {
@@ -1320,7 +1507,10 @@ export class Blackboard {
             throw error;
         }
         const groupId = widget.groupId;
-        if (groupId) for (const member of this.widgets.values()) if (member.groupId === groupId) member.groupId = '';
+        if (groupId) {
+            this.detachGroupConnectionEndpoints(groupId);
+            for (const member of this.widgets.values()) if (member.groupId === groupId) member.groupId = '';
+        }
         this.bumpRevision(options.revision);
         return widget;
     }
@@ -1328,6 +1518,7 @@ export class Blackboard {
     dissolveSingletonGroups() {
         const counts = new Map();
         for (const widget of this.widgets.values()) if (widget.groupId) counts.set(widget.groupId, (counts.get(widget.groupId) || 0) + 1);
+        for (const [groupId, count] of counts) if (count < 2) this.detachGroupConnectionEndpoints(groupId);
         for (const widget of this.widgets.values()) if (widget.groupId && counts.get(widget.groupId) < 2) widget.groupId = '';
     }
 

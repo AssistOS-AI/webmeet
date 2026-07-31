@@ -64,9 +64,10 @@ import {
 import {
     applyRoomBlackboardChange as applyRoomBlackboardChangeImpl,
     applyRoomBlackboardEvents as applyRoomBlackboardEventsImpl,
+    applyRoomBlackboardWorkspaceAction as applyRoomBlackboardWorkspaceActionImpl,
     getRoomBlackboard as getRoomBlackboardImpl,
     getRoomBlackboardForCommand as getRoomBlackboardForCommandImpl,
-    publishRoomImage as publishRoomImageImpl,
+    publishRoomAttachment as publishRoomAttachmentImpl,
     redoRoomBlackboard as redoRoomBlackboardImpl,
     undoRoomBlackboard as undoRoomBlackboardImpl
 } from './blackboard/service.mjs';
@@ -98,6 +99,7 @@ import {
     applyScriptaCollaboration as applyScriptaCollaborationImpl,
     closeScriptaCollaboration as closeScriptaCollaborationImpl,
     repairScriptaBlackboardProjection as repairScriptaBlackboardProjectionImpl,
+    getScriptaRoomFolderPath,
 } from './scripta/service.mjs';
 import {
     WEBMEET_EVENT_TYPES,
@@ -247,6 +249,10 @@ export async function getRoomBlackboardForCommand(context, { roomId, boardId = '
     return await getRoomBlackboardForCommandImpl(context, { roomId, boardId, participantId, authInfo });
 }
 
+export async function applyRoomBlackboardWorkspaceAction(context, input = {}) {
+    return await applyRoomBlackboardWorkspaceActionImpl(context, input);
+}
+
 export async function authorizeMeetingParticipant(context, {
     roomId,
     participantId = '',
@@ -308,20 +314,19 @@ export async function applyRoomBlackboardEvents(context, input = {}) {
     return await applyRoomBlackboardEventsImpl(context, input);
 }
 
-export async function publishRoomImage(context, input = {}) {
-    return await publishRoomImageImpl(context, input);
+export async function publishRoomAttachment(context, input = {}) {
+    return await publishRoomAttachmentImpl(context, input);
 }
 
-export async function commitRoomMedia(context, { roomId, participantId = '', blobRef, filename = '', authInfo = null } = {}) {
+export async function commitRoomMedia(context, { roomId, participantId = '', blobRef, authInfo = null } = {}) {
     const record = await loadMeetingRecord(context, roomId);
     if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
     const payload = decryptMeetingPayload(context, record);
-    const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
+    authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
     return await scriptaExplorer.commitMedia(context, {
         roomId,
-        blobRef,
-        filename,
-        createdBy: effectiveParticipantId
+        roomFolderPath: getScriptaRoomFolderPath(record, payload),
+        blobRef
     });
 }
 
