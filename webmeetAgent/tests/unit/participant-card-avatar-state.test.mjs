@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { WebMeetParticipantCard } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-participant-card/webmeet-participant-card.js';
+
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const layoutControllerPath = path.join(
     repoRoot,
@@ -125,16 +127,49 @@ test('participant card restores avatar config and fallback letter from element a
     assert.match(source, /dataset\.avatarSize = size/);
 });
 
-test('participant card ignores stale video elements without active video tracks', async () => {
+test('participant card preserves pending video elements and ignores conclusively ended tracks', async () => {
     const source = await fs.readFile(participantCardPath, 'utf8');
 
-    assert.match(source, /function isActiveVideoElement\(mediaElement\)/);
+    assert.match(source, /function hasOnlyEndedVideoTracks\(mediaElement\)/);
     assert.match(source, /getVideoTracks/);
-    assert.match(source, /readyState \|\| ''\)\.trim\(\) !== 'ended'/);
+    assert.match(source, /readyState \|\| ''\)\.trim\(\) === 'ended'/);
     assert.match(source, /const candidateElements = Array\.from\(mediaElements\)\.filter\(Boolean\)/);
-    assert.match(source, /const nextElements = candidateElements\.filter\(isActiveVideoElement\)/);
+    assert.match(source, /const nextElements = candidateElements\.filter\(\(element\) => !hasOnlyEndedVideoTracks\(element\)\)/);
     assert.match(source, /cleanupVideoElement\(element\)/);
     assert.match(source, /hasVideo: nextElements\.length > 0/);
+
+    const createCard = () => {
+        const card = Object.create(WebMeetParticipantCard.prototype);
+        card.element = { style: { removeProperty() {} } };
+        card.refs = null;
+        card.mediaElement = null;
+        card.mediaElements = [];
+        card.mediaAspectCleanup = null;
+        card.state = {};
+        return card;
+    };
+    const createVideo = (tracks) => {
+        let removed = false;
+        return {
+            srcObject: { getVideoTracks: () => tracks },
+            addEventListener() {},
+            removeEventListener() {},
+            remove() { removed = true; },
+            get removed() { return removed; }
+        };
+    };
+
+    const pendingCard = createCard();
+    const pendingVideo = createVideo([]);
+    pendingCard.setVideoElements([pendingVideo]);
+    assert.deepEqual(pendingCard.mediaElements, [pendingVideo]);
+    assert.equal(pendingVideo.removed, false);
+
+    const endedCard = createCard();
+    const endedVideo = createVideo([{ readyState: 'ended' }]);
+    endedCard.setVideoElements([endedVideo]);
+    assert.deepEqual(endedCard.mediaElements, []);
+    assert.equal(endedVideo.removed, true);
 });
 
 test('participant card keeps fallback initials until axi-face is registered', async () => {

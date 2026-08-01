@@ -42,11 +42,11 @@ function getElementVideoTracks(mediaElement) {
     return stream.getVideoTracks().filter(Boolean);
 }
 
-function isActiveVideoElement(mediaElement) {
+function hasOnlyEndedVideoTracks(mediaElement) {
     if (!mediaElement) return false;
     const tracks = getElementVideoTracks(mediaElement);
     if (!tracks.length) return false;
-    return tracks.some((track) => String(track?.readyState || '').trim() !== 'ended');
+    return tracks.every((track) => String(track?.readyState || '').trim() === 'ended');
 }
 
 function cleanupVideoElement(mediaElement) {
@@ -148,7 +148,7 @@ export class WebMeetParticipantCard {
 
     setVideoElements(mediaElements = []) {
         const candidateElements = Array.from(mediaElements).filter(Boolean);
-        const nextElements = candidateElements.filter(isActiveVideoElement);
+        const nextElements = candidateElements.filter((element) => !hasOnlyEndedVideoTracks(element));
         this.mediaAspectCleanup?.();
         this.mediaAspectCleanup = null;
         const previousElements = this.mediaElements.length ? this.mediaElements : (this.mediaElement ? [this.mediaElement] : []);
