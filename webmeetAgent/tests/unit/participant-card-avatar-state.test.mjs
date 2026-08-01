@@ -172,6 +172,15 @@ test('participant card preserves pending video elements and ignores conclusively
     assert.equal(endedVideo.removed, true);
 });
 
+test('WebMeet registers participant cards before dashboard data can create them', async () => {
+    const source = await fs.readFile(dashboardModalPath, 'utf8');
+
+    assert.match(source, /async function ensureParticipantCardRegistered\(\)/);
+    assert.match(source, /ensureComponentRegistered\(componentName\)/);
+    assert.match(source, /registration did not complete/);
+    assert.match(source, /async beforeRender\(\) \{\s*await ensureParticipantCardRegistered\(\);/);
+});
+
 test('participant card keeps fallback initials until axi-face is registered', async () => {
     const source = await fs.readFile(participantCardPath, 'utf8');
 

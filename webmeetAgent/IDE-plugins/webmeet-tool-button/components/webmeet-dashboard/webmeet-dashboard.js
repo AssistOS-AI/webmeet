@@ -42,6 +42,19 @@ import {
 
 let avatarSettingsFormRegistrationPromise = null;
 
+async function ensureParticipantCardRegistered() {
+    const componentName = 'webmeet-participant-card';
+    if (globalThis.customElements?.get?.(componentName)) return;
+    const webSkel = globalThis.assistOS?.webSkel || globalThis.UI || globalThis.webSkel;
+    if (typeof webSkel?.ensureComponentRegistered !== 'function') {
+        throw new Error('WebMeet participant cards cannot be registered.');
+    }
+    await webSkel.ensureComponentRegistered(componentName);
+    if (!globalThis.customElements?.get?.(componentName)) {
+        throw new Error('WebMeet participant card registration did not complete.');
+    }
+}
+
 function getSharedAvatarSettingsComponentBaseUrl() {
     return '/explorer/shared/ui/avatar-settings-form/avatar-settings-form';
 }
@@ -428,6 +441,7 @@ export class WebmeetDashboard {
     }
 
     async beforeRender() {
+        await ensureParticipantCardRegistered();
         this.prepareInitialRouteState?.();
         return null;
     }

@@ -10,6 +10,14 @@ export async function applyPermanentRoomDeletion(controller, meeting, result, ru
         throw new Error('Delete room tool is unavailable.');
     }
 
+    const activeRoomId = String(controller.state?.session?.meeting?.id || '').trim();
+    if (activeRoomId === roomId && typeof controller.unjoinCurrentSession === 'function') {
+        await controller.unjoinCurrentSession({
+            preserveDisplayName: false,
+            manageTransition: false
+        });
+    }
+
     const deletion = await runTool('webmeet_room_delete', {
         roomId,
         confirmed: true
@@ -19,15 +27,7 @@ export async function applyPermanentRoomDeletion(controller, meeting, result, ru
     }
 
     controller.clearMeetingGetCache?.(roomId);
-    const activeRoomId = String(controller.state?.session?.meeting?.id || '').trim();
-    if (activeRoomId === roomId && typeof controller.unjoinCurrentSession === 'function') {
-        await controller.unjoinCurrentSession({
-            preserveDisplayName: false,
-            manageTransition: false
-        });
-    } else {
-        await controller.loadMeetings();
-    }
+    await controller.loadMeetings();
     if (controller.state?.meetings?.some((entry) => String(entry?.id || '').trim() === roomId)) {
         throw new Error('Deleted room is still present in the refreshed room list.');
     }

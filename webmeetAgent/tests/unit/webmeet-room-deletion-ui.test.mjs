@@ -192,11 +192,11 @@ test('deleting the active room disconnects its local session before reporting ab
         async unjoinCurrentSession(options) {
             calls.push({ unjoin: options });
             this.state.session = null;
-            this.state.meetings = [];
-            this.state.selectedMeetingId = '';
         },
         async loadMeetings() {
-            throw new Error('active deletion must use the session cleanup path');
+            calls.push('list-refresh');
+            this.state.meetings = [];
+            this.state.selectedMeetingId = '';
         },
         renderAll() {
             calls.push('render');
@@ -210,16 +210,21 @@ test('deleting the active room disconnects its local session before reporting ab
         roomId: room.id,
         delete: true,
         confirmed: true
-    }, async () => ({
-        ok: true,
-        deleted: true,
-        roomId: room.id
-    }));
+    }, async () => {
+        calls.push('delete-tool');
+        return {
+            ok: true,
+            deleted: true,
+            roomId: room.id
+        };
+    });
 
     assert.deepEqual(calls.find((entry) => entry?.unjoin)?.unjoin, {
         preserveDisplayName: false,
         manageTransition: false
     });
+    assert.ok(calls.findIndex((entry) => entry?.unjoin) < calls.indexOf('delete-tool'));
+    assert.ok(calls.indexOf('delete-tool') < calls.indexOf('list-refresh'));
     assert.equal(controller.state.session, null);
     assert.equal(controller.state.meetings.length, 0);
 });
