@@ -97,6 +97,49 @@ async function callLiveKitRoomApi(context, methodName, roomName, body) {
     return parsed || {};
 }
 
+async function callLiveKitAgentDispatchApi(context, methodName, roomName, body) {
+    const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
+    if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
+        throw new Error('LiveKit agent dispatch API is not configured.');
+    }
+    const token = createLiveKitRoomAdminToken(context, roomName);
+    const response = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/${methodName}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+    });
+    const text = await response.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
+    if (!response.ok) {
+        throw new Error(`LiveKit agent dispatch API failed: ${parsed?.msg || parsed?.message || text || response.status}`);
+    }
+    return parsed || {};
+}
+
+export async function createMeetingSecretaryDispatch(context, roomName, metadata = {}) {
+    if (typeof context.createLiveKitAgentDispatch === 'function') {
+        return context.createLiveKitAgentDispatch(roomName, metadata);
+    }
+    return callLiveKitAgentDispatchApi(context, 'CreateDispatch', roomName, {
+        room: roomName,
+        agentName: String(process.env.WEBMEET_SCRIBE_AGENT_NAME || 'webmeet-meeting-secretary'),
+        metadata: JSON.stringify(metadata),
+    });
+}
+
+export async function sendLiveKitRoomData(context, roomName, encodedPayload, { topic = 'webmeet.events' } = {}) {
+    if (typeof context.sendLiveKitRoomData === 'function') {
+        return context.sendLiveKitRoomData(roomName, encodedPayload, { topic });
+    }
+    return callLiveKitRoomApi(context, 'SendData', roomName, {
+        room: roomName,
+        data: Buffer.from(String(encodedPayload || ''), 'utf8').toString('base64'),
+        kind: 0,
+        topic: String(topic || 'webmeet.events'),
+    });
+}
+
 function isMissingLiveKitRoom(error) {
     return String(error?.liveKitCode || '').trim().toLowerCase() === 'not_found'
         && Number(error?.httpStatus || 0) === 404;

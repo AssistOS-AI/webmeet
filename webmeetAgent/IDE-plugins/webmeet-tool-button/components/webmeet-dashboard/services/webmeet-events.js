@@ -26,6 +26,8 @@ export const WEBMEET_EVENT_TYPES = Object.freeze({
     CHAT_REALTIME: 'chat',
     AGENT_DISPATCHED: 'agent.dispatched',
     AGENT_DETACHED: 'agent.detached',
+    MEETING_NOTES_SETTINGS_CHANGED: 'meeting_notes.settings_changed',
+    MEETING_NOTES_ACTIVITY: 'meeting_notes.activity',
     RESOURCE_CREATED: 'resource.created',
     RESOURCE_REMOVED: 'resource.removed',
     SCRIPTA_CONTEXT_CHANGED: 'scripta.context.changed',
@@ -106,6 +108,16 @@ const EVENT_DEFINITIONS = Object.freeze({
         persistent: true,
         workspacePersistent: true,
         required: ['meetingId', 'agentId']
+    },
+    [WEBMEET_EVENT_TYPES.MEETING_NOTES_SETTINGS_CHANGED]: {
+        persistent: true,
+        workspacePersistent: false,
+        required: ['meetingId']
+    },
+    [WEBMEET_EVENT_TYPES.MEETING_NOTES_ACTIVITY]: {
+        persistent: false,
+        workspacePersistent: false,
+        required: ['meetingId', 'phase']
     },
     [WEBMEET_EVENT_TYPES.RESOURCE_CREATED]: {
         persistent: true,

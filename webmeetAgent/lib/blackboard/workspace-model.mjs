@@ -367,6 +367,8 @@ export class BlackboardWorkspace {
                 return {
                     boardId,
                     title: normalizeTitle(board.metadata?.title, 'Workspace'),
+                    purpose: String(board.metadata?.purpose || ''),
+                    systemManaged: board.metadata?.systemManaged === true,
                     revision: board.revision,
                     widgetCount: board.widgets.size,
                 };

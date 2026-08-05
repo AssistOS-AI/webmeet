@@ -10,6 +10,8 @@ function setBrowserGlobals() {
     const browserWindow = new EventTarget();
     browserWindow.setTimeout = globalThis.setTimeout.bind(globalThis);
     browserWindow.clearTimeout = globalThis.clearTimeout.bind(globalThis);
+    browserWindow.setInterval = globalThis.setInterval.bind(globalThis);
+    browserWindow.clearInterval = globalThis.clearInterval.bind(globalThis);
     const connection = new EventTarget();
     Object.defineProperty(globalThis, 'window', {
         configurable: true,
@@ -55,6 +57,34 @@ test('network refresh listeners are exact and removed when the dashboard unloads
     connection.dispatchEvent(new Event('change'));
     await Promise.resolve();
     assert.deepEqual(reasons, ['network-transition', 'network-transition']);
+});
+
+test('connected room starts edge refresh and Meeting Notes transcription together', () => {
+    const source = roomSessionMethods.connectRoom.toString();
+    assert.match(source, /onConnected:[\s\S]*installJoinMaterialRefreshListeners\(\)[\s\S]*scheduleJoinMaterialRefresh\(\)[\s\S]*meetingNotesTranscription\?\.sync/);
+});
+
+test('room UI reset handles the explicit session cleanup option', () => {
+    setBrowserGlobals();
+    const presenter = {
+        roomLiveKit: { getRoom: () => null },
+        mediaController: { reset() {} },
+        state: {
+            session: { meeting: { id: 'room-1' } },
+            media: {},
+            mediaLoading: {},
+        },
+        resetBlackboardUiState() {},
+        meetingNotesTranscription: { sync() {} },
+        remoteAudioNormalizer: { stopAll() {} },
+        participantLayoutController: { clearAll() {} },
+        renderMeetingSummary() {},
+        renderFeedLists() {},
+    };
+
+    roomSessionMethods.resetRoomUiState.call(presenter, { clearSession: true });
+
+    assert.equal(presenter.state.session, null);
 });
 
 test('local direct-UDP sessions do not schedule TURN credential refresh', () => {

@@ -66,6 +66,11 @@ test('SCRIPTA variant edits are serialized per document', async () => {
         load() {
             return structuredClone(initialDocument);
         },
+        updateText(document, objectPath, value) {
+            const property = objectPath.at(-1);
+            const target = objectPath.slice(0, -1).reduce((current, segment) => current[segment], document);
+            target[property] = String(value);
+        },
         change(document, callback) {
             const next = structuredClone(document);
             callback(next);
@@ -168,7 +173,7 @@ test('local SCRIPTA events publish immediately and synchronize cached replicas i
         participantId: 'participant-1',
         runTool: async () => ({
             ok: true,
-            blackboard: { version: 2, widgets: [] },
+            blackboard: { version: 2, revision: 2, widgets: [] },
         }),
         publishRealtimePayload: async () => {},
     });

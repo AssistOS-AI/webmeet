@@ -14,6 +14,15 @@ export const ROBO_TEAM_AGENT_TYPE = 'robo_team';
 export const ROBO_TEAM_MODE = 'blackboard_demo';
 export const ROBO_TEAM_PARTICIPANT_ID = 'agent_robo_team';
 
+export const DEFAULT_MEETING_NOTES_STRUCTURE_PROMPT = `Create a meeting title followed by these chapters in this exact order:
+Summary
+Ideas and proposals
+Decisions
+Questions
+Risks
+Actions
+Unresolved points`;
+
 export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     assistant: {
         name: 'Robo Team',
@@ -23,10 +32,8 @@ export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     },
     meetingNotes: {
         enabled: false,
-        sections: [],
-        visibleDuringMeeting: false,
-        reviewEnabled: false,
-        exportEnabled: false
+        structurePrompt: DEFAULT_MEETING_NOTES_STRUCTURE_PROMPT,
+        timeZone: 'Europe/Bucharest'
     },
     blackboard: {
         enabled: true,
@@ -64,6 +71,13 @@ export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
         silenceAsAcceptanceForMinorChanges: false,
         explicitApprovalForSensitiveActions: true
     }
+});
+
+const LEGACY_BROWSER_ASSISTANT_DEFAULT = Object.freeze({
+    name: 'Assistant',
+    mode: 'meeting-assistant',
+    instructions: 'Help participants follow the room objective, keep the discussion clear, and summarize important points.',
+    scenarioOrObjective: 'meeting',
 });
 
 function nowIso() {
@@ -106,8 +120,20 @@ export function normalizeRoboTeamSettings(settings = {}) {
         || DEFAULT_ROBO_TEAM_SETTINGS.assistant.instructions;
     output.assistant.scenarioOrObjective = String(output.assistant.scenarioOrObjective || DEFAULT_ROBO_TEAM_SETTINGS.assistant.scenarioOrObjective).trim()
         || DEFAULT_ROBO_TEAM_SETTINGS.assistant.scenarioOrObjective;
+    if (Object.entries(LEGACY_BROWSER_ASSISTANT_DEFAULT).every(([key, value]) => output.assistant[key] === value)) {
+        output.assistant = cloneJson(DEFAULT_ROBO_TEAM_SETTINGS.assistant);
+    }
     output.blackboard.visibility = String(output.blackboard.visibility || DEFAULT_ROBO_TEAM_SETTINGS.blackboard.visibility).trim()
         || DEFAULT_ROBO_TEAM_SETTINGS.blackboard.visibility;
+    output.meetingNotes.timeZone = String(output.meetingNotes.timeZone || DEFAULT_ROBO_TEAM_SETTINGS.meetingNotes.timeZone).trim()
+        || DEFAULT_ROBO_TEAM_SETTINGS.meetingNotes.timeZone;
+    output.meetingNotes.structurePrompt = String(output.meetingNotes.structurePrompt || '').trim()
+        || DEFAULT_ROBO_TEAM_SETTINGS.meetingNotes.structurePrompt;
+    delete output.meetingNotes.prompt;
+    delete output.meetingNotes.sections;
+    delete output.meetingNotes.visibleDuringMeeting;
+    delete output.meetingNotes.reviewEnabled;
+    delete output.meetingNotes.exportEnabled;
     return output;
 }
 
@@ -353,6 +379,10 @@ export async function updateRoboTeamSettings(context, { roomId, settings, authIn
             mode: ROBO_TEAM_MODE,
             runtime: 'ploinky',
             status: agent.status
+        });
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.MEETING_NOTES_SETTINGS_CHANGED, {
+            meetingId: targetRoomId,
+            enabled: normalized.meetingNotes.enabled,
         });
     });
     return {

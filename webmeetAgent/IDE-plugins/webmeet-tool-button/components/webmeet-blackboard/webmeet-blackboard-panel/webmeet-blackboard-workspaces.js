@@ -881,6 +881,7 @@ export const blackboardWorkspaceMethods = {
     renameWorkspaceBoard(target) {
         const boardId = String(target?.dataset?.boardId || '').trim();
         const summary = (this.workspace?.boards || []).find((board) => String(board.boardId) === boardId);
+        if (summary?.systemManaged === true) return;
         if (!boardId || !summary) return;
         this.renamingWorkspaceBoardId = boardId;
         this.renderWorkspaceTabs();

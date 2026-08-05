@@ -92,6 +92,7 @@ import {
     listScriptaWorkspaceEntries as listScriptaWorkspaceEntriesImpl,
     manageScriptaDocument as manageScriptaDocumentImpl,
     mutateScripta as mutateScriptaImpl,
+    mergeScriptaDocumentMarkdown as mergeScriptaDocumentMarkdownImpl,
     navigateScripta as navigateScriptaImpl,
     openScriptaDocument as openScriptaDocumentImpl,
     openScriptaCollaboration as openScriptaCollaborationImpl,
@@ -103,9 +104,19 @@ import {
 } from './scripta/service.mjs';
 import {
     WEBMEET_EVENT_TYPES,
+    buildWebMeetEvent,
 } from '../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
+import { sendLiveKitRoomData } from './runtime/livekitRuntime.mjs';
 import { authorizeRoomParticipantId } from './store/participantAuthorization.mjs';
 import { scriptaExplorer } from './scripta/explorer-crdt-client.mjs';
+import {
+    applyMeetingNotesDocument as applyMeetingNotesDocumentImpl,
+    finalizeMeetingNotesSession as finalizeMeetingNotesSessionImpl,
+    heartbeatMeetingNotesSession as heartbeatMeetingNotesSessionImpl,
+    ensureMeetingSecretaryDispatch,
+    ensureMeetingNotesWorkspace,
+    startMeetingNotesSession as startMeetingNotesSessionImpl,
+} from './meetingNotes/service.mjs';
 
 const DEFAULT_ROOM_TITLE = 'General';
 
@@ -128,6 +139,7 @@ function isActiveMeetingAgent(agent) {
     const status = String(agent?.status || '').trim().toLowerCase();
     return Boolean(agent)
         && String(agent.agentType || '').trim() !== ROBO_TEAM_AGENT_TYPE
+        && String(agent.agentType || '').trim() !== 'meeting_secretary'
         && !agent.deletedAt
         && status !== 'detached'
         && status !== 'stopped';
@@ -198,7 +210,8 @@ async function detachActiveAgentsWhenRoomHasNoHumans(context, meetingId, reason 
 
 const participantServiceDeps = {
     randomId,
-    detachActiveAgentsWhenRoomHasNoHumans
+    detachActiveAgentsWhenRoomHasNoHumans,
+    ensureMeetingSecretaryDispatch
 };
 
 async function cleanupMeetingPresence(context, meetingId) {
@@ -343,7 +356,36 @@ export async function getRoboTeamSettings(context, { roomId, authInfo = null } =
 }
 
 export async function updateRoboTeamSettings(context, { roomId, settings, authInfo = null } = {}) {
-    return await updateRoboTeamSettingsImpl(context, { roomId, settings, authInfo });
+    const result = await updateRoboTeamSettingsImpl(context, { roomId, settings, authInfo });
+    let notesWorkspace = null;
+    if (result.settings?.meetingNotes?.enabled) {
+        notesWorkspace = await ensureMeetingNotesWorkspace(context, roomId);
+        await ensureMeetingSecretaryDispatch(context, roomId);
+    }
+    const record = await loadMeetingRecord(context, roomId);
+    await sendLiveKitRoomData(context, record.roomName, buildWebMeetEvent(
+        roomId,
+        WEBMEET_EVENT_TYPES.MEETING_NOTES_SETTINGS_CHANGED,
+        { meetingId: roomId },
+    )).catch(() => {});
+    if (notesWorkspace?.created) {
+        await sendLiveKitRoomData(context, record.roomName, buildWebMeetEvent(
+            roomId,
+            WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+            {
+                meetingId: roomId,
+                boardId: notesWorkspace.boardId,
+                blackboardRevision: notesWorkspace.blackboardRevision,
+                workspaceRevision: notesWorkspace.workspaceRevision,
+                changeType: 'create',
+                targetType: 'workspace',
+                targetRef: notesWorkspace.boardId,
+                reason: 'meeting_notes_workspace',
+                objectKind: 'workspace',
+            },
+        )).catch(() => {});
+    }
+    return result;
 }
 
 export async function recordProfileAvatarUpdated(context, {
@@ -723,6 +765,10 @@ export async function mutateScripta(context, input = {}) {
     return await mutateScriptaImpl(context, input);
 }
 
+export async function mergeScriptaDocumentMarkdown(context, input = {}) {
+    return await mergeScriptaDocumentMarkdownImpl(context, input);
+}
+
 export async function createScriptaDocument(context, input = {}) {
     return await createScriptaDocumentImpl(context, input);
 }
@@ -757,6 +803,22 @@ export async function applyScriptaCollaboration(context, input = {}) {
 
 export async function closeScriptaCollaboration(context, input = {}) {
     return await closeScriptaCollaborationImpl(context, input);
+}
+
+export async function startMeetingNotesSession(context, input = {}) {
+    return await startMeetingNotesSessionImpl(context, input);
+}
+
+export async function applyMeetingNotesDocument(context, input = {}) {
+    return await applyMeetingNotesDocumentImpl(context, input);
+}
+
+export async function heartbeatMeetingNotesSession(context, input = {}) {
+    return await heartbeatMeetingNotesSessionImpl(context, input);
+}
+
+export async function finalizeMeetingNotesSession(context, input = {}) {
+    return await finalizeMeetingNotesSessionImpl(context, input);
 }
 
 export {

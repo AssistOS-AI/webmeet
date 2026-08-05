@@ -138,6 +138,15 @@
 <template data-template="scripta-document">
     <article class="webmeet-scripta-document">
         <header class="webmeet-scripta-document-header">
+            <div class="webmeet-scripta-meeting-notes-status"
+                 data-role="meeting-notes-status"
+                 role="status"
+                 aria-live="polite"
+                 hidden>
+                <span class="webmeet-scripta-meeting-notes-indicator" aria-hidden="true"></span>
+                <span class="webmeet-scripta-meeting-notes-label" data-role="meeting-notes-status-label"></span>
+                <span class="webmeet-scripta-meeting-notes-meta" data-role="meeting-notes-status-meta"></span>
+            </div>
             <h2 class="webmeet-scripta-document-title" data-role="document-title"></h2>
             <span class="webmeet-scripta-document-position webmeet-scripta-context-meta"
                   data-role="document-position"

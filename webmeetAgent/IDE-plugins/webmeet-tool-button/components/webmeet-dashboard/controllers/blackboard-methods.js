@@ -166,6 +166,16 @@ export const blackboardMethods = {
         this.measureRoboCommandStatusOverflow();
     },
 
+    renderMeetingNotesBlackboardStatus() {
+        dispatchBlackboardPanelEvent(this.blackboardPanel, 'webmeet-blackboard-meeting-notes-activity', {
+            activity: {
+                ...(this.state.meetingNotesActivity || {}),
+                enabled: Boolean(this.state.session?.meetingNotes?.enabled),
+                transcriptionStatus: String(this.state.meetingNotesTranscriptionStatus || ''),
+            },
+        });
+    },
+
     measureRoboCommandStatusOverflow() {
         const status = this.blackboardCommandStatus;
         if (!status || status.hidden) return;
@@ -271,6 +281,7 @@ export const blackboardMethods = {
             blackboard,
             workspace: adapter.workspace,
         });
+        this.renderMeetingNotesBlackboardStatus();
     },
 
     async refreshChatBlackboard(result = {}, options = {}) {

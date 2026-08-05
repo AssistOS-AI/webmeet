@@ -17,14 +17,14 @@ export const SCENARIO_OPTIONS = Object.freeze([
     { value: 'video-production', label: 'Video production' }
 ]);
 
-export const MEETING_NOTES_SECTIONS = Object.freeze([
-    { value: 'ideas', label: 'Important ideas' },
-    { value: 'decisions', label: 'Decisions' },
-    { value: 'questions', label: 'Questions' },
-    { value: 'risks', label: 'Risks' },
-    { value: 'actions', label: 'Future actions' },
-    { value: 'unresolved', label: 'Unresolved points' }
-]);
+export const DEFAULT_MEETING_NOTES_STRUCTURE_PROMPT = `Create a meeting title followed by these chapters in this exact order:
+Summary
+Ideas and proposals
+Decisions
+Questions
+Risks
+Actions
+Unresolved points`;
 
 export const BLACKBOARD_VISIBILITY_OPTIONS = Object.freeze([
     { value: 'organizer-only', label: 'Organizer only' },
@@ -59,23 +59,21 @@ export const BOT_ROLES = Object.freeze([
 
 export const DEFAULT_ROBO_TEAM_SETTINGS = Object.freeze({
     assistant: {
-        name: 'Assistant',
+        name: 'Robo Team',
         mode: 'meeting-assistant',
-        instructions: 'Help participants follow the room objective, keep the discussion clear, and summarize important points.',
+        instructions: 'Help participants follow the room objective, keep the discussion clear, and maintain the shared blackboard.',
         scenarioOrObjective: 'meeting'
     },
     meetingNotes: {
         enabled: false,
-        sections: [],
-        visibleDuringMeeting: false,
-        reviewEnabled: false,
-        exportEnabled: false
+        structurePrompt: DEFAULT_MEETING_NOTES_STRUCTURE_PROMPT,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     },
     blackboard: {
-        enabled: false,
-        visibility: 'organizer-only',
-        autoUpdateFromConversation: false,
-        participantRequestsEnabled: false
+        enabled: true,
+        visibility: 'all-participants',
+        autoUpdateFromConversation: true,
+        participantRequestsEnabled: true
     },
     documentBuilder: {
         enabled: false,
@@ -122,6 +120,14 @@ export function normalizeRoboTeamSettings(settings) {
             result.assistant[key] = defaults.assistant[key];
         }
     }
+    if (!String(result.meetingNotes.structurePrompt || '').trim()) {
+        result.meetingNotes.structurePrompt = defaults.meetingNotes.structurePrompt;
+    }
+    delete result.meetingNotes.prompt;
+    delete result.meetingNotes.sections;
+    delete result.meetingNotes.visibleDuringMeeting;
+    delete result.meetingNotes.reviewEnabled;
+    delete result.meetingNotes.exportEnabled;
     return result;
 }
 

@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url';
 
 import {
     archiveMeeting,
+    applyMeetingNotesDocument,
     applyRoomBlackboardChange,
     applyRoomBlackboardEvents,
     applyRoomBlackboardWorkspaceAction,
@@ -21,7 +22,9 @@ import {
     getRoomBlackboardForCommand,
     getMeeting,
     getPublicGuestMeeting,
+    finalizeMeetingNotesSession,
     heartbeatMeetingPresence,
+    heartbeatMeetingNotesSession,
     isAdminAuthInfo,
     joinGuestMeeting,
     joinMeeting,
@@ -42,6 +45,7 @@ import {
     listWorkspaceEvents,
     removeMeetingParticipant,
     removeRoomResource,
+    startMeetingNotesSession,
     redoRoomBlackboard,
     undoRoomBlackboard,
     updateMeetingChat,
@@ -291,6 +295,36 @@ export async function dispatch(toolName, args, context, authInfo) {
                 ? await withVerifiedGuestParticipantOwner(context, authInfo, roomId, operation)
                 : await operation();
         }
+    case 'webmeet_scribe_session_start':
+        return await startMeetingNotesSession(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            jobId: String(args?.jobId || '').trim(),
+            authInfo,
+        });
+    case 'webmeet_scribe_notes_apply':
+        return await applyMeetingNotesDocument(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            sessionId: getRequiredString(args, 'sessionId'),
+            analysisRevision: Number(args?.analysisRevision),
+            markdown: getRequiredString(args, 'markdown'),
+            baseStateBase64: String(args?.baseStateBase64 || ''),
+            authInfo,
+        });
+    case 'webmeet_scribe_session_heartbeat':
+        return await heartbeatMeetingNotesSession(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            sessionId: getRequiredString(args, 'sessionId'),
+            activity: String(args?.activity || ''),
+            pendingSegmentCount: Number(args?.pendingSegmentCount || 0),
+            includeDocumentSnapshot: args?.includeDocumentSnapshot === true,
+            authInfo,
+        });
+    case 'webmeet_scribe_session_finalize':
+        return await finalizeMeetingNotesSession(context, {
+            roomId: getRequiredString(args, 'roomId'),
+            sessionId: getRequiredString(args, 'sessionId'),
+            authInfo,
+        });
     case 'webmeet_participant_list':
         return await listMeetingParticipants(context, getRequiredString(args, 'roomId'), authInfo);
     case 'webmeet_participant_update_role':

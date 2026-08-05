@@ -429,3 +429,28 @@ test('WebMeetRoom rejects SCRIPTA drafts forged for another editor', () => {
         /mismatched editor/
     );
 });
+
+test('WebMeetRoom accepts server-authored Blackboard refreshes without a participant sender', () => {
+    const room = new WebMeetRoom(createRoomOptions());
+    const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED, {
+        meetingId: 'room_00000000-0000-4000-8000-000000000001',
+        boardId: 'board-notes',
+        blackboardRevision: 12,
+        changeType: 'update',
+        reason: 'meeting_notes_revision',
+    });
+
+    assert.doesNotThrow(() => room.handleIncomingEvent('livekit', encoded, {}));
+});
+
+test('WebMeetRoom accepts server-authored Meeting Notes activity without a participant sender', () => {
+    const room = new WebMeetRoom(createRoomOptions());
+    const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.MEETING_NOTES_ACTIVITY, {
+        meetingId: 'room_00000000-0000-4000-8000-000000000001',
+        phase: 'analyzing',
+        pendingSegmentCount: 2,
+        analysisRevision: 3,
+    });
+
+    assert.doesNotThrow(() => room.handleIncomingEvent('livekit', encoded, {}));
+});

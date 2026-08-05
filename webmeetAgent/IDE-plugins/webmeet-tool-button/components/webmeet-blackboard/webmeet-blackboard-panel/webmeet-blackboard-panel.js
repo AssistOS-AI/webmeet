@@ -56,6 +56,7 @@ export class WebMeetBlackboardPanel {
         this.inlineEditCommitPromise = null;
         this.pendingRenderAfterInlineEdit = false;
         this.roboOrdinalMode = false;
+        this.meetingNotesActivity = null;
         this.fullscreenWidgetId = '';
         this.scriptaDraft = null;
         this.pendingScriptaDraft = null;
@@ -98,6 +99,10 @@ export class WebMeetBlackboardPanel {
             if (active === this.roboOrdinalMode) return;
             this.roboOrdinalMode = active;
             this.renderWidgets();
+        };
+        this.handleMeetingNotesActivityEvent = (event) => {
+            this.meetingNotesActivity = event.detail?.activity || null;
+            this.refreshMeetingNotesDocumentStatus();
         };
         this.handleToolbarAddWidgetEvent = (event) => {
             this.setPendingWidgetType(event.detail?.type);
@@ -225,6 +230,7 @@ export class WebMeetBlackboardPanel {
         this.element.removeEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
         this.element.removeEventListener('webmeet-blackboard-disconnect', this.handleDisconnectEvent);
         this.element.removeEventListener('webmeet-blackboard-robo-status', this.handleRoboStatusEvent);
+        this.element.removeEventListener('webmeet-blackboard-meeting-notes-activity', this.handleMeetingNotesActivityEvent);
         this.element.removeEventListener('webmeet-blackboard-select-widget', this.handleSelectWidgetEvent);
         this.element.removeEventListener('webmeet-blackboard-insert-group-scripta', this.handleInsertGroupScriptaEvent);
         this.element.removeEventListener('keydown', this.handlePanelKeydownEvent);
@@ -236,6 +242,7 @@ export class WebMeetBlackboardPanel {
         this.element.addEventListener('webmeet-blackboard-update', this.handleUpdateEvent);
         this.element.addEventListener('webmeet-blackboard-disconnect', this.handleDisconnectEvent);
         this.element.addEventListener('webmeet-blackboard-robo-status', this.handleRoboStatusEvent);
+        this.element.addEventListener('webmeet-blackboard-meeting-notes-activity', this.handleMeetingNotesActivityEvent);
         this.element.addEventListener('webmeet-blackboard-select-widget', this.handleSelectWidgetEvent);
         this.element.addEventListener('webmeet-blackboard-insert-group-scripta', this.handleInsertGroupScriptaEvent);
         this.element.addEventListener('keydown', this.handlePanelKeydownEvent);

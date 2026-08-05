@@ -323,7 +323,10 @@ function getParticipantDeps(deps = {}) {
             : ((prefix) => `${prefix}_${crypto.randomUUID()}`),
         detachActiveAgentsWhenRoomHasNoHumans: typeof deps.detachActiveAgentsWhenRoomHasNoHumans === 'function'
             ? deps.detachActiveAgentsWhenRoomHasNoHumans
-            : (async () => [])
+            : (async () => []),
+        ensureMeetingSecretaryDispatch: typeof deps.ensureMeetingSecretaryDispatch === 'function'
+            ? deps.ensureMeetingSecretaryDispatch
+            : (async () => ({ ok: true, disabled: true }))
     };
 }
 
@@ -565,6 +568,9 @@ export async function getRoomDetails(context, meetingId, authInfo = null, option
     return {
         meeting: buildRoomView(record),
         participants,
+        meetingNotes: {
+            enabled: Boolean(normalizeRoboTeamSettings(normalizedPayload.roboTeamSettings).meetingNotes.enabled),
+        },
         agents: Array.isArray(normalizedPayload.agents)
             ? normalizedPayload.agents.map(projectRoomAgentForDetails)
             : []
@@ -608,6 +614,7 @@ export async function joinGuestRoom(context, { meetingId, displayName, participa
     const joinedAt = nowIso();
 
     let participant = null;
+    let meetingNotes = null;
     await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
         const members = Array.isArray(payload.members) ? payload.members : [];
         payload.members = members;
@@ -630,7 +637,9 @@ export async function joinGuestRoom(context, { meetingId, displayName, participa
             participant.pendingLiveKit = true;
         }
         stageEvent('meeting', WEBMEET_EVENT_TYPES.PARTICIPANT_JOINED, { meetingId, participantId: participantIdentity, guest: true });
+        meetingNotes = normalizeRoboTeamSettings(payload.roboTeamSettings).meetingNotes;
     });
+    await getParticipantDeps(deps).ensureMeetingSecretaryDispatch(context, meetingId).catch(() => {});
     const joinMaterial = await resolveEdgeJoinMaterial(context, {
         roomName: record.roomName,
         participantIdentity: participant.id
@@ -648,7 +657,8 @@ export async function joinGuestRoom(context, { meetingId, displayName, participa
         ...joinMaterial,
         roomName: record.roomName,
         participantToken,
-        participantIdentity: participant.id
+        participantIdentity: participant.id,
+        meetingNotes
     };
 }
 
@@ -727,6 +737,7 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
         : {};
     const joinedAt = nowIso();
     let participant = null;
+    let meetingNotes = null;
     const { record } = await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
         cleanupStaleMembers(context, meetingId, payload, stageEvent, deps);
         const members = Array.isArray(payload.members) ? payload.members : [];
@@ -758,7 +769,9 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
                 ...participantAttributes
             };
         }
+        meetingNotes = normalizeRoboTeamSettings(payload.roboTeamSettings).meetingNotes;
     });
+    await getParticipantDeps(deps).ensureMeetingSecretaryDispatch(context, meetingId).catch(() => {});
     const joinMaterial = await resolveEdgeJoinMaterial(context, {
         roomName: record.roomName,
         participantIdentity: participant.id
@@ -777,6 +790,7 @@ export async function joinRoom(context, { meetingId, displayName, participantId,
         ...joinMaterial,
         roomName: record.roomName,
         participantToken,
+        meetingNotes,
         participantIdentity: participant.id
     };
 }
@@ -924,7 +938,18 @@ export async function heartbeatRoomPresence(context, { meetingId, participantId,
         participant.lastSeenAt = nowIso();
         cleanupStaleMembers(context, meetingId, payload, stageEvent, deps);
     });
-    return { ok: true, participant };
+    let meetingSecretaryRecovery = null;
+    try {
+        meetingSecretaryRecovery = await getParticipantDeps(deps)
+            .ensureMeetingSecretaryDispatch(context, meetingId);
+    } catch (error) {
+        meetingSecretaryRecovery = {
+            ok: false,
+            retryable: true,
+            message: String(error?.message || 'Meeting Secretary recovery failed.'),
+        };
+    }
+    return { ok: true, participant, meetingSecretaryRecovery };
 }
 
 export async function listRoomParticipants(context, meetingId, authInfo = null, deps = {}) {

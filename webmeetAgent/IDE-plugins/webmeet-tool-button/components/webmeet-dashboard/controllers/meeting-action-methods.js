@@ -95,11 +95,15 @@ export const meetingActionMethods = {
             return;
         }
         const roboTeamSettings = await this.loadRoboTeamSettings(meeting.id);
+        if (!roboTeamSettings) {
+            this.setError('RoboTeam settings are unavailable.');
+            return;
+        }
         const result = await assistOS.UI.showModal('webmeet-room-settings-modal', {
-            roomId: meeting.id,
-            roomTitle: meeting.title || meeting.name || 'Room',
-            roomLink: this.buildRoomLink(meeting.id),
-            roboTeamSettings
+            'room-id': meeting.id,
+            'room-title': meeting.title || meeting.name || 'Room',
+            'room-link': this.buildRoomLink(meeting.id),
+            'robo-team-settings': encodeURIComponent(JSON.stringify(roboTeamSettings))
         }, true);
         if (!result) return;
 
@@ -148,30 +152,25 @@ export const meetingActionMethods = {
     async loadRoboTeamSettings(roomId) {
         const id = String(roomId || '').trim();
         if (!id) return null;
-        try {
-            const result = await runTool('webmeet_robo_team_get', { roomId: id });
-            if (result?.settings) return result.settings;
-        } catch (_) {
-            // Fall back to legacy browser settings only when server settings are unavailable.
-        }
-        try {
-            const raw = String(window?.localStorage?.getItem(`webmeet.roboTeam.${id}`) || '').trim();
-            if (!raw) return null;
-            return JSON.parse(raw);
-        } catch (_) {
-            return null;
-        }
+        const result = await runTool('webmeet_robo_team_get', { roomId: id });
+        return result?.settings || null;
     },
 
     async saveRoboTeamSettings(roomId, settings) {
         const id = String(roomId || '').trim();
         if (!id || !settings) return;
-        await runTool('webmeet_robo_team_update', { roomId: id, settings });
-        try {
-            window?.localStorage?.removeItem(`webmeet.roboTeam.${id}`);
-        } catch (_) {
-            // Best effort cleanup for legacy browser persistence.
+        const result = await runTool('webmeet_robo_team_update', { roomId: id, settings });
+        const meetingNotes = result?.settings?.meetingNotes || null;
+        if (meetingNotes && String(this.state.session?.meeting?.id || '') === id) {
+            this.state.session.meetingNotes = meetingNotes;
+            this.meetingNotesTranscription?.sync?.();
+            this.renderMeetingSummary();
+            await this.publishRealtimePayload({
+                type: WEBMEET_EVENT_TYPES.MEETING_NOTES_SETTINGS_CHANGED,
+                meetingId: id,
+            }).catch(() => {});
         }
+        return result;
     },
 
     getMeetingFromActionTarget(target) {

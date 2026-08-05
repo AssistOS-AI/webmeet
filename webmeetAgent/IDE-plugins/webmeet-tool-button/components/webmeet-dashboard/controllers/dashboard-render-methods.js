@@ -598,6 +598,8 @@ export const dashboardRenderMethods = {
             this.chatInput.placeholder = isArchiveReadOnlyView ? 'Archived room chat is read-only.' : 'Type a message...';
         }
         this.chatComponent?.roboSpeechInput?.sync?.();
+        this.meetingNotesTranscription?.sync?.();
+        this.renderMeetingNotesTranscriptionStatus?.();
 
         // Update icon button states
         if (this.micButton) {
@@ -638,6 +640,33 @@ export const dashboardRenderMethods = {
         if (this.mediaSettingsButton) {
             this.mediaSettingsButton.disabled = isLeaving || isTransitioningRoom;
         }
+    },
+
+    renderMeetingNotesTranscriptionStatus() {
+        this.renderMeetingNotesBlackboardStatus?.();
+        if (!this.meetingNotesStatus) return;
+        const enabled = Boolean(this.state.session?.meetingNotes?.enabled);
+        const activity = String(this.state.meetingNotesActivity?.phase || '');
+        const activePhases = new Set(['queued', 'analyzing', 'updating', 'retrying', 'waiting_for_new_speech']);
+        const status = activePhases.has(activity)
+            ? activity
+            : String(this.state.meetingNotesTranscriptionStatus || 'paused');
+        const labels = {
+            listening: 'Meeting Notes active — your speech is transcribed in the browser',
+            queued: 'Meeting Notes editing — new discussion queued…',
+            analyzing: 'Meeting Notes editing — analyzing the complete discussion…',
+            updating: 'Meeting Notes editing — saving the document…',
+            retrying: 'Meeting Notes editing — validating and retrying…',
+            waiting_for_new_speech: 'Meeting Notes paused — analysis failed; waiting for new speech…',
+            starting: 'Meeting Notes starting browser transcription…',
+            reconnecting: 'Meeting Notes reconnecting browser transcription…',
+            unsupported: 'Meeting Notes enabled — browser transcription is unavailable',
+            error: 'Meeting Notes enabled — browser transcription needs attention',
+            paused: 'Meeting Notes enabled — transcription starts while your microphone is on',
+        };
+        this.meetingNotesStatus.classList.toggle('webmeet-hidden', !enabled);
+        this.meetingNotesStatus.dataset.status = status;
+        this.meetingNotesStatus.textContent = labels[status] || labels.paused;
     },
 
     renderFeedLists() {

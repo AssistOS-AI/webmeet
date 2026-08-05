@@ -15,8 +15,12 @@ import {
 import { authorizeRoomParticipantId } from '../store/participantAuthorization.mjs';
 import { withQueuedRoomLock } from '../store/roomLocks.mjs';
 import { decryptRoomPayload, listRoomRecords, loadRoomRecord, mutateRoom } from '../store/roomRecords.mjs';
-import { scriptaExplorer } from './explorer-crdt-client.mjs';
+import { callScriptaExplorer, scriptaExplorer } from './explorer-crdt-client.mjs';
 import { scriptaOwnerHash } from './identity.mjs';
+import {
+    MEETING_SECRETARY_PRINCIPAL,
+    resetMeetingNotesForRemovedDocument,
+} from '../meetingNotes/service.mjs';
 
 export const SCRIPTA_DOCUMENT_WIDGET_ID = 'robo_scripta_document';
 export const SCRIPTA_DOCUMENT_WIDGET_TYPE = 'scripta-document';
@@ -41,6 +45,7 @@ const DOCUMENT_CHANGE_OPERATIONS = new Set([
     'paragraph-add',
     'paragraph-delete',
     'paragraph-move',
+    'markdown-collaboration-merged',
     'undo',
 ]);
 
@@ -127,15 +132,26 @@ function slugify(value = '') {
 
 function participantIdentity(payload, authInfo = null, participantId = '', roomId = '') {
     const auth = normalizeAuthInfo(authInfo);
-    const viewId = authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
-    const source = String(auth.id || auth.principalId || viewId).trim();
+    const secretary = isMeetingSecretaryAuth(authInfo)
+        && String(participantId || '').trim() === 'agent_meeting_secretary';
+    const viewId = secretary
+        ? 'agent_meeting_secretary'
+        : authorizeRoomParticipantId(payload, authInfo, participantId, roomId);
+    const source = String(secretary ? auth.principalId : (auth.id || auth.principalId || viewId)).trim();
     if (!source) throw new Error('SCRIPTA requires an admitted participant identity.');
     return {
         id: source,
         viewId,
         hash: scriptaOwnerHash(source),
-        label: String(auth.name || auth.username || auth.email || source).trim() || source,
+        label: secretary
+            ? 'Meeting Secretary'
+            : String(auth.name || auth.username || auth.email || source).trim() || source,
     };
+}
+
+function isMeetingSecretaryAuth(authInfo = null) {
+    const principal = String(authInfo?.agent?.principalId || '').trim().toLowerCase();
+    return principal === MEETING_SECRETARY_PRINCIPAL.toLowerCase();
 }
 
 function roomFolderPath(record) {
@@ -154,6 +170,11 @@ function ensureScriptaPayload(record, payload) {
     scripta.folderPath ||= getScriptaRoomFolderPath(record, payload);
     scripta.documents = scripta.documents && typeof scripta.documents === 'object' ? scripta.documents : {};
     scripta.activeResourceId = String(scripta.activeResourceId || '');
+    scripta.activeResourceIdsByBoard = scripta.activeResourceIdsByBoard
+        && typeof scripta.activeResourceIdsByBoard === 'object'
+        && !Array.isArray(scripta.activeResourceIdsByBoard)
+        ? scripta.activeResourceIdsByBoard
+        : {};
     scripta.view = scripta.view && typeof scripta.view === 'object'
         ? scripta.view
         : { mode: 'document', chapterId: '', paragraphId: '' };
@@ -165,20 +186,152 @@ function ensureScriptaPayload(record, payload) {
     scripta.view.autoFocusRevision = Math.max(0, Number(scripta.view.autoFocusRevision || 0));
     scripta.audit = Array.isArray(scripta.audit) ? scripta.audit : [];
     scripta.participants = scripta.participants && typeof scripta.participants === 'object' ? scripta.participants : {};
+    if (scripta.retainDocumentHistory === true) scripta.multiBoardDocuments = true;
+    delete scripta.retainDocumentHistory;
+    delete scripta.targetBoardId;
     delete scripta.undo;
+    const workspace = (payload.agents || []).find((agent) => String(agent?.agentType || '') === 'robo_team')
+        ?.blackboardWorkspace;
+    for (const board of workspace?.boards || []) {
+        const resourceId = String((board?.widgets || []).find(
+            (widget) => String(widget?.id || '') === SCRIPTA_DOCUMENT_WIDGET_ID
+        )?.properties?.resourceId || '');
+        if (resourceId && scripta.documents[resourceId]) {
+            scripta.activeResourceIdsByBoard[String(board.id || board.boardId || '')] = resourceId;
+        }
+    }
+    const legacyActiveEntry = scripta.documents[scripta.activeResourceId];
+    if (legacyActiveEntry?.boardId && !scripta.activeResourceIdsByBoard[legacyActiveEntry.boardId]) {
+        scripta.activeResourceIdsByBoard[legacyActiveEntry.boardId] = legacyActiveEntry.resourceId;
+    }
+    for (const [boardId, resourceId] of Object.entries(scripta.activeResourceIdsByBoard)) {
+        const entry = scripta.documents[String(resourceId || '')];
+        if (!entry || String(entry.boardId || '') !== String(boardId)) {
+            delete scripta.activeResourceIdsByBoard[boardId];
+        }
+    }
+    for (const entry of Object.values(scripta.documents)) {
+        if (!entry.view || typeof entry.view !== 'object') {
+            entry.view = viewFromProjection(entry.projection, scripta.view);
+        }
+        const boardId = String(entry?.boardId || '');
+        if (!boardId || scripta.activeResourceIdsByBoard[boardId]) continue;
+        const documentsOnBoard = Object.values(scripta.documents)
+            .filter((candidate) => String(candidate?.boardId || '') === boardId);
+        if (documentsOnBoard.length === 1) {
+            scripta.activeResourceIdsByBoard[boardId] = String(entry.resourceId || '');
+        }
+    }
+    const activeBoardId = String(workspace?.activeBoardId || '');
+    const activeBoardResourceId = String(scripta.activeResourceIdsByBoard[activeBoardId] || '');
+    if (activeBoardId) {
+        scripta.activeResourceId = activeBoardResourceId && scripta.documents[activeBoardResourceId]
+            ? activeBoardResourceId
+            : '';
+    }
     payload.resources = Array.isArray(payload.resources) ? payload.resources : [];
     return scripta;
 }
 
-function activeEntry(scripta) {
+function activeWorkspaceBoardId(payload) {
+    return String((payload.agents || []).find(
+        (agent) => String(agent?.agentType || '') === 'robo_team'
+    )?.blackboardWorkspace?.activeBoardId || '');
+}
+
+function activeEntry(scripta, payload, resourceId = '') {
+    const requestedResourceId = String(resourceId || '');
+    if (requestedResourceId) {
+        const requested = scripta.documents?.[requestedResourceId] || null;
+        if (!requested) return null;
+        const boardId = String(requested.boardId || '');
+        const activeForBoard = String(scripta.activeResourceIdsByBoard?.[boardId] || '');
+        return !boardId || !activeForBoard || activeForBoard === requestedResourceId ? requested : null;
+    }
+    const boardId = activeWorkspaceBoardId(payload);
+    const boardResourceId = String(scripta.activeResourceIdsByBoard?.[boardId] || '');
+    if (boardId) return scripta.documents?.[boardResourceId] || null;
     return scripta.documents?.[scripta.activeResourceId] || null;
 }
 
-function replaceActiveDocument(scripta, payload, entry = null) {
-    scripta.documents = entry ? { [entry.resourceId]: entry } : {};
-    scripta.activeResourceId = entry?.resourceId || '';
-    payload.resources = payload.resources.filter((resource) => resource.kind !== 'scripta-document');
+function defaultScriptaView() {
+    return { mode: 'document', chapterId: '', paragraphId: '' };
+}
+
+function viewFromProjection(projection = null, fallback = null) {
+    const source = fallback && typeof fallback === 'object' ? fallback : defaultScriptaView();
+    const paragraph = projection?.paragraph || null;
+    return {
+        mode: projection?.viewMode === 'paragraph' ? 'paragraph' : (source.mode === 'paragraph' ? 'paragraph' : 'document'),
+        chapterId: String(projection?.focusedChapterId || source.chapterId || ''),
+        paragraphId: String(projection?.focusedParagraphId || source.paragraphId || ''),
+        selectedVariantId: String(paragraph?.selectedVariantId || source.selectedVariantId || ''),
+        editingVariantId: String(paragraph?.editingVariantId || source.editingVariantId || ''),
+        editorParticipantId: String(paragraph?.editorParticipantId || source.editorParticipantId || ''),
+        focusTargetType: String(projection?.focusTargetType || source.focusTargetType || 'paragraph') === 'chapter'
+            ? 'chapter'
+            : 'paragraph',
+        autoFocusRevision: Math.max(0, Number(projection?.autoFocusRevision || source.autoFocusRevision || 0)),
+    };
+}
+
+function entryView(scripta, entry) {
+    return entry?.view && typeof entry.view === 'object'
+        ? entry.view
+        : scripta.view;
+}
+
+function setEntryView(scripta, payload, entry, view) {
+    const next = structuredClone(view || defaultScriptaView());
+    if (entry) entry.view = next;
+    if (!entry || String(entry.boardId || '') === activeWorkspaceBoardId(payload)) {
+        scripta.view = structuredClone(next);
+    }
+    return next;
+}
+
+function replaceActiveDocument(scripta, payload, entry = null, { removeResourceId = '' } = {}) {
+    if (scripta.multiBoardDocuments === true) {
+        scripta.documents = scripta.documents && typeof scripta.documents === 'object' ? scripta.documents : {};
+        if (entry) scripta.documents[entry.resourceId] = entry;
+        const removedId = String(removeResourceId || '');
+        if (removedId) {
+            const removed = scripta.documents[removedId];
+            const wasActive = scripta.activeResourceId === removedId;
+            const removedBoardId = String(removed?.boardId || '');
+            if (removed) {
+                scripta.pendingRemovedProjection = {
+                    boardId: String(removed.boardId || ''), resourceId: removedId,
+                };
+                delete scripta.documents[removedId];
+            }
+            payload.resources = payload.resources.filter((resource) => resource.resourceId !== removedId);
+            if (removedBoardId && scripta.activeResourceIdsByBoard[removedBoardId] === removedId) {
+                const sameBoard = Object.values(scripta.documents)
+                    .find((item) => String(item.boardId || '') === removedBoardId);
+                if (sameBoard) scripta.activeResourceIdsByBoard[removedBoardId] = sameBoard.resourceId;
+                else delete scripta.activeResourceIdsByBoard[removedBoardId];
+            }
+            if (wasActive) {
+                const activeBoardId = activeWorkspaceBoardId(payload);
+                scripta.activeResourceId = scripta.activeResourceIdsByBoard[activeBoardId]
+                    || '';
+            }
+        }
+    } else {
+        scripta.documents = entry ? { [entry.resourceId]: entry } : {};
+        scripta.activeResourceIdsByBoard = entry?.boardId ? { [entry.boardId]: entry.resourceId } : {};
+        payload.resources = payload.resources.filter((resource) => resource.kind !== 'scripta-document');
+    }
+    if (entry?.boardId) scripta.activeResourceIdsByBoard[entry.boardId] = entry.resourceId;
+    if (entry && (
+        scripta.multiBoardDocuments !== true
+        || !activeWorkspaceBoardId(payload)
+        || String(entry.boardId || '') === activeWorkspaceBoardId(payload)
+    )) scripta.activeResourceId = entry.resourceId;
+    else if (scripta.multiBoardDocuments !== true) scripta.activeResourceId = '';
     if (entry) {
+        payload.resources = payload.resources.filter((resource) => resource.resourceId !== entry.resourceId);
         payload.resources.push({
             resourceId: entry.resourceId,
             kind: 'scripta-document',
@@ -191,6 +344,33 @@ function replaceActiveDocument(scripta, payload, entry = null) {
             deletedAt: null,
         });
     }
+}
+
+function resolveScriptaDocumentBoard(workspace, entry = null, requestedBoardId = '') {
+    const requested = workspace.getBoard(String(requestedBoardId || ''));
+    if (requested) return requested;
+    if (entry?.boardPurpose === 'meeting-notes') {
+        const fixed = workspace.getBoard(String(entry.boardId || ''));
+        if (fixed) return fixed;
+    }
+    const projected = [...workspace.boards.values()].find((board) => {
+        const widget = board.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID);
+        return widget && String(widget.properties?.resourceId || '') === String(entry?.resourceId || '');
+    });
+    return projected || workspace.getBoard(String(entry?.boardId || '')) || workspace.activeBoard;
+}
+
+function prepareMultiBoardScripta(record, payload, scripta) {
+    const agent = ensureRoboTeamAgentPayload(payload, null, record.meetingId);
+    const workspace = BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(agent, record.meetingId));
+    for (const entry of Object.values(scripta.documents || {})) {
+        if (entry.boardId) continue;
+        const board = resolveScriptaDocumentBoard(workspace, entry);
+        entry.boardId = board.boardId;
+        entry.boardPurpose = String(board.metadata?.purpose || '');
+    }
+    scripta.multiBoardDocuments = true;
+    return workspace;
 }
 
 function updateEntryFromCrdt(entry, result) {
@@ -249,7 +429,7 @@ function isMissingScriptaDocument(error) {
         || /no such file or directory/i.test(message);
 }
 
-async function refreshEntry(context, entry, scripta, participant, view = scripta.view) {
+async function refreshEntry(context, entry, scripta, participant, view = entryView(scripta, entry)) {
     const result = await scriptaExplorer.open(context, {
         path: entry.path,
         resourceId: entry.resourceId,
@@ -260,19 +440,42 @@ async function refreshEntry(context, entry, scripta, participant, view = scripta
     return updateEntryFromCrdt(entry, result);
 }
 
-function updateBlackboardProjection(record, payload) {
+function updateBlackboardProjection(record, payload, { resourceId = '' } = {}) {
     const scripta = ensureScriptaPayload(record, payload);
-    const entry = activeEntry(scripta);
+    const entry = activeEntry(scripta, payload, resourceId);
     const agent = ensureRoboTeamAgentPayload(payload, null, record.meetingId);
     const workspace = BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(agent, record.meetingId));
-    const blackboard = [...workspace.boards.values()]
-        .find((board) => board.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID))
-        || workspace.activeBoard;
+    const pendingRemoval = scripta.pendingRemovedProjection;
+    if (pendingRemoval?.boardId) {
+        const removalBoard = workspace.getBoard(String(pendingRemoval.boardId));
+        const removalWidget = removalBoard?.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID);
+        if (removalWidget && String(removalWidget.properties?.resourceId || '') === String(pendingRemoval.resourceId || '')) {
+            removalBoard.removeWidget(SCRIPTA_DOCUMENT_WIDGET_ID, {
+                participantId: ROBO_TEAM_PARTICIPANT_ID,
+                canModerateBlackboard: true,
+                record: false,
+            });
+            removalBoard.bumpRevision();
+            workspace.bumpRevision();
+        }
+    }
+    delete scripta.pendingRemovedProjection;
+    const blackboard = entry
+        ? resolveScriptaDocumentBoard(workspace, entry)
+        : workspace.activeBoard;
+    if (entry) {
+        entry.boardId = blackboard.boardId;
+        entry.boardPurpose ||= String(blackboard.metadata?.purpose || '');
+    }
     const initialRevision = blackboard.revision;
     if (!entry) {
         let changed = false;
         for (const board of workspace.boards.values()) {
-            if (!board.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID)) continue;
+            const widget = board.getWidget(SCRIPTA_DOCUMENT_WIDGET_ID);
+            if (!widget) continue;
+            const widgetResourceId = String(widget.properties?.resourceId || '');
+            const activeResourceId = String(scripta.activeResourceIdsByBoard?.[board.boardId] || '');
+            if (scripta.documents[widgetResourceId] && activeResourceId === widgetResourceId) continue;
             const boardRevision = board.revision;
             board.removeWidget(SCRIPTA_DOCUMENT_WIDGET_ID, {
                 participantId: ROBO_TEAM_PARTICIPANT_ID,
@@ -292,11 +495,6 @@ function updateBlackboardProjection(record, payload) {
         ? { ...existing.properties.geometry }
         : { x: 24, y: 24, width: 600, height: 400 };
     const properties = {
-        documents: Object.values(scripta.documents).map((item) => ({
-            resourceId: item.resourceId,
-            title: item.title,
-            active: item.resourceId === scripta.activeResourceId,
-        })),
         ...entry.projection,
         geometry,
     };
@@ -364,8 +562,9 @@ async function assertDocumentAvailable(context, roomId, documentPath) {
     for (const record of await listRoomRecords(context)) {
         if (record.meetingId === roomId) continue;
         const payload = decryptRoomPayload(context, record);
-        const active = payload.scripta?.documents?.[String(payload.scripta?.activeResourceId || '')];
-        if (String(active?.path || '') === pathValue) {
+        const attached = Object.values(payload.scripta?.documents || {})
+            .some((entry) => String(entry?.path || '') === pathValue);
+        if (attached) {
             throw new Error('This SCRIPTA document is already attached to another room.');
         }
     }
@@ -397,6 +596,7 @@ async function createScriptaDocumentImpl(context, {
     template = 'general',
     folderPath = '',
     initialization = {},
+    boardId = '',
     participantId = '',
     authInfo = null,
 } = {}) {
@@ -409,6 +609,12 @@ async function createScriptaDocumentImpl(context, {
             if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
             const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
             const scripta = ensureScriptaPayload(record, payload);
+            const workspace = boardId
+                ? prepareMultiBoardScripta(record, payload, scripta)
+                : BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(
+                    ensureRoboTeamAgentPayload(payload, null, record.meetingId), record.meetingId,
+                ));
+            const documentBoard = resolveScriptaDocumentBoard(workspace, null, boardId || workspace.activeBoardId);
             const selectedFolder = isGuestAuthInfo(authInfo) ? scripta.folderPath : String(folderPath || scripta.folderPath);
             const documentPath = `${selectedFolder.replace(/\/$/, '')}/${safeName}.md`;
             await assertDocumentAvailable(context, roomId, documentPath);
@@ -437,11 +643,13 @@ async function createScriptaDocumentImpl(context, {
                 roomId: record.meetingId,
                 attachedAt: nowIso(),
                 attachedBy: participant.id,
+                boardId: documentBoard.boardId,
+                boardPurpose: String(documentBoard.metadata?.purpose || ''),
             }, result);
             replaceActiveDocument(scripta, payload, entry);
-            scripta.view = view;
+            setEntryView(scripta, payload, entry, view);
             projectStoredView(entry, view);
-            const blackboard = updateBlackboardProjection(record, payload);
+            const blackboard = updateBlackboardProjection(record, payload, { resourceId: entry.resourceId });
             stageEvents(stageEvent, record, entry, participant, 'document-create', blackboard);
             output = {
                 ok: true,
@@ -506,6 +714,7 @@ async function resolveGuestDocumentPath(context, scripta, requestedPath) {
 async function openScriptaDocumentImpl(context, {
     roomId,
     path: documentPath,
+    boardId = '',
     participantId = '',
     authInfo = null,
 } = {}) {
@@ -519,6 +728,7 @@ async function openScriptaDocumentImpl(context, {
             : String(documentPath || '').trim();
         await assertDocumentAvailable(context, roomId, resolvedDocumentPath);
         const resourceId = stableId('resource', record.meetingId, resolvedDocumentPath);
+        const previousEntry = scripta.documents?.[resourceId] || null;
         const view = { mode: 'document', chapterId: '', paragraphId: '' };
         const result = await scriptaExplorer.open(context, {
             path: resolvedDocumentPath,
@@ -535,11 +745,25 @@ async function openScriptaDocumentImpl(context, {
             roomId: record.meetingId,
             attachedAt: nowIso(),
             attachedBy: participant.id,
+            boardId: String(previousEntry?.boardId || ''),
+            boardPurpose: String(previousEntry?.boardPurpose || ''),
         }, result);
+        if (!entry.boardId) {
+            const workspace = BlackboardWorkspace.from(ensureRoboTeamBlackboardWorkspacePayload(
+                ensureRoboTeamAgentPayload(payload, null, record.meetingId), record.meetingId,
+            ));
+            const documentBoard = resolveScriptaDocumentBoard(
+                workspace,
+                previousEntry,
+                boardId || workspace.activeBoardId,
+            );
+            entry.boardId = documentBoard.boardId;
+            entry.boardPurpose = String(documentBoard.metadata?.purpose || '');
+        }
         replaceActiveDocument(scripta, payload, entry);
-        scripta.view = view;
+        setEntryView(scripta, payload, entry, view);
         projectStoredView(entry, view);
-        const blackboard = updateBlackboardProjection(record, payload);
+        const blackboard = updateBlackboardProjection(record, payload, { resourceId: entry.resourceId });
         stageEvents(stageEvent, record, entry, participant, 'document-open', blackboard);
         output = { ok: true, resourceId, blackboard: serializeBlackboard(blackboard, participant, authInfo) };
     });
@@ -551,9 +775,13 @@ export async function openScriptaDocument(context, input = {}) {
     if (!canViewMeetingRecord(record, input.authInfo)) throw new Error('Room not found.');
     const payload = decryptRoomPayload(context, record);
     const scripta = ensureScriptaPayload(record, payload);
+    const rawRequestedPath = String(input.path || '').trim();
     const requestedPath = isGuestAuthInfo(input.authInfo)
         ? `${scripta.folderPath.replace(/\/$/, '')}/${slugify(documentFileName(input.path).replace(/\.md$/i, ''))}.md`
-        : String(input.path || '').trim();
+        : rawRequestedPath.includes('/')
+            ? rawRequestedPath
+            : `${scripta.folderPath.replace(/\/$/, '')}/${documentFileName(rawRequestedPath)}`;
+    input = { ...input, path: requestedPath };
     return withDocumentAttachmentLock(
         context,
         requestedPath,
@@ -576,12 +804,12 @@ async function manageScriptaDocumentImpl(context, {
     const currentPayload = decryptRoomPayload(context, record);
     const participant = participantIdentity(currentPayload, authInfo, participantId, record.meetingId);
     const currentScripta = ensureScriptaPayload(record, currentPayload);
-    const id = String(resourceId || currentScripta.activeResourceId);
-    const currentEntry = currentScripta.documents[id];
+    const currentEntry = activeEntry(currentScripta, currentPayload, resourceId);
+    const id = String(currentEntry?.resourceId || '');
     if (!currentEntry) throw new Error('SCRIPTA document was not found in this room.');
 
     const originalEntry = structuredClone(currentEntry);
-    const originalView = structuredClone(currentScripta.view);
+    const originalView = structuredClone(entryView(currentScripta, currentEntry));
     const prepared = await scriptaExplorer.delete(context, {
         phase: 'prepare',
         documentId: currentEntry.documentId,
@@ -595,8 +823,11 @@ async function manageScriptaDocumentImpl(context, {
             const scripta = ensureScriptaPayload(freshRecord, payload);
             const entry = scripta.documents[id];
             if (!entry) throw new Error('SCRIPTA document was not found in this room.');
-            replaceActiveDocument(scripta, payload, null);
-            scripta.view = { mode: 'document', chapterId: '', paragraphId: '' };
+            replaceActiveDocument(scripta, payload, null, { removeResourceId: id });
+            resetMeetingNotesForRemovedDocument(payload, { resourceId: id });
+            if (String(originalEntry.boardId || '') === activeWorkspaceBoardId(payload)) {
+                setEntryView(scripta, payload, null, defaultScriptaView());
+            }
             const blackboard = updateBlackboardProjection(freshRecord, payload);
             stageEvents(stageEvent, freshRecord, originalEntry, participant, operation, blackboard);
             output = { ok: true, resourceId: id, blackboard: serializeBlackboard(blackboard, participant, authInfo) };
@@ -622,8 +853,8 @@ async function manageScriptaDocumentImpl(context, {
         await mutateRoom(context, roomId, async (freshRecord, payload) => {
             const scripta = ensureScriptaPayload(freshRecord, payload);
             replaceActiveDocument(scripta, payload, originalEntry);
-            scripta.view = originalView;
-            updateBlackboardProjection(freshRecord, payload);
+            setEntryView(scripta, payload, originalEntry, originalView);
+            updateBlackboardProjection(freshRecord, payload, { resourceId: originalEntry.resourceId });
         });
         throw error;
     }
@@ -635,8 +866,7 @@ export async function manageScriptaDocument(context, input = {}) {
     if (!canViewMeetingRecord(record, input.authInfo)) throw new Error('Room not found.');
     const payload = decryptRoomPayload(context, record);
     const scripta = ensureScriptaPayload(record, payload);
-    const id = String(input.resourceId || scripta.activeResourceId);
-    const entry = scripta.documents[id];
+    const entry = activeEntry(scripta, payload, input.resourceId);
     if (!entry) throw new Error('SCRIPTA document was not found in this room.');
     return withDocumentAttachmentLock(
         context,
@@ -665,7 +895,7 @@ export async function getScriptaContext(context, {
     const payload = decryptRoomPayload(context, record);
     const scripta = ensureScriptaPayload(record, payload);
     const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-    const entry = activeEntry(scripta);
+    const entry = activeEntry(scripta, payload);
     if (entry) await refreshEntry(context, entry, scripta, participant);
     const projection = entry?.projection || null;
     const publicProjection = projection ? structuredClone(projection) : null;
@@ -673,8 +903,8 @@ export async function getScriptaContext(context, {
         delete variant._ownerHash;
     }
     return {
-        activeResourceId: scripta.activeResourceId,
-        view: structuredClone(scripta.view),
+        activeResourceId: String(entry?.resourceId || ''),
+        view: structuredClone(entry ? entryView(scripta, entry) : scripta.view),
         documentOutline: publicProjection?.chapters || [],
         paragraph: publicProjection?.paragraph || null,
         document: publicProjection,
@@ -725,15 +955,16 @@ export async function openScriptaCollaboration(context, {
     const payload = decryptRoomPayload(context, record);
     const scripta = ensureScriptaPayload(record, payload);
     const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-    if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
-    const entry = activeEntry(scripta);
+    const entry = activeEntry(scripta, payload, resourceId);
+    if (resourceId && !entry) throw new Error('SCRIPTA document is not active on its board.');
     if (!entry) throw new Error('No SCRIPTA document is active.');
+    const view = entryView(scripta, entry);
     const sessionId = collaborationSessionId(record, entry, participant, clientId);
     const result = await scriptaExplorer.collaborationOpen(context, {
         path: entry.path,
         resourceId: entry.resourceId,
         viewerHash: participant.hash,
-        view: scripta.view,
+        view,
         participantMap: scripta.participants,
     });
     return publicCollaborationResult(result, sessionId, entry.resourceId);
@@ -753,16 +984,17 @@ export async function pullScriptaCollaboration(context, {
     const payload = decryptRoomPayload(context, record);
     const scripta = ensureScriptaPayload(record, payload);
     const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-    if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
-    const entry = activeEntry(scripta);
+    const entry = activeEntry(scripta, payload, resourceId);
+    if (resourceId && !entry) throw new Error('SCRIPTA document is not active on its board.');
     if (!entry) throw new Error('No SCRIPTA document is active.');
+    const view = entryView(scripta, entry);
     const expectedSessionId = collaborationSessionId(record, entry, participant, clientId);
     if (sessionId !== expectedSessionId) throw new Error('SCRIPTA collaboration session is invalid.');
     const result = await scriptaExplorer.collaborationPull(context, {
         path: entry.path,
         resourceId: entry.resourceId,
         viewerHash: participant.hash,
-        view: scripta.view,
+        view,
         participantMap: scripta.participants,
         knownHeads,
     });
@@ -786,15 +1018,17 @@ export async function applyScriptaCollaboration(context, {
         if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
         const scripta = ensureScriptaPayload(record, payload);
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
-        if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
-        const entry = activeEntry(scripta);
+        const entry = activeEntry(scripta, payload, resourceId);
+        if (resourceId && !entry) throw new Error('SCRIPTA document is not active on its board.');
         if (!entry) throw new Error('No SCRIPTA document is active.');
+        const view = entryView(scripta, entry);
         const expectedSessionId = collaborationSessionId(record, entry, participant, clientId);
         if (sessionId !== expectedSessionId) throw new Error('SCRIPTA collaboration session is invalid.');
         scripta.participants[participant.hash] = participant.viewId;
         if (operation === 'p-variant-edit') {
-            scripta.view.editingVariantId = '';
-            scripta.view.editorParticipantId = '';
+            view.editingVariantId = '';
+            view.editorParticipantId = '';
+            setEntryView(scripta, payload, entry, view);
         }
         const result = await scriptaExplorer.collaborationApply(context, {
             path: entry.path,
@@ -809,11 +1043,11 @@ export async function applyScriptaCollaboration(context, {
                 label: participant.label,
             },
             viewerHash: participant.hash,
-            view: scripta.view,
+            view,
             participantMap: scripta.participants,
         });
         updateEntryFromCrdt(entry, result);
-        const blackboard = updateBlackboardProjection(record, payload);
+        const blackboard = updateBlackboardProjection(record, payload, { resourceId: entry.resourceId });
         stageEvents(stageEvent, record, entry, participant, operation, blackboard);
         output = {
             ...publicCollaborationResult(result, expectedSessionId, entry.resourceId),
@@ -829,10 +1063,8 @@ export async function closeScriptaCollaboration(context, input = {}) {
     const payload = decryptRoomPayload(context, record);
     const scripta = ensureScriptaPayload(record, payload);
     const participant = participantIdentity(payload, input.authInfo, input.participantId, record.meetingId);
-    if (input.resourceId && input.resourceId !== scripta.activeResourceId) {
-        throw new Error('SCRIPTA document is not active in this room.');
-    }
-    const entry = activeEntry(scripta);
+    const entry = activeEntry(scripta, payload, input.resourceId);
+    if (input.resourceId && !entry) throw new Error('SCRIPTA document is not active on its board.');
     if (!entry) throw new Error('No SCRIPTA document is active.');
     const expectedSessionId = collaborationSessionId(record, entry, participant, input.clientId);
     if (input.sessionId && input.sessionId !== expectedSessionId) {
@@ -850,7 +1082,7 @@ export async function repairScriptaBlackboardProjection(context, {
     await mutateRoom(context, roomId, async (record, payload) => {
         if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
         const scripta = ensureScriptaPayload(record, payload);
-        const entry = activeEntry(scripta);
+        const entry = activeEntry(scripta, payload);
         if (!entry || hasRenderableProjection(entry)) return;
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
         scripta.participants[participant.hash] = participant.viewId;
@@ -861,8 +1093,8 @@ export async function repairScriptaBlackboardProjection(context, {
             // A file removed outside WebMeet cannot remain attached as a
             // non-functional widget.  Drop only the stale room reference; the
             // missing workspace file is not recreated implicitly.
-            replaceActiveDocument(scripta, payload, null);
-            scripta.view = { mode: 'document', chapterId: '', paragraphId: '' };
+            replaceActiveDocument(scripta, payload, null, { removeResourceId: entry.resourceId });
+            setEntryView(scripta, payload, null, defaultScriptaView());
         }
         updateBlackboardProjection(record, payload);
         repaired = true;
@@ -887,15 +1119,16 @@ export async function focusScripta(context, {
         if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
         const scripta = ensureScriptaPayload(record, payload);
-        if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
-        const entry = activeEntry(scripta);
+        const entry = activeEntry(scripta, payload, resourceId);
+        if (resourceId && !entry) throw new Error('SCRIPTA document is not active on its board.');
         if (!entry) throw new Error('No SCRIPTA document is active.');
+        const view = entryView(scripta, entry);
         let projection = hasRenderableProjection(entry) ? entry.projection : null;
         if (!projection && (direction === 'next' || direction === 'previous')) {
             projection = (await refreshEntry(context, entry, scripta, participant)).projection;
         }
-        let requestedChapterId = String(chapterId || scripta.view.chapterId);
-        let requestedParagraphId = String(paragraphId || scripta.view.paragraphId);
+        let requestedChapterId = String(chapterId || view.chapterId);
+        let requestedParagraphId = String(paragraphId || view.paragraphId);
         if (direction === 'next' || direction === 'previous') {
             const paragraphs = (projection?.chapters || []).flatMap((item) => (
                 item.paragraphs.map((paragraphItem) => ({
@@ -903,7 +1136,7 @@ export async function focusScripta(context, {
                     paragraphId: paragraphItem.paragraphId,
                 }))
             ));
-            const currentIndex = paragraphs.findIndex((item) => item.paragraphId === scripta.view.paragraphId);
+            const currentIndex = paragraphs.findIndex((item) => item.paragraphId === view.paragraphId);
             const targetIndex = Math.max(
                 0,
                 Math.min(paragraphs.length - 1, currentIndex + (direction === 'previous' ? -1 : 1)),
@@ -925,8 +1158,8 @@ export async function focusScripta(context, {
             ? entry.projection.paragraph
             : null;
         const requestedVariantId = String(variantId || (
-            scripta.view.paragraphId === paragraph.paragraphId
-                ? scripta.view.selectedVariantId
+            view.paragraphId === paragraph.paragraphId
+                ? view.selectedVariantId
                 : ''
         ) || projectedParagraph?.activeVariantId || '');
         if (
@@ -951,9 +1184,9 @@ export async function focusScripta(context, {
         }
         const keepExistingEditor = (
             editing === undefined
-            && scripta.view.paragraphId === paragraph.paragraphId
-            && scripta.view.selectedVariantId === requestedVariantId
-            && scripta.view.editingVariantId === requestedVariantId
+            && view.paragraphId === paragraph.paragraphId
+            && view.selectedVariantId === requestedVariantId
+            && view.editingVariantId === requestedVariantId
         );
         const paragraphView = {
             mode: mode === 'document' ? 'document' : 'paragraph',
@@ -963,17 +1196,17 @@ export async function focusScripta(context, {
             editingVariantId: editing === true
                 ? requestedVariantId
                 : keepExistingEditor
-                    ? scripta.view.editingVariantId
+                    ? view.editingVariantId
                     : '',
             editorParticipantId: editing === true
                 ? participant.viewId
                 : keepExistingEditor
-                    ? scripta.view.editorParticipantId
+                    ? view.editorParticipantId
                     : '',
-            focusTargetType: scripta.view.focusTargetType || 'paragraph',
-            autoFocusRevision: Number(scripta.view.autoFocusRevision || 0),
+            focusTargetType: view.focusTargetType || 'paragraph',
+            autoFocusRevision: Number(view.autoFocusRevision || 0),
         };
-        scripta.view = paragraphView;
+        setEntryView(scripta, payload, entry, paragraphView);
         scripta.participants[participant.hash] = participant.viewId;
         const projectedParagraphId = String(entry.projection?.paragraph?.paragraphId || '');
         if (paragraphView.mode === 'paragraph' && projectedParagraphId !== paragraphView.paragraphId) {
@@ -984,11 +1217,11 @@ export async function focusScripta(context, {
             // local; neither case needs another Explorer/CRDT read.
             projectStoredView(entry, paragraphView);
         }
-        const blackboard = updateBlackboardProjection(record, payload);
+        const blackboard = updateBlackboardProjection(record, payload, { resourceId: entry.resourceId });
         stageEvents(stageEvent, record, entry, participant, 'focus', blackboard);
         output = {
             ok: true,
-            focus: structuredClone(scripta.view),
+            focus: structuredClone(paragraphView),
             blackboard: serializeBlackboard(blackboard, participant, authInfo),
         };
     });
@@ -1027,13 +1260,14 @@ export async function mutateScripta(context, {
         const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
         const scripta = ensureScriptaPayload(record, payload);
         scripta.participants[participant.hash] = participant.viewId;
-        if (resourceId && resourceId !== scripta.activeResourceId) throw new Error('SCRIPTA document is not active in this room.');
-        const entry = activeEntry(scripta);
+        const entry = activeEntry(scripta, payload, resourceId);
+        if (resourceId && !entry) throw new Error('SCRIPTA document is not active on its board.');
         if (!entry) throw new Error('No SCRIPTA document is active.');
+        let view = entryView(scripta, entry);
         const explorerMutationArgs = projectExplorerMutationArguments(operation, {
             ...args,
-            chapterId: chapterId || scripta.view.chapterId,
-            paragraphId: paragraphId || scripta.view.paragraphId,
+            chapterId: chapterId || view.chapterId,
+            paragraphId: paragraphId || view.paragraphId,
             ...(
                 ['p-variant-image-insert', 'p-variant-image-replace'].includes(operation)
                 || (operation === 'paragraph-add' && args.assetId)
@@ -1041,7 +1275,7 @@ export async function mutateScripta(context, {
                     : {}
             ),
             ...(['p-variant-image-insert', 'p-variant-image-replace', 'p-variant-image-delete', 'p-variant-image-layout'].includes(operation)
-                ? resolveVariantSelector(args, scripta.view.selectedVariantId)
+                ? resolveVariantSelector(args, view.selectedVariantId)
                 : {}),
         });
         const result = await scriptaExplorer.mutate(context, {
@@ -1055,18 +1289,19 @@ export async function mutateScripta(context, {
                 label: participant.label,
             },
             viewerHash: participant.hash,
-            view: scripta.view,
+            view,
             participantMap: scripta.participants,
         });
         updateEntryFromCrdt(entry, result);
         if (result.focusTarget) {
-            scripta.view = {
+            view = {
                 mode: 'document',
                 chapterId: result.focusTarget.chapterId,
                 paragraphId: result.focusTarget.paragraphId,
                 focusTargetType: result.focusTarget.type,
                 autoFocusRevision: entry.revision,
             };
+            setEntryView(scripta, payload, entry, view);
             // Explorer projects structural mutations directly onto the newly
             // created element. Reopening the same CRDT document here would
             // duplicate the persistence round-trip.
@@ -1079,12 +1314,98 @@ export async function mutateScripta(context, {
             timestamp: nowIso(),
         });
         scripta.audit = scripta.audit.slice(-MAX_AUDIT_ENTRIES);
-        const blackboard = updateBlackboardProjection(record, payload);
+        const blackboard = updateBlackboardProjection(record, payload, { resourceId: entry.resourceId });
         stageEvents(stageEvent, record, entry, participant, operation, blackboard);
         output = {
             ok: true,
             operation,
-            focus: structuredClone(scripta.view),
+            focus: structuredClone(view),
+            blackboard: serializeBlackboard(blackboard, participant, authInfo),
+        };
+    });
+    return output;
+}
+
+export async function getScriptaDocumentSnapshot(context, {
+    roomId,
+    resourceId,
+    participantId = '',
+    authInfo = null,
+} = {}) {
+    const record = await loadRoomRecord(context, roomId);
+    if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
+    const payload = decryptRoomPayload(context, record);
+    const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
+    const scripta = ensureScriptaPayload(record, payload);
+    const entry = scripta.documents?.[String(resourceId || '')];
+    if (!entry) throw new Error('SCRIPTA document was not found.');
+    const result = await scriptaExplorer.collaborationOpen(context, {
+        path: entry.path,
+        resourceId: entry.resourceId,
+        viewerHash: participant.hash,
+        view: entryView(scripta, entry),
+        participantMap: scripta.participants,
+    });
+    return {
+        resourceId: entry.resourceId,
+        documentId: result.documentId,
+        heads: Array.isArray(result.heads) ? result.heads : [],
+        stateBase64: String(result.stateBase64 || ''),
+        markdown: String(result.markdown || ''),
+    };
+}
+
+export async function mergeScriptaDocumentMarkdown(context, {
+    roomId,
+    resourceId,
+    markdown,
+    baseStateBase64 = '',
+    participantId = '',
+    command = '',
+    authInfo = null,
+} = {}) {
+    const source = String(markdown || '');
+    if (!source.trim()) throw new Error('SCRIPTA Markdown merge cannot be empty.');
+    let output;
+    await mutateRoom(context, roomId, async (record, payload, stageEvent) => {
+        if (!canViewMeetingRecord(record, authInfo)) throw new Error('Room not found.');
+        const participant = participantIdentity(payload, authInfo, participantId, record.meetingId);
+        const scripta = ensureScriptaPayload(record, payload);
+        scripta.participants[participant.hash] = participant.viewId;
+        const entry = scripta.documents?.[String(resourceId || '')];
+        if (!entry) throw new Error('SCRIPTA document was not found.');
+
+        const result = await scriptaExplorer.collaborationMergeMarkdown(context, {
+            path: entry.path,
+            resourceId: entry.resourceId,
+            markdown: source,
+            ...(baseStateBase64 ? { baseStateBase64 } : {}),
+            participant,
+            viewerHash: participant.hash,
+            view: entryView(scripta, entry),
+            participantMap: scripta.participants,
+        });
+        updateEntryFromCrdt(entry, result);
+        scripta.audit.push({
+            participantId: participant.id,
+            command: String(command || '').slice(0, 500),
+            operation: 'markdown-collaboration-merged',
+            resourceId: entry.resourceId,
+            timestamp: nowIso(),
+        });
+        scripta.audit = scripta.audit.slice(-MAX_AUDIT_ENTRIES);
+        const blackboard = updateBlackboardProjection(record, payload, { resourceId: entry.resourceId });
+        stageEvents(stageEvent, record, entry, participant, 'markdown-collaboration-merged', blackboard);
+        output = {
+            ok: true,
+            resourceId: entry.resourceId,
+            markdown: String(result.markdown || source),
+            documentSnapshot: {
+                documentId: String(result.documentId || entry.documentId || ''),
+                heads: Array.isArray(result.heads) ? result.heads : [],
+                stateBase64: String(result.stateBase64 || ''),
+                markdown: String(result.markdown || source),
+            },
             blackboard: serializeBlackboard(blackboard, participant, authInfo),
         };
     });

@@ -467,6 +467,7 @@ export const roomSessionMethods = {
                 scheduleRemoteSubscriptionSweep(Track, 'remote-track-published');
             },
             onParticipantConnected: (participant, { Track }) => {
+                this.meetingNotesTranscription?.sync?.();
                 this.playParticipantJoinSound(participant);
                 subscribeParticipantPublications(participant, Track, 'participant-connected');
                 this.syncParticipantsFromRoom(this.room, Track);
@@ -475,6 +476,7 @@ export const roomSessionMethods = {
                 scheduleRemoteSubscriptionSweep(Track, 'participant-connected');
             },
             onParticipantDisconnected: (participant, { Track }) => {
+                this.meetingNotesTranscription?.sync?.();
                 this.playParticipantLeaveSound(participant);
                 const participantId = String(participant?.identity || '').trim();
                 this.clearRoomAvatar?.(participantId);
@@ -534,6 +536,7 @@ export const roomSessionMethods = {
                 }
             },
             onParticipantAttributesChanged: (changedAttributes, participant, { Track }) => {
+                this.meetingNotesTranscription?.sync?.();
                 const rawAvatar = String(changedAttributes?.webmeetProfileAvatar || '').trim();
                 if (rawAvatar) {
                     try {
@@ -586,6 +589,7 @@ export const roomSessionMethods = {
                 this.state.roomState = 'Connected';
                 this.installJoinMaterialRefreshListeners();
                 this.scheduleJoinMaterialRefresh();
+                this.meetingNotesTranscription?.sync?.();
                 this.syncParticipantsFromRoom(this.room, Track);
                 const skipConnectedAvatarRepublishOnce = Boolean(this.state.skipConnectedAvatarRepublishOnce);
                 this.state.skipConnectedAvatarRepublishOnce = false;
@@ -625,6 +629,7 @@ export const roomSessionMethods = {
     resetRoomUiState(options = {}) {
         const forceRenderAll = Boolean(options.forceRenderAll);
         const applyVideoFullscreenMode = Boolean(options.applyVideoFullscreenMode);
+        const clearSession = Boolean(options.clearSession);
         this.room = this.roomLiveKit.getRoom();
         this.mediaController.reset();
         this.state.roomState = 'Disconnected';
@@ -640,6 +645,11 @@ export const roomSessionMethods = {
         this.resetBlackboardUiState?.();
         this.state.audioHealth = 'Good';
         this.state.audioNetworkUnstable = false;
+        this.state.meetingNotesActivity = null;
+        if (clearSession) {
+            this.state.session = null;
+        }
+        this.meetingNotesTranscription?.sync?.();
         window.clearInterval(this.audioWebRtcStatsTimer);
         this.audioWebRtcStatsTimer = null;
         this.remoteAudioNormalizer?.stopAll?.();

@@ -1085,10 +1085,90 @@ webmeet-blackboard-panel {
     position: sticky;
     top: 0;
     z-index: 2;
+    flex-wrap: wrap;
     justify-content: space-between;
     padding-bottom: 10px;
     background: var(--bb-widget-bg);
     border-bottom: 1px solid var(--bb-widget-border);
+}
+
+.webmeet-scripta-meeting-notes-status {
+    display: flex;
+    flex: 1 0 100%;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--bb-widget-text) 12%, transparent);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--bb-widget-text) 5%, var(--bb-widget-bg));
+    color: var(--bb-context-text);
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.webmeet-scripta-meeting-notes-status[hidden] {
+    display: none;
+}
+
+.webmeet-scripta-meeting-notes-status[data-tone="success"] {
+    border-color: color-mix(in srgb, #2fa86f 35%, transparent);
+    background: color-mix(in srgb, #2fa86f 10%, var(--bb-widget-bg));
+}
+
+.webmeet-scripta-meeting-notes-status[data-tone="working"] {
+    border-color: color-mix(in srgb, #4f7cff 36%, transparent);
+    background: color-mix(in srgb, #4f7cff 10%, var(--bb-widget-bg));
+}
+
+.webmeet-scripta-meeting-notes-status[data-tone="warning"] {
+    border-color: color-mix(in srgb, #d88922 38%, transparent);
+    background: color-mix(in srgb, #d88922 10%, var(--bb-widget-bg));
+}
+
+.webmeet-scripta-meeting-notes-indicator {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .72;
+}
+
+.webmeet-scripta-meeting-notes-status.is-working .webmeet-scripta-meeting-notes-indicator {
+    width: 12px;
+    height: 12px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    background: transparent;
+    opacity: 1;
+    animation: webmeet-scripta-meeting-notes-spin .8s linear infinite;
+}
+
+.webmeet-scripta-meeting-notes-label {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webmeet-scripta-meeting-notes-meta {
+    flex: 0 0 auto;
+    margin-left: auto;
+    opacity: .72;
+    white-space: nowrap;
+}
+
+@keyframes webmeet-scripta-meeting-notes-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .webmeet-scripta-meeting-notes-status.is-working .webmeet-scripta-meeting-notes-indicator {
+        animation: none;
+    }
 }
 
 .webmeet-scripta-document-position {

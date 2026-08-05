@@ -22,6 +22,53 @@ test('WebMeet dashboard is a page component and settings is a WebSkel modal', as
     assert.equal(customSelect?.baseUrl, '/explorer/web-components/components/custom-select/custom-select');
 });
 
+test('room settings passes structured RoboTeam settings through encoded modal attributes', async () => {
+    const dashboardSource = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-dashboard/controllers/meeting-action-methods.js'),
+        'utf8'
+    );
+    const modalSource = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-room-settings-modal/webmeet-room-settings-modal.js'),
+        'utf8'
+    );
+    const { WebmeetRoomSettingsModal } = await import(
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-room-settings-modal/webmeet-room-settings-modal.js'
+    );
+    const attributes = new Map([
+        ['data-room-id', 'room-1'],
+        ['data-room-title', 'Planning'],
+        ['data-room-link', 'http://localhost/room-1'],
+        ['data-robo-team-settings', encodeURIComponent(JSON.stringify({
+            meetingNotes: {
+                enabled: true,
+                sections: ['ideas']
+            }
+        }))]
+    ]);
+    const element = {
+        getAttribute(name) {
+            return attributes.has(name) ? attributes.get(name) : null;
+        }
+    };
+    const modal = new WebmeetRoomSettingsModal(element, () => {});
+
+    assert.match(dashboardSource, /showModal\('webmeet-room-settings-modal'/);
+    assert.doesNotMatch(dashboardSource, /createReactiveModal\('webmeet-room-settings-modal'/);
+    assert.match(dashboardSource, /'robo-team-settings': encodeURIComponent\(JSON\.stringify\(roboTeamSettings\)\)/);
+    assert.doesNotMatch(dashboardSource, /webmeet\.roboTeam\./);
+    assert.doesNotMatch(modalSource, /readData\(/);
+    assert.doesNotMatch(modalSource, /props\.roboTeamSettings/);
+    assert.equal(modal.roomId, 'room-1');
+    assert.equal(modal.roomTitle, 'Planning');
+    assert.equal(modal.roboTeamSettings.meetingNotes.enabled, true);
+    assert.equal(Object.hasOwn(modal.roboTeamSettings.meetingNotes, 'sections'), false);
+    assert.match(modal.roboTeamSettings.meetingNotes.structurePrompt, /Create a meeting title followed by these chapters/);
+    const notesFields = modal.renderMeetingNotesFields(modal.roboTeamSettings.meetingNotes);
+    assert.match(notesFields, /data-robo-field="meetingNotes\.structurePrompt"/);
+    assert.match(notesFields, /Ideas and proposals[\s\S]*Decisions[\s\S]*Questions[\s\S]*Risks[\s\S]*Actions[\s\S]*Unresolved points/);
+    assert.doesNotMatch(notesFields, /meetingNotes\.sections/);
+});
+
 test('WebMeet settings modal supports resize, fullscreen, and dashboard action delegation', async () => {
     const modalSource = await fs.readFile(
         path.join(pluginRoot, 'components/webmeet-settings-modal/webmeet-settings-modal.js'),
@@ -76,6 +123,21 @@ test('WebMeet settings fields live in the WebSkel modal template, not the dashbo
     assert.match(modalHtml, /id="webmeetAvatarSettingsTabPanel"/);
     assert.match(modalHtml, /id="webmeetMediaSettingsActions"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsActions"/);
+});
+
+test('Meeting Notes settings expose only enabled state and editable document structure', async () => {
+    const modalSource = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-room-settings-modal/webmeet-room-settings-modal.js'),
+        'utf8',
+    );
+    const modelSource = await fs.readFile(
+        path.join(pluginRoot, 'components/webmeet-room-settings-modal/robo-team-settings-model.js'),
+        'utf8',
+    );
+    for (const removedSetting of ['visibleDuringMeeting', 'reviewEnabled', 'exportEnabled']) {
+        assert.doesNotMatch(modalSource, new RegExp(`data-robo-(?:toggle|field)=["']meetingNotes\\.${removedSetting}`));
+        assert.match(modelSource, new RegExp(`delete result\\.meetingNotes\\.${removedSetting}`));
+    }
 });
 
 test('WebMeet close buttons use the shared modal icon asset from ui-common', async () => {

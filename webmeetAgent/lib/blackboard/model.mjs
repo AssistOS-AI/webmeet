@@ -319,7 +319,10 @@ function filterPropertiesForViewer(properties = {}, viewerContext = {}) {
     }
 
     const guestViewer = (viewerContext?.roles || []).some((role) => String(role || '').toLowerCase() === 'guest');
-    if (Array.isArray(filtered.documents) && Object.prototype.hasOwnProperty.call(filtered, 'viewMode')) {
+    if (
+        Object.prototype.hasOwnProperty.call(filtered, 'resourceId')
+        && Object.prototype.hasOwnProperty.call(filtered, 'viewMode')
+    ) {
         filtered.canBrowseWorkspace = Boolean(String(viewerContext?.userId || '').trim() && !guestViewer);
     }
     if (!String(viewerContext?.userId || '').trim() || guestViewer) {

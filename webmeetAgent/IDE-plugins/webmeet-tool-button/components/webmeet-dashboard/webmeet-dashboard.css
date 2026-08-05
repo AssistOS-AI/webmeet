@@ -464,6 +464,51 @@
     font-size: 0.8rem;
 }
 
+.webmeet-meeting-notes-status {
+    color: var(--text-soft);
+    font-size: 0.75rem;
+}
+
+.webmeet-meeting-notes-status[data-status="listening"] {
+    color: #15803d;
+}
+
+.webmeet-meeting-notes-status[data-status="queued"],
+.webmeet-meeting-notes-status[data-status="analyzing"],
+.webmeet-meeting-notes-status[data-status="updating"],
+.webmeet-meeting-notes-status[data-status="retrying"] {
+    color: #4f46e5;
+    font-weight: 600;
+}
+
+.webmeet-meeting-notes-status[data-status="queued"]::before,
+.webmeet-meeting-notes-status[data-status="analyzing"]::before,
+.webmeet-meeting-notes-status[data-status="updating"]::before,
+.webmeet-meeting-notes-status[data-status="retrying"]::before {
+    content: '';
+    display: inline-block;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-right: 0.4rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: webmeet-meeting-notes-spin 0.8s linear infinite;
+}
+
+@keyframes webmeet-meeting-notes-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .webmeet-meeting-notes-status::before { animation: none !important; }
+}
+
+.webmeet-meeting-notes-status[data-status="error"],
+.webmeet-meeting-notes-status[data-status="unsupported"] {
+    color: #b45309;
+}
+
 .webmeet-meeting-actions {
     display: flex;
     align-items: center;

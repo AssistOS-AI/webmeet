@@ -25,11 +25,17 @@ import {
     openScriptaDocument,
     openScriptaCollaboration,
     applyScriptaCollaboration,
+    mergeScriptaDocumentMarkdown,
 } from '../../lib/webmeetStore.mjs';
 import { executeRoboCommand } from '../../lib/scripta/command-service.mjs';
 import { normalizeRoboIntent } from '../../lib/scripta/commands.mjs';
 import { callScriptaExplorer } from '../../lib/scripta/explorer-crdt-client.mjs';
 import { decryptRoomPayload, loadRoomRecord, mutateRoom } from '../../lib/store/roomRecords.mjs';
+import {
+    applyMeetingNotesDocument,
+    heartbeatMeetingNotesSession,
+    startMeetingNotesSession,
+} from '../../lib/meetingNotes/service.mjs';
 import { dispatch } from '../../tools/webmeet_tool.mjs';
 import { createMarkdownCrdtStore } from '../../../explorer/utils/server/markdown-crdt/markdown-crdt-store.mjs';
 import { createScriptaCrdtService } from '../../../explorer/utils/server/markdown-crdt/scripta-crdt-service.mjs';
@@ -97,7 +103,15 @@ async function withStore(fn) {
             validatePath,
             markdownCrdtStore: crdtStore,
         });
+        context.testExplorerWrites = [];
+        context.testExplorerCalls = [];
         const operations = {
+            write_file: async ({ path: documentPath, content }) => {
+                await fs.writeFile(await validatePath(documentPath), String(content), 'utf8');
+                context.testExplorerWrites.push({ path: documentPath, content: String(content) });
+                return { ok: true };
+            },
+            sync_markdown_crdt_from_file: crdtStore.syncFromFile,
             scripta_crdt_ensure_folder: explorer.ensureFolder,
             scripta_crdt_workspace_list: explorer.listWorkspace,
             scripta_crdt_create: explorer.create,
@@ -107,9 +121,11 @@ async function withStore(fn) {
             scripta_collaboration_open: explorer.collaborationOpen,
             scripta_collaboration_pull: explorer.collaborationPull,
             scripta_collaboration_apply: explorer.collaborationApply,
+            scripta_collaboration_merge_markdown: explorer.collaborationMergeMarkdown,
         };
         context.scriptaExplorerClient = async (tool, args) => {
             assertCanonicalJson(args);
+            context.testExplorerCalls.push({ tool, args: structuredClone(args) });
             return operations[tool](args);
         };
         return await fn(context, root);
@@ -373,6 +389,169 @@ test('a created SCRIPTA document survives a room attachment failure and reports 
     });
 });
 
+test('Meeting Notes adopts an unreferenced first document instead of creating a suffixed duplicate', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Meeting document retry', authInfo: ADMIN });
+        await mutateRoom(context, meeting.roomId, (_record, payload) => {
+            payload.roboTeamSettings = { meetingNotes: { enabled: true, timeZone: 'Europe/Bucharest' } };
+        });
+        const secretaryAuth = {
+            user: ADMIN.user,
+            agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+        };
+        const started = await startMeetingNotesSession(context, {
+            roomId: meeting.roomId,
+            jobId: 'retry-job',
+            authInfo: secretaryAuth,
+        });
+        const date = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(new Date());
+        const orphan = await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: `retryable-notes-${date}`,
+            boardId: started.boardId,
+            template: 'general',
+            initialization: { title: `Retryable Notes — ${date}` },
+            participantId: 'agent_meeting_secretary',
+            authInfo: secretaryAuth,
+        });
+        const markdown = '# Retryable Notes\n\n## Summary\n\n- **Admin:** The first attachment is reused.\n';
+        const applied = await applyMeetingNotesDocument(context, {
+            roomId: meeting.roomId,
+            sessionId: started.session.sessionId,
+            analysisRevision: 1,
+            markdown,
+            authInfo: secretaryAuth,
+        });
+
+        assert.equal(applied.session.documentResourceId, orphan.resourceId);
+        assert.match(applied.markdown, new RegExp(`^# Retryable Notes — ${date}`));
+        assert.ok(applied.documentSnapshot?.stateBase64);
+        const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
+        assert.equal(Object.keys(payload.scripta.documents || {}).length, 1);
+
+        context.testExplorerCalls.length = 0;
+        const lightweightHeartbeat = await heartbeatMeetingNotesSession(context, {
+            roomId: meeting.roomId,
+            sessionId: started.session.sessionId,
+            authInfo: secretaryAuth,
+        });
+        assert.equal(Object.hasOwn(lightweightHeartbeat, 'documentSnapshot'), false);
+        assert.equal(context.testExplorerCalls.some(({ tool }) => tool === 'scripta_collaboration_open'), false);
+
+        const checkpointHeartbeat = await heartbeatMeetingNotesSession(context, {
+            roomId: meeting.roomId,
+            sessionId: started.session.sessionId,
+            includeDocumentSnapshot: true,
+            authInfo: secretaryAuth,
+        });
+        assert.ok(checkpointHeartbeat.documentSnapshot?.stateBase64);
+        assert.equal(context.testExplorerCalls.some(({ tool }) => tool === 'scripta_collaboration_open'), true);
+    });
+});
+
+test('the first queued speech creates an empty active Meeting Notes document', async () => {
+    await withStore(async (context, root) => {
+        const meeting = await createMeeting(context, { name: 'Immediate notes document', authInfo: ADMIN });
+        const ordinary = await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: 'Ordinary working document',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        await mutateRoom(context, meeting.roomId, (_record, payload) => {
+            payload.roboTeamSettings = { meetingNotes: { enabled: true, timeZone: 'Europe/Bucharest' } };
+        });
+        const secretaryAuth = {
+            agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+        };
+        const started = await startMeetingNotesSession(context, {
+            roomId: meeting.roomId,
+            jobId: 'first-speech-job',
+            authInfo: secretaryAuth,
+        });
+        assert.equal(started.session.documentResourceId, '');
+
+        const queuedResults = await Promise.all([1, 2].map((pendingSegmentCount) => (
+            heartbeatMeetingNotesSession(context, {
+                roomId: meeting.roomId,
+                sessionId: started.session.sessionId,
+                activity: 'queued',
+                pendingSegmentCount,
+                authInfo: secretaryAuth,
+            })
+        )));
+        const queued = queuedResults.find((result) => result.session?.documentResourceId);
+
+        assert.ok(queued.session.documentResourceId);
+        assert.match(queued.session.documentName, /^meeting-notes-\d{4}-\d{2}-\d{2}(?:-\d+)?\.md$/);
+        const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
+        assert.equal(Object.keys(payload.scripta.documents || {}).length, 2);
+        assert.equal(payload.scripta.activeResourceId, ordinary.resourceId);
+        assert.equal(
+            payload.scripta.activeResourceIdsByBoard[payload.scripta.documents[ordinary.resourceId].boardId],
+            ordinary.resourceId,
+        );
+        assert.equal(
+            payload.scripta.activeResourceIdsByBoard[payload.scripta.documents[queued.session.documentResourceId].boardId],
+            queued.session.documentResourceId,
+        );
+        const entry = payload.scripta.documents[queued.session.documentResourceId];
+        const savedMarkdown = await fs.readFile(path.join(root, entry.path), 'utf8');
+        assert.match(savedMarkdown, /## Chapter 1/);
+        assert.doesNotMatch(savedMarkdown, /No summary yet|No items yet/);
+        const board = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId: queued.session.boardId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const widget = board.blackboard.widgets.find((item) => item.type === 'scripta-document');
+        assert.equal(widget?.properties?.resourceId, queued.session.documentResourceId);
+
+        const ordinaryContext = await getScriptaContext(context, {
+            roomId: meeting.roomId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        assert.equal(ordinaryContext.activeResourceId, ordinary.resourceId);
+        const ordinaryCollaboration = await openScriptaCollaboration(context, {
+            roomId: meeting.roomId,
+            resourceId: ordinary.resourceId,
+            participantId: 'admin',
+            clientId: 'ordinary-after-notes',
+            authInfo: ADMIN,
+        });
+        assert.equal(ordinaryCollaboration.resourceId, ordinary.resourceId);
+
+        await manageScriptaDocument(context, {
+            roomId: meeting.roomId,
+            operation: 'document-delete',
+            resourceId: ordinary.resourceId,
+            confirmed: true,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const notesBoardAfterOrdinaryDelete = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId: queued.session.boardId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        assert.equal(
+            notesBoardAfterOrdinaryDelete.blackboard.widgets
+                .find((item) => item.type === 'scripta-document')?.properties?.resourceId,
+            queued.session.documentResourceId,
+        );
+        assert.equal((await getScriptaContext(context, {
+            roomId: meeting.roomId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        })).activeResourceId, '');
+    });
+});
+
 test('a missing attached SCRIPTA file is detached instead of persisting an empty widget', async () => {
     await withStore(async (context, root) => {
         const meeting = await createMeeting(context, { name: 'Missing document', authInfo: ADMIN });
@@ -431,6 +610,88 @@ test('General creation produces one empty document and one singleton blackboard 
         assert.equal(scriptaWidgets[0].properties.canBrowseWorkspace, true);
         const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
         assert.equal((await fs.stat(path.join(root, payload.scripta.folderPath, 'working-draft.md'))).isFile(), true);
+    });
+});
+
+test('complete Meeting Notes Markdown is merged and committed by the Explorer SCRIPTA CRDT', async () => {
+    await withStore(async (context, root) => {
+        const meeting = await createMeeting(context, { name: 'Markdown source of truth', authInfo: ADMIN });
+        const created = await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: 'Meeting Notes',
+            template: 'general',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const markdown = '# Meeting Notes\n\n## Summary\n- **Admin:** Confirmed the file is the source of truth.\n\n## Ideas and proposals\n\n## Decisions\n\n## Questions\n\n## Risks\n\n## Actions\n\n## Unresolved points\n';
+        await assert.rejects(mergeScriptaDocumentMarkdown(context, {
+            roomId: meeting.roomId,
+            resourceId: created.resourceId,
+            markdown,
+            participantId: 'agent_meeting_secretary',
+            authInfo: {
+                agent: { principalId: 'agent:AnotherRepo/webmeetScribeAgent' },
+            },
+        }), /participant|identity|admitted/i);
+        await mergeScriptaDocumentMarkdown(context, {
+            roomId: meeting.roomId,
+            resourceId: created.resourceId,
+            markdown,
+            participantId: 'agent_meeting_secretary',
+            authInfo: {
+                user: { id: 'local:admin', username: 'admin', roles: ['admin'] },
+                agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+            },
+        });
+        const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
+        const entry = payload.scripta.documents[created.resourceId];
+        assert.equal(payload.scripta.audit.at(-1).participantId, 'agent:AchillesIDE/webmeetScribeAgent');
+        const savedMarkdown = await fs.readFile(path.join(root, entry.path), 'utf8');
+        assert.match(savedMarkdown, /achilles-ide-document/);
+        assert.match(savedMarkdown, /Confirmed the file is the source of truth/);
+        const projection = await getScriptaContext(context, {
+            roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN,
+        });
+        assert.ok(projection.documentOutline.some((chapter) => chapter.chapterTitle === 'Summary'));
+    });
+});
+
+test('Meeting Notes history stays isolated from ordinary SCRIPTA boards', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Scoped SCRIPTA', authInfo: ADMIN });
+        const ordinaryBoardId = await getActiveBoardId(context, meeting.roomId, 'admin', ADMIN);
+        const ordinary = await createScriptaDocument(context, {
+            roomId: meeting.roomId, name: 'Ordinary One', participantId: 'admin', authInfo: ADMIN,
+        });
+        const createdBoard = await applyRoomBlackboardWorkspaceAction(context, {
+            roomId: meeting.roomId, action: 'board-create', title: 'Meeting Notes', participantId: 'admin', authInfo: ADMIN,
+        });
+        const notesBoardId = createdBoard.workspace.activeBoardId;
+        const notes = await createScriptaDocument(context, {
+            roomId: meeting.roomId, name: 'Meeting Notes One', boardId: notesBoardId,
+            participantId: 'admin', authInfo: ADMIN,
+        });
+
+        await applyRoomBlackboardWorkspaceAction(context, {
+            roomId: meeting.roomId, action: 'board-activate', boardId: ordinaryBoardId,
+            participantId: 'admin', authInfo: ADMIN,
+        });
+        const ordinaryTwo = await createScriptaDocument(context, {
+            roomId: meeting.roomId, name: 'Ordinary Two', participantId: 'admin', authInfo: ADMIN,
+        });
+        const ordinaryBoard = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, boardId: ordinaryBoardId, participantId: 'admin', authInfo: ADMIN,
+        });
+        const notesBoard = await getRoomBlackboard(context, {
+            roomId: meeting.roomId, boardId: notesBoardId, participantId: 'admin', authInfo: ADMIN,
+        });
+        const ordinaryWidget = ordinaryBoard.blackboard.widgets.find((widget) => widget.type === 'scripta-document');
+        const notesWidget = notesBoard.blackboard.widgets.find((widget) => widget.type === 'scripta-document');
+
+        assert.equal(ordinaryWidget.properties.resourceId, ordinaryTwo.resourceId);
+        assert.equal(notesWidget.properties.resourceId, notes.resourceId);
+        assert.equal('documents' in notesWidget.properties, false);
+        assert.equal('documents' in ordinaryWidget.properties, false);
     });
 });
 

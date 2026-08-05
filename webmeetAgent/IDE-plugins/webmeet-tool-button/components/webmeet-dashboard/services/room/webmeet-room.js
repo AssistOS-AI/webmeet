@@ -4,6 +4,12 @@ import { WebMeetRoomState } from './webmeet-room-state.js';
 import { WEBMEET_EVENT_TYPES } from '../webmeet-events.js';
 import { normalizeAvatarConfig } from '../webmeet-profile-avatar-runtime.js';
 
+const SERVER_BROADCAST_EVENT_TYPES = new Set([
+    WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
+    WEBMEET_EVENT_TYPES.MEETING_NOTES_SETTINGS_CHANGED,
+    WEBMEET_EVENT_TYPES.MEETING_NOTES_ACTIVITY,
+]);
+
 function assertFunction(value, name) {
     if (typeof value !== 'function') {
         throw new Error(`Missing WebMeet room dependency: ${name}`);
@@ -156,6 +162,12 @@ export class WebMeetRoom extends EventTarget {
         }
         const senderParticipantId = String(meta?.participantId || '').trim();
         if (!senderParticipantId) {
+            if (
+                SERVER_BROADCAST_EVENT_TYPES.has(parsed.type)
+                && parsed?.payload?.changeType !== 'scripta-p-variant-edit-draft'
+            ) {
+                return true;
+            }
             throw new Error('Rejected LiveKit event without sender participant.');
         }
         if (

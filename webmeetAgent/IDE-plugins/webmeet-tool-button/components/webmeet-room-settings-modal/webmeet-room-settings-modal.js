@@ -1,7 +1,6 @@
 import {
     ASSISTANT_MODES,
     SCENARIO_OPTIONS,
-    MEETING_NOTES_SECTIONS,
     BLACKBOARD_VISIBILITY_OPTIONS,
     DOCUMENT_PURPOSE_OPTIONS,
     DOCUMENT_TONE_OPTIONS,
@@ -33,37 +32,33 @@ const ROBO_TEAM_TABS = Object.freeze([
     { key: 'adaptation', label: 'Adaptation' }
 ]);
 
+function readRequiredAttribute(element, name) {
+    const value = element.getAttribute(`data-${name}`);
+    if (value === null) {
+        throw new Error(`Missing required modal property: ${name}`);
+    }
+    return String(value).trim();
+}
+
+function readJsonAttribute(element, name) {
+    return JSON.parse(decodeURIComponent(readRequiredAttribute(element, name)));
+}
+
 export class WebmeetRoomSettingsModal {
     constructor(element, invalidate) {
         this.element = element;
         this.invalidate = invalidate;
-        this.roomId = this.readData('roomId', 'room-id');
-        this.roomTitle = this.readData('roomTitle', 'room-title') || 'Room';
-        this.roomLink = this.readData('roomLink', 'room-link');
+        this.roomId = readRequiredAttribute(element, 'room-id');
+        this.roomTitle = readRequiredAttribute(element, 'room-title');
+        this.roomLink = readRequiredAttribute(element, 'room-link');
         this.activeTab = 'general';
         this.activeRoboTeamTab = 'generalSettings';
-        this.roboTeamSettings = normalizeRoboTeamSettings(this.readData('roboTeamSettings', 'robo-team-settings'));
+        this.roboTeamSettings = normalizeRoboTeamSettings(
+            readJsonAttribute(element, 'robo-team-settings')
+        );
         this.dialogState = { isFullscreen: false, previous: null };
         this.result = null;
         this.invalidate();
-    }
-
-    readData(...names) {
-        for (const name of names) {
-            const raw = this.element.getAttribute(`data-${name}`);
-            if (raw === null) continue;
-            const value = String(raw).trim();
-            if (!value) continue;
-            if (name === 'roboTeamSettings' || name === 'robo-team-settings') {
-                try {
-                    return JSON.parse(value);
-                } catch (_) {
-                    return null;
-                }
-            }
-            return value;
-        }
-        return '';
     }
 
     beforeRender() {
@@ -360,17 +355,8 @@ export class WebmeetRoomSettingsModal {
             if (enabledToggle) settings[section].enabled = enabledToggle.checked;
         }
 
-        settings.meetingNotes.sections = getAll('[data-robo-check="meetingNotes.sections"]')
-            .filter((el) => el.checked)
-            .map((el) => String(el.value || '').trim())
-            .filter(Boolean);
-
-        const notesVisible = get('[data-robo-toggle="meetingNotes.visibleDuringMeeting"]');
-        if (notesVisible) settings.meetingNotes.visibleDuringMeeting = notesVisible.checked;
-        const notesReview = get('[data-robo-toggle="meetingNotes.reviewEnabled"]');
-        if (notesReview) settings.meetingNotes.reviewEnabled = notesReview.checked;
-        const notesExport = get('[data-robo-toggle="meetingNotes.exportEnabled"]');
-        if (notesExport) settings.meetingNotes.exportEnabled = notesExport.checked;
+        const notesStructurePrompt = get('[data-robo-field="meetingNotes.structurePrompt"]');
+        if (notesStructurePrompt) settings.meetingNotes.structurePrompt = String(notesStructurePrompt.value || '').trim();
 
         const bbVisibility = get('[data-robo-field="blackboard.visibility"]');
         if (bbVisibility) settings.blackboard.visibility = String(bbVisibility.value || '').trim();
@@ -432,7 +418,7 @@ export class WebmeetRoomSettingsModal {
         requireText(settings.assistant.scenarioOrObjective, 'Scenario / Objective', 'generalSettings');
 
         if (settings.meetingNotes.enabled) {
-            requireArray(settings.meetingNotes.sections, 'Meeting Notes sections to track', 'meetingNotes');
+            requireText(settings.meetingNotes.structurePrompt, 'Meeting Notes document structure', 'meetingNotes');
         }
         if (settings.blackboard.enabled) {
             requireText(settings.blackboard.visibility, 'Blackboard visibility', 'blackboard');
@@ -589,28 +575,9 @@ export class WebmeetRoomSettingsModal {
 
     renderMeetingNotesFields(notes) {
         return `
-            <div class="webmeet-robo-field-group">
-                <span class="webmeet-robo-field-group-label">Sections to track <span class="webmeet-robo-required" aria-label="required">*</span></span>
-                <div class="webmeet-robo-checklist">
-                    ${MEETING_NOTES_SECTIONS.map((opt) => `
-                        <label class="webmeet-robo-check-item">
-                            <input type="checkbox" data-robo-check="meetingNotes.sections" value="${escapeHtml(opt.value)}"${notes.sections.includes(opt.value) ? ' checked' : ''}>
-                            <span>${escapeHtml(opt.label)}</span>
-                        </label>
-                    `).join('')}
-                </div>
-            </div>
-            <label class="webmeet-robo-toggle-row">
-                <input type="checkbox" data-robo-toggle="meetingNotes.visibleDuringMeeting"${notes.visibleDuringMeeting ? ' checked' : ''}>
-                <span>Visible during meeting</span>
-            </label>
-            <label class="webmeet-robo-toggle-row">
-                <input type="checkbox" data-robo-toggle="meetingNotes.reviewEnabled"${notes.reviewEnabled ? ' checked' : ''}>
-                <span>Allow review before finalizing</span>
-            </label>
-            <label class="webmeet-robo-toggle-row">
-                <input type="checkbox" data-robo-toggle="meetingNotes.exportEnabled"${notes.exportEnabled ? ' checked' : ''}>
-                <span>Allow export at end of meeting</span>
+            <label class="webmeet-room-settings-field">
+                <span>Document structure <span class="webmeet-robo-required" aria-label="required">*</span></span>
+                <textarea data-robo-field="meetingNotes.structurePrompt" rows="9" placeholder="Describe the title and chapters to maintain" required>${escapeHtml(notes.structurePrompt)}</textarea>
             </label>
         `;
     }

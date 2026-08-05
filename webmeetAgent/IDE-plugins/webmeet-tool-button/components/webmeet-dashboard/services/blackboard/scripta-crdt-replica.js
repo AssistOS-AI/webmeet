@@ -108,7 +108,17 @@ export class ScriptaCrdtReplica {
         const next = Automerge.change(before, (draft) => {
             const variant = selectedVariant(draft, chapterId, paragraphId, variantId);
             if (!variant) throw new Error('SCRIPTA variant was not found in the local replica.');
-            variant.text = String(text ?? '');
+            const chapterIndex = (draft.chapters || []).findIndex((entry) => entry.id === chapterId);
+            const paragraphIndex = (draft.chapters?.[chapterIndex]?.paragraphs || [])
+                .findIndex((entry) => entry.id === paragraphId);
+            const variantIndex = (draft.chapters?.[chapterIndex]?.paragraphs?.[paragraphIndex]
+                ?.pluginState?.scripta?.variants || []).findIndex((entry) => entry.id === variantId);
+            Automerge.updateText(draft, [
+                'chapters', chapterIndex,
+                'paragraphs', paragraphIndex,
+                'pluginState', 'scripta', 'variants', variantIndex,
+                'text',
+            ], String(text ?? ''));
         });
         const changesBase64 = Automerge.getChanges(before, next).map(base64FromBytes);
         session.document = next;

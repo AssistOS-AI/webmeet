@@ -5,6 +5,7 @@ import {
     parseWebMeetEvent
 } from '../services/webmeet-events.js';
 import { ROOM_EVENT_TYPES } from '../services/room/webmeet-room-events.js';
+import { runWebMeetTool } from '../services/webmeet-api-client.js';
 
 export const dashboardRealtimeMethods = {
     usesLiveRosterForWorkspaceEvent(payload = {}) {
@@ -197,6 +198,36 @@ export const dashboardRealtimeMethods = {
             // MEETING_ARCHIVED is already normalized and handled as ROOM_EVENT_TYPES.ARCHIVED.
             // Keeping this branch would process the same incoming event twice for LiveKit events.
             this.scheduleWorkspaceMeetingsRefresh();
+            return;
+        }
+        if (type === WEBMEET_EVENT_TYPES.MEETING_NOTES_SETTINGS_CHANGED) {
+            if (!meetingId || meetingId !== String(this.state.session?.meeting?.id || '').trim()) return;
+            void runWebMeetTool('webmeet_room_get', {
+                roomId: meetingId,
+                includeParticipants: false,
+            })
+                .then((result) => {
+                    const meetingNotes = result?.meetingNotes;
+                    if (!meetingNotes || !this.state.session) return;
+                    this.state.session.meetingNotes = {
+                        ...(this.state.session.meetingNotes || {}),
+                        ...meetingNotes,
+                    };
+                    this.meetingNotesTranscription?.sync?.();
+                    this.renderMeetingSummary();
+                })
+                .catch(() => {});
+            return;
+        }
+        if (type === WEBMEET_EVENT_TYPES.MEETING_NOTES_ACTIVITY) {
+            if (!meetingId || meetingId !== String(this.state.session?.meeting?.id || '').trim()) return;
+            this.state.meetingNotesActivity = {
+                phase: String(payload?.phase || ''),
+                pendingSegmentCount: Math.max(0, Number(payload?.pendingSegmentCount || 0)),
+                analysisRevision: Math.max(0, Number(payload?.analysisRevision || 0)),
+                updatedAt: String(parsed.createdAt || ''),
+            };
+            this.renderMeetingNotesTranscriptionStatus?.();
             return;
         }
         if (source === 'livekit' && type === WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_REQUEST) {

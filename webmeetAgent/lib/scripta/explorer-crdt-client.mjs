@@ -97,4 +97,5 @@ export const scriptaExplorer = Object.freeze({
     collaborationOpen: (context, args) => callScriptaExplorer(context, 'scripta_collaboration_open', args),
     collaborationPull: (context, args) => callScriptaExplorer(context, 'scripta_collaboration_pull', args),
     collaborationApply: (context, args) => callScriptaExplorer(context, 'scripta_collaboration_apply', args),
+    collaborationMergeMarkdown: (context, args) => callScriptaExplorer(context, 'scripta_collaboration_merge_markdown', args),
 });

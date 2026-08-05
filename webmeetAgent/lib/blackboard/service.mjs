@@ -21,6 +21,7 @@ import {
     ensureRoboTeamBlackboardWorkspacePayload,
     getRoboTeamAgentPayload
 } from '../roboTeam/service.mjs';
+import { resetMeetingNotesForRemovedDocument } from '../meetingNotes/service.mjs';
 import { scriptaOwnerHash } from '../scripta/identity.mjs';
 import { scriptaExplorer } from '../scripta/explorer-crdt-client.mjs';
 import { getScriptaRoomFolderPath } from '../scripta/service.mjs';
@@ -399,12 +400,18 @@ export async function applyRoomBlackboardWorkspaceAction(context, {
             const board = workspace.createBoard({ title });
             affectedBoardIds = [board.boardId];
         } else if (normalizedAction === 'board-rename') {
+            if (workspace.requireBoard(assertBoardId(boardId)).metadata?.systemManaged === true) {
+                throw new Error('This Blackboard workspace is managed by WebMeet.');
+            }
             workspace.renameBoard(assertBoardId(boardId), title);
             affectedBoardIds = [boardId];
         } else if (normalizedAction === 'board-reorder') {
             workspace.reorderBoard(assertBoardId(boardId), targetIndex);
             affectedBoardIds = [boardId];
         } else if (normalizedAction === 'board-delete') {
+            if (workspace.requireBoard(assertBoardId(boardId)).metadata?.systemManaged === true) {
+                throw new Error('This Blackboard workspace is permanent.');
+            }
             workspace.deleteBoard(assertBoardId(boardId));
             affectedBoardIds = [boardId, workspace.activeBoardId];
         } else if (normalizedAction === 'board-activate') {
@@ -707,6 +714,9 @@ export async function applyRoomBlackboardChange(context, {
         sanitizeChangeAuthority(normalizedChange, authInfo);
         const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
         const blackboard = workspace.requireBoard(targetBoardId);
+        const removedWidget = normalizedChange.changeType === 'delete'
+            ? blackboard.getWidget(normalizedChange.targetRef)
+            : null;
         const before = workspace.snapshot();
         if (normalizedChange.changeType === 'submit') {
             const targetRef = String(normalizedChange.targetRef || '').trim();
@@ -739,6 +749,12 @@ export async function applyRoomBlackboardChange(context, {
             canModerateBlackboard: isAdminAuthInfo(authInfo),
             record: false,
         });
+        if (normalizedChange.changeType === 'clear' || removedWidget?.type === 'scripta-document') {
+            resetMeetingNotesForRemovedDocument(payload, {
+                boardId: normalizedChange.changeType === 'clear' ? blackboard.boardId : '',
+                resourceId: String(removedWidget?.properties?.resourceId || ''),
+            });
+        }
         workspace.bumpRevision();
         workspace.record('command', before);
         saveWorkspaceToPayload(payload, targetRoomId, workspace);

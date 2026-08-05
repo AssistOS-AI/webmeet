@@ -21,6 +21,48 @@ function setActionContext(root, context = {}) {
     }
 }
 
+export function resolveMeetingNotesDocumentStatus(activity = null) {
+    const enabled = activity?.enabled !== false;
+    const workerPhase = String(activity?.phase || '').trim();
+    const transcriptionPhase = String(activity?.transcriptionStatus || '').trim();
+    const activeWorkerPhases = new Set(['queued', 'analyzing', 'updating', 'retrying', 'waiting_for_new_speech']);
+    const phase = !enabled
+        ? 'disabled'
+        : activeWorkerPhases.has(workerPhase)
+            ? workerPhase
+            : (transcriptionPhase || workerPhase || 'ready');
+    const revision = Math.max(0, Number(activity?.analysisRevision || 0));
+    const statuses = {
+        queued: { label: 'New discussion queued', tone: 'working', working: true },
+        analyzing: { label: 'Analyzing the discussion…', tone: 'working', working: true },
+        updating: { label: 'Updating meeting notes…', tone: 'working', working: true },
+        retrying: { label: 'Validating and retrying the update…', tone: 'working', working: true },
+        waiting_for_new_speech: { label: 'Update paused — waiting for new speech', tone: 'warning', working: false },
+        disabled: { label: 'Meeting Notes is paused', tone: 'idle', working: false },
+        ready: { label: 'Meeting Notes is ready', tone: 'idle', working: false },
+        starting: { label: 'Starting browser transcription…', tone: 'working', working: true },
+        reconnecting: { label: 'Reconnecting browser transcription…', tone: 'working', working: true },
+        paused: { label: 'Meeting Notes starts when the microphone is on', tone: 'idle', working: false },
+        unsupported: { label: 'Browser transcription is unavailable', tone: 'warning', working: false },
+        error: { label: 'Browser transcription needs attention', tone: 'warning', working: false },
+        listening: revision > 0
+            ? { label: 'Meeting notes are up to date', tone: 'success', working: false }
+            : { label: 'Meeting Notes is listening', tone: 'idle', working: false },
+    };
+    return {
+        phase,
+        revision,
+        updatedAt: String(activity?.updatedAt || '').trim(),
+        ...(statuses[phase] || statuses.ready),
+    };
+}
+
+function formatMeetingNotesUpdateTime(value = '') {
+    const date = new Date(value);
+    if (!value || Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
 export const blackboardScriptaRenderingMethods = {
     cloneScriptaTemplate(name) {
         const template = this.element.querySelector(`template[data-template="${name}"]`);
@@ -45,6 +87,7 @@ export const blackboardScriptaRenderingMethods = {
 
         const shell = this.cloneScriptaTemplate('scripta-document');
         shell.addEventListener('pointerdown', (event) => event.stopPropagation());
+        this.renderMeetingNotesDocumentStatus(shell);
         setText(shell, '[data-role="document-title"]', props.documentTitle || 'SCRIPTA Document');
         const documentHeader = shell.querySelector('.webmeet-scripta-document-header');
         const documentPosition = shell.querySelector('[data-role="document-position"]');
@@ -73,6 +116,47 @@ export const blackboardScriptaRenderingMethods = {
         node.append(shell);
 
         if (props.viewMode === 'document') queueMicrotask(() => this.focusScriptaDocumentTarget(node, props));
+    },
+
+    isMeetingNotesWorkspace() {
+        const activeBoardId = String(this.workspace?.activeBoardId || '').trim();
+        const activeBoard = (this.workspace?.boards || []).find((board) => (
+            String(board?.boardId || '').trim() === activeBoardId
+        ));
+        return String(activeBoard?.purpose || this.blackboard?.metadata?.purpose || '').trim() === 'meeting-notes';
+    },
+
+    renderMeetingNotesDocumentStatus(root) {
+        const statusNode = root?.querySelector?.('[data-role="meeting-notes-status"]');
+        if (!statusNode) return;
+        const visible = this.isMeetingNotesWorkspace();
+        statusNode.hidden = !visible;
+        if (!visible) return;
+
+        const status = resolveMeetingNotesDocumentStatus(this.meetingNotesActivity);
+        statusNode.dataset.phase = status.phase;
+        statusNode.dataset.tone = status.tone;
+        statusNode.classList.toggle('is-working', status.working);
+        setText(statusNode, '[data-role="meeting-notes-status-label"]', status.label);
+
+        const meta = statusNode.querySelector('[data-role="meeting-notes-status-meta"]');
+        const updatedTime = status.phase === 'listening' && status.revision > 0
+            ? formatMeetingNotesUpdateTime(status.updatedAt)
+            : '';
+        const details = [
+            status.revision > 0 ? `Revision ${status.revision}` : '',
+            updatedTime ? `Updated ${updatedTime}` : '',
+        ].filter(Boolean).join(' · ');
+        if (meta) {
+            meta.textContent = details;
+            meta.hidden = !details;
+        }
+    },
+
+    refreshMeetingNotesDocumentStatus() {
+        for (const statusNode of this.element.querySelectorAll('[data-role="meeting-notes-status"]')) {
+            this.renderMeetingNotesDocumentStatus(statusNode.closest('.webmeet-scripta-document'));
+        }
     },
 
     focusScriptaDocumentTarget(node, props) {

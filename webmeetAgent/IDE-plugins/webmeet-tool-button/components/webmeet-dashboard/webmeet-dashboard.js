@@ -26,6 +26,7 @@ import {
     getBackgroundEffectsAssetPaths
 } from './services/livekit-loader.js';
 import { createRoomNotificationSoundService } from './services/room-notification-sounds.js';
+import { createBrowserMeetingNotesTranscription } from './services/browser-meeting-notes-transcription.js';
 import { RemoteAudioNormalizer } from './services/audio-processing/remote-audio-normalizer.js';
 import {
     logMediaDiagnostic,
@@ -119,6 +120,8 @@ export class WebmeetDashboard {
             showArchivedRooms: false,
             session: null,
             roomState: 'Disconnected',
+            meetingNotesTranscriptionStatus: 'paused',
+            meetingNotesActivity: null,
             media: {
                 microphone: false,
                 camera: false,
@@ -333,6 +336,7 @@ export class WebmeetDashboard {
             getBackgroundEffectsAssetPaths,
             onMediaStateChange: (next, localParticipantId) => {
                 this.state.media = next;
+                this.meetingNotesTranscription?.sync?.();
                 if (localParticipantId) {
                     this.setParticipantMicState(localParticipantId, next.microphone);
                     const Track = window.LivekitClient?.Track || null;
@@ -381,6 +385,16 @@ export class WebmeetDashboard {
             onAfterToggle: () => {
                 this.renderMeetingSummary();
             }
+        });
+        this.meetingNotesTranscription = createBrowserMeetingNotesTranscription({
+            getRoom: () => this.room,
+            getEnabled: () => Boolean(this.state.session?.meetingNotes?.enabled),
+            getMicrophoneEnabled: () => Boolean(this.state.media?.microphone),
+            getLanguage: () => this.state.mediaSettings?.speechRecognitionLanguage || 'auto',
+            onStatus: (status) => {
+                this.state.meetingNotesTranscriptionStatus = status;
+                this.renderMeetingNotesTranscriptionStatus?.();
+            },
         });
         this.state.mediaSettings = this.loadMediaSettings();
         this.state.webMeetAvatarOverride = this.loadCurrentWebMeetAvatarOverride();
@@ -638,6 +652,7 @@ export class WebmeetDashboard {
         this.meetingList = this.element.querySelector('#webmeetMeetingList');
         this.meetingTitle = this.element.querySelector('#webmeetMeetingTitle');
         this.meetingMeta = this.element.querySelector('#webmeetMeetingMeta');
+        this.meetingNotesStatus = this.element.querySelector('#webmeetMeetingNotesStatus');
         this.joinStatus = this.element.querySelector('#webmeetJoinStatus');
      //   this.activeRoomTitle = this.element.querySelector('#webmeetActiveRoomTitle');
         this.lifecycle = this.element.querySelector('#webmeetLifecycle');
@@ -727,6 +742,7 @@ export class WebmeetDashboard {
         this.element.removeEventListener('change', this.handleChatViewModeChange);
         this.element.removeEventListener('avatar-settings-change', this.handleWebMeetAvatarSettingsChangeEvent);
         this.chatComponent?.destroy?.();
+        this.meetingNotesTranscription?.destroy?.();
         this.stopWorkspaceEvents();
         this.clearWorkspaceMeetingsRefreshTimer();
         this.clearWorkspaceRosterRefreshTimer();
