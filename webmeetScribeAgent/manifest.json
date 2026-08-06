@@ -4,9 +4,14 @@
   "about": "Text-only WebMeet Meeting Secretary with cumulative SCRIPTA notes.",
   "readiness": { "protocol": "none" },
   "network": {
-    "name": "webmeet",
-    "aliases": ["webmeetScribeAgent"]
-  },
+    "mode": "bridge",
+    "attachments": [
+      {
+        "name": "webmeet",
+        "primary": true
+      }
+    ]
+  }
   "enable": ["webmeetInfra/liveKitServerAgent"],
   "repos": {
     "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
