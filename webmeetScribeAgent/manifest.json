@@ -11,7 +11,7 @@
         "primary": true
       }
     ]
-  }
+  },
   "enable": ["webmeetInfra/liveKitServerAgent"],
   "repos": {
     "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
