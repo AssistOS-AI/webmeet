@@ -2,7 +2,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const LIVEKIT_SIGNAL_PATH = '/base-agent-additional-server/liveKitServerAgent/7880/';
-const LIVEKIT_ROOM_SERVICE_PREFIX = '/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/';
+const LIVEKIT_TWIRP_PREFIX = '/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.';
+const LIVEKIT_PRIVATE_SERVICES = new Set(['RoomService', 'AgentDispatchService']);
 const PRIVATE_ASSERTION_HEADER = 'Ploinky-Agent-Assertion';
 
 function requireNonEmptyString(value, label) {
@@ -142,15 +143,19 @@ export async function resolveEdgeJoinMaterial(context, { roomName, participantId
     };
 }
 
-export async function resolvePrivateLiveKitCall({ methodName, body, env = process.env } = {}) {
-    const targetMethod = requireNonEmptyString(methodName, 'LiveKit RoomService method');
+export async function resolvePrivateLiveKitCall({ serviceName = 'RoomService', methodName, body, env = process.env } = {}) {
+    const targetService = requireNonEmptyString(serviceName, 'LiveKit service');
+    if (!LIVEKIT_PRIVATE_SERVICES.has(targetService)) {
+        throw new Error('LiveKit service is invalid.');
+    }
+    const targetMethod = requireNonEmptyString(methodName, `LiveKit ${targetService} method`);
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test(targetMethod)) {
-        throw new Error('LiveKit RoomService method is invalid.');
+        throw new Error(`LiveKit ${targetService} method is invalid.`);
     }
     const requestBody = Buffer.isBuffer(body) ? body : Buffer.from(body || '');
     const internalRouterUrl = requireNonEmptyString(env.PLOINKY_INTERNAL_ROUTER_URL, 'PLOINKY_INTERNAL_ROUTER_URL');
     const { signPrivateRouterAssertion } = await loadEdgeRuntime(env);
-    const requestPath = `${LIVEKIT_ROOM_SERVICE_PREFIX}${targetMethod}`;
+    const requestPath = `${LIVEKIT_TWIRP_PREFIX}${targetService}/${targetMethod}`;
     return {
         url: new URL(requestPath, internalRouterUrl),
         requestPath,

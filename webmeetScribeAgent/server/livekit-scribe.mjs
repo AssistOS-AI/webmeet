@@ -5,6 +5,8 @@ import { RoomEvent } from '@livekit/rtc-node';
 
 import { EncryptedSessionJournal } from '../lib/encrypted-journal.mjs';
 import { HolisticMeetingNotesAnalyzer } from '../lib/holistic-analyzer.mjs';
+import { bindJobToLiveKitWorkerTransport, resolveWorkerPort } from '../lib/runtime-config.mjs';
+import { startRouterWebSocketAuthorityProxy } from '../lib/router-websocket-authority-proxy.mjs';
 import {
     createMeetingAnalysisSnapshot,
     selectMeetingAnalysisTargetCount,
@@ -60,17 +62,9 @@ function withDeadline(operation, timeoutMs, description) {
         .finally(() => clearTimeout(timer));
 }
 
-function normalizeLiveKitWsUrl(value) {
-    const raw = String(value || '').trim().replace(/\/+$/g, '');
-    if (raw.startsWith('https://')) return `wss://${raw.slice(8)}`;
-    if (raw.startsWith('http://')) return `ws://${raw.slice(7)}`;
-    return raw;
-}
-
-const configuredLiveKitUrl = process.env.WEBMEET_LIVEKIT_AGENT_URL || process.env.WEBMEET_LIVEKIT_URL;
-if (!process.env.LIVEKIT_URL && configuredLiveKitUrl) process.env.LIVEKIT_URL = normalizeLiveKitWsUrl(configuredLiveKitUrl);
-if (!process.env.LIVEKIT_API_KEY && process.env.WEBMEET_LIVEKIT_API_KEY) process.env.LIVEKIT_API_KEY = process.env.WEBMEET_LIVEKIT_API_KEY;
-if (!process.env.LIVEKIT_API_SECRET && process.env.WEBMEET_LIVEKIT_API_SECRET) process.env.LIVEKIT_API_SECRET = process.env.WEBMEET_LIVEKIT_API_SECRET;
+const livekitRouterProxy = await startRouterWebSocketAuthorityProxy();
+process.env.LIVEKIT_URL = livekitRouterProxy.livekitUrl;
+process.once('exit', () => void livekitRouterProxy.close());
 
 function safeJson(value) {
     try { return JSON.parse(String(value || '')); } catch { return null; }
@@ -642,6 +636,7 @@ export default livekitAgents.defineAgent({
         if (!String(metadata.meetingId || '').trim()) throw new Error('Meeting Secretary dispatch is missing meetingId.');
         const journal = new EncryptedSessionJournal();
         await journal.purgeOlderThan(FAILED_RETENTION_MS);
+        bindJobToLiveKitWorkerTransport(ctx);
         await ctx.connect();
         await ctx.room.localParticipant?.setAttributes?.({
             webmeetAgent: 'true',
@@ -666,6 +661,7 @@ const Options = livekitAgents.ServerOptions || livekitAgents.WorkerOptions;
 const serverOptions = new Options({
     agent: fileURLToPath(import.meta.url),
     agentName: AGENT_NAME,
+    port: resolveWorkerPort(),
     logLevel: String(process.env.WEBMEET_SCRIBE_LOG_LEVEL || 'info'),
     requestFunc: async (request) => {
         const metadata = safeJson(request?.job?.metadata) || {};

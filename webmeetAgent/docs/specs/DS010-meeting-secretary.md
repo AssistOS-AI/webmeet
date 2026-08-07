@@ -38,6 +38,8 @@ Meeting documents live in the permanent, system-managed `Meeting Notes` Blackboa
 
 Changing the room setting takes effect during an active meeting. Enabling notes immediately dispatches the secretary and enables browser transcription for the current session; disabling notes immediately stops browser transcription and finalizes the worker. A room event is only an invalidation hint: browsers reload the authoritative `{ enabled }` projection through the participant-authorized room-details operation before applying it. Administrative Robo Team settings remain restricted to organizers.
 
+Secretary creation uses LiveKit's AgentDispatchService through the generation-bound private Router route. The request body is covered by the caller assertion and the control plane does not construct or consume a direct LiveKit URL.
+
 Participant joins and presence heartbeats also reconcile the persisted secretary lease with the authoritative LiveKit roster. A recent stored heartbeat is reusable only when the LiveKit room still contains a participant advertising the Meeting Secretary attributes. If infrastructure restarts remove that participant while the encrypted session remains active, WebMeet redispatches the worker without waiting for the stale heartbeat lease to expire. A transient LiveKit control-plane lookup failure retains the bounded heartbeat lease rather than risking duplicate workers; the next participant heartbeat retries reconciliation.
 
 Clearing the Meeting Notes board or removing its active SCRIPTA widget marks the session reset. On its next server heartbeat, the obsolete worker cancels analysis and document-apply retries, removes the encrypted journal, disconnects from LiveKit, and cannot schedule more work for that discussion.

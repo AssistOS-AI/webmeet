@@ -5,9 +5,6 @@
     "readiness": {
       "protocol": "none"
     },
-    "network": {
-      "mode": "host"
-    },
     "enable": [
       "webmeetInfra/liveKitServerAgent"
     ],
@@ -20,25 +17,20 @@
     "profiles": {
       "default": {
         "env": [
+          {
+            "name": "PORT",
+            "required": true,
+            "default": "7000"
+          },
           "LLMAgentClient_DEBUG",
           "LLMAgentClient_VERBOSE_DELAY",
           {
-            "name": "SOUL_GATEWAY_URL",
-            "required": false,
-            "default": "http://127.0.0.1:8080/services/soul-gateway/v1/chat/completions"
-          },
-          {
-            "name": "WEBMEET_LIVEKIT_AGENT_URL",
-            "required": false,
-            "default": "http://127.0.0.1:7880"
-          },
-          {
-            "name": "WEBMEET_LIVEKIT_API_KEY",
+            "name": "LIVEKIT_API_KEY",
             "required": false,
             "sharedGeneratedSecret": true
           },
           {
-            "name": "WEBMEET_LIVEKIT_API_SECRET",
+            "name": "LIVEKIT_API_SECRET",
             "required": false,
             "sharedGeneratedSecret": true
           },
@@ -92,22 +84,17 @@
       "dev": {
         "env": [
           {
-            "name": "SOUL_GATEWAY_URL",
-            "required": false,
-            "default": "http://127.0.0.1:8080/services/soul-gateway/v1/chat/completions"
+            "name": "PORT",
+            "required": true,
+            "default": "7000"
           },
           {
-            "name": "WEBMEET_LIVEKIT_AGENT_URL",
-            "required": false,
-            "default": "http://127.0.0.1:7880"
-          },
-          {
-            "name": "WEBMEET_LIVEKIT_API_KEY",
+            "name": "LIVEKIT_API_KEY",
             "required": false,
             "sharedGeneratedSecret": true
           },
           {
-            "name": "WEBMEET_LIVEKIT_API_SECRET",
+            "name": "LIVEKIT_API_SECRET",
             "required": false,
             "sharedGeneratedSecret": true
           },
@@ -161,22 +148,17 @@
       "prod": {
         "env": [
           {
-            "name": "SOUL_GATEWAY_URL",
+            "name": "PORT",
             "required": true,
-            "default": "http://127.0.0.1:8080/services/soul-gateway/v1/chat/completions"
+            "default": "7000"
           },
           {
-            "name": "WEBMEET_LIVEKIT_AGENT_URL",
-            "required": true,
-            "default": "http://127.0.0.1:7880"
-          },
-          {
-            "name": "WEBMEET_LIVEKIT_API_KEY",
+            "name": "LIVEKIT_API_KEY",
             "required": true,
             "sharedGeneratedSecret": true
           },
           {
-            "name": "WEBMEET_LIVEKIT_API_SECRET",
+            "name": "LIVEKIT_API_SECRET",
             "required": true,
             "sharedGeneratedSecret": true
           },

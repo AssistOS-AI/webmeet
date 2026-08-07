@@ -98,15 +98,25 @@ async function callLiveKitRoomApi(context, methodName, roomName, body) {
 }
 
 async function callLiveKitAgentDispatchApi(context, methodName, roomName, body) {
-    const baseUrl = normalizeLiveKitHttpUrl(context.livekitApiUrl);
-    if (!baseUrl || !context.livekitApiKey || !context.livekitApiSecret) {
+    if (!context.livekitApiKey || !context.livekitApiSecret) {
         throw new Error('LiveKit agent dispatch API is not configured.');
     }
     const token = createLiveKitRoomAdminToken(context, roomName);
-    const response = await fetch(`${baseUrl}/twirp/livekit.AgentDispatchService/${methodName}`, {
+    if (!token) {
+        throw new Error('LiveKit admin token could not be created.');
+    }
+    const requestBody = Buffer.from(JSON.stringify(body || {}));
+    const privateCall = typeof context.resolvePrivateLiveKitCall === 'function'
+        ? await context.resolvePrivateLiveKitCall({ serviceName: 'AgentDispatchService', methodName, body: requestBody })
+        : await resolvePrivateLiveKitCall({ serviceName: 'AgentDispatchService', methodName, body: requestBody });
+    const response = await fetch(privateCall.url, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body || {}),
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Ploinky-Agent-Assertion': privateCall.assertion,
+        },
+        body: requestBody,
     });
     const text = await response.text();
     let parsed = null;

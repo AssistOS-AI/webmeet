@@ -48,3 +48,44 @@ test('RoomService rejects path-shaping method names before resolving or signing'
     /method is invalid/i,
   );
 });
+
+test('AgentDispatchService calls use the private convention route and bind assertion bytes', async () => {
+  const runtime = await mkdtemp(path.join(os.tmpdir(), 'webmeet-edge-runtime-'));
+  const lib = path.join(runtime, 'lib');
+  await mkdir(lib);
+  await writeFile(path.join(lib, 'edgeTopology.mjs'), 'export function readEdgeTopology() { return {}; }\n');
+  await writeFile(path.join(lib, 'agentAssertion.mjs'), `
+    export function signPrivateRouterAssertion(input) {
+      return JSON.stringify({ method: input.method, path: input.path, body: Buffer.from(input.body).toString('hex') });
+    }
+  `);
+  try {
+    const body = Buffer.from('agent-dispatch-body');
+    const resolved = await resolvePrivateLiveKitCall({
+      serviceName: 'AgentDispatchService',
+      methodName: 'CreateDispatch',
+      body,
+      env: {
+        PLOINKY_AGENT_LIB_DIR: runtime,
+        PLOINKY_INTERNAL_ROUTER_URL: 'http://127.0.0.1:8081',
+      },
+    });
+    const expectedPath = '/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.AgentDispatchService/CreateDispatch';
+    assert.equal(resolved.url.href, `http://127.0.0.1:8081${expectedPath}`);
+    assert.equal(resolved.requestPath, expectedPath);
+    assert.deepEqual(JSON.parse(resolved.assertion), {
+      method: 'POST',
+      path: expectedPath,
+      body: body.toString('hex'),
+    });
+  } finally {
+    await rm(runtime, { recursive: true, force: true });
+  }
+});
+
+test('private LiveKit calls reject undeclared services', async () => {
+  await assert.rejects(
+    resolvePrivateLiveKitCall({ serviceName: '../AgentDispatchService', methodName: 'CreateDispatch', body: Buffer.alloc(0), env: {} }),
+    /service is invalid/i,
+  );
+});
