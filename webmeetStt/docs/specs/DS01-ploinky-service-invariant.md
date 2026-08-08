@@ -16,3 +16,9 @@ consumer or expose STT publicly.
 Before transcription, the service can run local DTLN denoise on uploaded 16 kHz PCM WAV chunks. `WEBMEET_STT_DENOISE=dtln` enables the self-hosted path and is the default; `WEBMEET_STT_DENOISE=off` skips it. DTLN failures must be logged briefly and fall back to the original audio so transcript generation remains available.
 
 This denoise stage is for transcript/AI ingestion only. LiveKit room participants are not denoised server-side by `webmeetStt`; human microphone cleanup is handled in the browser before publish.
+
+The pinned Python environment is built atomically under the persistent
+`.ploinky/data/webmeetStt` volume and reused while its dependency revision is
+unchanged. A cold install gets three bounded attempts and streams installer
+output into the container log; startup must never hide the only diagnostic in
+container-local temporary files that disappear during exact failure cleanup.

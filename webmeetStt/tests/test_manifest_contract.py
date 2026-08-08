@@ -60,6 +60,17 @@ class ManifestContractTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=5)
 
+    def test_startup_persists_pinned_dependencies_and_keeps_failures_visible(self):
+        script_path = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "startAgent.sh"
+        script = script_path.read_text(encoding="utf-8")
+
+        self.assertIn("venv_dir=/data/python-env", script)
+        self.assertIn("for attempt in 1 2 3", script)
+        self.assertIn(".webmeet-stt-dependencies", script)
+        self.assertIn('exec "${venv_dir}/bin/python" /code/server.py', script)
+        self.assertNotIn(">/tmp/webmeet-stt-pip.out", script)
+        self.assertNotIn("2>/tmp/webmeet-stt-pip.err", script)
+
 
 if __name__ == "__main__":
     unittest.main()
