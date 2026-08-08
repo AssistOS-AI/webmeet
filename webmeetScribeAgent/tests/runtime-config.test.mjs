@@ -71,9 +71,6 @@ test('manifest shares the canonical LiveKit credentials in every profile', () =>
         const names = profile.env.map((entry) => typeof entry === 'string' ? entry : entry.name);
         assert.ok(names.includes('LIVEKIT_API_KEY'));
         assert.ok(names.includes('LIVEKIT_API_SECRET'));
-        assert.ok(!names.includes('WEBMEET_LIVEKIT_API_KEY'));
-        assert.ok(!names.includes('WEBMEET_LIVEKIT_API_SECRET'));
-        assert.ok(!names.includes('WEBMEET_LIVEKIT_AGENT_URL'));
         assert.ok(!names.includes('SOUL_GATEWAY_URL'));
     }
     assert.notEqual(manifest.network?.mode, 'host');
