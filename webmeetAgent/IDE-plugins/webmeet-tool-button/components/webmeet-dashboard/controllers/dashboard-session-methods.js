@@ -38,7 +38,7 @@ export const dashboardSessionMethods = {
         }
     },
 
-    async loadInitialDashboardData() {
+    async loadInitialDashboardData({ reportError = true } = {}) {
         try {
             const initialRoomId = String(this.initialRoomId || globalThis.__WEBMEET_INITIAL_ROOM_ID__ || readRoomIdFromUrl() || '').trim();
             if (globalThis.__WEBMEET_GUEST_ENTRY__ && initialRoomId) {
@@ -58,6 +58,9 @@ export const dashboardSessionMethods = {
             }
             this.renderAll();
         } catch (error) {
+            if (!reportError) {
+                throw error;
+            }
             this.setError(error instanceof Error ? error.message : String(error));
         }
     },

@@ -3237,3 +3237,15 @@ textarea.form-input {
         bottom: calc(100% + 12px);
     }
 }
+.webmeet-dashboard.webmeet-runtime-pending > :not(.webmeet-runtime-loader-host) {
+    display: none;
+}
+
+.webmeet-runtime-loader-host {
+    width: 100%;
+    min-height: 100%;
+}
+
+.webmeet-dashboard:not(.webmeet-runtime-pending) > .webmeet-runtime-loader-host {
+    display: none;
+}

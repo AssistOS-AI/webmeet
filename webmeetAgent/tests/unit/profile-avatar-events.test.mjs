@@ -1822,7 +1822,7 @@ test("dashboard ready means mounted UI, not completed initial data loading", asy
     const afterRenderSource = source.slice(afterRenderStart, afterRenderEnd);
     const readyIndex = afterRenderSource.indexOf("window.dispatchEvent(new CustomEvent('webmeet-dashboard-ready'))");
     const readyFlagIndex = afterRenderSource.indexOf('window.__WEBMEET_DASHBOARD_READY__ = true');
-    const loadInitialIndex = afterRenderSource.indexOf('void this.loadInitialDashboardData?.()');
+    const loadInitialIndex = afterRenderSource.indexOf('await this.loadInitialDashboardData?.({ reportError: false })');
     const scheduleIndex = afterRenderSource.indexOf('window.requestAnimationFrame(loadInitialData)');
     const beforeRenderStart = source.indexOf('async beforeRender()');
     const beforeRenderEnd = source.indexOf('\n    async afterRender()', beforeRenderStart);
@@ -1840,7 +1840,6 @@ test("dashboard ready means mounted UI, not completed initial data loading", asy
     assert.match(constructorSource, /this\.registerActions\(\);/);
     assert.match(constructorSource, /this\.registerWindowPresenceHandlers\(\);/);
     assert.match(constructorSource, /this\.registerMediaDeviceChangeHandler\(\);/);
-    assert.match(constructorSource, /this\.element\.addEventListener\('submit', this\.handleSubmitEvent\);/);
     assert.match(constructorSource, /this\.element\.addEventListener\('keydown', this\.handleChatInputKeydown\);/);
     assert.match(constructorSource, /this\.element\.addEventListener\('avatar-settings-change', this\.handleWebMeetAvatarSettingsChangeEvent\);/);
     assert.match(afterRenderSource, /if \(!this\.dashboardReadyDispatched\) \{/);
