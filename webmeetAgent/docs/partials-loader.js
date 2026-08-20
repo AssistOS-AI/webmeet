@@ -49,5 +49,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (document.querySelector("#site-header")) jobs.push(loadPartial("#site-header", "partials/header.html"));
   if (document.querySelector("#site-footer")) jobs.push(loadPartial("#site-footer", "partials/footer.html"));
   await Promise.all(jobs);
+  (await import('../../docs/documentation-breadcrumb.js')).initializeDocumentationBreadcrumb('WebMeet');
   initializeMenus();
 });
