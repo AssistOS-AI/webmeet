@@ -1,12 +1,11 @@
 ---
-id: DS006
-title: Ploinky Runtime Invariants
-status: partially implemented (rootless private-router reachability blocked)
-owner: webmeet-team
+title: DS007-ploinky-runtime-invariants
 summary: Captures WebMeet's runtime-v5 routing, private-service, security, and fail-closed rootless reachability invariants.
 ---
 
-# DS006 - Ploinky Runtime Invariants
+# DS007-ploinky-runtime-invariants
+
+### DS006 - Ploinky Runtime Invariants
 
 ## Introduction
 
@@ -14,15 +13,7 @@ This specification makes the Ploinky runtime and security invariants local to `w
 
 The authoritative upstream contracts are Ploinky `docs/specs/DS005-routing-and-web-surfaces.md` and `docs/specs/DS011-security-model.md`. This file restates only the invariants that affect WebMeet.
 
-Implementation status (2026-07-15): private service activation for the default
-managed-bridge WebMeet runtime is blocked and fail-closed. On the observed
-rootless Podman topology, the required
-`host.containers.internal:host-gateway` mapping reaches the box outer-facing
-interface instead of loopback or an assigned managed-bridge address. WebMeet
-must not substitute public Router, direct service targets, a wider listener,
-host mode, or a forwarding sidecar. Ploinky DS004 Question #8 owns the unresolved
-transport decision; until it is resolved, private LiveKit Twirp and TURN broker
-operations cannot satisfy the full runtime-v5 contract.
+Private service activation for the default managed-bridge WebMeet runtime fails closed. On the verified rootless Podman topology, the required `host.containers.internal:host-gateway` mapping reaches the box outer-facing interface instead of loopback or an assigned managed-bridge address. WebMeet must not substitute public Router, direct service targets, a wider listener, host mode, or a forwarding sidecar; private LiveKit Twirp and TURN broker operations remain unavailable through that lane.
 
 ## Core Content
 
@@ -46,13 +37,7 @@ File and static-content handling must stay workspace-confined. Paths must resolv
 
 Logs and user-facing errors must not expose secrets, cookies, bearer tokens, invocation JWTs, LiveKit participant JWTs, API keys, raw prompts, hidden policy text, internal payloads, SDP, ICE credentials, screenshots, or DOM dumps. Trace sanitization recognizes dynamic participant JWTs, TURN usernames/credentials, arbitrary Playwright cookie objects, compound cookie fields, named query/form values, router assertions, and CSRF values even when those values were not supplied through the runner environment. It transforms JSON and Playwright NDJSON structurally, preserves record parseability, and post-scans textual archive members before attachment. Detailed diagnostics belong behind explicit debug modes and must still redact sensitive values before persistence.
 
-Media topology is box-owned runtime state. Each join reads the current
-unversioned media/publication state, uses the same-origin LiveKit convention
-path, and obtains short-lived relay credentials from the private broker under
-an exact current-generation assertion. Browser-facing addresses are never
-declared as manifest environment or synthesized from a workstation address.
-See DS004 for credential lifetime, controlled rejoin, and network-lane
-invariants.
+Media topology is box-owned runtime state. Each join reads the current unversioned media/publication state, uses the same-origin LiveKit convention path, and obtains short-lived relay credentials from the private broker under an exact current-generation assertion. Browser-facing addresses are never declared as manifest environment or synthesized from a workstation address. See DS004 for credential lifetime, controlled rejoin, and network-lane invariants.
 
 Agent-local contract:
 
@@ -64,55 +49,30 @@ Agent-local contract:
 - Volumes: `.ploinky/data/webmeetAgent/data:/data`.
 - Dependencies: Base startup uses Ploinky's shared prepared dependency cache. WebMeet must not add native external AI worker dependencies.
 - Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` is an agent-scoped generated
-  secret. LiveKit API key/secret are shared generated inputs for participant
-  JWTs and the media runtime, but public/private transport is still selected by
-  the active topology generation. The external TURN long-term secret is never
-  present in the WebMeet environment: Ploinky core returns only short-lived
-  credentials to this exact current-enable-generation consumer through the
-  private broker. Router assertions are request-bound runtime credentials, not
-  shared environment secrets or user/admin credentials.
+secret. LiveKit API key/secret are shared generated inputs for participant JWTs and the media runtime, but public/private transport is still selected by the active topology generation. The external TURN long-term secret is never present in the WebMeet environment: Ploinky core returns only short-lived credentials to this exact current-enable-generation consumer through the private broker. Router assertions are request-bound runtime credentials, not shared environment secrets or user/admin credentials.
 - Documentation: `docs/index.html` and `docs/specs/matrix.md`.
 - Validation: Run proxy/plugin syntax checks and a Ploinky guest invite smoke test for auth or route changes.
 
 Browser realtime refreshes driven by meeting/workspace events are best effort. They must catch transient MCP client resets, session refreshes, and stale-room races without creating unhandled promise rejections or console error loops. Direct user-initiated actions must continue to surface actionable failures through the WebMeet UI.
 
-## Decisions & Questions
+### Decisions & Questions
 
 ### Question #1: Why duplicate Ploinky invariants inside the agent spec set?
 
-Response:
-Coding work often starts from an individual agent directory, where only local guidance may be read before changes are made. Keeping these Ploinky invariants local prevents agents from treating router auth, guest mode, direct ports, or invocation headers as bypassable implementation details.
+Response: Coding work often starts from an individual agent directory, where only local guidance may be read before changes are made. Keeping these Ploinky invariants local prevents agents from treating router auth, guest mode, direct ports, or invocation headers as bypassable implementation details.
 
 ### Question #2: Why is route authentication not enough for WebMeet authorization?
 
-Response:
-Ploinky establishes who the caller is and signs the invocation path. `webmeetAgent` knows which room, participant, resource, or AI-control action is safe for that caller. Each operation must therefore enforce local resource policy after reading verified auth context.
+Response: Ploinky establishes who the caller is and signs the invocation path. `webmeetAgent` knows which room, participant, resource, or AI-control action is safe for that caller. Each operation must therefore enforce local resource policy after reading verified auth context.
 
 ### Question #3: Why use generated and brokered credentials instead of local defaults?
 
-Response:
-WebMeet encryption and LiveKit signing need stable workspace-owned values
-without committing plaintext defaults, while external relay credentials must be
-short-lived and scoped to one current runtime generation. Ploinky therefore
-generates the per-agent and intentionally shared LiveKit values and brokers TURN
-material on demand. There is no compatibility derivation, static TURN password,
-environment fallback, or alternate credential reader.
+Response: WebMeet encryption and LiveKit signing need stable workspace-owned values without committing plaintext defaults, while external relay credentials must be short-lived and scoped to one current runtime generation. Ploinky therefore generates the per-agent and intentionally shared LiveKit values and brokers TURN material on demand. There is no compatibility derivation, static TURN password, environment fallback, or alternate credential reader.
 
 ### Question #4: Why does the rootless private-Router blocker remain fail-closed?
 
-Response:
-Reachability is part of the approved interface boundary, not an authorization
-detail. Binding `8081` to the box outer-facing interface or bypassing Router
-would make an internal transport externally reachable or skip the coordinated
-generation and assertion flow. WebMeet therefore keeps the affected selectors
-inactive until an approved rootless transport can reach the private listener
-without changing its interface class.
+Response: Reachability is part of the approved interface boundary, not an authorization detail. Binding `8081` to the box outer-facing interface or bypassing Router would make an internal transport externally reachable or skip the coordinated generation and assertion flow. WebMeet therefore keeps the affected selectors inactive until an approved rootless transport can reach the private listener without changing its interface class.
 
 ## Conclusion
 
-`webmeetAgent` remains compatible with Ploinky only while it preserves
-router-mediated entry, secure-wire invocation, scoped guest behavior, explicit
-Router route policy, workspace-confined storage, redacted logging, derived
-secrets, and local domain authorization. The current rootless private-service
-slice remains partially implemented and is not complete until the approved
-managed-bridge reachability contract passes end to end.
+`webmeetAgent` remains compatible with Ploinky only while it preserves router-mediated entry, secure-wire invocation, scoped guest behavior, explicit Router route policy, workspace-confined storage, redacted logging, derived secrets, and local domain authorization. The rootless private-service lane remains inactive unless the approved managed-bridge reachability contract passes end to end.

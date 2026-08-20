@@ -1,12 +1,11 @@
 ---
-id: DS005
-title: Ploinky Room Agents and RoboTeam
-status: implemented
-owner: webmeet-team
+title: DS006-ploinky-room-agents
 summary: Defines RoboTeam as a Ploinky-managed WebMeet room agent, not a LiveKit agent worker.
 ---
 
-# DS005 - Ploinky Room Agents and RoboTeam
+# DS006-ploinky-room-agents
+
+### DS005 - Ploinky Room Agents and RoboTeam
 
 ## Introduction
 
@@ -31,7 +30,7 @@ Clicking the RoboTeam participant card presents the room blackboard to all parti
 
 RoboTeam modifies the blackboard only through WebMeet blackboard tools. Blackboard collaboration remains final-state only: local drag and typing previews are not broadcast; accepted final widget or blackboard states are persisted and announced through `blackboard.updated`.
 
-## Decisions
+### Decisions
 
 LiveKit remains the media and room-event transport for WebMeet, but not the runtime for AI agents. Agent state, settings, demo widgets, and blackboard mutations are owned by `webmeetAgent` and Ploinky tool execution.
 

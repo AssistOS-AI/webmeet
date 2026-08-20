@@ -1,17 +1,16 @@
 # Specification Matrix
 
-Generated from DS frontmatter. Edit the DS files and rerun the matrix generator instead of editing this file manually.
-
-| Specification | Title | Status | Owner | Summary |
-| --- | --- | --- | --- | --- |
-| [DS000](specsLoader.html?spec=DS000-vision.md) | WebMeet Agent Vision | [[status:implemented]] | webmeet-team | Defines webmeetAgent as the WebMeet application control plane and keeps media, Ploinky room-agent, STT, and infrastructure responsibilities separate. |
-| [DS001](specsLoader.html?spec=DS001-coding-style.md) | Coding Style | [[status:implemented]] | webmeet-team | Defines local source layout, documentation, test, validation, and runtime style for webmeetAgent. |
-| [DS002](specsLoader.html?spec=DS002-room-state-and-access.md) | Room State And Access | [[status:implemented]] | webmeet-team | Defines WebMeet room records, team and guest room behavior, durable storage, encryption, and roomId-scoped access checks. |
-| [DS003](specsLoader.html?spec=DS003-application-runtime-and-events.md) | Application Runtime And Events | [[status:implemented]] | webmeet-team | Defines the WebMeet MCP tools, browser shells, event encoding, chat persistence, resources, Ploinky room-agent metadata, and avatar rendering boundaries. |
-| [DS004](specsLoader.html?spec=DS004-livekit-media-runtime.md) | LiveKit Media Runtime | [[status:partially-implemented-(rootless-private-router-reachability-blocked)]] | webmeet-team | Defines topology-resolved signaling, private Twirp assertions, external relay credentials, reconnect, release gates, and the current fail-closed reachability boundary. |
-| [DS005](specsLoader.html?spec=DS005-ploinky-room-agents.md) | Ploinky Room Agents and RoboTeam | [[status:implemented]] | webmeet-team | Defines RoboTeam as a Ploinky-managed WebMeet room agent, not a LiveKit agent worker. |
-| [DS006](specsLoader.html?spec=DS006-ploinky-runtime-invariants.md) | Ploinky Runtime Invariants | [[status:partially-implemented-(rootless-private-router-reachability-blocked)]] | webmeet-team | Captures WebMeet's runtime-v5 routing, private-service, security, and fail-closed rootless reachability invariants. |
-| [DS007](specsLoader.html?spec=DS007-no-agent-tag-meeting-chat.md) | No-Agent-Tag Meeting Chat | [[status:implemented]] | webmeet-team | Defines WebMeet chat behavior after inline provider tag dispatch was removed; provider routing belongs outside meeting chat. |
-| [DS008](specsLoader.html?spec=DS008-scripta-robo-collaboration.md) | SCRIPTA Robo Collaboration | [[status:implemented]] | webmeet-team | Defines workspace-backed SCRIPTA documents, the singleton document widget, multilingual RoboTeam events, voting, and guest-safe projections. |
-| [DS009](specsLoader.html?spec=DS009-blackboard-agentic-diagrams.md) | Blackboard Agentic Diagrams | [[status:implemented]] | webmeet-team | Defines the shared multi-zone Blackboard workspace, global atomic history, canonical commands, semantic focus, cross-zone transfers, and agentic diagrams. |
-| [DS010](specsLoader.html?spec=DS010-meeting-secretary.md) | Browser Meeting Secretary | [[status:implemented]] | webmeet-team | Defines browser transcription, directed LiveKit text transport, holistic note reconciliation, encrypted recovery journals, and the permanent Meeting Notes Blackboard workspace. |
+| Name | Description |
+| --- | --- |
+| [DS000-vision](specsLoader.html?spec=DS000-vision.md) | Defines webmeetAgent as the WebMeet application control plane and keeps media, Ploinky room-agent, STT, and infrastructure responsibilities separate. |
+| [DS001-coding-style](specsLoader.html?spec=DS001-coding-style.md) | Defines local source layout, documentation, test, validation, and runtime style for webmeetAgent. |
+| [DS002-room-state-and-access](specsLoader.html?spec=DS002-room-state-and-access.md) | Defines WebMeet room records, team and guest room behavior, durable storage, encryption, and roomId-scoped access checks. |
+| [DS003-main-behavior](specsLoader.html?spec=DS003-main-behavior.md) | Defines WebMeet room access, durable collaboration, and explicit media and room-agent participation as the product's principal behaviors. |
+| [DS004-application-runtime-and-events](specsLoader.html?spec=DS004-application-runtime-and-events.md) | Defines the WebMeet MCP tools, browser shells, event encoding, chat persistence, resources, Ploinky room-agent metadata, and avatar rendering boundaries. |
+| [DS005-livekit-media-runtime](specsLoader.html?spec=DS005-livekit-media-runtime.md) | Defines topology-resolved signaling, private Twirp assertions, external relay credentials, reconnect, release gates, and the current fail-closed reachability boundary. |
+| [DS006-ploinky-room-agents](specsLoader.html?spec=DS006-ploinky-room-agents.md) | Defines RoboTeam as a Ploinky-managed WebMeet room agent, not a LiveKit agent worker. |
+| [DS007-ploinky-runtime-invariants](specsLoader.html?spec=DS007-ploinky-runtime-invariants.md) | Captures WebMeet's runtime-v5 routing, private-service, security, and fail-closed rootless reachability invariants. |
+| [DS008-meeting-chat-routing](specsLoader.html?spec=DS008-meeting-chat-routing.md) | Defines WebMeet chat persistence, verified authorship, file-reference autocomplete, and the boundary between room messages and explicit agent workflows. |
+| [DS009-scripta-robo-collaboration](specsLoader.html?spec=DS009-scripta-robo-collaboration.md) | Defines workspace-backed SCRIPTA documents, the singleton document widget, multilingual RoboTeam events, voting, and guest-safe projections. |
+| [DS010-blackboard-agentic-diagrams](specsLoader.html?spec=DS010-blackboard-agentic-diagrams.md) | Defines the shared multi-zone Blackboard workspace, global atomic history, canonical commands, semantic focus, cross-zone transfers, and agentic diagrams. |
+| [DS011-meeting-secretary](specsLoader.html?spec=DS011-meeting-secretary.md) | Defines browser transcription, directed LiveKit text transport, holistic note reconciliation, encrypted recovery journals, and the permanent Meeting Notes Blackboard workspace. |

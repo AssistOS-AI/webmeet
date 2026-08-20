@@ -1,12 +1,11 @@
 ---
-id: DS003
-title: Application Runtime And Events
-status: implemented
-owner: webmeet-team
+title: DS004-application-runtime-and-events
 summary: Defines the WebMeet MCP tools, browser shells, event encoding, chat persistence, resources, Ploinky room-agent metadata, and avatar rendering boundaries.
 ---
 
-# DS003 - Application Runtime And Events
+# DS004-application-runtime-and-events
+
+### DS003 - Application Runtime And Events
 
 ## Introduction
 
@@ -82,37 +81,31 @@ Every `/event`, `/robo`, or UI event except the shared navigation-only `board-ac
 
 Ploinky room-agent metadata, blackboard state, and resource metadata are persisted by `webmeetAgent`. The current WebMeet MCP contract contains no separate meeting-derived content flows beyond chat, room resources, participant presence, room-agent metadata, and blackboard updates.
 
-## Decisions & Questions
+### Decisions & Questions
 
 ### Question #1: Why use MCP as the browser control plane?
 
-Response:
-Explorer plugin actions, direct room links, and public-protected guest sessions can all use the same Ploinky MCP route while preserving router-minted identity and scopes. Keeping WebMeet out of Ploinky server route generation avoids duplicated authorization surfaces and keeps domain authorization inside the agent tools.
+Response: Explorer plugin actions, direct room links, and public-protected guest sessions can all use the same Ploinky MCP route while preserving router-minted identity and scopes. Keeping WebMeet out of Ploinky server route generation avoids duplicated authorization surfaces and keeps domain authorization inside the agent tools.
 
 ### Question #2: Why encode events as `room:type:base64url_payload` instead of appending JSON files?
 
-Response:
-The encoded string is compact, easy to carry over SSE and LiveKit data channels, and enforces one parser/validator for both store and browser code. It prevents gradual divergence between filesystem events and realtime messages.
+Response: The encoded string is compact, easy to carry over SSE and LiveKit data channels, and enforces one parser/validator for both store and browser code. It prevents gradual divergence between filesystem events and realtime messages.
 
 ### Question #3: Why keep avatars out of durable meeting snapshots?
 
-Response:
-Profile avatars can come from protected Explorer user settings or browser-local overrides. Persisting them in meeting records would leak stale or cross-user presentation state. LiveKit participant attributes and reliable data-channel messages are the connected-room rendering channel, while the durable meeting store keeps membership and event metadata.
+Response: Profile avatars can come from protected Explorer user settings or browser-local overrides. Persisting them in meeting records would leak stale or cross-user presentation state. LiveKit participant attributes and reliable data-channel messages are the connected-room rendering channel, while the durable meeting store keeps membership and event metadata.
 
 ### Question #4: Why stage events instead of appending them directly inside mutators?
 
-Response:
-Most WebMeet events describe a payload mutation. Appending those events before the encrypted payload write succeeds can leave the event stream pointing at state that never became durable. Staging keeps event emission after the save boundary while allowing the mutation code to declare the intended event next to the state change.
+Response: Most WebMeet events describe a payload mutation. Appending those events before the encrypted payload write succeeds can leave the event stream pointing at state that never became durable. Staging keeps event emission after the save boundary while allowing the mutation code to declare the intended event next to the state change.
 
 ### Question #5: Why keep optional chat author fields in the MCP schema?
 
-Response:
-Older callers may still include `authorId` and `authorName`, and keeping the fields optional avoids breaking those clients. The server-side tool derives the persisted author from verified router auth, so the compatibility fields do not grant spoofing authority.
+Response: Older callers may still include `authorId` and `authorName`, and keeping the fields optional avoids breaking those clients. The server-side tool derives the persisted author from verified router auth, so the compatibility fields do not grant spoofing authority.
 
 ### Question #6: Why does direct Blackboard file input use the chat attachment publisher?
 
-Response:
-A direct drop or paste is still a room attachment publication, not a local widget-only mutation. Routing every entry point through one publisher guarantees that Explorer validation, the durable chat message, the destination-board widget, history, focus, and realtime invalidations succeed as one authoritative operation instead of drifting across separate client flows.
+Response: A direct drop or paste is still a room attachment publication, not a local widget-only mutation. Routing every entry point through one publisher guarantees that Explorer validation, the durable chat message, the destination-board widget, history, focus, and realtime invalidations succeed as one authoritative operation instead of drifting across separate client flows.
 
 ## Conclusion
 

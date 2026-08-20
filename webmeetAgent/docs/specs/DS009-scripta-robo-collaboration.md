@@ -1,12 +1,11 @@
 ---
-id: DS008
-title: SCRIPTA Robo Collaboration
-status: implemented
-owner: webmeet-team
+title: DS009-scripta-robo-collaboration
 summary: Defines workspace-backed SCRIPTA documents, the singleton document widget, multilingual RoboTeam events, voting, and guest-safe projections.
 ---
 
-# DS008 - SCRIPTA Robo Collaboration
+# DS009-scripta-robo-collaboration
+
+### DS008 - SCRIPTA Robo Collaboration
 
 ## Introduction
 
@@ -20,7 +19,7 @@ Creating a room idempotently creates `/WebMeet/<room-slug>-<short-room-id>/`. Th
 
 Vision, Plan, and General are creation templates, not document roles. Vision generation produces one chapter and at least three distinct aspect paragraphs. Plan generation produces the requested chapter structure with at least one paragraph per chapter. Their creation form requires a work objective because it supplies the generated initial content. General creates one chapter with one empty paragraph without invoking AI, so its form does not show or submit a work objective. After creation, every result is the same SCRIPTA Markdown format. Opening ordinary Markdown preserves its title, chapter titles, paragraph content, and structure while adding stable SCRIPTA identifiers and an initial variant idempotently.
 
-The blackboard applies CRAP visual hierarchy: creation, collaboration, history, and appearance controls are repeated as aligned toolbar groups without visible text labels, card backgrounds, or group borders. Proximity and fine vertical separators distinguish the groups, appearance stays on the trailing edge, the canvas has stronger surface contrast and a restrained grid, and an empty board presents one concise starting instruction.
+The blackboard uses a restrained visual hierarchy: creation, collaboration, history, and appearance controls are repeated as aligned toolbar groups without visible text labels, card backgrounds, or group borders. Proximity and fine vertical separators distinguish the groups, appearance stays on the trailing edge, the canvas has stronger surface contrast and a restrained grid, and an empty board presents one concise starting instruction.
 
 The blackboard contains at most one SCRIPTA widget: `robo_scripta_document` with type `scripta-document`, and no SCRIPTA widget exists when no document is attached. Deleting the document removes its file, room attachment, and widget projection. The SCRIPTA widget has a 600 by 400 pixel minimum footprint and persists user resize geometry; Poll and Bullets use the same resize handles with minimums of 260 by 132 and 320 by 190 respectively. The blackboard remains sized to its available surface and provides horizontal and vertical scrolling when the viewport is below those minimums or positioned widgets extend beyond the visible area. CSS-only invisible overflow spacers reserve 10 pixels below widgets and 40 pixels on the right for contextual widget actions; top and left receive 10 pixel margins. SCRIPTA keeps its outer widget overflow visible while its document body remains the internal scroll container, so edge widgets and their move/delete controls remain reachable without JavaScript scroll-extent calculations. Wheel input over the SCRIPTA widget scrolls the blackboard whenever it can move in that direction; at a blackboard boundary, the document retains its own content scrolling. Its document view renders every chapter and active paragraph variant. SCRIPTA command/modal integration and SCRIPTA rendering are separate panel modules. Repeated SCRIPTA markup is declared as inert WebSkel component templates; the renderer clones those templates and assigns document text through `textContent`. The shared image-options panel is likewise cloned from its component template, uses declarative presenter actions, and may paint beyond the variant card instead of being clipped by it. Chapter, paragraph, and navigation clicks use `data-local-action` and one presenter dispatcher, while keyboard and semantic `scripta-variants-view` events retain their purpose-specific listeners. The document header contains the document name and a compact, visibly button-styled add-chapter control rendered as the short `Chapter` label followed by a plus icon. A new chapter is stored as `Chapter N`; clicking its title opens a dedicated inline editor with explicit Save and Cancel controls, without a separate rename action or blur-based persistence. Contextual chapter actions are compact icons on the right for adding a paragraph, moving the chapter exactly one position up/down, and deleting it. Paragraphs do not have names, and their document-view cards contain only active content or a non-persistent empty placeholder; clicking a paragraph opens its full variant editing view, so no separate paragraph edit action is rendered. Contextual paragraph actions are compact icons on the right: up/down move exactly one position within the chapter and delete removes the paragraph. Its paragraph view uses Explorer's whitelisted `scripta-variants-view` component, shared with Advanced Editor, to render variant tabs, owner-only inline editing and deletion, deterministic active-variant selection, like/dislike controls, manual variants, AI reformulation, and images owned by each variant. Every admitted participant may vote on every variant, but only the participant who added a variant may edit or delete its text or images; deleting the last variant is rejected. The canonical paragraph-variant operations are `p-variant-add`, `p-variant-edit`, `p-variant-delete`, `p-variant-vote`, `p-variant-vote-withdraw`, `p-variant-reformulate`, `p-variant-image-insert`, `p-variant-image-replace`, and `p-variant-image-delete`, exposed through the SCRIPTA event and mutation boundaries. WebMeet maps the component's semantic events to RoboTeam events and does not let the shared component persist state directly. Paragraph mode has a compact navigation toolbar where Document repeats the same button treatment as the `Paragraph`-labelled Prev/Next controls; icon and position distinguish the return action. Arrow icons are CSS-rendered and unavailable directions are disabled at document boundaries. Context information is visually subordinate to editable prose: the chapter title is secondary context, while generated Chapter/Paragraph ordinals use small muted monospace text without a background, border, or action-like shape. Previous/next navigation crosses chapter boundaries without wrapping. Returning to document view keeps the paragraph focus so each browser can scroll the corresponding anchor into view.
 
@@ -50,17 +49,15 @@ Paragraph up/down uses the same reorder-list icon language as chapter movement, 
 
 Creating a chapter or paragraph changes the persistent document focus to the newly generated stable ID and returns to document view. The projection carries the target type and creation revision; each client scrolls the new element into the nearest visible area and focuses its chapter title or paragraph control once for that revision.
 
-## Decisions & Questions
+### Decisions & Questions
 
 ### Question #1: Why are Vision and Plan templates instead of document types?
 
-Response:
-They differ only in generated initial structure. Keeping one document format prevents editing, voting, navigation, and rendering rules from branching by creation history.
+Response: They differ only in generated initial structure. Keeping one document format prevents editing, voting, navigation, and rendering rules from branching by creation history.
 
 ### Question #2: Why must UI operations pass through RoboTeam?
 
-Response:
-One event path gives chat and direct controls identical authorization, server-ordered last-edit-wins persistence, audit, and realtime delivery behavior.
+Response: One event path gives chat and direct controls identical authorization, server-ordered last-edit-wins persistence, audit, and realtime delivery behavior.
 
 ## Conclusion
 

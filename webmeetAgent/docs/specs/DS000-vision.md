@@ -1,21 +1,17 @@
 ---
-id: DS000
-title: WebMeet Agent Vision
-status: implemented
-owner: webmeet-team
+title: DS000-vision
 summary: Defines webmeetAgent as the WebMeet application control plane and keeps media, Ploinky room-agent, STT, and infrastructure responsibilities separate.
 ---
 
-# DS000 - WebMeet Agent Vision
+# DS000-vision
+
+### DS000 - WebMeet Agent Vision
 
 ## Introduction
 
 `webmeetAgent` is the Ploinky application agent for WebMeet rooms inside AssistOSExplorer. It owns the application control plane: room records, room-scoped public link access, LiveKit participant token issuance, meeting chat, room resources, blackboard state, Ploinky room-agent metadata, and the Explorer WebMeet plugin.
 
-Live audio, video, screen share, Redis coordination, Egress, and external relay
-service are adjacent WebMeet runtime components. They are not owned by the
-`webmeetAgent` process. Ploinky core owns Router transport, box topology, and
-short-lived external TURN credential brokerage.
+Live audio, video, screen share, Redis coordination, Egress, and external relay service are adjacent WebMeet runtime components. They are not owned by the `webmeetAgent` process. Ploinky core owns Router transport, box topology, and short-lived external TURN credential brokerage.
 
 ## Core Content
 
@@ -63,27 +59,19 @@ The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet
 
 `webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent`, but it must not launch sibling Ploinky agents or external AI workers. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, or start LiveKit Server.
 
-## Decisions & Questions
+### Decisions & Questions
 
 ### Question #1: Why split WebMeet into a control plane and a media plane?
 
-Response:
-The WebMeet application needs durable authorization, room discovery, encrypted meeting records, room-scoped public link authorization, resources, and audit-friendly event files. LiveKit is optimized for low-latency media routing and transient room state. Keeping those responsibilities separate prevents media runtime state from becoming the product database and prevents application control-plane latency from sitting on the live audio/video path.
+Response: The WebMeet application needs durable authorization, room discovery, encrypted meeting records, room-scoped public link authorization, resources, and audit-friendly event files. LiveKit is optimized for low-latency media routing and transient room state. Keeping those responsibilities separate prevents media runtime state from becoming the product database and prevents application control-plane latency from sitting on the live audio/video path.
 
 ### Question #2: Why does this agent depend on `liveKitServerAgent` instead of owning multiple infra agents?
 
-Response:
-The current `webmeetInfra` contract delivers one pinned Ploinky agent,
-`liveKitServerAgent`, that supervises Redis, LiveKit Server, Egress, and
-supervisor health. It deliberately contains no Coturn, nginx, certbot, local
-relay range, TCP ICE listener, or public `7880`. External TURN and Router are
-separate box/external boundaries, not sibling infrastructure agents. The older
-split infra-agent names remain retired implementation history.
+Response: The `webmeetInfra` contract delivers one pinned Ploinky agent, `liveKitServerAgent`, that supervises Redis, LiveKit Server, Egress, and supervisor health. It contains no Coturn, nginx, certbot, local relay range, TCP ICE listener, or public `7880`. External TURN and Router are separate box and external boundaries rather than sibling infrastructure agents.
 
 ### Question #3: Why keep the repository-level WebMeet architecture content inside the DS set?
 
-Response:
-DS files are the source of truth for future agent work. The root architecture document is useful narrative context, but durable requirements such as storage ownership, guest-route validation, LiveKit URL topology, event encoding, and Redis limits must live in the agent-local DS files where future changes are likely to begin.
+Response: DS files are the source of truth for future agent work. The root architecture document is useful narrative context, but durable requirements such as storage ownership, guest-route validation, LiveKit URL topology, event encoding, and Redis limits must live in the agent-local DS files where future changes are likely to begin.
 
 ## Conclusion
 

@@ -1,18 +1,19 @@
 ---
-id: DS010
-title: Browser Meeting Secretary
-status: implemented
-owner: webmeet-team
+title: DS011-meeting-secretary
 summary: Defines browser transcription, directed LiveKit text transport, holistic note reconciliation, encrypted recovery journals, and the permanent Meeting Notes Blackboard workspace.
 ---
 
-# DS010 - Browser Meeting Secretary
+# DS011-meeting-secretary
+
+### DS010 - Browser Meeting Secretary
 
 ## Introduction
 
 When `meetingNotes.enabled` is true, WebMeet dispatches the separate `webmeetScribeAgent` into the LiveKit room. The worker is a text-only participant and never subscribes to, stores, or logs room audio.
 
-## Browser transcription and transport
+## Core Content
+
+### Browser transcription and transport
 
 Each participant's browser uses `SpeechRecognition` or `webkitSpeechRecognition` while that participant's published microphone is enabled, the page is visible, and the Meeting Secretary participant is present. Only final recognition results are sent. Final results enter a sequential browser delivery queue; a transient LiveKit data-channel failure retries the same segment id and a result is deduplicated by its recognition-result position rather than by speech text. The browser publishes reliable LiveKit data packets with protocol `webmeet.scribe.transcript.v1`, topic `webmeet.scribe.transcript.v1`, and `destinationIdentities` containing only the secretary identity. No `webmeetStt` fallback exists for Meeting Notes. A visible meeting-bar status tells participants when browser transcription is listening, paused, unavailable, or in error.
 
@@ -20,7 +21,7 @@ Enabling Meeting Notes creates the dedicated workspace but does not allocate a d
 
 The secretary validates every packet against the current admitted participant roster and uses the server-projected display name. A transcript packet cannot select or override its author. Segment ids are idempotent within the session.
 
-## Holistic reconciliation
+### Holistic reconciliation
 
 The worker appends accepted final segments to one chronological encrypted session journal. Approximately 45 seconds after new text, or as soon as approximately 300 new words accumulate, it invokes `meeting-notes` through Achilles. Every invocation receives the room's editable Meeting Notes document structure, the complete current Markdown document, a bounded cumulative semantic memory of the earlier discussion, the uncompacted chronological transcript range, and the participant catalog. The window threshold is only a trigger; it is never the analysis context boundary. Once analyzed raw history is represented by validated cumulative memory, that raw prefix is removed from both the in-memory state and the encrypted recovery state. A large pending backlog is split into sequential bounded checkpoints and is never compacted before its first visible revision.
 
@@ -30,7 +31,7 @@ The worker emits realtime, non-persistent `meeting_notes.activity` events for it
 
 The prepopulated document-structure setting contains only a meeting title followed by summary, ideas and proposals, decisions, questions, risks, actions, and unresolved-points chapters. The room settings expose it as one required textarea instead of a fixed section checklist. Internal skill instructions require speaker attribution and record owners, deadlines, status, and consensus only when the complete discussion explicitly supports them. Later corrections may update, move, merge, or remove earlier notes while the document layer preserves structural ids.
 
-## Persistence and lifecycle
+### Persistence and lifecycle
 
 `webmeetAgent` accepts the four internal secretary tools only when the complete, case-normalized delegated principal equals `agent:AchillesIDE/webmeetScribeAgent`; a same-named agent from another repository is not authorized. The identical comparison controls the SCRIPTA participant-admission path. SCRIPTA ownership and audit records use that delegated agent principal, never a synthetic administrator identity. Analysis revisions are strictly sequential. The first revision creates a SCRIPTA Markdown document named from the inferred topic and local date; collisions receive an increasing suffix. If document creation commits but the revision does not, the retry recovers that unreferenced attachment instead of allocating another document. Every revision is merged from its captured collaboration snapshot and committed through the normal SCRIPTA CRDT save path; no direct file overwrite or file-to-CRDT resynchronization is part of Meeting Notes.
 

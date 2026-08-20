@@ -1,12 +1,11 @@
 ---
-id: DS009
-title: Blackboard Agentic Diagrams
-status: implemented
-owner: webmeet-team
+title: DS010-blackboard-agentic-diagrams
 summary: Defines the shared multi-zone Blackboard workspace, global atomic history, canonical commands, semantic focus, cross-zone transfers, and agentic diagrams.
 ---
 
-# DS009 - Blackboard Agentic Diagrams
+# DS010-blackboard-agentic-diagrams
+
+### DS009 - Blackboard Agentic Diagrams
 
 ## Introduction
 
@@ -50,22 +49,19 @@ The selected-group overlay is a browser-only projection expanded by eight logica
 
 Line widgets expose pointer hit-testing only through a transparent 12-pixel interaction band centered on the visible segment. Their rectangular SVG layout bounds do not receive pointer events, so a connector crossing or ending at another widget never consumes the first drag gesture intended for that widget. Endpoint handles and the selected-line contextual menu remain independently interactive. An unselected movable widget is selected and begins its pointer drag in the same first press-and-hold gesture; shared semantic focus is published only after a click is released or through the completed move, so a focus projection cannot replace the pointer-capturing node mid-gesture. Group connection bounds are computed from members with authoritative geometry; attached connectors are derived from their endpoints and therefore never expand or displace those bounds, while free line members still contribute normally. A complete group made only from free lines remains a valid connection target.
 
-## Decisions & Questions
+### Decisions & Questions
 
 ### Question #1: Why is revision not an optimistic concurrency precondition?
 
-Response:
-The room mutation lock already supplies a deterministic server order. Revision is required only to discard stale realtime projections; making it a client precondition would reject valid last-edit-wins collaboration and require unnecessary read/retry cycles.
+Response: The room mutation lock already supplies a deterministic server order. Revision is required only to discard stale realtime projections; making it a client precondition would reject valid last-edit-wins collaboration and require unnecessary read/retry cycles.
 
 ### Question #2: Why is focus shared board state?
 
-Response:
-Follow-up commands such as “move it” and “align them” must resolve identically for every participant. Persisting focus and last affected targets on the board provides that deterministic semantic context without relying on participant viewport or DOM selection.
+Response: Follow-up commands such as “move it” and “align them” must resolve identically for every participant. Persisting focus and last affected targets on the board provides that deterministic semantic context without relying on participant viewport or DOM selection.
 
 ### Question #3: Why are file widgets created only by the attachment publisher?
 
-Response:
-The publisher receives a validated Explorer asset and can safely project its stable URL and sanitized metadata. Allowing a generic event or model-generated command to create file widgets would permit invented asset ids or paths. Once created through the specialized path, the file widget uses the ordinary canonical geometry, grouping, transfer, history, and clipboard operations.
+Response: The publisher receives a validated Explorer asset and can safely project its stable URL and sanitized metadata. Allowing a generic event or model-generated command to create file widgets would permit invented asset ids or paths. Once created through the specialized path, the file widget uses the ordinary canonical geometry, grouping, transfer, history, and clipboard operations.
 
 ## Conclusion
 

@@ -1,12 +1,11 @@
 ---
-id: DS001
-title: Coding Style
-status: implemented
-owner: webmeet-team
+title: DS001-coding-style
 summary: Defines local source layout, documentation, test, validation, and runtime style for webmeetAgent.
 ---
 
-# DS001 - Coding Style
+# DS001-coding-style
+
+### DS001 - Coding Style
 
 ## Introduction
 
@@ -46,17 +45,15 @@ Validation should start with the narrowest check that covers the edited surface.
 
 Auth, guest-route, LiveKit token, or runtime topology changes also require a Ploinky smoke path that starts WebMeet through Explorer or a clear note explaining why that runtime check was not run.
 
-## Decisions & Questions
+### Decisions & Questions
 
 ### Question #1: Why keep `DS001-coding-style.md` local when AssistOSExplorer already defines coding conventions?
 
-Response:
-The parent conventions define the shared Explorer baseline. `webmeetAgent` adds local constraints around room-scoped public entry, browser-vendored media assets, Ploinky room-agent behavior, and validation commands. Future edits from this directory need those rules without searching across the workspace.
+Response: The parent conventions define the shared Explorer baseline. `webmeetAgent` adds local constraints around room-scoped public entry, browser-vendored media assets, Ploinky room-agent behavior, and validation commands. Future edits from this directory need those rules without searching across the workspace.
 
 ### Question #2: Why is dependency ownership part of coding style?
 
-Response:
-Dependency placement changes startup behavior. WebMeet room agents are modeled inside `webmeetAgent` as Ploinky-managed room metadata and tool behavior; LiveKit remains the media/runtime transport, not an AI worker runtime. The source-layout rule prevents a local implementation detail from becoming a runtime availability regression.
+Response: Dependency placement changes startup behavior. WebMeet room agents are modeled inside `webmeetAgent` as Ploinky-managed room metadata and tool behavior; LiveKit remains the media/runtime transport, not an AI worker runtime. The source-layout rule prevents a local implementation detail from becoming a runtime availability regression.
 
 ## Conclusion
 

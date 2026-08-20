@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebMeet Meeting Secretary Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+</head>
+<body>
+  <div id="site-header"></div>
+  <main class="content content--with-sidebar">
+    <div class="doc-layout">
+      <aside class="doc-sidebar" aria-label="Page sections">
+        <h2>On this page</h2>
+        <nav><a href="#overview">Overview</a><a href="#analysis-and-recovery">Analysis and recovery</a><a href="#runtime-integration">Runtime integration</a><a href="#system-outline">System outline</a></nav>
+      </aside>
+      <div class="doc-main">
+        <h1 id="overview">WebMeet Meeting Secretary</h1>
+        <p><code>webmeetScribeAgent</code> is the text-only LiveKit worker for cumulative WebMeet notes. It accepts retry-safe directed final browser transcripts, validates their authors against the admitted room roster, stores a temporary encrypted recovery journal, and applies validated Markdown revisions to the active SCRIPTA document.</p>
+        <h2 id="analysis-and-recovery">Analysis and recovery</h2>
+        <p>Analysis runs at the configured time or word checkpoint and uses the current document structure, cumulative semantic memory, and uncompacted transcript. The worker does not receive an audio stream and does not expose a browser-facing MCP tool surface. Reset removes its recovery journal and disconnects the worker.</p>
+        <h2 id="runtime-integration">Runtime integration</h2>
+        <p>Ploinky supplies the standard PORT, Router descriptor, and agent credential. The worker shares the generated LiveKit API credentials with WebMeet and the LiveKit server. See the <a href="specsLoader.html?spec=matrix.md">specification matrix</a> and the <a href="wiki.html">Wiki</a> for the local contracts.</p>
+        <h2 id="system-outline">System outline</h2>
+        <figure class="diagram"><pre class="mermaid">flowchart LR
+  Browser[Participant browser] --> Queue[Directed transcript queue]
+  Queue --> Worker[Meeting Secretary]
+  Worker --> Journal[Encrypted recovery journal]
+  Worker --> Notes[SCRIPTA document revision]</pre><figcaption><em>Meeting Secretary turns admitted final transcript segments into durable validated notes.</em></figcaption></figure>
+      </div>
+    </div>
+  </main>
+  <footer id="site-footer" class="site-footer"></footer>
+  <script src="partials-loader.js"></script>
+</body>
+</html>
