@@ -2104,6 +2104,10 @@ test('blackboard Insert menu opens SCRIPTA create/open through RoboTeam events',
         path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-panel.html'),
         'utf8'
     );
+    const scriptaRenderingSource = await fs.readFile(
+        path.join(componentDir, 'webmeet-blackboard-panel/webmeet-blackboard-scripta-rendering.js'),
+        'utf8'
+    );
     const toolbarHtml = await fs.readFile(
         path.join(componentDir, 'webmeet-blackboard-toolbar/webmeet-blackboard-toolbar.html'),
         'utf8'
@@ -2161,6 +2165,10 @@ test('blackboard Insert menu opens SCRIPTA create/open through RoboTeam events',
         }
     );
     assert.match(panelHtml, /<scripta-variants-view data-presenter="scripta-variants-view"/);
+    assert.match(scriptaRenderingSource, /node\.textContent = text/);
+    assert.match(scriptaRenderingSource, /document\.createTextNode\(paragraphText\.slice\(cursor, media\.position\)\)/);
+    assert.match(scriptaRenderingSource, /document\.createTextNode\(paragraphText\.slice\(cursor\)\)/);
+    assert.doesNotMatch(scriptaRenderingSource, /\.innerHTML\s*=/);
     assert.match(panelSource, /await customElements\.whenDefined\('scripta-variants-view'\)/);
     assert.match(panelSource, /customElements\.upgrade\(variantsView\)/);
     assert.match(panelSource, /await variantsView\.presenterReadyPromise/);
