@@ -6,6 +6,7 @@ const blackboardThemePresets = [
         label: 'Classic',
         tokens: {
             panelBackground: '#f7f8fb',
+            panelText: '#172033',
             boardBackground: '#ffffff',
             boardGridColor: '#eef2f7',
             boardBorder: '#d6deea',
@@ -33,6 +34,7 @@ const blackboardThemePresets = [
         label: 'Slate',
         tokens: {
             panelBackground: '#111827',
+            panelText: '#e0f2fe',
             boardBackground: '#1f2937',
             boardGridColor: '#374151',
             boardBorder: '#4b5563',
@@ -60,6 +62,7 @@ const blackboardThemePresets = [
         label: 'Paper',
         tokens: {
             panelBackground: '#f3f4f6',
+            panelText: '#1f2937',
             boardBackground: '#fffdf7',
             boardGridColor: '#e8dcc4',
             boardBorder: '#d8c7a6',
@@ -87,6 +90,7 @@ const blackboardThemePresets = [
         label: 'Mint',
         tokens: {
             panelBackground: '#ecfdf5',
+            panelText: '#052e16',
             boardBackground: '#f7fffb',
             boardGridColor: '#bbf7d0',
             boardBorder: '#86efac',
@@ -114,6 +118,7 @@ const blackboardThemePresets = [
         label: 'Leadership',
         tokens: {
             panelBackground: '#e2dedd',
+            panelText: '#1f2328',
             boardBackground: '#f4f2f1',
             boardGridColor: '#d8d6d5',
             boardBorder: '#a8aaaa',
@@ -141,11 +146,12 @@ const blackboardThemePresets = [
         label: 'High contrast',
         tokens: {
             panelBackground: '#000000',
+            panelText: '#ffffff',
             boardBackground: '#000000',
             boardGridColor: '#27272a',
             boardBorder: '#ffffff',
             widgetSurface: '#ffffff',
-            widgetText: '#ffffff',
+            widgetText: '#000000',
             widgetBorder: '#ffffff',
             selectionColor: '#facc15',
             selectionShadow: 'rgba(250, 204, 21, 0.45)',

@@ -162,6 +162,7 @@ export const blackboardActionMethods = {
         const tokens = theme?.tokens || {};
         const tokenMap = {
             '--bb-panel-bg': tokens.panelBackground,
+            '--bb-panel-text': tokens.panelText,
             '--bb-board-bg': tokens.boardBackground,
             '--bb-grid-color': tokens.boardGridColor,
             '--bb-board-border': tokens.boardBorder,

@@ -2425,7 +2425,9 @@ test('blackboard text widget theme defaults are transparent in every theme', () 
         assert.equal(theme.defaults.text.fill, 'transparent', `${option.id} text fill`);
     }
     assert.equal(getBlackboardTheme('slate').defaults.text.textColor, '#e0f2fe');
-    assert.equal(getBlackboardTheme('contrast').tokens.widgetText, '#ffffff');
+    assert.equal(getBlackboardTheme('slate').tokens.panelText, '#e0f2fe');
+    assert.equal(getBlackboardTheme('slate').tokens.widgetText, '#111827');
+    assert.equal(getBlackboardTheme('contrast').tokens.widgetText, '#000000');
     assert.equal(getBlackboardTheme('contrast').defaults.text.textColor, '#ffffff');
 });
 
@@ -2457,8 +2459,8 @@ test('blackboard widgets rely on theme defaults until a style is explicitly set'
     assert.match(source, /style\.fill \|\| typeDefaults\.fill/);
     assert.match(source, /style\.stroke \|\| typeDefaults\.stroke/);
     assert.match(source, /node\.style\.setProperty\('--stroke-width', `\$\{cssStrokeWidth\}px`\)/);
-    assert.match(source, /normalized\.textColor \|\| textDefaults\.textColor/);
-    assert.match(source, /node\.style\.setProperty\('--text-color', style\.textColor \|\| textDefaults\.textColor/);
+    assert.match(source, /widget\.type === 'text'[\s\S]*textDefaults\.textColor[\s\S]*typeDefaults\.textColor \|\| themeTokens\.widgetText/);
+    assert.match(source, /node\.style\.setProperty\('--text-color', style\.textColor \|\| defaultTextColor/);
     assert.match(source, /resetThemeStyles: true/);
 });
 

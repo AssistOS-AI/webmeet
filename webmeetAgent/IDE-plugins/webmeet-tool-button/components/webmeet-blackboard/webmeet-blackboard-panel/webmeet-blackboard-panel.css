@@ -1,5 +1,6 @@
 webmeet-blackboard-panel {
     --bb-panel-bg: var(--bg);
+    --bb-panel-text: var(--text);
     --bb-board-bg: var(--surface);
     --bb-grid-color: var(--border);
     --bb-board-border: var(--border);
@@ -24,7 +25,7 @@ webmeet-blackboard-panel {
     height: 100%;
     overflow: hidden;
     background: color-mix(in srgb, var(--bb-panel-bg) 84%, var(--bb-grid-color));
-    color: var(--bb-widget-text);
+    color: var(--bb-panel-text);
     font-family: var(--default-font);
 }
 
@@ -53,7 +54,7 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-tab-shell {
-    --bb-tab-fill: color-mix(in srgb, var(--bb-widget-text) 7%, var(--bb-panel-bg));
+    --bb-tab-fill: color-mix(in srgb, var(--bb-panel-text) 7%, var(--bb-panel-bg));
     position: relative;
     z-index: 1;
     display: inline-flex;
@@ -65,12 +66,12 @@ webmeet-blackboard-panel {
     border-bottom: 0;
     border-radius: 10px 10px 0 0;
     background: var(--bb-tab-fill);
-    box-shadow: 0 -2px 8px color-mix(in srgb, var(--bb-widget-text) 5%, transparent);
+    box-shadow: 0 -2px 8px color-mix(in srgb, var(--bb-panel-text) 5%, transparent);
     transition: background-color 130ms ease, color 130ms ease;
 }
 
 .webmeet-blackboard-tab-shell:not(:has(.webmeet-blackboard-tab[aria-selected="true"])):hover {
-    --bb-tab-fill: color-mix(in srgb, var(--bb-widget-text) 11%, var(--bb-panel-bg));
+    --bb-tab-fill: color-mix(in srgb, var(--bb-panel-text) 11%, var(--bb-panel-bg));
 }
 
 .webmeet-blackboard-tab-shell:has(.webmeet-blackboard-tab[aria-selected="true"]) {
@@ -111,7 +112,7 @@ webmeet-blackboard-panel {
     padding: 9px 34px 8px 14px;
     border: 0;
     background: transparent;
-    color: color-mix(in srgb, var(--bb-widget-text) 72%, transparent);
+    color: color-mix(in srgb, var(--bb-panel-text) 82%, transparent);
     font: inherit;
     font-size: 13px;
     font-weight: 500;
@@ -123,7 +124,7 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-tab:hover {
-    color: var(--bb-widget-text);
+    color: var(--bb-panel-text);
 }
 
 .webmeet-blackboard-tab:focus-visible {
@@ -132,7 +133,7 @@ webmeet-blackboard-panel {
 }
 
 .webmeet-blackboard-tab[aria-selected="true"] {
-    color: var(--bb-widget-text);
+    color: var(--bb-panel-text);
     font-weight: 600;
 }
 
@@ -162,7 +163,7 @@ webmeet-blackboard-panel {
     border: 0;
     border-radius: 50%;
     background: transparent;
-    color: color-mix(in srgb, var(--bb-widget-text) 62%, transparent);
+    color: color-mix(in srgb, var(--bb-panel-text) 72%, transparent);
     font-size: 13px;
     line-height: 1;
     opacity: 0;
@@ -189,7 +190,7 @@ webmeet-blackboard-panel {
     border: 0;
     border-radius: 50%;
     background: transparent;
-    color: color-mix(in srgb, var(--bb-widget-text) 78%, transparent);
+    color: color-mix(in srgb, var(--bb-panel-text) 82%, transparent);
     cursor: pointer;
     transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
@@ -197,8 +198,8 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-tab-menu:hover,
 .webmeet-blackboard-workspace-button:hover,
 .webmeet-blackboard-workspace-button[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--bb-widget-text) 9%, transparent);
-    color: var(--bb-widget-text);
+    background: color-mix(in srgb, var(--bb-panel-text) 12%, transparent);
+    color: var(--bb-panel-text);
 }
 
 .webmeet-blackboard-workspace-button:focus-visible,
@@ -364,7 +365,7 @@ webmeet-blackboard-panel {
 
 .webmeet-blackboard-filmstrip-hint {
     margin: 0 0 12px;
-    color: color-mix(in srgb, var(--bb-widget-text) 72%, transparent);
+    color: color-mix(in srgb, var(--bb-panel-text) 82%, transparent);
     font-size: 12px;
 }
 
@@ -660,7 +661,7 @@ webmeet-blackboard-panel {
     z-index: 1;
     width: min(420px, calc(100% - 48px));
     transform: translateX(-50%);
-    color: var(--bb-widget-text);
+    color: var(--bb-panel-text);
     text-align: center;
     pointer-events: none;
 }
@@ -675,7 +676,7 @@ webmeet-blackboard-panel {
 .webmeet-blackboard-board:empty::after {
     content: 'Choose a creation tool above, or open a SCRIPTA document.';
     top: 50%;
-    color: color-mix(in srgb, var(--bb-widget-text) 62%, transparent);
+    color: color-mix(in srgb, var(--bb-panel-text) 82%, transparent);
     font-size: 12px;
     line-height: 1.45;
 }

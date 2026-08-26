@@ -63,14 +63,19 @@ export const blackboardRenderingMethods = {
         node.style.transformOrigin = 'center center';
         node.style.setProperty('--widget-rotation', `${rotation}deg`);
         node.style.setProperty('--widget-counter-rotation', `${-rotation}deg`);
-        const themeDefaults = this.getBlackboardTheme().defaults || {};
+        const theme = this.getBlackboardTheme();
+        const themeDefaults = theme.defaults || {};
+        const themeTokens = theme.tokens || {};
         const typeDefaults = themeDefaults[widget.type] || themeDefaults.shape || {};
         const textDefaults = themeDefaults.text || {};
+        const defaultTextColor = widget.type === 'text'
+            ? textDefaults.textColor
+            : (typeDefaults.textColor || themeTokens.widgetText);
         node.style.setProperty('--fill', style.fill || typeDefaults.fill || 'var(--bb-widget-bg)');
         node.style.setProperty('--stroke', style.stroke || typeDefaults.stroke || 'var(--bb-widget-border)');
         const cssStrokeWidth = Number(style.strokeWidth ?? typeDefaults.strokeWidth ?? 1) || 0;
         node.style.setProperty('--stroke-width', `${cssStrokeWidth}px`);
-        node.style.setProperty('--text-color', style.textColor || textDefaults.textColor || 'var(--bb-widget-text)');
+        node.style.setProperty('--text-color', style.textColor || defaultTextColor || 'var(--bb-widget-text)');
         this.renderWidgetContent(node, widget);
         if (this.roboOrdinalMode && ordinal > 0) {
             const badge = document.createElement('span');
@@ -279,22 +284,27 @@ export const blackboardRenderingMethods = {
             text.addEventListener('pointerdown', (event) => {
                 if (text.isContentEditable) event.stopPropagation();
             });
-            this.applyTextStyleToNode(text, widget.properties?.style || {});
+            this.applyTextStyleToNode(text, widget);
             node.append(text);
             return;
         }
         node.textContent = this.getWidgetLabel(widget);
     },
 
-    applyTextStyleToNode(node, style = {}) {
+    applyTextStyleToNode(node, widget = {}) {
+        const style = widget.properties?.style || {};
         const normalized = this.normalizeTextStyle(style, false);
         const theme = this.getBlackboardTheme();
         const textDefaults = theme.defaults?.text || {};
+        const typeDefaults = theme.defaults?.[widget.type] || theme.defaults?.shape || {};
+        const defaultTextColor = widget.type === 'text'
+            ? textDefaults.textColor
+            : (typeDefaults.textColor || theme.tokens?.widgetText);
         node.style.fontFamily = String(normalized.fontFamily || TEXT_DEFAULT_STYLE.fontFamily);
         node.style.fontSize = `${Number(normalized.fontSize || TEXT_DEFAULT_STYLE.fontSize)}px`;
         node.style.fontWeight = String(normalized.fontWeight || TEXT_DEFAULT_STYLE.fontWeight);
         node.style.fontStyle = String(normalized.fontStyle || TEXT_DEFAULT_STYLE.fontStyle);
-        node.style.color = String(normalized.textColor || textDefaults.textColor || theme.tokens?.widgetText || TEXT_DEFAULT_STYLE.textColor);
+        node.style.color = String(normalized.textColor || defaultTextColor || TEXT_DEFAULT_STYLE.textColor);
     },
 
     getWidgetLabel(widget) {
