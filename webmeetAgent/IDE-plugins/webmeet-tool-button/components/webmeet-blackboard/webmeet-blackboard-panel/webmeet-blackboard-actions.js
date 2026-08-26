@@ -410,17 +410,7 @@ export const blackboardActionMethods = {
                 }],
                 allowPollChange: false,
                 anonymous: false,
-                status: 'open',
                 durationSeconds: 0,
-                startedAt: '',
-                closesAt: '',
-                participantData: {},
-                aggregation: {
-                    questions: {
-                        q1: {counts: {Yes: 0, No: 0}, total: 0}
-                    },
-                    totalParticipants: 0
-                },
                 resultsVisibility: 'public'
             };
         } else if (normalizedType === 'bullets') {
@@ -428,7 +418,6 @@ export const blackboardActionMethods = {
             widget.properties = {
                 ...widget.properties,
                 title: 'Meeting Bullets',
-                meetingDateTime: new Date().toISOString(),
                 items: [{
                     id: 'b1',
                     text: 'Add a note from the meeting',

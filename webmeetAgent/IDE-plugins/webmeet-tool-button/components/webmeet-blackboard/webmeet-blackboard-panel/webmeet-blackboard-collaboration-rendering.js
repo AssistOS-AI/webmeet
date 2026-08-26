@@ -52,7 +52,7 @@ export const blackboardCollaborationRenderingMethods = {
         title.textContent = String(props.title || 'Meeting Bullets').trim() || 'Meeting Bullets';
         const meta = document.createElement('div');
         meta.className = 'webmeet-blackboard-bullets-meta';
-        const dateText = String(props.meetingDateTime || '').trim();
+        const dateText = String(props.meetingDateTime || widget.createdAt || '').trim();
         meta.textContent = dateText;
         headerText.append(title, meta);
         const isFullscreen = String(this.fullscreenWidgetId || '') === String(widget.id || '');

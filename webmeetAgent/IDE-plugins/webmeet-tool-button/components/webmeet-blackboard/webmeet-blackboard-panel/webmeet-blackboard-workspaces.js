@@ -214,7 +214,7 @@ export function getFilmstripWidgetView(widget = {}) {
         view.items = questions.slice(0, 3).map((question) => text(question?.prompt)).filter(Boolean);
     } else if (type === 'bullets') {
         const items = Array.isArray(properties.items) ? properties.items : [];
-        view.kicker = text(properties.meetingDateTime);
+        view.kicker = text(properties.meetingDateTime || widget.createdAt);
         view.title = text(properties.title) || 'Meeting Bullets';
         view.items = items.slice(0, 4).map((item) => text(item?.text)).filter(Boolean);
     } else if (type === 'scripta-document') {

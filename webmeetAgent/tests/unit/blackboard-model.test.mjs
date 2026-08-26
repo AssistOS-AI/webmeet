@@ -507,6 +507,7 @@ test('blackboard bullets widget is collaborative and normalizes items', () => {
 
     const created = blackboard.getWidget('bullets_1');
     assert.equal(created.properties.title, 'Daily Standup');
+    assert.ok(created.createdAt);
     assert.equal(Object.prototype.hasOwnProperty.call(created.properties, 'participantCount'), false);
     assert.deepEqual(created.properties.items, [
         { id: 'n1', text: 'Ship release', status: 'done', priority: 'high' },
@@ -1969,6 +1970,10 @@ test('blackboard poll widget renders summary modal and poll settings', async () 
     );
 
     assert.match(panelSource, /renderPollWidgetContent\(node, widget\)/);
+    assert.doesNotMatch(
+        panelSource,
+        /normalizedType === 'poll'(?:(?!normalizedType === 'bullets')[\s\S])*(?:status:|startedAt:|closesAt:|participantData:|aggregation:)/
+    );
     assert.match(panelSource, /void this\.openPollModal\(widget\)/);
     assert.match(panelSource, /void this\.openPollResultsModal\(widget\)/);
     assert.match(panelSource, /webmeet-blackboard-poll-summary subtle-button/);
@@ -2028,6 +2033,8 @@ test('blackboard poll widget renders summary modal and poll settings', async () 
     assert.match(editorSource, /patch\.properties\.anonymous = this\.anonymousInput\?\.checked === true/);
     assert.match(editorSource, /patch\.properties\.durationSeconds/);
     assert.match(panelSource, /renderBulletsWidgetContent\(node, widget\)/);
+    assert.doesNotMatch(panelSource, /normalizedType === 'bullets'[\s\S]{0,500}meetingDateTime:/);
+    assert.match(panelSource, /props\.meetingDateTime \|\| widget\.createdAt/);
     assert.match(panelSource, /createBulletsItemRow\(item\)/);
     assert.match(panelSource, /if \(!isFullscreen && !widget\.groupId && !multiSelected\) this\.renderContextMenu\(node, widget\)/);
     assert.match(panelSource, /toggleBulletsFullscreen\(widget\.id\)/);
