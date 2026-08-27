@@ -26,7 +26,7 @@ RoboTeam appears as a virtual room participant with `agentType: "robo_team"`, `m
 
 Admins can read and update full RoboTeam settings through WebMeet tools. Normal participants can see the agent participant card and shared blackboard behavior, but cannot read or mutate the full settings object.
 
-Clicking the RoboTeam participant card presents the room blackboard to all participants through the existing WebMeet blackboard visibility event. This behaves like a shared screen surface in the UI but does not start, stop, or modify LiveKit screen-share tracks.
+Clicking the RoboTeam participant card toggles the room Blackboard only in the current participant's browser. Opening or closing this surface is local layout state: it is not published to peers and does not start, stop, or modify LiveKit screen-share tracks. Shared Blackboard content continues to synchronize through persisted mutations and `blackboard.updated` invalidations whether another participant currently has the surface open or closed.
 
 RoboTeam modifies the blackboard only through WebMeet blackboard tools. Blackboard collaboration remains final-state only: local drag and typing previews are not broadcast; accepted final widget or blackboard states are persisted and announced through `blackboard.updated`.
 
