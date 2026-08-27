@@ -89,6 +89,24 @@ test('the Blackboard toolbar toggle changes only local dashboard state', async (
     assert.equal(layoutRenders, 1);
 });
 
+test('the Blackboard surface exposes a visible close action through the existing local toggle', async () => {
+    const html = await fs.readFile(new URL(
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.html',
+        import.meta.url
+    ), 'utf8');
+    const css = await fs.readFile(new URL(
+        '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/webmeet-dashboard.css',
+        import.meta.url
+    ), 'utf8');
+
+    assert.match(
+        html,
+        /class="webmeet-blackboard-close"[\s\S]*data-local-action="toggleBlackboard"[\s\S]*aria-label="Close Blackboard">Close<\/button>/
+    );
+    assert.match(css, /\.webmeet-blackboard-close\s*\{/);
+    assert.match(css, /\.webmeet-blackboard-close:focus-visible\s*\{/);
+});
+
 test('a chat image upload opens the uploader local Blackboard and applies its projection', async () => {
     const applied = [];
     const projections = [];
