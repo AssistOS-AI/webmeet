@@ -544,7 +544,7 @@ export const blackboardActionMethods = {
         const targetRef = String(this.selection || '').trim();
         if (!targetRef) return;
         const widget = this.getWidgetById(targetRef);
-        if (widget && this.canEditWidget && !this.canEditWidget(widget)) return;
+        if (widget && this.canDeleteWidget && !this.canDeleteWidget(widget)) return;
         await this.runFinalChange({
             changeType: 'delete',
             targetType: 'widget',

@@ -488,7 +488,10 @@ test('the first queued speech creates an empty active Meeting Notes document', a
         assert.match(queued.session.documentName, /^meeting-notes-\d{4}-\d{2}-\d{2}(?:-\d+)?\.md$/);
         const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
         assert.equal(Object.keys(payload.scripta.documents || {}).length, 2);
-        assert.equal(payload.scripta.activeResourceId, ordinary.resourceId);
+        assert.equal(Object.hasOwn(payload.scripta, 'activeResourceId'), false);
+        assert.equal(Object.hasOwn(payload.scripta, 'view'), false);
+        assert.equal(Object.hasOwn(payload.scripta, 'multiBoardDocuments'), false);
+        assert.equal(Object.hasOwn(payload.scripta, 'retainDocumentHistory'), false);
         assert.equal(
             payload.scripta.activeResourceIdsByBoard[payload.scripta.documents[ordinary.resourceId].boardId],
             ordinary.resourceId,
@@ -1459,6 +1462,58 @@ test('SCRIPTA content projections preserve user-resized widget geometry', async 
         });
         const widget = projectedBoard.blackboard.widgets.find((entry) => entry.id === 'robo_scripta_document');
         assert.deepEqual(widget.properties.geometry, resizedGeometry);
+    });
+});
+
+test('deleting a SCRIPTA Blackboard widget keeps the Explorer document', async () => {
+    await withStore(async (context, root) => {
+        const meeting = await createMeeting(context, { name: 'Detach document', authInfo: ADMIN });
+        const created = await createScriptaDocument(context, {
+            roomId: meeting.roomId,
+            name: 'Persistent Draft',
+            template: 'general',
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        const boardId = await getActiveBoardId(context, meeting.roomId, 'admin', ADMIN);
+        const beforePayload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
+        assert.equal(
+            beforePayload.scripta.activeResourceIdsByBoard[boardId],
+            created.resourceId,
+        );
+        const beforeDeleteCalls = context.testExplorerCalls.filter(
+            (entry) => entry.tool === 'scripta_crdt_delete'
+        ).length;
+
+        await applyRoomBlackboardChange(context, {
+            roomId: meeting.roomId,
+            boardId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+            change: {
+                changeType: 'delete',
+                targetType: 'widget',
+                targetRef: 'robo_scripta_document',
+                reason: 'toolbar',
+            },
+        });
+
+        const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
+        const document = payload.scripta.documents[created.resourceId];
+        assert.ok(document, 'Removing the widget must retain the room document reference.');
+        assert.equal(payload.scripta.activeResourceIdsByBoard[boardId], undefined);
+        assert.equal((await fs.stat(path.join(root, document.path))).isFile(), true);
+        assert.equal(context.testExplorerCalls.filter(
+            (entry) => entry.tool === 'scripta_crdt_delete'
+        ).length, beforeDeleteCalls);
+
+        const board = await getRoomBlackboard(context, {
+            roomId: meeting.roomId,
+            boardId,
+            participantId: 'admin',
+            authInfo: ADMIN,
+        });
+        assert.equal(board.blackboard.widgets.some((widget) => widget.type === 'scripta-document'), false);
     });
 });
 

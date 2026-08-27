@@ -24,7 +24,10 @@ import {
 import { resetMeetingNotesForRemovedDocument } from '../meetingNotes/service.mjs';
 import { scriptaOwnerHash } from '../scripta/identity.mjs';
 import { scriptaExplorer } from '../scripta/explorer-crdt-client.mjs';
-import { getScriptaRoomFolderPath } from '../scripta/service.mjs';
+import {
+    deactivateScriptaDocumentOnBoard,
+    getScriptaRoomFolderPath
+} from '../scripta/service.mjs';
 import { calculateContentBounds } from './semantic-context.mjs';
 
 function attachmentGeometry(blackboard, asset, position = null) {
@@ -749,6 +752,14 @@ export async function applyRoomBlackboardChange(context, {
             canModerateBlackboard: isAdminAuthInfo(authInfo),
             record: false,
         });
+        if (normalizedChange.changeType === 'clear') {
+            deactivateScriptaDocumentOnBoard(payload, { boardId: blackboard.boardId });
+        } else if (removedWidget?.type === 'scripta-document') {
+            deactivateScriptaDocumentOnBoard(payload, {
+                boardId: blackboard.boardId,
+                resourceId: String(removedWidget.properties?.resourceId || ''),
+            });
+        }
         if (normalizedChange.changeType === 'clear' || removedWidget?.type === 'scripta-document') {
             resetMeetingNotesForRemovedDocument(payload, {
                 boardId: normalizedChange.changeType === 'clear' ? blackboard.boardId : '',

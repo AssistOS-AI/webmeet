@@ -110,17 +110,6 @@ export const blackboardRenderingMethods = {
 
         this.appendFileContextDownload(menu, widget);
 
-        if (widget.type === 'scripta-document' && widget.properties?.resourceId) {
-            const deleteButton = this.createContextButton('delete', 'Delete document file', 'Delete document file', 'delete');
-            deleteButton.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (!globalThis.confirm?.(`Delete ${widget.properties.documentTitle || 'this document'} from the workspace?`)) return;
-                void this.runScriptaEvent('scripta-document-delete', { resourceId: widget.properties.resourceId, confirmed: true });
-            });
-            menu.append(deleteButton);
-        }
-
         this.appendImageScriptaButton(menu, widget);
         if (widget.type !== 'file' && this.canEditWidget(widget)) {
             const settingsButton = this.createContextButton('settings', 'Widget settings', 'Widget settings', 'settings');
@@ -139,7 +128,7 @@ export const blackboardRenderingMethods = {
             menu.append(rotateHandle);
         }
 
-        if (this.canEditWidget(widget)) {
+        if (this.canDeleteWidget(widget)) {
             const deleteButton = this.createContextButton('delete', 'Delete widget', 'Delete', 'delete');
             deleteButton.addEventListener('click', (event) => {
                 event.preventDefault();
@@ -198,6 +187,12 @@ export const blackboardRenderingMethods = {
         if (String(widget.type || '').startsWith('scripta-')) return false;
         if (widget.type !== 'poll') return true;
         return widget.properties?.canManagePoll === true;
+    },
+
+    canDeleteWidget(widget) {
+        return Boolean(widget && !widget.locked && (
+            widget.type === 'scripta-document' || this.canEditWidget(widget)
+        ));
     },
 
     canMoveWidget(widget) {

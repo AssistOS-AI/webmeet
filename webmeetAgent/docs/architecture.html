@@ -49,8 +49,8 @@ flowchart LR
         </section>
         <section>
           <h2>Collaborative Documents</h2>
-          <p><a href="wiki.html#definition-scripta">SCRIPTA</a> documents and their <a href="wiki.html#definition-automerge">Automerge</a> collaboration state remain Explorer-owned. WebMeet stores room attachments, active document references, presentation state, and safe projections, then calls the Explorer authority for create, open, incremental collaboration, mutation, and delete operations.</p>
-          <p>Explorer also provides <a href="wiki.html#definition-tinymde">TinyMDE</a> for ordinary Markdown source editing. That editor is separate from WebMeet's structured SCRIPTA collaboration surface and does not change the ownership boundary: WebMeet does not parse or overwrite canonical Markdown, and collaborative SCRIPTA changes use the Explorer-owned CRDT transaction path.</p>
+          <p><a href="wiki.html#definition-scripta">SCRIPTA</a> documents and their canonical <a href="wiki.html#definition-automerge">Automerge</a> working state remain Explorer-owned. Markdown is the durable portable materialization. WebMeet stores room attachments, active document references per board, document-scoped presentation state, and safe projections, then calls Explorer for create, open, incremental collaboration, semantic mutation, and delete operations.</p>
+          <p>Explorer also provides <a href="wiki.html#definition-tinymde">TinyMDE</a> for ordinary Markdown source editing. TinyMDE emits incremental text changes, while SCRIPTA emits semantic and incremental variant operations; both use Explorer's Markdown CRDT authority. The interfaces remain separate, but WebMeet never parses or overwrites canonical Markdown.</p>
         </section>
         <section>
           <h2>Browser Application</h2>

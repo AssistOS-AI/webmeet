@@ -2153,6 +2153,10 @@ test('blackboard Insert menu opens SCRIPTA create/open through RoboTeam events',
     assert.match(modalCss, /\.webmeet-scripta-document-modal \[hidden\][\s\S]*display: none !important/);
     assert.doesNotMatch(toolbarHtml, /addWidget scripta-document/);
     assert.doesNotMatch(panelSource, /scripta-document-detach/);
+    assert.doesNotMatch(panelSource, /Delete document file/);
+    assert.doesNotMatch(panelSource, /runScriptaEvent\('scripta-document-delete'/);
+    assert.match(panelSource, /canDeleteWidget\(widget\)[\s\S]*widget\.type === 'scripta-document'/);
+    assert.match(panelSource, /createContextButton\('delete', 'Delete widget', 'Delete', 'delete'\)/);
     assert.match(panelHtml, /data-template="scripta-document"[\s\S]*class="webmeet-scripta-document-header"[\s\S]*class="webmeet-scripta-document-title"[\s\S]*data-local-action="runScriptaLocalAction scripta-chapter-add"[\s\S]*class="webmeet-scripta-header-action-label">Chapter</);
     assert.doesNotMatch(panelSource, /createScriptaButton\('Add chapter'/);
     assert.match(panelCss, /\.webmeet-blackboard-context-button\.webmeet-scripta-header-action\s*\{[\s\S]*width:\s*auto;[\s\S]*height:\s*28px;[\s\S]*border-color:\s*var\(--bb-widget-border\);[\s\S]*background:\s*var\(--bb-context-bg\);[\s\S]*white-space:\s*nowrap;/);
