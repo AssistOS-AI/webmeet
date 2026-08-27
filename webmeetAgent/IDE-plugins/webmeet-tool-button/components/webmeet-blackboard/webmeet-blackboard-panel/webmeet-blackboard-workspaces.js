@@ -875,7 +875,14 @@ export const blackboardWorkspaceMethods = {
     async createWorkspaceBoard() {
         if (this.busy) return;
         const number = Number(this.workspace?.boards?.length || 0) + 1;
-        await this.adapter.sendWorkspaceAction('board-create', { title: `Workspace ${number}` });
+        this.busy = true;
+        this.updateToolbarState();
+        try {
+            await this.adapter.sendWorkspaceAction('board-create', { title: `Workspace ${number}` });
+        } finally {
+            this.busy = false;
+            this.updateToolbarState();
+        }
     },
 
     renameWorkspaceBoard(target) {

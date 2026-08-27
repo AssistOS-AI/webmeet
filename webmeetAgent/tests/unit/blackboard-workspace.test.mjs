@@ -238,6 +238,36 @@ test('workspace UI keeps stable WebSkel templates and declarative click actions'
     assert.match(source, /line\.removeAttribute\('hidden'\)/);
 });
 
+test('workspace UI admits only one create request while Add Workspace is pending', async () => {
+    let finishRequest;
+    const pendingRequest = new Promise((resolve) => { finishRequest = resolve; });
+    const calls = [];
+    const busyStates = [];
+    const presenter = {
+        busy: false,
+        workspace: {boards: [{boardId: 'existing'}]},
+        adapter: {
+            async sendWorkspaceAction(action, input) {
+                calls.push({action, input});
+                await pendingRequest;
+            },
+        },
+        updateToolbarState() {
+            busyStates.push(this.busy);
+        },
+    };
+
+    const firstClick = blackboardWorkspaceMethods.createWorkspaceBoard.call(presenter);
+    const secondClick = blackboardWorkspaceMethods.createWorkspaceBoard.call(presenter);
+
+    assert.equal(presenter.busy, true);
+    assert.deepEqual(calls, [{action: 'board-create', input: {title: 'Workspace 2'}}]);
+    finishRequest();
+    await Promise.all([firstClick, secondClick]);
+    assert.equal(presenter.busy, false);
+    assert.deepEqual(busyStates, [true, false]);
+});
+
 test('connector projection follows rotated widgets and axis-aligned group bounds', () => {
     const line = {id: 'edge', type: 'line', properties: {
         geometry: {x: 10, y: 20, width: 300, height: 180},
