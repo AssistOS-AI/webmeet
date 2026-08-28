@@ -17,6 +17,42 @@ The persisted Blackboard is a `BlackboardWorkspace` containing a workspace revis
 
 ### Serialization and viewer filtering
 
+Blackboard realtime delivery uses two nested text envelopes. The outer envelope is the standard WebMeet event encoding:
+
+```text
+<roomId>:blackboard.updated:<base64url(event JSON)>
+```
+
+Its event payload carries routing and mutation metadata such as `boardId`, `blackboardRevision`, `changeType`, `targetType`, `targetRef`, and `objectKind`. When a direct Blackboard projection or invalidation is available, the payload also carries `blackboardMessage` with this inner encoding:
+
+```text
+blackboard:<from>:<to>:<base64(payload JSON)>
+```
+
+`from` records the emitting actor address, normally `user:<participantId>` for browser publication or `service:<id>` for a service publication. Current Blackboard publishers use `to = ALL`. The codec can split `user:<id>`, `agent:<id>`, `widget:<id>`, `service:<id>`, and `policy:<id>` destination forms, but the current receiver does not use `to` for authorization or recipient filtering and no current publisher emits a directed Blackboard projection. Room admission, the outer event route, `roomId`, `boardId`, viewer-filtered MCP reads, and server-side mutation authorization remain the security boundaries. A parsed destination is transport metadata and must never be interpreted as proof that the receiving actor may view or mutate the object.
+
+The inner payload contains the following fields:
+
+| Field | Contract |
+| --- | --- |
+| `kind` | `blackboard` or `widget`; transient SCRIPTA draft presentation is delivered separately within the same payload shape. |
+| `roomId` | Required meeting identity and checked against the connected room. |
+| `boardId` | Required board identity and checked against the adapter's current board. |
+| `messageId` | Unique inner-envelope identifier used for deduplication. |
+| `revision` | Board revision carried by the projection or invalidation. This is not an independent widget version. |
+| `visibility` | Visibility metadata associated with the projected object. It does not replace authenticated viewer filtering. |
+| `object` | Complete public-safe board or widget projection, or `null` when the message is an invalidation. |
+| `presentation` | Optional non-persistent SCRIPTA draft presentation; absent from ordinary final projections. |
+| `timestamp` | Inner-envelope production time. |
+
+The payload also retains board ownership metadata used by the room integration. Runtime DOM references, local drafts, pointer state, caches, and privileged history never enter either envelope.
+
+The receiver first validates and deduplicates the outer `blackboard.updated` event, then validates the inner room and board identities and deduplicates `messageId`. A revision lower than the currently applied board revision is ignored. An equal revision is accepted when it has a distinct message id because a command response and its realtime delivery may represent the same accepted revision through separate envelopes; exact duplicate ids remain ignored. Revisions order projections but are not optimistic concurrency preconditions.
+
+Ordinary mutations may carry a complete public-safe object and are applied directly without reconstructing a patch. Workspace changes carry an invalidation and reload the workspace plus its active board. SCRIPTA final changes, SCRIPTA objects containing viewer-relative permissions or votes, private objects that have no public projection, and other messages with `object: null` are invalidations: the receiving browser reloads the board through the authenticated WebMeet tool boundary. A locally applied SCRIPTA revision may consume its matching invalidation without a redundant render while still synchronizing the Explorer collaboration replica.
+
+The public realtime projection and the authenticated MCP projection are deliberately different. Realtime publication to `ALL` is built with an unauthenticated public viewer context and may omit private widgets, participant-specific fields, protected aggregate results, workspace editor links, ownership capabilities, and votes. `webmeet_blackboard_get` and `webmeet_blackboard_workspace_get` build a new projection for the authenticated caller and are the authority whenever resynchronization is required. Realtime transport accelerates rendering or signals invalidation; it does not grant access and does not replace the persisted, viewer-filtered WebMeet state.
+
 The participant-facing workspace projection contains `id`, `roomId`, `revision`, `activeBoardId`, ordered `boardOrder`, a `boards` summary array, and the filtered `activeBoard`. Each board summary contains `boardId`, `title`, `purpose`, `systemManaged`, `revision`, and `widgetCount`. The participant-facing board projection contains `boardId`, `revision`, shared `interactionContext`, safe metadata, and a `widgets` array. Safe board metadata contains only the selected theme id; full metadata and history are never part of this projection.
 
 Each participant-facing widget contains `id`, `type`, filtered `properties`, `groupId`, `visibility`, `locked`, `createdBy`, `updatedBy`, `createdAt`, `updatedAt`, and `timestamp`. Runtime references are never serialized. The privileged persistent representation additionally contains workspace history; board identity, ownership, visibility, full metadata, and board history; unfiltered widget properties; and widget provenance. Widget collections are arrays in both projections even though the runtime model indexes them internally by id. Widgets do not carry an independent version: workspace and board revisions provide ordering.
