@@ -24,6 +24,11 @@ export const blackboardInteractionMethods = {
         if (!this.board || event.button !== 0) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !this.board.contains(target)) return;
+        const inlineEditable = this.inlineEditState?.editable || null;
+        if (inlineEditable && target !== inlineEditable && !inlineEditable.contains?.(target)) {
+            inlineEditable.blur?.();
+            if (this.inlineEditWidgetId) void this.finishInlineTextEdit(true);
+        }
         const groupOverlay = target.closest?.('.webmeet-blackboard-group-overlay');
         if (groupOverlay) {
             const ownsGesture = groupOverlay.classList.contains('is-group')
@@ -468,6 +473,7 @@ export const blackboardInteractionMethods = {
         this.dragState = null;
         this.clearWorkspaceTabActivation?.();
         this.refreshConnectedLinePreviews?.();
+        if (this.pendingRenderAfterInteraction) this.renderWidgets();
     },
 
     detachDragListeners(node) {
@@ -553,6 +559,7 @@ export const blackboardInteractionMethods = {
         this.resizeState = null;
         this.clearConnectionAnchors?.();
         this.refreshConnectedLinePreviews?.();
+        if (this.pendingRenderAfterInteraction) this.renderWidgets();
     },
 
     detachResizeListeners(node) {
@@ -634,6 +641,7 @@ export const blackboardInteractionMethods = {
         this.detachRotateListeners(node);
         this.rotateState = null;
         this.refreshConnectedLinePreviews?.();
+        if (this.pendingRenderAfterInteraction) this.renderWidgets();
     },
 
     detachRotateListeners(node) {

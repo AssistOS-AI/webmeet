@@ -5,6 +5,7 @@ import { blackboardInteractionMethods } from './webmeet-blackboard-interactions.
 import { blackboardGroupMethods } from './webmeet-blackboard-groups.js';
 import { blackboardExportMethods } from './webmeet-blackboard-export.js';
 import { blackboardRenderingMethods } from './webmeet-blackboard-rendering.js';
+import { blackboardReconciliationMethods } from './webmeet-blackboard-reconciliation.js';
 import { blackboardAttachmentRenderingMethods } from './webmeet-blackboard-attachment-rendering.js';
 import { blackboardCollaborationRenderingMethods } from './webmeet-blackboard-collaboration-rendering.js';
 import { blackboardScriptaActionMethods } from './webmeet-blackboard-scripta-actions.js';
@@ -31,6 +32,7 @@ export class WebMeetBlackboardPanel {
         this.selectionContextState = null;
         this.renamingWorkspaceBoardId = '';
         this.widgetNodes = new Map();
+        this.widgetRenderKeys = new Map();
         this.selection = '';
         this.selectedWidgetIds = new Set();
         this.selectedGroupId = '';
@@ -55,6 +57,7 @@ export class WebMeetBlackboardPanel {
         this.inlineEditState = null;
         this.inlineEditCommitPromise = null;
         this.pendingRenderAfterInlineEdit = false;
+        this.pendingRenderAfterInteraction = false;
         this.roboOrdinalMode = false;
         this.meetingNotesActivity = null;
         this.fullscreenWidgetId = '';
@@ -135,6 +138,15 @@ export class WebMeetBlackboardPanel {
         this.handlePanelKeydownEvent = (event) => this.handlePanelKeydown(event);
         this.handleDocumentKeydownEvent = (event) => this.handlePanelKeydown(event);
         this.handleBoardPointerDown = (event) => this.handleBoardPointerDownCapture(event);
+        this.handleBoardFocusOutEvent = () => {
+            const flush = () => {
+                if (this.pendingRenderAfterInteraction && this.getInteractionProtectedWidgetIds().size === 0) {
+                    this.renderWidgets();
+                }
+            };
+            if (typeof globalThis.queueMicrotask === 'function') globalThis.queueMicrotask(flush);
+            else Promise.resolve().then(flush);
+        };
         this.handleSelectWidgetEvent = (event) => {
             const widgetId = String(event.detail?.widgetId || '').trim();
             if (!widgetId || !(this.blackboard?.widgets || []).some((widget) => widget?.id === widgetId)) return;
@@ -257,12 +269,14 @@ export class WebMeetBlackboardPanel {
             this.board.removeEventListener?.('dragover', this.handleBoardFileDragOverEvent);
             this.board.removeEventListener?.('dragleave', this.handleBoardFileDragLeaveEvent);
             this.board.removeEventListener?.('drop', this.handleBoardFileDropEvent);
+            this.board.removeEventListener?.('focusout', this.handleBoardFocusOutEvent);
             this.board.addEventListener?.('pointerdown', this.handleBoardPointerDown, true);
             this.board.addEventListener?.('contextmenu', this.handleBoardContextMenuEvent);
             this.board.addEventListener?.('dragenter', this.handleBoardFileDragEnterEvent);
             this.board.addEventListener?.('dragover', this.handleBoardFileDragOverEvent);
             this.board.addEventListener?.('dragleave', this.handleBoardFileDragLeaveEvent);
             this.board.addEventListener?.('drop', this.handleBoardFileDropEvent);
+            this.board.addEventListener?.('focusout', this.handleBoardFocusOutEvent);
         }
     }
 
@@ -566,6 +580,7 @@ export class WebMeetBlackboardPanel {
             this.board.removeEventListener?.('dragover', this.handleBoardFileDragOverEvent);
             this.board.removeEventListener?.('dragleave', this.handleBoardFileDragLeaveEvent);
             this.board.removeEventListener?.('drop', this.handleBoardFileDropEvent);
+            this.board.removeEventListener?.('focusout', this.handleBoardFocusOutEvent);
         }
         if (this.workspaceTabs) {
             this.workspaceTabs.removeEventListener('dragstart', this.handleWorkspaceTabDragStart);
@@ -607,6 +622,8 @@ export class WebMeetBlackboardPanel {
         this.clearWorkspaceTabActivation?.();
         this.unsubscribeAdapter?.();
         this.unsubscribeAdapter = null;
+        this.widgetNodes.clear();
+        this.widgetRenderKeys.clear();
     }
 }
 
@@ -616,6 +633,7 @@ Object.assign(
     blackboardGraphicsRenderingMethods,
     blackboardConnectionMethods,
     blackboardAttachmentRenderingMethods,
+    blackboardReconciliationMethods,
     blackboardRenderingMethods,
     blackboardCollaborationRenderingMethods,
     blackboardScriptaActionMethods,

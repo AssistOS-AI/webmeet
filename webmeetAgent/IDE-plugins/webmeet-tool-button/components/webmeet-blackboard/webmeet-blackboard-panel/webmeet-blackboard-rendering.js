@@ -3,28 +3,50 @@ import { TEXT_DEFAULT_STYLE } from './webmeet-blackboard-text-style.js';
 export const blackboardRenderingMethods = {
     renderWidgets() {
         if (!this.board) return;
-        if (this.inlineEditWidgetId) {
-            this.pendingRenderAfterInlineEdit = true;
-            this.updateToolbarState();
-            return;
-        }
-        this.pendingRenderAfterInlineEdit = false;
         this.applyBoardBackground();
-        const fragment = document.createDocumentFragment();
-        this.widgetNodes.clear();
         const widgets = this.blackboard?.widgets || [];
         const {widgetOrdinals, groupOrdinals} = this.getRoboTargetOrdinals(widgets);
+        const protectedWidgetIds = this.getInteractionProtectedWidgetIds();
+        const hasGroupInteraction = Boolean(this.groupDragState || this.groupResizeState || this.groupRotateState);
+        const desiredWidgetIds = new Set(widgets.map((widget) => String(widget?.id || '')).filter(Boolean));
+        let deferredInlineRender = false;
+        let deferredInteractionRender = false;
+
+        this.clearTransientBoardDecorations({preserveGroupInteraction: hasGroupInteraction});
         if (this.fullscreenWidgetId && !widgets.some((widget) => String(widget.id || '') === String(this.fullscreenWidgetId))) {
             this.fullscreenWidgetId = '';
         }
-        for (const widget of widgets) {
-            const node = this.renderWidget(widget, Number(widgetOrdinals.get(String(widget.id || '')) || 0));
-            fragment.append(node);
-            this.widgetNodes.set(widget.id, node);
+        for (const [widgetId, node] of this.widgetNodes) {
+            if (desiredWidgetIds.has(String(widgetId))) continue;
+            node?.remove?.();
+            this.widgetNodes.delete(widgetId);
+            this.widgetRenderKeys.delete(widgetId);
         }
-        this.board.replaceChildren(fragment);
-        this.renderGroupHitAreas(groupOrdinals);
-        this.renderSelectionOverlay();
+        for (const widget of widgets) {
+            const widgetId = String(widget?.id || '');
+            if (!widgetId) continue;
+            const ordinal = Number(widgetOrdinals.get(widgetId) || 0);
+            const renderKey = this.createWidgetRenderKey(widget, ordinal);
+            const existingNode = this.widgetNodes.get(widgetId);
+            if (existingNode && this.widgetRenderKeys.get(widgetId) === renderKey) continue;
+            if (existingNode && protectedWidgetIds.has(widgetId)) {
+                if (widgetId === String(this.inlineEditWidgetId || '')) deferredInlineRender = true;
+                else deferredInteractionRender = true;
+                continue;
+            }
+            const node = this.renderWidget(widget, ordinal);
+            if (existingNode?.replaceWith) existingNode.replaceWith(node);
+            else this.board.append(node);
+            this.widgetNodes.set(widgetId, node);
+            this.widgetRenderKeys.set(widgetId, renderKey);
+        }
+        this.orderWidgetNodes(widgets);
+        this.pendingRenderAfterInlineEdit = deferredInlineRender;
+        this.pendingRenderAfterInteraction = deferredInteractionRender;
+        if (!hasGroupInteraction) {
+            this.renderGroupHitAreas(groupOrdinals);
+            this.renderSelectionOverlay();
+        }
         if (String(this.pendingWidgetType || '').startsWith('line') || this.resizeState?.lineResize) {
             this.renderConnectionAnchors();
         }

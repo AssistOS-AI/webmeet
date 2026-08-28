@@ -5,7 +5,7 @@ summary: Defines the shared multi-zone Blackboard workspace, global atomic histo
 
 # DS010-blackboard-agentic-diagrams
 
-### DS009 - Blackboard Agentic Diagrams
+### DS010 - Blackboard Agentic Diagrams
 
 ## Introduction
 
@@ -60,6 +60,27 @@ As soon as the chat composer starts with `/robo`, the local browser shows determ
 The selected-group overlay is a browser-only projection expanded by eight logical pixels on every side of the current member bounds. Its border and resize handles therefore remain visually separated from member content. Resize previews reapply the same gap while the canonical transform continues to use the unpadded group bounds, so selection spacing never changes persisted geometry, export bounds, or undo history.
 
 Line widgets expose pointer hit-testing only through a transparent 12-pixel interaction band centered on the visible segment. Their rectangular SVG layout bounds do not receive pointer events, so a connector crossing or ending at another widget never consumes the first drag gesture intended for that widget. Endpoint handles and the selected-line contextual menu remain independently interactive. An unselected movable widget is selected and begins its pointer drag in the same first press-and-hold gesture; shared semantic focus is published only after a click is released or through the completed move, so a focus projection cannot replace the pointer-capturing node mid-gesture. Group connection bounds are computed from members with authoritative geometry; attached connectors are derived from their endpoints and therefore never expand or displace those bounds, while free line members still contribute normally. A complete group made only from free lines remains a valid connection target.
+
+### Browser projection and DOM reconciliation
+
+The latest board projection accepted from the network adapter is the confirmed client model. The rendered widget node is normally a projection of that model, but it may temporarily contain a local DOM draft while the current participant is typing or performing a pointer gesture. A DOM draft is transient interaction state only: it is not a second board model, is not sent as a complete board snapshot, and does not prevent the adapter from accepting a newer projection. The final local action sends only its narrow widget patch. Server-side room serialization and board revisions continue to define last-edit-wins ordering.
+
+The browser reconciles the confirmed projection by stable widget id. Runtime maps associate each widget id with its current DOM node and render key; they are rendering caches and are never serialized. Reconciliation applies the following rules:
+
+| Projection change | DOM reconciliation |
+| --- | --- |
+| Create | Render the new widget node, cache it by widget id, and place it at the position defined by the confirmed widget order. |
+| Update | Replace only the changed widget node when its render key differs. Unchanged nodes retain their identity, focus, and local browser state. |
+| Delete | Remove the missing widget node and its cached render key immediately. A confirmed deletion is authoritative and does not preserve an obsolete local draft. |
+| Reorder | Move the existing widget nodes into confirmed order without recreating otherwise unchanged nodes. |
+
+After widget reconciliation, transient connection anchors, group hit areas, selection overlays, and ordinal decorations are rebuilt from the confirmed model. During an active group gesture, the group interaction overlay is retained until that gesture ends so the pointer target is not invalidated. Attached connection geometry remains derived from the current projected endpoint geometry.
+
+A widget node is protected from replacement while it owns an inline text draft, an active drag, resize, or rotation, or belongs to an active group drag, group resize, or group rotation. Widgets carried by an active cross-workspace drop are protected by the same rule. A widget is also protected when one of its `input`, `textarea`, `select`, or editable content elements owns document focus. Protection preserves the live node and its draft or pointer capture; it does not reject, buffer, or rewrite the confirmed board projection.
+
+When a protected node differs from the confirmed projection, rendering for that node is marked pending. An inline text node is reconciled after commit, cancellation, or an unchanged edit exits. Pressing the primary pointer anywhere on the Blackboard outside the active editable content explicitly blurs and commits that draft before the canvas or another widget handles the gesture; this remains reliable even when drag or marquee handling suppresses the browser's default focus transition. A pointer gesture is reconciled from the authoritative response when it completes, or immediately from the already accepted projection when it is cancelled. A focused form control is reconciled after focus leaves the control and no protected interaction remains. Group decorations are rebuilt after the group gesture completes. These flush points apply the newest confirmed projection available at that moment, so a later accepted local patch or remote patch remains the last edit that wins.
+
+Complete board reconstruction is the recovery path only when the Blackboard surface is newly mounted or its runtime DOM caches have been reset during teardown. The next render then treats every confirmed widget as a create and reconstructs transient decorations from the confirmed model. Ordinary create, update, delete, reorder, selection, and realtime projection changes must use incremental reconciliation and must not clear or replace the complete board DOM.
 
 ### Decisions & Questions
 

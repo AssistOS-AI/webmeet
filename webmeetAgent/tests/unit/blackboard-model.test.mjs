@@ -47,6 +47,8 @@ import {
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-theme-presets.js';
 import { blackboardScriptaActionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-scripta-actions.js';
 import { expandCompositeSelectionWidgetIds } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-groups.js';
+import { blackboardRenderingMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-rendering.js';
+import { blackboardReconciliationMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-reconciliation.js';
 
 const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-panel.js',
@@ -55,6 +57,7 @@ const BLACKBOARD_PANEL_MODULES = [
     'webmeet-blackboard-graphics-rendering.js',
     'webmeet-blackboard-attachment-rendering.js',
     'webmeet-blackboard-interactions.js',
+    'webmeet-blackboard-reconciliation.js',
     'webmeet-blackboard-rendering.js',
     'webmeet-blackboard-collaboration-rendering.js',
     'webmeet-blackboard-scripta-actions.js',
@@ -1344,8 +1347,12 @@ test('blackboard inline text editing survives render refresh and flushes before 
         source.indexOf('\n    async finishInlineTextEdit', source.indexOf('    async flushInlineTextEdit()'))
     );
 
-    assert.match(renderWidgetsMethod, /if \(this\.inlineEditWidgetId\)/);
-    assert.match(renderWidgetsMethod, /this\.pendingRenderAfterInlineEdit = true/);
+    assert.match(renderWidgetsMethod, /getInteractionProtectedWidgetIds\(\)/);
+    assert.match(renderWidgetsMethod, /this\.pendingRenderAfterInlineEdit = deferredInlineRender/);
+    assert.doesNotMatch(renderWidgetsMethod, /this\.board\.replaceChildren/);
+    assert.match(source, /activeElement\?\.matches\?\.\('input, textarea, select/);
+    assert.match(source, /handleBoardFocusOutEvent[\s\S]*pendingRenderAfterInteraction[\s\S]*renderWidgets\(\)/);
+    assert.match(renderWidgetsMethod, /hasGroupInteraction[\s\S]*preserveGroupInteraction/);
     assert.match(startInlineTextEditMethod, /this\.inlineEditState = \{/);
     assert.match(startInlineTextEditMethod, /editable\.addEventListener\('input', onInput\)/);
     assert.match(startInlineTextEditMethod, /this\.growInlineTextBoxToFit\(widget\.id, editable\)/);
@@ -1362,6 +1369,119 @@ test('blackboard inline text editing survives render refresh and flushes before 
     assert.doesNotMatch(source, /async setTextWidgetStyle\(detail = \{\}\)/);
     assert.match(source, /async undo\(\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
     assert.match(source, /async redo\(\) \{[\s\S]*await this\.flushInlineTextEdit\(\)/);
+});
+
+test('blackboard rendering reconciles changed widgets and preserves an active inline editor', () => {
+    class FakeNode {
+        constructor(id, text) {
+            this.id = id;
+            this.text = text;
+            this.parentNode = null;
+        }
+
+        replaceWith(node) {
+            const index = this.parentNode.children.indexOf(this);
+            this.parentNode.children[index] = node;
+            node.parentNode = this.parentNode;
+            this.parentNode = null;
+        }
+
+        remove() {
+            if (!this.parentNode) return;
+            const index = this.parentNode.children.indexOf(this);
+            if (index >= 0) this.parentNode.children.splice(index, 1);
+            this.parentNode = null;
+        }
+    }
+
+    const board = {
+        children: [],
+        append(node) {
+            node.remove();
+            this.children.push(node);
+            node.parentNode = this;
+        },
+        insertBefore(node, reference) {
+            node.remove();
+            const index = reference ? this.children.indexOf(reference) : this.children.length;
+            this.children.splice(index < 0 ? this.children.length : index, 0, node);
+            node.parentNode = this;
+        },
+        querySelectorAll() {
+            return [];
+        },
+    };
+    let renderCount = 0;
+    const context = {
+        ...blackboardReconciliationMethods,
+        ...blackboardRenderingMethods,
+        board,
+        blackboard: {
+            widgets: [
+                {id: 'a', type: 'text', properties: {text: 'A'}},
+                {id: 'b', type: 'text', properties: {text: 'B'}},
+            ],
+        },
+        widgetNodes: new Map(),
+        widgetRenderKeys: new Map(),
+        selectedWidgetIds: new Set(),
+        selection: '',
+        selectedGroupId: '',
+        fullscreenWidgetId: '',
+        inlineEditWidgetId: '',
+        roboOrdinalMode: false,
+        pendingWidgetType: '',
+        applyBoardBackground() {},
+        getRoboTargetOrdinals(widgets) {
+            return {
+                widgetOrdinals: new Map(widgets.map((widget, index) => [widget.id, index + 1])),
+                groupOrdinals: new Map(),
+            };
+        },
+        projectAttachedConnection(widget) {
+            return widget;
+        },
+        getBlackboardTheme() {
+            return {id: 'slate'};
+        },
+        renderWidget(widget) {
+            renderCount += 1;
+            return new FakeNode(widget.id, widget.properties.text);
+        },
+        renderGroupHitAreas() {},
+        renderSelectionOverlay() {},
+        updateToolbarState() {},
+    };
+
+    context.renderWidgets();
+    const firstA = context.widgetNodes.get('a');
+    const firstB = context.widgetNodes.get('b');
+    assert.equal(renderCount, 2);
+
+    context.blackboard = {
+        widgets: [
+            {id: 'a', type: 'text', properties: {text: 'A remote'}},
+            {id: 'b', type: 'text', properties: {text: 'B'}},
+        ],
+    };
+    context.renderWidgets();
+    assert.notEqual(context.widgetNodes.get('a'), firstA);
+    assert.equal(context.widgetNodes.get('b'), firstB);
+    assert.equal(renderCount, 3);
+
+    const editingA = context.widgetNodes.get('a');
+    context.inlineEditWidgetId = 'a';
+    context.blackboard.widgets[0] = {id: 'a', type: 'text', properties: {text: 'A newer remote'}};
+    context.renderWidgets();
+    assert.equal(context.widgetNodes.get('a'), editingA);
+    assert.equal(context.widgetNodes.get('b'), firstB);
+    assert.equal(context.pendingRenderAfterInlineEdit, true);
+
+    context.inlineEditWidgetId = '';
+    context.renderWidgets();
+    assert.notEqual(context.widgetNodes.get('a'), editingA);
+    assert.equal(context.widgetNodes.get('a').text, 'A newer remote');
+    assert.equal(context.pendingRenderAfterInlineEdit, false);
 });
 
 test('blackboard realtime widget updates refresh the rendered panel', async () => {
@@ -1646,6 +1766,60 @@ test('interactive controls inside movable widgets keep their click gesture', asy
         false,
         'the explicit Move handle must remain a drag source'
     );
+});
+
+test('a board pointer outside the inline editor commits and releases the text draft', async () => {
+    const { blackboardInteractionMethods } = await import(
+        path.resolve(import.meta.dirname, '../../IDE-plugins/webmeet-tool-button/components/webmeet-blackboard/webmeet-blackboard-panel/webmeet-blackboard-interactions.js')
+    );
+    const previousElement = globalThis.Element;
+    class MockElement {
+        constructor(parent = null) {
+            this.parent = parent;
+        }
+        contains(node) {
+            return node === this || node?.parent === this;
+        }
+        closest() {
+            return null;
+        }
+    }
+    globalThis.Element = MockElement;
+    try {
+        const board = new MockElement();
+        const editable = new MockElement();
+        const editableChild = new MockElement(editable);
+        let blurCalls = 0;
+        let commitCalls = 0;
+        editable.blur = () => { blurCalls += 1; };
+        const context = {
+            board,
+            activeTool: 'select',
+            inlineEditWidgetId: 'text-1',
+            inlineEditState: {editable},
+            finishInlineTextEdit(commit) {
+                commitCalls += Number(commit === true);
+                this.inlineEditWidgetId = '';
+            },
+            beginMarqueeSelection() {},
+        };
+
+        blackboardInteractionMethods.handleBoardPointerDownCapture.call(context, {
+            button: 0,
+            target: editableChild,
+        });
+        assert.equal(blurCalls, 0);
+        assert.equal(commitCalls, 0);
+
+        blackboardInteractionMethods.handleBoardPointerDownCapture.call(context, {
+            button: 0,
+            target: board,
+        });
+        assert.equal(blurCalls, 1);
+        assert.equal(commitCalls, 1);
+    } finally {
+        globalThis.Element = previousElement;
+    }
 });
 
 test('an unselected shape begins selection and drag on the first pointer gesture', async () => {
