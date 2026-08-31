@@ -65,6 +65,18 @@ function isAvatarRenderCurrent(avatarElement, key, options = {}) {
     return true;
 }
 
+function applyAxiFaceEmotion(axiFace, config = null, runtimeState = null) {
+    if (!axiFace || typeof axiFace.setEmotion !== 'function') return;
+    const emotion = String(runtimeState?.emotion || config?.emotion || 'neutral').trim() || 'neutral';
+    const intensity = Number(runtimeState?.intensity);
+    if (Number.isFinite(intensity)) {
+        axiFace.style?.setProperty?.('--axi-face-intensity', String(intensity));
+    }
+    if (axiFace.dataset?.webmeetEmotion === emotion) return;
+    axiFace.setEmotion(emotion, Number.isFinite(intensity) ? { intensity } : {});
+    if (axiFace.dataset) axiFace.dataset.webmeetEmotion = emotion;
+}
+
 export class WebMeetParticipantCard {
     constructor(element, invalidate) {
         this.element = element;
@@ -93,6 +105,7 @@ export class WebMeetParticipantCard {
             isAudioMutedLocally: parseBoolean(element.getAttribute('data-is-audio-muted-locally')),
             avatarEnabled: parseBoolean(element.getAttribute('data-avatar-enabled')),
             avatarConfig: parseAvatarConfig(element.getAttribute('data-avatar-config')),
+            avatarRuntimeState: parseAvatarConfig(element.getAttribute('data-avatar-runtime-state')),
             avatarFallbackLetter: String(element.getAttribute('data-avatar-fallback-letter') || '').trim(),
             avatarResolved: parseBoolean(element.getAttribute('data-avatar-resolved'))
         };
@@ -136,6 +149,7 @@ export class WebMeetParticipantCard {
             ...this.state,
             avatarEnabled: Boolean(patch.avatarEnabled),
             avatarConfig: patch.avatarConfig || null,
+            avatarRuntimeState: patch.avatarRuntimeState || null,
             avatarFallbackLetter: String(patch.avatarFallbackLetter || '').trim(),
             avatarResolved: Boolean(patch.avatarResolved)
         };
@@ -310,12 +324,21 @@ export class WebMeetParticipantCard {
                 return;
             }
             const key = `axi:${size}:${JSON.stringify(this.state.avatarConfig)}`;
-            if (this.avatarRenderKey === key && isAvatarRenderCurrent(this.refs.avatar, key, { requiresAxiFace: true })) return;
+            if (this.avatarRenderKey === key && isAvatarRenderCurrent(this.refs.avatar, key, { requiresAxiFace: true })) {
+                applyAxiFaceEmotion(
+                    this.refs.avatar.querySelector('axi-face'),
+                    this.state.avatarConfig,
+                    this.state.avatarRuntimeState
+                );
+                return;
+            }
             this.avatarRenderKey = key;
             this.refs.avatar.dataset.avatarRenderKey = key;
             this.refs.avatar.style.setProperty('--wm-participant-avatar-size', size);
             this.refs.avatar.dataset.avatarSize = size;
             this.refs.avatar.innerHTML = renderAxiFaceMarkup(this.state.avatarConfig);
+            const axiFace = this.refs.avatar.querySelector('axi-face');
+            applyAxiFaceEmotion(axiFace, this.state.avatarConfig, this.state.avatarRuntimeState);
             this.refs.avatar.classList.add('has-axi-face');
             this.refs.avatar.classList.remove('is-avatar-loading');
             this.refs.avatar.setAttribute('aria-label', fallback);

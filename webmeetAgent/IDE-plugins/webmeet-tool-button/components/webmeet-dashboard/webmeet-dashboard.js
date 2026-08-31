@@ -28,6 +28,7 @@ import {
 import { createRoomNotificationSoundService } from './services/room-notification-sounds.js';
 import { createBrowserMeetingNotesTranscription } from './services/browser-meeting-notes-transcription.js';
 import { RemoteAudioNormalizer } from './services/audio-processing/remote-audio-normalizer.js';
+import { VoiceResponsiveAvatarController } from './services/audio-processing/voice-responsive-avatar.js';
 import {
     logMediaDiagnostic,
     summarizeAudioMetrics
@@ -185,6 +186,7 @@ export class WebmeetDashboard {
             avatarQuickMenuVisible: false,
             avatarSubmenuVisible: false,
             roomAvatarsByParticipantId: {},
+            avatarProjectionSequencesByParticipantId: {},
             participantAudioSettings: {},
             audioHealth: 'Good',
             audioCleanupStatus: 'voice-focus',
@@ -404,6 +406,16 @@ export class WebmeetDashboard {
         this.state.webMeetAvatarOverride = this.loadCurrentWebMeetAvatarOverride();
         this.state.webMeetAvatarOverrideDraft = this.state.webMeetAvatarOverride;
         this.mediaController.setSettings(this.state.mediaSettings);
+        this.voiceResponsiveAvatarController = new VoiceResponsiveAvatarController({
+            getRoom: () => this.room,
+            getExpressionMode: () => this.getEffectiveAvatarExpressionMode?.(),
+            onState: (runtimeState) => {
+                void this.webMeetRoom.publishAvatarRuntimeState(runtimeState).catch(() => {});
+            },
+            onError: () => {
+                // Voice expression is optional; LiveKit speaking/listening states remain available.
+            }
+        });
         void this.mediaController.preloadVoiceProcessing();
         this.remoteAudioNormalizer = new RemoteAudioNormalizer({
             isEnabled: () => this.state.mediaSettings?.automaticParticipantVolume !== false,
@@ -780,6 +792,7 @@ export class WebmeetDashboard {
         this.clearMediaSettingsElementRefs();
         this.resetBlackboardUiState?.();
         this.remoteAudioNormalizer?.stopAll?.();
+        this.voiceResponsiveAvatarController?.destroy?.();
         this.participantLayoutController?.dispose?.();
         this.roomNotificationSoundService?.teardown?.();
         window.removeEventListener('webmeet:participant-audio-preview', this.handleParticipantAudioPreviewEvent);

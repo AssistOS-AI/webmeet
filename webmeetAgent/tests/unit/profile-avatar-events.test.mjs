@@ -1108,7 +1108,8 @@ test("participant avatar realtime payload includes sanitized avatar projection",
     assert.match(source, /async republishAvatarProjection/);
     assert.match(source, /getCurrentPublishedAvatarProjection/);
     assert.match(source, /localParticipant\.setAttributes/);
-    assert.match(source, /webmeetProfileAvatar: JSON\.stringify\(avatarProjection\)/);
+    assert.match(source, /delete attributeProjection\.runtimeState/);
+    assert.match(source, /webmeetProfileAvatar: JSON\.stringify\(attributeProjection\)/);
     assert.match(method, /userId/);
     assert.match(method, /profileAvatar/);
     assert.match(actionSource, /const profileAvatar = avatar && typeof avatar === 'object'/);
@@ -1166,6 +1167,120 @@ test("participant avatar publish does not resync the room snapshot", async () =>
     assert.match(method, /await this\.webMeetRoom\.publishAvatarProjection\(profileAvatar, sourceAvatar\)/);
     assert.match(method, /this\.applyRealtimeParticipantAvatar\?\.\(/);
     assert.doesNotMatch(method, /syncParticipantsFromRoom/);
+});
+
+test("avatar changes outside a connected room are saved without publishing realtime data", async () => {
+    let savedAvatar = null;
+    let projectedAvatar = null;
+    let localAvatar = null;
+    const profileAvatar = {
+        enabled: true,
+        config: {
+            agentId: 'profile:local-user',
+            emotion: 'happy'
+        }
+    };
+    const sourceAvatar = {
+        enabled: true,
+        config: profileAvatar.config,
+        user: { id: 'local-user' }
+    };
+    const context = {
+        state: {
+            selectedMeetingId: 'room-1',
+            session: {
+                meeting: { id: 'room-1' },
+                participantIdentity: 'participant-local'
+            }
+        },
+        room: null,
+        currentActor: { id: 'local-user' },
+        async resolveCurrentParticipantAvatarProjection() {
+            return { avatar: profileAvatar, sourceAvatar };
+        },
+        webMeetRoom: {
+            async publishAvatar(avatar) {
+                savedAvatar = avatar;
+                return { profileAvatar: avatar };
+            },
+            async publishAvatarProjection(avatar) {
+                projectedAvatar = avatar;
+            }
+        },
+        applyRealtimeParticipantAvatar(payload) {
+            localAvatar = payload;
+        }
+    };
+
+    const result = await meetingActionMethods.publishCurrentParticipantAvatar.call(context, { force: true });
+
+    assert.equal(result, null);
+    assert.equal(savedAvatar, profileAvatar);
+    assert.equal(projectedAvatar, null);
+    assert.equal(localAvatar.meetingId, 'room-1');
+    assert.equal(localAvatar.participantId, 'participant-local');
+    assert.equal(localAvatar.profileAvatar.enabled, true);
+    assert.deepEqual(localAvatar.profileAvatar.config, profileAvatar.config);
+});
+
+test("connected avatar publish keeps the effective voice runtime projection", async () => {
+    const baseAvatar = {
+        enabled: true,
+        config: {
+            agentId: 'profile:local-user',
+            emotion: 'neutral',
+            expressionMode: 'audio'
+        }
+    };
+    const effectiveAvatar = {
+        ...baseAvatar,
+        runtimeState: {
+            emotion: 'happy',
+            intensity: 0.8,
+            speaking: true
+        }
+    };
+    const localApplications = [];
+    const context = {
+        state: {
+            selectedMeetingId: 'room-1',
+            session: {
+                meeting: { id: 'room-1' },
+                participantIdentity: 'participant-local'
+            },
+            roomAvatarsByParticipantId: {
+                'participant-local': effectiveAvatar
+            }
+        },
+        room: { localParticipant: {} },
+        currentActor: { id: 'local-user' },
+        async resolveCurrentParticipantAvatarProjection() {
+            return {
+                avatar: baseAvatar,
+                sourceAvatar: {
+                    enabled: true,
+                    config: baseAvatar.config,
+                    user: { id: 'local-user' }
+                }
+            };
+        },
+        webMeetRoom: {
+            async publishAvatar(avatar) {
+                return { profileAvatar: avatar };
+            },
+            async publishAvatarProjection() {
+                return effectiveAvatar;
+            }
+        },
+        applyRealtimeParticipantAvatar(payload) {
+            localApplications.push(payload);
+        }
+    };
+
+    const result = await meetingActionMethods.publishCurrentParticipantAvatar.call(context, { force: true });
+
+    assert.deepEqual(result.profileAvatar, effectiveAvatar);
+    assert.equal(localApplications.length, 0);
 });
 
 test("LiveKit avatar sync requests trigger live republish without backend writes", async () => {
@@ -1306,8 +1421,9 @@ test("WebMeet quick avatar menu exposes every settings emotion", () => {
         EMOTIONS
     );
     for (const preset of WEBMEET_AVATAR_PRESETS) {
-        assert.deepEqual(Object.keys(preset.patch), ['emotion']);
+        assert.deepEqual(Object.keys(preset.patch), ['emotion', 'expressionMode']);
         assert.equal(preset.patch.emotion, preset.id);
+        assert.equal(preset.patch.expressionMode, 'manual');
     }
 });
 

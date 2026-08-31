@@ -1,6 +1,6 @@
 ---
 title: DS005-livekit-media-runtime
-summary: Defines topology-resolved signaling, private Twirp assertions, external relay credentials, reconnect, release gates, and the current fail-closed reachability boundary.
+summary: Defines topology-resolved signaling, private Twirp assertions, external relay credentials, reconnect, local voice-responsive avatars, release gates, and the current fail-closed reachability boundary.
 ---
 
 # DS005-livekit-media-runtime
@@ -28,6 +28,16 @@ The verified rootless Podman transport cannot activate the private broker or pri
 The SFU advertises one direct candidate at the configured public IPv4 and UDP `7882`. External TURN provides UDP and TLS/TCP relay. The long-term relay secret is absent from WebMeet environment and topology; only allowed current-generation consumers can mint short-lived material.
 
 Before credential expiry and after browser network transitions, the room UI performs a controlled disconnect, resolves fresh join material, recreates the LiveKit connection, rejoins, and restores microphone/camera state. An active screen share is stopped and the user is told to press the real Share screen button again because display capture cannot be reacquired without a fresh browser user activation. Failure is visible and closed; stale material is not retried as a fallback. Refresh timers and network listeners are removed when the dashboard unloads.
+
+### Voice-responsive AxiFace state
+
+When the participant's avatar `expressionMode` is `audio`, LiveKit is the only authority for microphone availability and speaking activity. Track publish, unpublish, mute, unmute, connection, and active-speaker events update one browser-side avatar controller. The controller alone reconciles those facts into the effective state; participant-card media state and received avatar projections do not feed back into that decision. A mute or unpublish event immediately makes the microphone unavailable, and a delayed active-speaker event can update activity but cannot keep or restore `speaking` until LiveKit explicitly publishes or unmutes the microphone again.
+
+LiveKit is authoritative for microphone publication, Mute and track availability. While that microphone track is available, the browser creates a separate analysis graph over the same media track and samples locally vendored Meyda 5.6.3 features every 100 ms. A conservative RMS gate with start/release hysteresis maintains local voice continuity when LiveKit's active-speaker ranking briefly drops the participant; it cannot override a muted, unpublished or ended LiveKit track. The remaining features calibrate against the participant's recent voice and supply a stable expression candidate to the controller. The controller uses `speaking` as the fallback during calibration or weak evidence and can refine active speech to `happy`, `confused`, or `alert`. It never derives the resting `sleepy` state from active speech. Muting or losing the microphone returns immediately to `neutral`; sustained local and remote inactivity returns to `neutral` after the release interval. Eligible remote speech selects `listening`. Three consecutive candidate windows and a minimum one-second state interval prevent rapid oscillation.
+
+The analyser neither replaces nor reconnects the published LiveKit track. It never analyzes screen-share audio, never sends raw samples or extracted features to LiveKit, WebMeet tools, or a server agent, and discards its sample buffers when the microphone disappears, the room disconnects, the mode becomes manual, or the dashboard unloads. Disconnect cleanup cancels its browser timers with their required browser-global receiver and must not interrupt the LiveKit reconnect lifecycle. Failure to load or run Meyda leaves LiveKit-derived speaking/listening/neutral behavior available. The vendored bundle and license are pinned beneath the WebMeet plugin's `vendor/meyda` directory; meeting execution does not load Meyda from a CDN or package registry.
+
+The controller publishes only its effective output as a transient overlay on the existing reliable `participant.avatar.projected` LiveKit data-channel event. The channel distributes the decision to other clients; it is not a competing authority for the sender's local controller, and received local projections are not reconciled back into media activity. Only `emotion`, bounded `intensity`, and `speaking` are shared. Calibration values, confidence, acoustic features, and raw media never enter the event. Manual mode clears the transient overlay and continues to use the existing full avatar projection behavior.
 
 ### Screen-share release gate
 

@@ -419,6 +419,170 @@ test('applyRealtimeParticipantAvatar applies the latest LiveKit payload directly
     assert.equal(appliedViews[0].avatarConfig.size, '48');
 });
 
+test('applyRealtimeParticipantAvatar rejects a delayed avatar projection sequence', () => {
+    const context = {
+        state: {
+            participants: [],
+            roomAvatarsByParticipantId: {},
+            avatarProjectionSequencesByParticipantId: {}
+        },
+        participantLayoutController: {
+            getViews: () => [],
+            getParticipantView: () => null
+        }
+    };
+    const current = participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-remote',
+        sequence: 8,
+        profileAvatar: {
+            enabled: true,
+            config: { agentId: 'profile:remote', emotion: 'happy' },
+            runtimeState: { emotion: 'happy', speaking: true, intensity: 0.8 }
+        }
+    });
+    const delayed = participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-remote',
+        sequence: 7,
+        profileAvatar: {
+            enabled: true,
+            config: { agentId: 'profile:remote', emotion: 'neutral' },
+            runtimeState: { emotion: 'neutral', speaking: false, intensity: 0 }
+        }
+    });
+
+    assert.equal(current, true);
+    assert.equal(delayed, false);
+    assert.equal(context.state.roomAvatarsByParticipantId['participant-remote'].runtimeState.emotion, 'happy');
+    assert.equal(context.state.avatarProjectionSequencesByParticipantId['participant-remote'], 8);
+});
+
+test('LiveKit base avatar attributes cannot erase the sequenced audio runtime state', () => {
+    const context = {
+        state: {
+            participants: [],
+            roomAvatarsByParticipantId: {
+                'participant-remote': {
+                    enabled: true,
+                    config: { agentId: 'profile:remote', expressionMode: 'audio' },
+                    runtimeState: { emotion: 'happy', speaking: true, intensity: 0.8 }
+                }
+            }
+        },
+        participantLayoutController: {
+            getViews: () => [],
+            getParticipantView: () => null
+        }
+    };
+
+    participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-remote',
+        preserveRuntimeState: true,
+        profileAvatar: {
+            enabled: true,
+            config: { agentId: 'profile:remote', expressionMode: 'audio' }
+        }
+    });
+
+    assert.equal(context.state.roomAvatarsByParticipantId['participant-remote'].runtimeState.emotion, 'happy');
+    assert.equal(context.state.roomAvatarsByParticipantId['participant-remote'].runtimeState.speaking, true);
+
+    participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-remote',
+        preserveRuntimeState: true,
+        profileAvatar: {
+            enabled: true,
+            config: { agentId: 'profile:remote', expressionMode: 'manual', emotion: 'amused' }
+        }
+    });
+    assert.equal('runtimeState' in context.state.roomAvatarsByParticipantId['participant-remote'], false);
+});
+
+test('applyRealtimeParticipantAvatar reconciles a stale projected view after the room map was updated first', () => {
+    const speakingAvatar = {
+        enabled: true,
+        fallbackLetter: 'A',
+        config: {
+            agentId: 'profile:local:admin',
+            emotion: 'neutral',
+            expressionMode: 'audio'
+        },
+        runtimeState: {
+            emotion: 'speaking',
+            intensity: 0.5,
+            speaking: true
+        }
+    };
+    const neutralAvatar = {
+        ...speakingAvatar,
+        runtimeState: {
+            emotion: 'neutral',
+            intensity: 0.3,
+            speaking: false
+        }
+    };
+    const view = {
+        id: 'participant-local',
+        avatarUserId: 'local:admin',
+        avatarEnabled: true,
+        avatarResolved: true,
+        avatarSource: 'projected',
+        avatarFallbackLetter: 'A',
+        avatarConfig: {
+            ...speakingAvatar.config,
+            emotion: 'speaking'
+        },
+        avatarRuntimeState: speakingAvatar.runtimeState,
+        avatarProjectionKey: JSON.stringify({
+            enabled: true,
+            config: {
+                ...speakingAvatar.config,
+                emotion: 'speaking'
+            },
+            runtimeState: speakingAvatar.runtimeState,
+            fallbackLetter: 'A'
+        })
+    };
+    const appliedViews = [];
+    const context = {
+        state: {
+            roomAvatarsByParticipantId: {
+                'participant-local': neutralAvatar
+            },
+            session: {
+                participantIdentity: 'participant-local',
+                participant: { userId: 'local:admin' }
+            },
+            participants: [{
+                id: 'participant-local',
+                identity: 'participant-local',
+                userId: 'local:admin',
+                attributes: {}
+            }]
+        },
+        currentActor: { id: 'local:admin' },
+        participantLayoutController: {
+            getViews() {
+                return [view];
+            }
+        },
+        applyParticipantAvatarState(nextView) {
+            appliedViews.push({ ...nextView });
+        }
+    };
+
+    const changed = participantViewMethods.applyRealtimeParticipantAvatar.call(context, {
+        participantId: 'participant-local',
+        userId: 'local:admin',
+        profileAvatar: neutralAvatar
+    });
+
+    assert.equal(changed, true);
+    assert.equal(appliedViews.length, 1);
+    assert.equal(view.avatarRuntimeState.emotion, 'neutral');
+    assert.equal(view.avatarRuntimeState.speaking, false);
+    assert.equal(view.avatarConfig.emotion, 'neutral');
+});
+
 test('syncParticipantsFromRoom ignores stored remote avatars without LiveKit state', () => {
     const appliedViews = new Map();
     const context = {
@@ -852,6 +1016,11 @@ test('syncParticipantsFromRoom preserves the current local room avatar during ro
             size: '72',
             emotion: 'neutral',
             style: 'terminal'
+        },
+        runtimeState: {
+            emotion: 'happy',
+            intensity: 0.8,
+            speaking: true
         }
     };
     const context = {
@@ -966,6 +1135,13 @@ test('syncParticipantsFromRoom keeps the browser override as the active local av
             size: '88'
         }
     };
+    const projectedOverrideAvatar = {
+        enabled: true,
+        fallbackLetter: 'A',
+        config: {
+            ...override.config
+        }
+    };
     const context = {
         state: {
             session: {
@@ -987,7 +1163,7 @@ test('syncParticipantsFromRoom keeps the browser override as the active local av
             }],
             webMeetAvatarOverride: override,
             roomAvatarsByParticipantId: {
-                'participant-local': profileAvatar
+                'participant-local': projectedOverrideAvatar
             },
             meetingParticipantsById: {}
         },
@@ -1361,6 +1537,90 @@ test('isParticipantMicOn reads only microphone publication state', () => {
         isMuted: false
     });
     assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), true);
+
+    participant.trackPublications.set('mic-unmuted', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: false,
+        track: { isMuted: true }
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), false);
+
+    participant.trackPublications.set('mic-unmuted', {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: false,
+        track: {
+            mediaStreamTrack: {
+                enabled: false,
+                readyState: 'live'
+            }
+        }
+    });
+    assert.equal(participantViewMethods.isParticipantMicOn.call(context, participant, Track), false);
+});
+
+test('voice-responsive avatar rejects stale active-speaker state after microphone mute', () => {
+    const Track = {
+        Kind: { Audio: 'audio', Video: 'video' },
+        Source: { Microphone: 'microphone' }
+    };
+    const microphonePublication = {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Microphone,
+        isMuted: false,
+        track: {
+            isMuted: false,
+            mediaStreamTrack: {
+                enabled: true,
+                readyState: 'live'
+            }
+        }
+    };
+    const localParticipant = {
+        identity: 'participant-local',
+        trackPublications: new Map([['microphone', microphonePublication]])
+    };
+    const activity = [];
+    const context = {
+        ...participantViewMethods,
+        state: {
+            session: { participantIdentity: 'participant-local' },
+            activeSpeakerIds: new Set(['participant-local'])
+        },
+        room: {
+            localParticipant,
+            remoteParticipants: new Map()
+        },
+        mediaController: { activeMicrophoneCapture: null },
+        syncParticipantsFromRoom() {},
+        voiceResponsiveAvatarController: {
+            setLiveKitState(value) {
+                activity.push(value);
+            }
+        }
+    };
+
+    participantViewMethods.syncVoiceResponsiveAvatar.call(context, Track);
+    microphonePublication.isMuted = true;
+    participantViewMethods.syncVoiceResponsiveAvatar.call(context, Track);
+    participantViewMethods.setActiveSpeakers.call(context, [localParticipant], Track);
+
+    assert.deepEqual(activity, [
+        {
+            localSpeaking: true,
+            remoteSpeaking: false,
+            microphoneAvailable: true,
+            microphoneTrack: microphonePublication.track.mediaStreamTrack
+        },
+        {
+            localSpeaking: false,
+            remoteSpeaking: false,
+            microphoneAvailable: false,
+            microphoneTrack: null
+        },
+        { localSpeaking: false, remoteSpeaking: false }
+    ]);
 });
 
 test('syncParticipantsFromRoom initializes remote mic state from LiveKit publications', () => {

@@ -12,7 +12,7 @@ const STORAGE_PREFIX = 'webmeet.avatarOverride.';
 export const WEBMEET_AVATAR_PRESETS = Object.freeze(EMOTIONS.map((emotion) => Object.freeze({
     id: emotion,
     label: formatAvatarOptionLabel(emotion),
-    patch: Object.freeze({ emotion })
+    patch: Object.freeze({ emotion, expressionMode: 'manual' })
 })));
 
 export function getWebMeetAvatarPreset(presetId = '') {

@@ -64,6 +64,60 @@ test('participant card updates avatar through a dedicated avatar state channel',
     assert.match(layoutSource, /presenter\.setAvatarState\(payload\)/);
 });
 
+test('participant card updates runtime emotion without rebuilding axi-face', () => {
+    const emotionUpdates = [];
+    const axiFace = {
+        dataset: {},
+        style: {
+            setProperty(name, value) {
+                this[name] = value;
+            }
+        },
+        setEmotion(emotion, options) {
+            emotionUpdates.push({ emotion, options });
+        }
+    };
+    const avatarHost = {
+        dataset: {},
+        querySelector(selector) {
+            return selector === 'axi-face' ? axiFace : null;
+        }
+    };
+    const card = Object.create(WebMeetParticipantCard.prototype);
+    card.refs = { avatar: avatarHost };
+    card.state = {
+        displayName: 'Local User',
+        avatarResolved: true,
+        avatarEnabled: true,
+        avatarConfig: {
+            size: '72',
+            emotion: 'neutral',
+            packSrc: '/packs/emoji-black/manifest.json'
+        },
+        avatarRuntimeState: {
+            emotion: 'happy',
+            intensity: 0.8,
+            speaking: true
+        },
+        avatarFallbackLetter: 'L',
+        isMini: false
+    };
+    const key = `axi:72px:${JSON.stringify(card.state.avatarConfig)}`;
+    card.avatarRenderKey = key;
+    avatarHost.dataset.avatarRenderKey = key;
+
+    card.renderAvatar('LU');
+    card.state.avatarRuntimeState = {
+        ...card.state.avatarRuntimeState,
+        intensity: 0.9
+    };
+    card.renderAvatar('LU');
+
+    assert.deepEqual(emotionUpdates, [{ emotion: 'happy', options: { intensity: 0.8 } }]);
+    assert.equal(axiFace.style['--axi-face-intensity'], '0.9');
+    assert.equal(card.avatarRenderKey, key);
+});
+
 test('dashboard primes the active local avatar before LiveKit renders participant cards', async () => {
     const actionSource = await fs.readFile(path.join(
         repoRoot,

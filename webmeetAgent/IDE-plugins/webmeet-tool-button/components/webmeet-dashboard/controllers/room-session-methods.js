@@ -445,6 +445,16 @@ export const roomSessionMethods = {
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
+                if (this.isMicrophonePublication(publication, Track, room.localParticipant)) {
+                    this.voiceResponsiveAvatarController?.setLiveKitState?.({
+                        microphoneAvailable: true,
+                        microphoneTrack: publication?.track?.mediaStreamTrack
+                            || publication?.track?.mediaStream?.getAudioTracks?.()[0]
+                            || publication?.track
+                            || null
+                    });
+                }
+                this.syncVoiceResponsiveAvatar?.(Track, { refreshMicrophone: false });
                 scheduleRemoteSubscriptionSweep(Track, 'local-published');
             },
             onLocalTrackUnpublished: (publication, { Track }) => {
@@ -455,6 +465,13 @@ export const roomSessionMethods = {
                 this.syncLocalMediaStateFromRoom(Track);
                 this.renderMeetingSummary();
                 this.syncParticipantsFromRoom(this.room, Track);
+                if (this.isMicrophonePublication(publication, Track, this.room?.localParticipant || null)) {
+                    this.voiceResponsiveAvatarController?.setLiveKitState?.({
+                        microphoneAvailable: false,
+                        localSpeaking: false
+                    });
+                }
+                this.syncVoiceResponsiveAvatar?.(Track, { refreshMicrophone: false });
                 scheduleRemoteSubscriptionSweep(Track, 'local-unpublished');
             },
             onRemoteTrackPublished: (publication, participant, { Track }) => {
@@ -496,32 +513,53 @@ export const roomSessionMethods = {
                 const participantId = String(participant?.identity || '').trim();
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
+                const isMicrophoneTrack = this.isMicrophonePublication(publication, Track, participant);
                 if (isVideoTrack) {
                     removePublication(publication, Track, participant);
-                } else if (this.isMicrophonePublication(publication, Track, participant)) {
+                } else if (isMicrophoneTrack) {
                     this.setParticipantMicState(participantId, false);
                 }
-                if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
+                if (
+                    isMicrophoneTrack
+                    && participantId === String(this.room?.localParticipant?.identity || '').trim()
+                ) {
+                    this.voiceResponsiveAvatarController?.setLiveKitState?.({
+                        microphoneAvailable: false,
+                        localSpeaking: false
+                    });
                     this.syncLocalMediaStateFromRoom(Track);
                     this.renderMeetingSummary();
+                    this.syncVoiceResponsiveAvatar?.(Track, { refreshMicrophone: false });
                 }
             },
             onTrackUnmuted: (publication, participant, { Track }) => {
                 const participantId = String(participant?.identity || '').trim();
                 if (!participantId) return;
                 const isVideoTrack = publication?.kind === Track.Kind.Video;
+                const isMicrophoneTrack = this.isMicrophonePublication(publication, Track, participant);
                 if (isVideoTrack) {
                     renderPublication(participant, publication, publication?.track || null, Track);
                 }
-                if (this.isMicrophonePublication(publication, Track, participant)) {
+                if (isMicrophoneTrack) {
                     const sourceParticipant = participantId === this.room?.localParticipant?.identity
                         ? this.room.localParticipant
                         : this.room?.remoteParticipants?.get?.(participantId) || participant;
                     this.setParticipantMicState(participantId, this.isParticipantMicOn(sourceParticipant, Track));
                 }
-                if (participantId === String(this.room?.localParticipant?.identity || '').trim()) {
+                if (
+                    isMicrophoneTrack
+                    && participantId === String(this.room?.localParticipant?.identity || '').trim()
+                ) {
+                    this.voiceResponsiveAvatarController?.setLiveKitState?.({
+                        microphoneAvailable: true,
+                        microphoneTrack: publication?.track?.mediaStreamTrack
+                            || publication?.track?.mediaStream?.getAudioTracks?.()[0]
+                            || publication?.track
+                            || null
+                    });
                     this.syncLocalMediaStateFromRoom(Track);
                     this.renderMeetingSummary();
+                    this.syncVoiceResponsiveAvatar?.(Track, { refreshMicrophone: false });
                 }
                 this.syncParticipantsFromRoom(this.room, Track);
             },
@@ -554,6 +592,7 @@ export const roomSessionMethods = {
                                 meetingId: String(this.state.session?.meeting?.id || this.state.selectedMeetingId || '').trim(),
                                 participantId,
                                 userId,
+                                preserveRuntimeState: true,
                                 profileAvatar
                             });
                         }
@@ -591,6 +630,7 @@ export const roomSessionMethods = {
                 this.scheduleJoinMaterialRefresh();
                 this.meetingNotesTranscription?.sync?.();
                 this.syncParticipantsFromRoom(this.room, Track);
+                this.syncVoiceResponsiveAvatar?.(Track);
                 const skipConnectedAvatarRepublishOnce = Boolean(this.state.skipConnectedAvatarRepublishOnce);
                 this.state.skipConnectedAvatarRepublishOnce = false;
                 void (async () => {
@@ -639,8 +679,10 @@ export const roomSessionMethods = {
         this.state.mediaLoading = { microphone: false, camera: false, screen: false };
         this.state.participants = [];
         this.state.roomAvatarsByParticipantId = {};
+        this.state.avatarProjectionSequencesByParticipantId = {};
         this.state.skipConnectedAvatarRepublishOnce = false;
         this.state.activeSpeakerIds = new Set();
+        this.voiceResponsiveAvatarController?.resetLiveKitState?.({ clearRuntimeState: false });
         this.state.videoGridFullscreen = false;
         this.resetBlackboardUiState?.();
         this.state.audioHealth = 'Good';

@@ -380,6 +380,133 @@ test('WebMeetRoom keeps avatar projection published when LiveKit metadata update
     assert.equal(parsed.payload.profileAvatar.config.style, 'pixel');
 });
 
+test('WebMeetRoom publishes automatic avatar state through the existing realtime projection only', async () => {
+    const realtimePayloads = [];
+    const applied = [];
+    const roomAvatars = {
+        'participant-a': {
+            enabled: true,
+            config: {
+                agentId: 'profile:user-a',
+                emotion: 'neutral',
+                expressionMode: 'audio'
+            },
+            fallbackLetter: 'A'
+        }
+    };
+    let attributeUpdates = 0;
+    let publishedAttributes = null;
+    const room = new WebMeetRoom(createRoomOptions({
+        getCurrentActorId: () => 'user-a',
+        getRoomAvatars: () => roomAvatars,
+        setRoomAvatar: (participantId, avatar) => {
+            roomAvatars[participantId] = avatar;
+        },
+        getRoom: () => ({
+            localParticipant: {
+                attributes: {},
+                setAttributes: async (attributes) => {
+                    attributeUpdates += 1;
+                    publishedAttributes = attributes;
+                }
+            }
+        }),
+        applyRealtimeParticipantAvatar: (payload) => applied.push(payload),
+        publishRealtimePayload: async (payload) => realtimePayloads.push(payload)
+    }));
+
+    await room.publishAvatarRuntimeState({
+        emotion: 'happy',
+        intensity: 0.7,
+        speaking: true,
+        confidence: 0.91,
+        samples: [1, 2, 3]
+    });
+
+    assert.equal(attributeUpdates, 0);
+    assert.equal(applied.length, 1);
+    assert.equal(realtimePayloads.length, 1);
+    const parsed = room.eventCodec.parse(realtimePayloads[0]);
+    assert.equal(parsed.type, WEBMEET_EVENT_TYPES.PARTICIPANT_AVATAR_PROJECTED);
+    assert.deepEqual(parsed.payload.profileAvatar.runtimeState, {
+        emotion: 'happy',
+        intensity: 0.7,
+        speaking: true
+    });
+    assert.equal(parsed.payload.profileAvatar.config.expressionMode, 'audio');
+    assert.equal('confidence' in parsed.payload.profileAvatar.runtimeState, false);
+    assert.equal('samples' in parsed.payload.profileAvatar.runtimeState, false);
+    assert.equal(Number.isSafeInteger(parsed.payload.sequence), true);
+    const firstProjectionSequence = parsed.payload.sequence;
+
+    await room.publishAvatarProjection({
+        enabled: true,
+        config: {
+            agentId: 'profile:user-a',
+            emotion: 'neutral',
+            expressionMode: 'audio'
+        },
+        fallbackLetter: 'A'
+    }, { user: { id: 'user-a' } });
+
+    assert.equal(attributeUpdates, 1);
+    assert.equal('runtimeState' in JSON.parse(publishedAttributes.webmeetProfileAvatar), false);
+    const republished = room.eventCodec.parse(realtimePayloads.at(-1));
+    assert.equal(republished.payload.profileAvatar.runtimeState.emotion, 'happy');
+
+    await room.publishAvatarProjection({
+        enabled: true,
+        config: {
+            agentId: 'profile:user-a',
+            emotion: 'amused',
+            expressionMode: 'manual'
+        },
+        fallbackLetter: 'A'
+    }, { user: { id: 'user-a' } });
+
+    const manualProjection = room.eventCodec.parse(realtimePayloads.at(-1));
+    assert.equal('runtimeState' in manualProjection.payload.profileAvatar, false);
+    assert.equal(manualProjection.payload.profileAvatar.config.emotion, 'amused');
+    assert.equal(manualProjection.payload.sequence, firstProjectionSequence + 2);
+});
+
+test('WebMeetRoom coalesces queued automatic avatar states and sequences projections', async () => {
+    const realtimePayloads = [];
+    const releasePublishes = [];
+    const roomAvatars = {
+        'participant-a': {
+            enabled: true,
+            config: { agentId: 'profile:user-a', expressionMode: 'audio' }
+        }
+    };
+    const room = new WebMeetRoom(createRoomOptions({
+        getCurrentActorId: () => 'user-a',
+        getRoomAvatars: () => roomAvatars,
+        setRoomAvatar: (participantId, avatar) => {
+            roomAvatars[participantId] = avatar;
+        },
+        publishRealtimePayload: (payload) => new Promise((resolve) => {
+            realtimePayloads.push(payload);
+            releasePublishes.push(resolve);
+        })
+    }));
+
+    const first = room.publishAvatarRuntimeState({ emotion: 'happy', speaking: true, intensity: 0.7 });
+    const second = room.publishAvatarRuntimeState({ emotion: 'alert', speaking: true, intensity: 0.8 });
+    const third = room.publishAvatarRuntimeState({ emotion: 'confused', speaking: true, intensity: 0.6 });
+
+    assert.equal(realtimePayloads.length, 1);
+    releasePublishes[0]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(realtimePayloads.length, 2);
+    releasePublishes[1]();
+    await Promise.all([first, second, third]);
+
+    const parsed = realtimePayloads.map((payload) => room.eventCodec.parse(payload).payload);
+    assert.equal(parsed[1].sequence, parsed[0].sequence + 1);
+    assert.deepEqual(parsed.map((payload) => payload.profileAvatar.runtimeState.emotion), ['happy', 'confused']);
+});
+
 test('WebMeetRoom rejects LiveKit chat events forged for another author', () => {
     const room = new WebMeetRoom(createRoomOptions());
     const encoded = buildWebMeetEvent('room_00000000-0000-4000-8000-000000000001', WEBMEET_EVENT_TYPES.CHAT_REALTIME, {

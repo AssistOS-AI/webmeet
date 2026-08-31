@@ -401,6 +401,7 @@ export const meetingActionMethods = {
         this.state.avatarQuickMenuVisible = false;
         this.state.avatarSubmenuVisible = false;
         const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.syncVoiceResponsiveAvatar?.();
         this.renderAvatarControls?.();
         this.renderMeetingSummary();
         this.renderParticipantLayout?.();
@@ -559,6 +560,7 @@ export const meetingActionMethods = {
             this.state.webMeetAvatarOverrideDraft = null;
         }
         const published = await this.publishCurrentParticipantAvatar({ force: true });
+        this.syncVoiceResponsiveAvatar?.();
         this.renderAvatarControls?.();
         this.renderMeetingSummary();
         this.renderParticipantLayout?.();
@@ -597,17 +599,39 @@ export const meetingActionMethods = {
             || this.currentActor?.id
             || ''
         ).trim();
-        if (options.skipRealtime !== true) {
-            await this.webMeetRoom.publishAvatarProjection(profileAvatar, sourceAvatar);
+        const realtimeRequested = options.skipRealtime !== true;
+        let realtimePublished = !realtimeRequested;
+        let effectiveProfileAvatar = profileAvatar;
+        if (realtimeRequested && this.room?.localParticipant) {
+            try {
+                effectiveProfileAvatar = await this.webMeetRoom.publishAvatarProjection(profileAvatar, sourceAvatar)
+                    || profileAvatar;
+                realtimePublished = true;
+            } catch (error) {
+                if (this.room?.localParticipant) {
+                    throw error;
+                }
+                // The room disconnected while the avatar was being published. The saved
+                // projection will be published by the normal room-connect flow.
+            }
         }
-        this.applyRealtimeParticipantAvatar?.({
-            meetingId,
-            participantId,
-            userId,
-            profileAvatar
-        });
+        if (!realtimePublished || !realtimeRequested) {
+            const currentRuntimeState = this.state.roomAvatarsByParticipantId?.[participantId]?.runtimeState;
+            const preserveRuntimeState = currentRuntimeState
+                && String(profileAvatar?.config?.expressionMode || '').trim() !== 'manual';
+            effectiveProfileAvatar = preserveRuntimeState
+                ? { ...profileAvatar, runtimeState: currentRuntimeState }
+                : profileAvatar;
+            this.applyRealtimeParticipantAvatar?.({
+                meetingId,
+                participantId,
+                userId,
+                profileAvatar: effectiveProfileAvatar
+            });
+        }
+        if (!realtimePublished) return null;
         return {
-            profileAvatar,
+            profileAvatar: effectiveProfileAvatar,
             sourceAvatar,
             userId
         };

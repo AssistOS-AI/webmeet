@@ -312,6 +312,7 @@ export const dashboardRealtimeMethods = {
                 this.renderParticipantLayout();
                 this.renderMeetingList();
                 await this.webMeetRoom.publishAvatarProjection(profileAvatar, effectiveSourceAvatar);
+                this.syncVoiceResponsiveAvatar?.();
             }
             await this.publishCurrentParticipantAvatar(hasInlineAvatar
                 ? {

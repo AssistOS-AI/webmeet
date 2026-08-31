@@ -6,6 +6,7 @@ const DEFAULT_CONFIG = Object.freeze({
     packSrc: '',
     assetMode: 'img',
     emotion: 'neutral',
+    expressionMode: 'audio',
     size: '72',
     thought: '',
     thoughtMode: 'none',
@@ -147,6 +148,7 @@ export function normalizeAvatarConfig(config, fallbackId = 'profile:current-user
     };
     normalized.src = String(normalized.src || '').trim();
     normalized.packSrc = String(normalized.packSrc || '').trim();
+    normalized.expressionMode = String(normalized.expressionMode || '').trim() === 'manual' ? 'manual' : 'audio';
     if (normalized.src) {
         normalized.sourceMode = 'svg';
         normalized.generated = false;

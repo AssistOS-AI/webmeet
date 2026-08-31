@@ -3,6 +3,7 @@ import { ROOM_EVENT_TYPES, WebMeetRoomEvents } from './webmeet-room-events.js';
 import { WebMeetRoomState } from './webmeet-room-state.js';
 import { WEBMEET_EVENT_TYPES } from '../webmeet-events.js';
 import { normalizeAvatarConfig } from '../webmeet-profile-avatar-runtime.js';
+import { normalizeAvatarRuntimeState } from '../audio-processing/voice-responsive-avatar.js';
 
 const SERVER_BROADCAST_EVENT_TYPES = new Set([
     WEBMEET_EVENT_TYPES.BLACKBOARD_UPDATED,
@@ -98,6 +99,10 @@ export class WebMeetRoom extends EventTarget {
         this.presenceHeartbeatInFlight = false;
         this.lastWorkspaceEventId = '';
         this.workspacePollInitialized = false;
+        this.avatarProjectionSequence = Date.now() * 1000;
+        this.pendingAvatarRuntimeState = null;
+        this.hasPendingAvatarRuntimeState = false;
+        this.avatarRuntimePublishTask = null;
         this.syncStateFromCurrentSession();
     }
 
@@ -470,11 +475,28 @@ export class WebMeetRoom extends EventTarget {
         };
     }
 
-    async publishAvatarProjection(profileAvatar = null, sourceAvatar = null) {
+    async publishAvatarProjection(profileAvatar = null, sourceAvatar = null, options = {}) {
         const state = this.getState();
         const meetingId = requireString(state.meetingId, 'meetingId');
         const participantId = requireString(state.participantId, 'participantId');
-        const avatarProjection = requireObject(profileAvatar, 'profileAvatar');
+        const sequence = ++this.avatarProjectionSequence;
+        const requestedProjection = { ...requireObject(profileAvatar, 'profileAvatar') };
+        if (Object.prototype.hasOwnProperty.call(requestedProjection, 'runtimeState')) {
+            const requestedRuntimeState = normalizeAvatarRuntimeState(requestedProjection.runtimeState);
+            if (requestedRuntimeState) {
+                requestedProjection.runtimeState = requestedRuntimeState;
+            } else {
+                delete requestedProjection.runtimeState;
+            }
+        }
+        const currentRuntimeState = normalizeAvatarRuntimeState(
+            this.getRoomAvatars()?.[participantId]?.runtimeState
+        );
+        const preserveRuntimeState = options.preserveRuntimeState !== false
+            && String(requestedProjection.config?.expressionMode || '').trim() !== 'manual';
+        const avatarProjection = preserveRuntimeState && currentRuntimeState && !requestedProjection.runtimeState
+            ? { ...requestedProjection, runtimeState: currentRuntimeState }
+            : requestedProjection;
         const avatarSource = sourceAvatar && typeof sourceAvatar === 'object' ? sourceAvatar : null;
         const userId = String(
             avatarSource?.user?.id
@@ -488,10 +510,13 @@ export class WebMeetRoom extends EventTarget {
             meetingId,
             participantId,
             userId,
+            sequence,
             profileAvatar: avatarProjection
         });
         const localParticipant = this.getRoom()?.localParticipant || null;
-        if (localParticipant && typeof localParticipant.setAttributes === 'function') {
+        if (options.publishAttributes !== false && localParticipant && typeof localParticipant.setAttributes === 'function') {
+            const attributeProjection = { ...avatarProjection };
+            delete attributeProjection.runtimeState;
             const attributes = {
                 ...(localParticipant.attributes && typeof localParticipant.attributes === 'object'
                     ? localParticipant.attributes
@@ -502,7 +527,7 @@ export class WebMeetRoom extends EventTarget {
                     workspaceUserId: userId,
                     ploinkyUserId: userId
                 } : {}),
-                webmeetProfileAvatar: JSON.stringify(avatarProjection)
+                webmeetProfileAvatar: JSON.stringify(attributeProjection)
             };
             try {
                 await localParticipant.setAttributes(attributes);
@@ -515,6 +540,7 @@ export class WebMeetRoom extends EventTarget {
             meetingId,
             participantId,
             userId,
+            sequence,
             profileAvatar: avatarProjection
         });
         this.dispatchRoomEvent(ROOM_EVENT_TYPES.AVATAR_PROJECTED, {
@@ -523,15 +549,55 @@ export class WebMeetRoom extends EventTarget {
                 meetingId,
                 participantId,
                 userId,
+                sequence,
                 profileAvatar: avatarProjection
             }
         });
+        return avatarProjection;
     }
 
     async republishAvatarProjection() {
         const current = this.getCurrentPublishedAvatarProjection();
         if (!current?.profileAvatar) return;
-        await this.publishAvatarProjection(current.profileAvatar, current.sourceAvatar || null);
+        await this.publishAvatarProjection(current.profileAvatar, current.sourceAvatar || null, {
+            publishAttributes: !current.profileAvatar.runtimeState
+        });
+    }
+
+    async publishPendingAvatarRuntimeState() {
+        let publishedAvatar = null;
+        while (this.hasPendingAvatarRuntimeState) {
+            const runtimeState = this.pendingAvatarRuntimeState;
+            this.pendingAvatarRuntimeState = null;
+            this.hasPendingAvatarRuntimeState = false;
+            const current = this.getCurrentPublishedAvatarProjection();
+            if (!current?.profileAvatar) continue;
+            const profileAvatar = { ...current.profileAvatar };
+            if (runtimeState) {
+                profileAvatar.runtimeState = runtimeState;
+            } else {
+                delete profileAvatar.runtimeState;
+            }
+            await this.publishAvatarProjection(profileAvatar, current.sourceAvatar || null, {
+                publishAttributes: false,
+                preserveRuntimeState: false
+            });
+            publishedAvatar = profileAvatar;
+        }
+        return publishedAvatar;
+    }
+
+    publishAvatarRuntimeState(runtimeState = null) {
+        const current = this.getCurrentPublishedAvatarProjection();
+        if (!current?.profileAvatar) return Promise.resolve(null);
+        this.pendingAvatarRuntimeState = normalizeAvatarRuntimeState(runtimeState);
+        this.hasPendingAvatarRuntimeState = true;
+        if (this.avatarRuntimePublishTask) return this.avatarRuntimePublishTask;
+        this.avatarRuntimePublishTask = this.publishPendingAvatarRuntimeState()
+            .finally(() => {
+                this.avatarRuntimePublishTask = null;
+            });
+        return this.avatarRuntimePublishTask;
     }
 
     async requestAvatarState() {

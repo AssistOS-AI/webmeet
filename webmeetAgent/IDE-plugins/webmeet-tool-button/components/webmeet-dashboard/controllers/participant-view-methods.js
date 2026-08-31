@@ -31,6 +31,19 @@ function normalizeProfileAvatar(profileAvatar = null) {
         : null;
 }
 
+function normalizeRuntimeState(value = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const emotion = String(value.emotion || '').trim();
+    if (!['neutral', 'listening', 'speaking', 'happy', 'confused', 'alert', 'sleepy'].includes(emotion)) {
+        return null;
+    }
+    return {
+        emotion,
+        intensity: Math.min(1, Math.max(0, Number(value.intensity) || 0)),
+        speaking: Boolean(value.speaking)
+    };
+}
+
 function ensureRoomAvatarMap(owner) {
     if (!owner.state || typeof owner.state !== 'object') {
         owner.state = {};
@@ -53,16 +66,34 @@ function avatarSignature(profileAvatar = null) {
     }
 }
 
+function buildAvatarProjectionKey(profileAvatar = null, fallbackLetter = '') {
+    const avatar = normalizeProfileAvatar(profileAvatar);
+    if (!avatar) return '';
+    const runtimeState = normalizeRuntimeState(avatar.runtimeState);
+    const enabled = avatar.enabled !== false;
+    const config = enabled && avatar.config && typeof avatar.config === 'object'
+        ? avatar.config
+        : null;
+    return avatarSignature({
+        enabled,
+        config,
+        runtimeState,
+        fallbackLetter: String(avatar.fallbackLetter || fallbackLetter || '').trim()
+    });
+}
+
 function applyProfileAvatarToView(owner, view, profileAvatar) {
     const avatar = normalizeProfileAvatar(profileAvatar);
     if (!view || !avatar) return false;
     view.avatarEnabled = avatar.enabled !== false;
+    view.avatarRuntimeState = normalizeRuntimeState(avatar.runtimeState);
     view.avatarConfig = view.avatarEnabled && avatar.config && typeof avatar.config === 'object'
         ? avatar.config
         : null;
     view.avatarFallbackLetter = avatar.fallbackLetter || view.avatarFallbackLetter || '';
     view.avatarResolved = true;
     view.avatarSource = 'projected';
+    view.avatarProjectionKey = buildAvatarProjectionKey(avatar, view.avatarFallbackLetter);
     owner.applyParticipantAvatarState?.(view);
     return true;
 }
@@ -147,11 +178,77 @@ export const participantViewMethods = {
         return clearRoomAvatarFor(this, participantId);
     },
 
+    getEffectiveAvatarExpressionMode() {
+        const participantId = getLocalParticipantId(this);
+        const roomConfig = getRoomAvatarFor(this, participantId)?.config || null;
+        const config = this.state.webMeetAvatarOverride?.config
+            || roomConfig
+            || this.state.session?.participant?.profileAvatar?.config
+            || null;
+        return String(config?.expressionMode || '').trim() === 'manual' ? 'manual' : 'audio';
+    },
+
+    syncVoiceResponsiveAvatar(Track = globalThis.LivekitClient?.Track || null, options = {}) {
+        const localParticipantId = getLocalParticipantId(this);
+        const activeSpeakerIds = this.state.activeSpeakerIds instanceof Set
+            ? this.state.activeSpeakerIds
+            : new Set();
+        const room = this.room || null;
+        const localParticipant = room?.localParticipant || null;
+        const localMicrophoneTrack = localParticipant
+            ? this.getParticipantMicrophoneTrack(localParticipant, Track)
+            : null;
+        const localMicrophoneAvailable = Boolean(
+            localParticipant
+            && this.isParticipantMicOn(localParticipant, Track)
+        );
+        const remoteSpeaking = Array.from(activeSpeakerIds).some((id) => {
+            const participantId = String(id || '').trim();
+            if (!participantId || participantId === localParticipantId) return false;
+            const participant = room?.remoteParticipants?.get?.(participantId) || null;
+            return Boolean(participant && this.isParticipantMicOn(participant, Track));
+        });
+        const liveKitState = {
+            localSpeaking: Boolean(
+                localMicrophoneAvailable
+                && (
+                    (localParticipantId && activeSpeakerIds.has(localParticipantId))
+                    || localParticipant?.isSpeaking === true
+                )
+            ),
+            remoteSpeaking
+        };
+        if (options.refreshMicrophone !== false) {
+            liveKitState.microphoneAvailable = localMicrophoneAvailable;
+            liveKitState.microphoneTrack = localMicrophoneTrack;
+        }
+        this.voiceResponsiveAvatarController?.setLiveKitState?.(liveKitState);
+    },
+
     applyRealtimeParticipantAvatar(data = {}) {
         const participantId = String(data?.participantId || '').trim();
         const userId = String(data?.userId || '').trim();
-        const profileAvatar = normalizeProfileAvatar(data?.profileAvatar);
+        let profileAvatar = normalizeProfileAvatar(data?.profileAvatar);
         if (!profileAvatar || (!participantId && !userId)) return false;
+
+        if (data?.preserveRuntimeState === true && participantId && !profileAvatar.runtimeState) {
+            const currentRuntimeState = normalizeRuntimeState(
+                getRoomAvatarFor(this, participantId)?.runtimeState
+            );
+            const expressionMode = String(profileAvatar.config?.expressionMode || '').trim();
+            if (currentRuntimeState && expressionMode !== 'manual') {
+                profileAvatar = { ...profileAvatar, runtimeState: currentRuntimeState };
+            }
+        }
+
+        const sequence = Number(data?.sequence);
+        if (participantId && Number.isSafeInteger(sequence) && sequence > 0) {
+            const sequences = this.state.avatarProjectionSequencesByParticipantId
+                || (this.state.avatarProjectionSequencesByParticipantId = {});
+            const previousSequence = Number(sequences[participantId] || 0);
+            if (sequence <= previousSequence) return false;
+            sequences[participantId] = sequence;
+        }
 
         const matchedParticipantIds = new Set();
         if (participantId) {
@@ -193,7 +290,11 @@ export const participantViewMethods = {
             const view = this.participantLayoutController?.getParticipantView?.(id)
                 || (this.participantLayoutController?.getViews?.() || [])
                     .find((entry) => String(entry?.id || '').trim() === id);
-            if (roomAvatarChanged || view?.avatarSource !== 'projected') {
+            const viewProjectionChanged = Boolean(
+                view
+                && view.avatarProjectionKey !== buildAvatarProjectionKey(profileAvatar, view.avatarFallbackLetter)
+            );
+            if (roomAvatarChanged || view?.avatarSource !== 'projected' || viewProjectionChanged) {
                 changed = applyProfileAvatarToView(this, view, profileAvatar) || changed;
             }
         }
@@ -409,11 +510,38 @@ export const participantViewMethods = {
         });
     },
 
+    getParticipantMicrophoneTrack(participant, Track) {
+        if (!participant?.trackPublications?.values) return false;
+        for (const publication of participant.trackPublications.values()) {
+            if (!publication) continue;
+            const mediaStreamTrack = publication.track?.mediaStreamTrack || null;
+            const trackUnavailable = publication.track?.isMuted === true
+                || mediaStreamTrack?.enabled === false
+                || String(mediaStreamTrack?.readyState || '').toLowerCase() === 'ended';
+            if (
+                this.isMicrophonePublication(publication, Track, participant)
+                && !publication.isMuted
+                && !trackUnavailable
+            ) {
+                return mediaStreamTrack || publication.track?.mediaStream?.getAudioTracks?.()[0] || null;
+            }
+        }
+        return null;
+    },
+
     isParticipantMicOn(participant, Track) {
         if (!participant?.trackPublications?.values) return false;
         for (const publication of participant.trackPublications.values()) {
             if (!publication) continue;
-            if (this.isMicrophonePublication(publication, Track, participant) && !publication.isMuted) {
+            const mediaStreamTrack = publication.track?.mediaStreamTrack || null;
+            const trackUnavailable = publication.track?.isMuted === true
+                || mediaStreamTrack?.enabled === false
+                || String(mediaStreamTrack?.readyState || '').toLowerCase() === 'ended';
+            if (
+                this.isMicrophonePublication(publication, Track, participant)
+                && !publication.isMuted
+                && !trackUnavailable
+            ) {
                 return true;
             }
         }
@@ -492,17 +620,19 @@ export const participantViewMethods = {
         const localLiveKitAvatar = parseLiveKitProfileAvatar(localAttributes);
         if (localIdentity) {
             const currentLocalRoomAvatar = getRoomAvatarFor(this, localIdentity);
-            const localSourceAvatar = buildWebMeetAvatarSource({
-                profileAvatar: localProfileSourceAvatar || localLiveKitAvatar || currentLocalRoomAvatar,
-                override: this.state.webMeetAvatarOverride || null,
-                userId: localUserId,
-                participantId: localIdentity
-            });
-            const effectiveLocalAvatar = this.webMeetRoom?.buildAvatarProjection
-                ? this.webMeetRoom.buildAvatarProjection(localSourceAvatar, localIdentity)
-                : localSourceAvatar;
-            if (effectiveLocalAvatar) {
-                setRoomAvatarFor(this, localIdentity, effectiveLocalAvatar);
+            if (!currentLocalRoomAvatar) {
+                const localSourceAvatar = buildWebMeetAvatarSource({
+                    profileAvatar: localProfileSourceAvatar || localLiveKitAvatar,
+                    override: this.state.webMeetAvatarOverride || null,
+                    userId: localUserId,
+                    participantId: localIdentity
+                });
+                const initialLocalAvatar = this.webMeetRoom?.buildAvatarProjection
+                    ? this.webMeetRoom.buildAvatarProjection(localSourceAvatar, localIdentity)
+                    : localSourceAvatar;
+                if (initialLocalAvatar) {
+                    setRoomAvatarFor(this, localIdentity, initialLocalAvatar);
+                }
             }
         }
         const items = [{
@@ -631,6 +761,7 @@ export const participantViewMethods = {
             if (identity) next.add(identity);
         }
         this.state.activeSpeakerIds = next;
+        this.syncVoiceResponsiveAvatar(Track, { refreshMicrophone: false });
         this.syncParticipantsFromRoom(this.room, Track);
     },
 

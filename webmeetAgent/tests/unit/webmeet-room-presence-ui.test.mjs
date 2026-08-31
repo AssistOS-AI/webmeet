@@ -138,7 +138,9 @@ test('LiveKit mute handlers gate microphone state updates to microphone publicat
     const mediaController = await readModalFile('controllers/webmeet-media-controller.js');
 
     assert.match(roomSessionMethods, /this\.isMicrophonePublication\(publication,\s*Track,\s*participant\)/);
-    assert.match(roomSessionMethods, /else if \(this\.isMicrophonePublication\(publication,\s*Track,\s*participant\)\)/);
+    assert.match(roomSessionMethods, /const isMicrophoneTrack = this\.isMicrophonePublication\(publication,\s*Track,\s*participant\)/);
+    assert.match(roomSessionMethods, /else if \(isMicrophoneTrack\)/);
+    assert.match(roomSessionMethods, /isMicrophoneTrack\s*&& participantId ===/);
     assert.match(participantViewMethods, /isMicrophonePublication\(publication,\s*Track,\s*participant = null\)/);
     assert.match(participantViewMethods, /getActiveCustomMicrophoneTrackForParticipant/);
     assert.match(mediaController, /isMicrophonePublication\(publication,\s*Track/);

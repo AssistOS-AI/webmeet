@@ -3,6 +3,19 @@ import {
     getFallbackLetter,
 } from '../services/webmeet-profile-avatar-runtime.js';
 
+function normalizeAvatarRuntimeState(value = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const emotion = String(value.emotion || '').trim();
+    if (!['neutral', 'listening', 'speaking', 'happy', 'confused', 'alert', 'sleepy'].includes(emotion)) {
+        return null;
+    }
+    return {
+        emotion,
+        intensity: Math.min(1, Math.max(0, Number(value.intensity) || 0)),
+        speaking: Boolean(value.speaking)
+    };
+}
+
 export class ParticipantLayoutController {
     constructor(options = {}) {
         this.getParticipantDisplayName = typeof options.getParticipantDisplayName === 'function'
@@ -69,6 +82,7 @@ export class ParticipantLayoutController {
             return { projected: false, changed: false };
         }
         const avatarEnabled = profileAvatar.enabled !== false;
+        const avatarRuntimeState = normalizeAvatarRuntimeState(profileAvatar.runtimeState);
         const avatarConfig = avatarEnabled && profileAvatar.config && typeof profileAvatar.config === 'object'
             ? profileAvatar.config
             : null;
@@ -76,6 +90,7 @@ export class ParticipantLayoutController {
         const avatarProjectionKey = JSON.stringify({
             enabled: avatarEnabled,
             config: avatarConfig,
+            runtimeState: avatarRuntimeState,
             fallbackLetter: avatarFallbackLetter
         });
         const changed = view.avatarSource !== 'projected'
@@ -83,6 +98,7 @@ export class ParticipantLayoutController {
             || view.avatarResolved !== true;
         view.avatarEnabled = avatarEnabled;
         view.avatarConfig = avatarConfig;
+        view.avatarRuntimeState = avatarRuntimeState;
         view.avatarFallbackLetter = avatarFallbackLetter;
         view.avatarResolved = true;
         view.avatarSource = 'projected';
@@ -176,11 +192,15 @@ export class ParticipantLayoutController {
         const payload = {
             avatarEnabled: Boolean(view.avatarEnabled),
             avatarConfig: view.avatarConfig || null,
+            avatarRuntimeState: view.avatarRuntimeState || null,
             avatarFallbackLetter: String(view.avatarFallbackLetter || '').trim(),
             avatarResolved: Boolean(view.avatarResolved)
         };
         const serializedAvatarConfig = payload.avatarConfig && typeof payload.avatarConfig === 'object'
             ? JSON.stringify(payload.avatarConfig)
+            : '';
+        const serializedAvatarRuntimeState = payload.avatarRuntimeState && typeof payload.avatarRuntimeState === 'object'
+            ? JSON.stringify(payload.avatarRuntimeState)
             : '';
         const avatarSize = payload.avatarConfig && typeof payload.avatarConfig === 'object'
             ? String(payload.avatarConfig.size || '').trim()
@@ -188,6 +208,7 @@ export class ParticipantLayoutController {
         view.element.setAttribute('data-avatar-enabled', payload.avatarEnabled ? 'true' : 'false');
         view.element.setAttribute('data-avatar-resolved', payload.avatarResolved ? 'true' : 'false');
         view.element.setAttribute('data-avatar-config', serializedAvatarConfig);
+        view.element.setAttribute('data-avatar-runtime-state', serializedAvatarRuntimeState);
         view.element.setAttribute('data-avatar-fallback-letter', payload.avatarFallbackLetter);
         view.element.setAttribute('data-avatar-size', avatarSize);
         const presenter = view.element.webSkelPresenter;
@@ -225,6 +246,7 @@ export class ParticipantLayoutController {
                 avatarUserId: this.getParticipantAvatarUserId(participant),
                 avatarEnabled: false,
                 avatarConfig: null,
+                avatarRuntimeState: null,
                 avatarFallbackLetter: getFallbackLetter(this.getParticipantDisplayName(participant)),
                 avatarResolved: false,
                 avatarSource: '',

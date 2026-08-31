@@ -25,6 +25,7 @@ const AVATAR_ALLOWED_EMOTIONS = new Set([
 ]);
 const AVATAR_ALLOWED_THOUGHT_MODES = new Set(['none', 'bubble', 'caption', 'ticker', 'inside']);
 const AVATAR_ALLOWED_MODES = new Set(['static', 'controlled', 'event-driven', 'autonomous']);
+const AVATAR_ALLOWED_EXPRESSION_MODES = new Set(['audio', 'manual']);
 const AVATAR_ALLOWED_SHAPES = new Set(['circle', 'square', 'rounded', 'none']);
 const AVATAR_ALLOWED_THEMES = new Set(['light', 'dark', 'auto']);
 const AVATAR_ALLOWED_ASSET_MODES = new Set(['img', 'inline']);
@@ -42,6 +43,9 @@ const AVATAR_CONFIG_FIELDS = new Set([
     'assetMode',
     'asset_mode',
     'emotion',
+    'expressionMode',
+    'expression_mode',
+    'expression-mode',
     'size',
     'thought',
     'thoughtMode',
@@ -117,6 +121,12 @@ function sanitizeParticipantAvatarConfig(config = null, fallbackId = '') {
         sourceMode: sanitizeAvatarEnum(source.sourceMode || source.source_mode || source['source-mode'], AVATAR_ALLOWED_SOURCE_MODES, '', 'sourceMode'),
         assetMode: sanitizeAvatarEnum(source.assetMode || source.asset_mode, AVATAR_ALLOWED_ASSET_MODES, 'img', 'assetMode'),
         emotion: sanitizeAvatarEnum(source.emotion, AVATAR_ALLOWED_EMOTIONS, 'neutral', 'emotion'),
+        expressionMode: sanitizeAvatarEnum(
+            source.expressionMode || source.expression_mode || source['expression-mode'],
+            AVATAR_ALLOWED_EXPRESSION_MODES,
+            'audio',
+            'expressionMode'
+        ),
         size: sanitizeAvatarSize(source.size),
         thought: sanitizeAvatarText(source.thought, 256),
         thoughtMode: sanitizeAvatarEnum(source.thoughtMode || source.thought_mode, AVATAR_ALLOWED_THOUGHT_MODES, source.thought ? 'bubble' : 'none', 'thoughtMode'),
@@ -154,6 +164,7 @@ function createDefaultParticipantAvatarConfig(fallbackId = '') {
         generated: true,
         assetMode: 'img',
         emotion: 'neutral',
+        expressionMode: 'audio',
         size: '72',
         thoughtMode: 'none',
         mode: 'static',
