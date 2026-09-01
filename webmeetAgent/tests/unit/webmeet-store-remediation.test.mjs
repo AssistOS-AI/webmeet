@@ -225,8 +225,19 @@ describe('event staging — events recorded only after successful payload save',
 
 describe('guest-state response narrowing', () => {
     test('getGuestMeetingDetails returns only meeting, participants, and chat', async () => {
-        const { getGuestMeetingDetails, appendMeetingChat } = await import('../../lib/webmeetStore.mjs');
+        const { getGuestMeetingDetails, appendMeetingChat, joinMeeting } = await import('../../lib/webmeetStore.mjs');
         const { meeting, participantId, guestId } = await createGuestMeetingWithParticipant(context);
+
+        await joinMeeting(context, {
+            meetingId: meeting.id,
+            participantId: 'authenticated-participant',
+            displayName: 'Authenticated Participant',
+            authInfo: {
+                id: 'local:private-user-id',
+                username: 'private-user',
+                roles: ['user'],
+            },
+        });
 
         await appendMeetingChat(context, {
             meetingId: meeting.id,
@@ -253,6 +264,57 @@ describe('guest-state response narrowing', () => {
 
         assert.equal(details.resources, undefined, 'resources must not be exposed to guests through room details');
         assert.equal(details.agents, undefined, 'agents must not be exposed to guests');
+
+        const authenticatedParticipant = details.participants.find((entry) => entry.id === 'authenticated-participant');
+        assert.ok(authenticatedParticipant, 'the public roster should retain the authenticated participant');
+        assert.equal(authenticatedParticipant.userId, undefined, 'durable userId must not be exposed to guests');
+        assert.equal(authenticatedParticipant.attributes?.webmeetUserId, undefined, 'webmeetUserId must not be exposed to guests');
+        assert.equal(authenticatedParticipant.attributes?.userId, undefined, 'userId attributes must not be exposed to guests');
+        assert.equal(authenticatedParticipant.attributes?.workspaceUserId, undefined, 'workspaceUserId must not be exposed to guests');
+        assert.equal(authenticatedParticipant.attributes?.ploinkyUserId, undefined, 'ploinkyUserId must not be exposed to guests');
+    });
+
+    test('getGuestMeetingDetails keeps active RoboTeam visible when LiveKit returns human participants', async () => {
+        const { getGuestMeetingDetails } = await import('../../lib/webmeetStore.mjs');
+        const { meeting, participantId, guestId } = await createGuestMeetingWithParticipant(context, 'Guest RoboTeam Room');
+        const liveContext = {
+            ...context,
+            listLiveKitParticipants: async () => [{
+                identity: participantId,
+                name: 'Test Guest',
+                attributes: {}
+            }]
+        };
+
+        const details = await withGuestParticipantOwner(liveContext, meeting.id, () => (
+            getGuestMeetingDetails(liveContext, {
+                meetingId: meeting.id,
+                participantId,
+            })
+        ), guestId);
+
+        const roboTeam = details.participants.find((entry) => entry.id === 'agent_robo_team');
+        assert.ok(roboTeam, 'active RoboTeam must remain in the public roster after LiveKit reconciliation');
+        assert.equal(roboTeam.kind, 'agent');
+        assert.equal(roboTeam.displayName, 'Robo Team');
+        assert.equal(roboTeam.attributes?.webmeetAgent, 'true');
+        assert.equal(roboTeam.attributes?.webmeetMeetingId, meeting.id);
+        assert.equal(details.agents, undefined, 'guest details must not expose the administrative agent projection');
+
+        const fallbackContext = {
+            ...context,
+            listLiveKitParticipants: async () => {
+                throw new Error('LiveKit unavailable');
+            }
+        };
+        const fallbackDetails = await withGuestParticipantOwner(fallbackContext, meeting.id, () => (
+            getGuestMeetingDetails(fallbackContext, {
+                meetingId: meeting.id,
+                participantId,
+            })
+        ), guestId);
+        const fallbackRoboTeam = fallbackDetails.participants.find((entry) => entry.id === 'agent_robo_team');
+        assert.equal(fallbackRoboTeam?.attributes?.webmeetMeetingId, meeting.id, 'fallback RoboTeam must retain its room identity');
     });
 });
 
@@ -267,6 +329,19 @@ describe('MCP chat schema — author is derived from invocation context', () => 
         assert.equal(chatSend.inputSchema.authorName, undefined, 'authorName should not be accepted from the client');
         assert.equal(chatSend.inputSchema.roomId?.optional, false, 'roomId should remain required');
         assert.equal(chatSend.inputSchema.message?.optional, false, 'message should remain required');
+
+        const guestChatSend = config.tools.find((t) => t.name === 'webmeet_chat_send_guest');
+        assert.ok(guestChatSend, 'webmeet_chat_send_guest tool should exist in mcp-config.json');
+        assert.equal(guestChatSend.inputSchema.authorId, undefined, 'guest authorId should not be accepted from the client');
+        assert.equal(guestChatSend.inputSchema.authorName, undefined, 'guest authorName should not be accepted from the client');
+        assert.equal(guestChatSend.inputSchema.roomId?.optional, false, 'guest roomId should be required');
+        assert.equal(guestChatSend.inputSchema.participantId?.optional, false, 'guest participantId should be required');
+        assert.equal(guestChatSend.inputSchema.message?.optional, false, 'guest message should be required');
+
+        const guestRoomGet = config.tools.find((t) => t.name === 'webmeet_room_guest_get');
+        assert.ok(guestRoomGet, 'webmeet_room_guest_get tool should exist in mcp-config.json');
+        assert.equal(guestRoomGet.inputSchema.roomId?.optional, false, 'guest roomId should be required');
+        assert.equal(guestRoomGet.inputSchema.participantId?.optional, false, 'guest participantId should be required');
     });
 });
 
@@ -288,6 +363,60 @@ describe('guest chat derives author from participant record, not caller-supplied
         assert.ok(guestChat, 'Guest chat message should be present');
         assert.equal(guestChat.authorId, participantId, 'authorId should be the participant identity, not caller-supplied');
         assert.equal(guestChat.authorName, 'Test Guest', 'authorName should come from the participant record displayName');
+    });
+
+    test('guest chat authorizes and persists in one locked mutation with one presence cleanup', async () => {
+        const { appendGuestRoomChat } = await import('../../lib/services/roomMessages.mjs');
+        const { meeting, participantId, guestId } = await createGuestMeetingWithParticipant(context, 'Atomic Guest Chat Room');
+        let cleanupCalls = 0;
+
+        const result = await withGuestParticipantOwner(context, meeting.id, () => (
+            appendGuestRoomChat(context, {
+                meetingId: meeting.id,
+                participantId,
+                message: 'atomic guest message',
+            }, {
+                cleanupRoomPresence: async () => {
+                    cleanupCalls += 1;
+                },
+            })
+        ), guestId);
+
+        assert.equal(cleanupCalls, 1, 'guest chat should not open a second cleanup window after authorization');
+        assert.equal(result.message.authorId, participantId);
+        assert.equal(result.message.message, 'atomic guest message');
+    });
+
+    test('guest chat rejects a participant removed before the append lock is acquired', async () => {
+        const { appendGuestRoomChat } = await import('../../lib/services/roomMessages.mjs');
+        const { listMeetingChat, removeMeetingParticipant } = await import('../../lib/webmeetStore.mjs');
+        const { meeting, participantId, guestId } = await createGuestMeetingWithParticipant(context, 'Revoked Guest Chat Room');
+        let removal = null;
+
+        await assert.rejects(
+            () => withGuestParticipantOwner(context, meeting.id, () => (
+                appendGuestRoomChat(context, {
+                    meetingId: meeting.id,
+                    participantId,
+                    message: 'message after removal',
+                }, {
+                    cleanupRoomPresence: () => {
+                        queueMicrotask(() => {
+                            removal = removeMeetingParticipant(context, {
+                                meetingId: meeting.id,
+                                participantId,
+                                authInfo: ADMIN_AUTH,
+                            });
+                        });
+                    },
+                })
+            ), guestId),
+            /Guest participant is not joined/
+        );
+
+        await removal;
+        const chat = await listMeetingChat(context, meeting.id, ADMIN_AUTH);
+        assert.equal(chat.some((entry) => entry.message === 'message after removal'), false);
     });
 });
 

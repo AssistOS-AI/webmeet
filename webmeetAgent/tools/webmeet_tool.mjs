@@ -8,6 +8,7 @@ import {
     applyRoomBlackboardWorkspaceAction,
     attachMeetingAgent,
     authorizeMeetingParticipant,
+    appendGuestMeetingChat,
     appendMeetingChat,
     authorizeResourceDownload,
     authorizeResourceUpload,
@@ -18,6 +19,7 @@ import {
     detachMeetingAgent,
     getRoboTeamSettings,
     getScriptaContext,
+    getGuestMeetingDetails,
     getRoomBlackboard,
     getRoomBlackboardForCommand,
     getMeeting,
@@ -79,6 +81,15 @@ const { authInfoFromInvocation } = await loadInvocationAuth();
 const TOOL_NAME = String(process.env.TOOL_NAME || '').trim();
 const SUPPORTED_AGENT_TYPES = new Set(['robo_team']);
 const SUPPORTED_AGENT_MODES = new Set(['blackboard_demo']);
+const GUEST_TOOL_ALLOWLIST = new Set([
+    'webmeet_room_public_get',
+    'webmeet_room_join_guest',
+    'webmeet_room_guest_get',
+    'webmeet_chat_send_guest',
+    'webmeet_room_leave',
+    'webmeet_presence_heartbeat',
+    'webmeet_participant_avatar_update'
+]);
 
 function safeParseJson(text) {
     try {
@@ -216,8 +227,18 @@ function isGuestInvocation(context = null) {
 function isGuestAuthInfo(authInfo = null) {
     const user = authInfo?.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo;
     const userId = String(user?.id || '').trim();
+    const roles = Array.isArray(user?.roles)
+        ? user.roles.map((role) => String(role || '').trim().toLowerCase())
+        : [];
     const subject = String(authInfo?.invocation?.subject || '').trim();
-    return userId.startsWith('guest:') || subject.startsWith('user:guest:');
+    const actorKind = String(authInfo?.invocation?.actor?.kind || '').trim().toLowerCase();
+    const callerKind = String(authInfo?.invocation?.caller?.kind || '').trim().toLowerCase();
+    return userId.startsWith('guest:')
+        || userId.startsWith('user:guest:')
+        || roles.includes('guest')
+        || subject.startsWith('user:guest:')
+        || actorKind === 'guest'
+        || callerKind === 'guest';
 }
 
 function isGuestParticipantInvocation(context, authInfo, roomId) {
@@ -227,7 +248,17 @@ function isGuestParticipantInvocation(context, authInfo, roomId) {
         || isGuestInvocation(context);
 }
 
+function assertGuestToolAllowed(toolName, context, authInfo) {
+    if (!isGuestAuthInfo(authInfo) && !isGuestInvocation(context)) {
+        return;
+    }
+    if (!GUEST_TOOL_ALLOWLIST.has(toolName)) {
+        throw new Error(`Access denied: guest invocation cannot call "${toolName}".`);
+    }
+}
+
 export async function dispatch(toolName, args, context, authInfo) {
+    assertGuestToolAllowed(toolName, context, authInfo);
     switch (toolName) {
     case 'webmeet_room_list':
         return {
@@ -384,8 +415,23 @@ export async function dispatch(toolName, args, context, authInfo) {
         return await getMeeting(context, getRequiredString(args, 'roomId'), authInfo, {
             includeParticipants: args?.includeParticipants !== false
         });
+    case 'webmeet_room_guest_get':
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            const participantId = getRequiredString(args, 'participantId');
+            return await withVerifiedGuestParticipantOwner(context, authInfo, roomId, async () => (
+                await getGuestMeetingDetails(context, {
+                    meetingId: roomId,
+                    participantId
+                })
+            ));
+        }
     case 'webmeet_room_public_get':
-        return await getPublicGuestMeeting(context, getRequiredString(args, 'roomId'));
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            assertPublicRoomInvocation(authInfo, roomId);
+            return await getPublicGuestMeeting(context, roomId);
+        }
     case 'webmeet_blackboard_workspace_get':
         return await getRoomBlackboard(context, {
             roomId: getRequiredString(args, 'roomId'),
@@ -501,6 +547,19 @@ export async function dispatch(toolName, args, context, authInfo) {
                 metadata: Array.isArray(args?.resourceIds) ? { resourceIds: args.resourceIds } : null,
                 authInfo
             });
+            return { ...appended, researchTask: null };
+        }
+    case 'webmeet_chat_send_guest':
+        {
+            const roomId = getRequiredString(args, 'roomId');
+            const participantId = getRequiredString(args, 'participantId');
+            const appended = await withVerifiedGuestParticipantOwner(context, authInfo, roomId, async () => (
+                await appendGuestMeetingChat(context, {
+                    meetingId: roomId,
+                    participantId,
+                    message: getRequiredString(args, 'message')
+                })
+            ));
             return { ...appended, researchTask: null };
         }
     case 'webmeet_attachment_publish':

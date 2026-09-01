@@ -238,6 +238,18 @@
       "env": { "TOOL_NAME": "webmeet_room_get" }
     },
     {
+      "name": "webmeet_room_guest_get",
+      "title": "WebMeet Get Guest Room",
+      "description": "Get the guest-safe room projection for a verified guest participant.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_room_guest_get" }
+    },
+    {
       "name": "webmeet_room_public_get",
       "title": "WebMeet Get Public Room",
       "description": "Get minimal metadata for an active public guest room.",
@@ -503,6 +515,19 @@
       "env": { "TOOL_NAME": "webmeet_chat_send" }
     },
     {
+      "name": "webmeet_chat_send_guest",
+      "title": "WebMeet Send Guest Chat",
+      "description": "Send a room chat message as a verified guest participant.",
+      "command": "tools/webmeet_tool.sh",
+      "cwd": "workspace",
+      "inputSchema": {
+        "roomId": { "type": "string", "optional": false },
+        "participantId": { "type": "string", "optional": false },
+        "message": { "type": "string", "optional": false }
+      },
+      "env": { "TOOL_NAME": "webmeet_chat_send_guest" }
+    },
+    {
       "name": "webmeet_attachment_publish",
       "title": "WebMeet Publish Attachment",
       "description": "Commit an Explorer file and publish it atomically to room chat and a selected Blackboard workspace.",
@@ -569,7 +594,7 @@
     {
       "name": "webmeet_agent_attach",
       "title": "WebMeet Attach Agent",
-      "description": "Dispatch the self-hosted LiveKit AI agent to a room.",
+      "description": "Enable the persisted Ploinky-managed RoboTeam room agent.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
@@ -582,7 +607,7 @@
     {
       "name": "webmeet_agent_list",
       "title": "WebMeet List Agents",
-      "description": "List LiveKit AI agent dispatch metadata for a room.",
+      "description": "List persisted Ploinky-managed room-agent metadata for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {
@@ -593,7 +618,7 @@
     {
       "name": "webmeet_agent_detach",
       "title": "WebMeet Detach Agent",
-      "description": "Stop a self-hosted LiveKit AI agent in a room.",
+      "description": "Disable the persisted Ploinky-managed RoboTeam room agent.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
       "inputSchema": {

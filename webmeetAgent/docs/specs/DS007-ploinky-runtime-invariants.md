@@ -5,7 +5,7 @@ summary: Captures WebMeet's runtime-v5 routing, private-service, security, and f
 
 # DS007-ploinky-runtime-invariants
 
-### DS006 - Ploinky Runtime Invariants
+### DS007 - Ploinky Runtime Invariants
 
 ## Introduction
 

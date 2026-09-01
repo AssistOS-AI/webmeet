@@ -31,6 +31,53 @@ function getDeps(deps = {}) {
     };
 }
 
+async function appendRoomChatMutation(context, {
+    meetingId,
+    authorId,
+    authorName,
+    message,
+    kind = 'user',
+    metadata = null,
+    dedupeCommandId = '',
+    authorizeMutation = null
+}, deps = {}) {
+    const { randomId, cleanupRoomPresence } = getDeps(deps);
+    await cleanupRoomPresence(context, meetingId);
+    let chatMessage = null;
+    let deduplicated = false;
+    await mutateRoom(context, meetingId, (record, payload, stageEvent) => {
+        const authorizedAuthor = typeof authorizeMutation === 'function'
+            ? authorizeMutation(record, payload)
+            : null;
+        const effectiveAuthorId = String(authorizedAuthor?.authorId || authorId || '').trim();
+        const effectiveAuthorName = String(authorizedAuthor?.authorName || authorName || '').trim();
+        const commandId = String(dedupeCommandId || '').trim();
+        if (commandId) {
+            const existing = payload.chatMessages.find((entry) => entry.kind === 'event' && entry.metadata?.commandId === commandId);
+            if (existing) {
+                chatMessage = existing;
+                deduplicated = true;
+                return;
+            }
+        }
+        chatMessage = {
+            id: randomId('chat'),
+            meetingId,
+            authorId: effectiveAuthorId,
+            authorName: effectiveAuthorName,
+            message,
+            kind: String(kind || 'user').trim() || 'user',
+            createdAt: nowIso()
+        };
+        if (metadata && typeof metadata === 'object') {
+            chatMessage.metadata = metadata;
+        }
+        payload.chatMessages.push(chatMessage);
+        stageEvent('meeting', WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId, chatMessageId: chatMessage.id });
+    });
+    return { message: chatMessage, deduplicated };
+}
+
 export async function listRoomChat(context, meetingId, authInfo = null, deps = {}) {
     const record = await loadRoomRecord(context, meetingId);
     if (!canViewMeetingRecord(record, authInfo)) {
@@ -50,39 +97,26 @@ export async function appendRoomChat(context, {
     authInfo = null,
     skipAccessCheck = false
 }, deps = {}) {
-    const { randomId, cleanupRoomPresence } = getDeps(deps);
     if (!skipAccessCheck) {
         await deps.getRoomDetails(context, meetingId, authInfo, { includeParticipants: false });
     }
-    await cleanupRoomPresence(context, meetingId);
-    let chatMessage = null;
-    let deduplicated = false;
-    await mutateRoom(context, meetingId, (_record, payload, stageEvent) => {
-        const commandId = String(dedupeCommandId || '').trim();
-        if (commandId) {
-            const existing = payload.chatMessages.find((entry) => entry.kind === 'event' && entry.metadata?.commandId === commandId);
-            if (existing) {
-                chatMessage = existing;
-                deduplicated = true;
-                return;
+    return appendRoomChatMutation(context, {
+        meetingId,
+        authorId,
+        authorName,
+        message,
+        kind,
+        metadata,
+        dedupeCommandId,
+        authorizeMutation: skipAccessCheck
+            ? null
+            : (record) => {
+                if (!canViewMeetingRecord(record, authInfo)) {
+                    throw new Error('Meeting not found.');
+                }
+                return null;
             }
-        }
-        chatMessage = {
-            id: randomId('chat'),
-            meetingId,
-            authorId,
-            authorName,
-            message,
-            kind: String(kind || 'user').trim() || 'user',
-            createdAt: nowIso()
-        };
-        if (metadata && typeof metadata === 'object') {
-            chatMessage.metadata = metadata;
-        }
-        payload.chatMessages.push(chatMessage);
-        stageEvent('meeting', WEBMEET_EVENT_TYPES.CHAT_MESSAGE_CREATED, { meetingId, chatMessageId: chatMessage.id });
-    });
-    return { message: chatMessage, deduplicated };
+    }, deps);
 }
 
 export async function updateRoomChat(context, {
@@ -118,16 +152,16 @@ export async function updateRoomChat(context, {
 }
 
 export async function appendGuestRoomChat(context, { meetingId, participantId, message }, deps = {}) {
-    await getDeps(deps).cleanupRoomPresence(context, meetingId);
-    const record = await loadRoomRecord(context, meetingId);
-    assertGuestRoomAccess(record);
-    const payload = decryptRoomPayload(context, record);
-    const participant = assertVerifiedGuestParticipantIdentity(context, meetingId, payload, participantId);
-    return appendRoomChat(context, {
+    return appendRoomChatMutation(context, {
         meetingId,
-        authorId: participant.id,
-        authorName: participant.displayName || 'Guest',
         message,
-        skipAccessCheck: true
+        authorizeMutation: (record, payload) => {
+            assertGuestRoomAccess(record);
+            const participant = assertVerifiedGuestParticipantIdentity(context, meetingId, payload, participantId);
+            return {
+                authorId: participant.id,
+                authorName: participant.displayName || 'Guest'
+            };
+        }
     }, deps);
 }

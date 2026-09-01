@@ -5,7 +5,7 @@ summary: Defines RoboTeam as a Ploinky-managed WebMeet room agent, not a LiveKit
 
 # DS006-ploinky-room-agents
 
-### DS005 - Ploinky Room Agents and RoboTeam
+### DS006 - Ploinky Room Agents and RoboTeam
 
 ## Introduction
 

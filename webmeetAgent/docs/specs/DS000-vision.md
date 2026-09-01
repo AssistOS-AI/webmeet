@@ -57,7 +57,7 @@ The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet
 
 `webmeetAgent` must keep its persistent store under the configured WebMeet data directory, normally the `/data` container mount backed by `.ploinky/data/webmeetAgent/data`.
 
-`webmeetAgent` must not own infrastructure supervision. Starting `webmeetAgent` may enable `webmeetInfra/liveKitServerAgent`, but it must not launch sibling Ploinky agents or external AI workers. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, or start LiveKit Server.
+`webmeetAgent` must not own infrastructure supervision. Its manifest enables `webmeetInfra/liveKitServerAgent` and `webmeetScribeAgent` with `no-wait`, leaving their lifecycle to Ploinky. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not directly launch sibling processes, start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, or start LiveKit Server.
 
 ### Decisions & Questions
 
@@ -75,4 +75,4 @@ Response: DS files are the source of truth for future agent work. The root archi
 
 ## Conclusion
 
-`webmeetAgent` remains correct while it stays the WebMeet application control plane, delegates live media infrastructure to `webmeetInfra/liveKitServerAgent`, keeps optional AI workers separate, and preserves the documented storage, routing, and authorization boundaries.
+`webmeetAgent` remains correct while it stays the WebMeet application control plane, delegates live media infrastructure to `webmeetInfra/liveKitServerAgent`, models RoboTeam as Ploinky-managed room state rather than a LiveKit worker, and preserves the documented storage, routing, and authorization boundaries.

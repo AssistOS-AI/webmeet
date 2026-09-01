@@ -5,7 +5,7 @@ summary: Defines browser transcription, directed LiveKit text transport, holisti
 
 # DS011-meeting-secretary
 
-### DS010 - Browser Meeting Secretary
+### DS011 - Browser Meeting Secretary
 
 ## Introduction
 

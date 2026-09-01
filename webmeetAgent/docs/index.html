@@ -37,13 +37,13 @@
         </section>
         <section class="highlight-box">
           <h2>WebMeet Workspace Boundary</h2>
-          <p><code>webmeetAgent</code> owns workspace meeting rooms, guest invite routing, LiveKit participant token issuance, AI dispatch metadata, room resources, and the Explorer WebMeet plugin. It exposes one coordinated meeting experience while keeping LiveKit infrastructure, Meeting Secretary processing, and speech-to-text in dedicated runtime agents.</p>
+          <p><code>webmeetAgent</code> owns workspace meeting rooms, guest invite routing, LiveKit participant token issuance, Ploinky-managed RoboTeam metadata, room resources, and the Explorer WebMeet plugin. It exposes one coordinated meeting experience while keeping LiveKit infrastructure and Meeting Secretary processing in dedicated runtime agents.</p>
           <p>The result is a meeting surface that participates in AchillesIDE navigation and identity without turning Explorer into the owner of media transport or meeting-domain state.</p>
         </section>
         <section>
           <h2>Runtime Behavior</h2>
           <p>Explorer opens the WebMeet plugin and supplies the authenticated workspace identity. WebMeet authorizes room access, returns the room projection, obtains short-lived LiveKit join material through the private runtime route, and records durable meeting activity through its configured Model Context Protocol tools.</p>
-          <p>Participant browsers connect to LiveKit for audio, video, screen sharing, presence, and data transport. WebMeet remains responsible for room roles, chat history, shared Blackboard state, resources, guest scope, and room-agent dispatch metadata. Explorer remains responsible for canonical SCRIPTA files and their Automerge collaboration state.</p>
+          <p>Participant browsers connect to LiveKit for audio, video, screen sharing, presence, and data transport. WebMeet remains responsible for room roles, authenticated and owner-bound guest chat history, shared Blackboard state, resources, guest scope, and the logical RoboTeam room-agent record. Explorer remains responsible for canonical SCRIPTA files and their Automerge collaboration state.</p>
         </section>
         <section>
           <h2>Development Contract</h2>

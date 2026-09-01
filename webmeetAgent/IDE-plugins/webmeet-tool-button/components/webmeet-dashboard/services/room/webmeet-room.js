@@ -381,7 +381,8 @@ export class WebMeetRoom extends EventTarget {
         const state = this.getState();
         if (state.guest) {
             const details = await this.getApi().loadRoomState({
-                meetingId: requireString(state.meetingId, 'meetingId')
+                meetingId: requireString(state.meetingId, 'meetingId'),
+                participantId: requireString(state.participantId, 'participantId')
             });
             this.stateModel.setParticipants(details?.participants);
             this.stateModel.setChat(details?.chat);
@@ -610,17 +611,21 @@ export class WebMeetRoom extends EventTarget {
     }
 
     async sendChat(meetingId = '', message = '') {
-        const targetMeetingId = String(meetingId || this.getState().meetingId || '').trim();
+        const state = this.getState();
+        const targetMeetingId = String(meetingId || state.meetingId || '').trim();
         return this.getApi().sendChat({
             meetingId: requireString(targetMeetingId, 'meetingId'),
+            participantId: requireString(state.participantId, 'participantId'),
             message: requireString(message, 'message')
         });
     }
 
     async loadGuestRoomState(meetingId = '') {
-        const targetMeetingId = String(meetingId || this.getState().meetingId || '').trim();
+        const state = this.getState();
+        const targetMeetingId = String(meetingId || state.meetingId || '').trim();
         return this.getApi().loadRoomState({
-            meetingId: requireString(targetMeetingId, 'meetingId')
+            meetingId: requireString(targetMeetingId, 'meetingId'),
+            participantId: requireString(state.participantId, 'participantId')
         });
     }
 }

@@ -26,7 +26,8 @@ flowchart LR
   WebMeet -->|private media operations| LiveKit[LiveKit media service]
   WebMeet -->|room events and protected state| Store[Encrypted room store]
   WebMeet -->|authorized document operations| Scripta[Explorer-owned SCRIPTA and Automerge]
-  WebMeet -->|dispatch and reconciliation| Agents[Meeting Secretary and optional room agents]
+  WebMeet -->|delegated notes sessions| Secretary[Meeting Secretary]
+  WebMeet -->|persisted logical state| RoboTeam[Ploinky-managed RoboTeam]
   LiveKit -->|audio, video, screen share, data| Browser[Participant browsers]
   WebMeet -->|room projections and commands| Browser
           </pre>
@@ -34,7 +35,7 @@ flowchart LR
         </section>
         <section>
           <h2>Control Plane And Durable State</h2>
-          <p>The agent owns room creation, admission, roles, archives, deletion, guest scope, chat records, resources, Blackboard state, and room-agent dispatch metadata. Room payloads are encrypted with AES-256-GCM and per-room data keys wrapped by <code>PLOINKY_WEBMEET_MASTER_KEY</code>. The central <code>WEBMEET_EVENT_TYPES</code> contract separates persisted events from realtime-only events and is shared by store and browser code.</p>
+          <p>The agent owns room creation, admission, roles, archives, deletion, guest scope, authenticated and owner-bound guest chat records, resources, Blackboard state, and Ploinky-managed room-agent metadata. Room payloads are encrypted with AES-256-GCM and per-room data keys wrapped by <code>PLOINKY_WEBMEET_MASTER_KEY</code>. The central <code>WEBMEET_EVENT_TYPES</code> contract separates persisted events from realtime-only events and is shared by store and browser code.</p>
           <p>LiveKit presence is not the durable room directory. WebMeet reconciles active media participation with its authorized participant state and keeps browser-facing projections free of private DPU profile data.</p>
         </section>
         <section>
@@ -45,7 +46,7 @@ flowchart LR
         </section>
         <section>
           <h2>Media Plane</h2>
-          <p><code>webmeetInfra/liveKitServerAgent</code> owns <a href="wiki.html#definition-livekit">LiveKit</a> signaling, microphone, camera, screen share, Redis coordination, TURN/STUN, and production TLS. WebMeet obtains generation-bound private operations and short-lived join material rather than publishing an alternative media-control path.</p>
+          <p><code>webmeetInfra/liveKitServerAgent</code> supervises <a href="wiki.html#definition-livekit">LiveKit</a> signaling and media transport, Redis, Egress, and semantic health. It does not own local TURN, a public TLS proxy, or certificate management. Ploinky Router owns public signaling and private Twirp routing, while configured external TURN and Ploinky's broker provide short-lived relay material. WebMeet obtains generation-bound join material rather than publishing an alternative media-control path.</p>
           <p>Leaving a room stops local capture and remote playback before exit completes. A refreshed join recreates the LiveKit connection and restores microphone and camera state; browser security requires a new user gesture before screen sharing can resume.</p>
         </section>
         <section>

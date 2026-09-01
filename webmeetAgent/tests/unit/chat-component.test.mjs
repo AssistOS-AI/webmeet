@@ -49,7 +49,7 @@ function makeComponent(overrides = {}) {
                 return {
                     message: {
                         id: 'chat-1',
-                        meetingId: args.meetingId,
+                        meetingId: args.roomId,
                         authorId: 'p-1',
                         authorName: 'User One',
                         message: args.message,
@@ -70,9 +70,10 @@ test('sendChat persists messages through webmeet_chat_send', async () => {
     await component.sendChat();
     assert.equal(calls.length, 1, 'sendChat should invoke exactly one tool');
     assert.equal(calls[0].name, 'webmeet_chat_send', 'WebMeet must route chat through webmeet_chat_send');
-    assert.equal(calls[0].args.meetingId, meeting.id);
-    assert.equal(calls[0].args.authorId, 'p-1');
-    assert.equal(calls[0].args.message, 'hello @open-interpreter');
+    assert.deepEqual(calls[0].args, {
+        roomId: meeting.id,
+        message: 'hello @open-interpreter'
+    });
 });
 
 test('sendChat clears the chat input after a successful send', async () => {

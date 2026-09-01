@@ -5,7 +5,7 @@ summary: Defines topology-resolved signaling, private Twirp assertions, external
 
 # DS005-livekit-media-runtime
 
-### DS004 - LiveKit Media Runtime
+### DS005 - LiveKit Media Runtime
 
 ## Introduction
 
@@ -15,7 +15,7 @@ This specification defines the active LiveKit media runtime contract for WebMeet
 
 ### Boundary
 
-`webmeetAgent` owns rooms, membership, participant JWTs, chat, resources, recording commands, and controlled rejoin. `liveKitServerAgent` owns Redis, LiveKit Server, Egress, and supervisor health. Ploinky Router owns browser signaling and private administrative transport.
+`webmeetAgent` owns rooms, membership, participant JWTs, chat, resources, Meeting Secretary dispatch coordination, and controlled rejoin. `liveKitServerAgent` owns Redis, LiveKit Server, Egress, and supervisor health. Ploinky Router owns browser signaling and private administrative transport.
 
 For every join, WebMeet reads the current unversioned media topology and uses the same-origin `/base-agent-additional-server/liveKitServerAgent/7880/` signaling path. It obtains short-lived external relay credentials from the private broker using an exact current-generation assertion. The material must include valid expiry and matching topology and publication generations. There is no static ICE or URL fallback.
 

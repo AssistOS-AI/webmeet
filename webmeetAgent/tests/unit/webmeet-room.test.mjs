@@ -68,7 +68,8 @@ test('room API routes guest room actions through scoped room tools', async () =>
 
     await api.publishAvatar({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a', avatar: { enabled: true } });
     await api.heartbeat({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' });
-    await api.sendChat({ roomId: 'room_00000000-0000-4000-8000-000000000001', message: 'hello' });
+    await api.sendChat({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a', message: 'hello' });
+    await api.loadRoomState({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' });
     await api.leaveMeeting({ roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' });
 
     assert.deepEqual(calls, [
@@ -81,8 +82,12 @@ test('room API routes guest room actions through scoped room tools', async () =>
             args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' }
         },
         {
-            name: 'webmeet_chat_send',
-            args: { roomId: 'room_00000000-0000-4000-8000-000000000001', message: 'hello' }
+            name: 'webmeet_chat_send_guest',
+            args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a', message: 'hello' }
+        },
+        {
+            name: 'webmeet_room_guest_get',
+            args: { roomId: 'room_00000000-0000-4000-8000-000000000001', participantId: 'guest-a' }
         },
         {
             name: 'webmeet_room_leave',
@@ -137,6 +142,53 @@ test('WebMeetRoom selects the same room action interface for guest and authentic
             avatar: { enabled: true }
         }
     }]);
+});
+
+test('WebMeetRoom forwards the joined guest identity to guest state and chat tools', async () => {
+    const calls = [];
+    const room = new WebMeetRoom(createRoomOptions({
+        getSession: () => ({
+            meeting: { id: 'room_00000000-0000-4000-8000-000000000001' },
+            participantIdentity: 'participant-guest'
+        }),
+        isGuestSession: () => true,
+        runTool: async (name, args) => {
+            calls.push({ name, args });
+            if (name === 'webmeet_room_guest_get') {
+                return { meeting: { id: args.roomId }, participants: [], chat: [] };
+            }
+            return { message: { id: 'message-guest' } };
+        }
+    }));
+
+    await room.sendChat('', 'hello from guest');
+    await room.loadGuestRoomState();
+    await room.refreshState();
+
+    assert.deepEqual(calls, [
+        {
+            name: 'webmeet_chat_send_guest',
+            args: {
+                roomId: 'room_00000000-0000-4000-8000-000000000001',
+                participantId: 'participant-guest',
+                message: 'hello from guest'
+            }
+        },
+        {
+            name: 'webmeet_room_guest_get',
+            args: {
+                roomId: 'room_00000000-0000-4000-8000-000000000001',
+                participantId: 'participant-guest'
+            }
+        },
+        {
+            name: 'webmeet_room_guest_get',
+            args: {
+                roomId: 'room_00000000-0000-4000-8000-000000000001',
+                participantId: 'participant-guest'
+            }
+        }
+    ]);
 });
 
 test('WebMeetRoom resolves guest room API from the current session state for avatar updates', async () => {
@@ -304,6 +356,10 @@ test('room API rejects missing required fields instead of silently no-oping', as
     await assert.rejects(
         () => guestApi.loadRoomState({ meetingId: '' }),
         /Missing WebMeet room field: roomId/
+    );
+    await assert.rejects(
+        () => guestApi.sendChat({ meetingId: 'room_00000000-0000-4000-8000-000000000001', message: 'hello' }),
+        /Missing WebMeet room field: participantId/
     );
 });
 

@@ -1,6 +1,6 @@
 # WebMeet Agent
 
-`webmeetAgent` is the AchillesIDE agent for WebMeet rooms, roomId link routing, LiveKit token issuance, chat, room resources, and AI dispatch metadata.
+`webmeetAgent` is the AchillesIDE agent for WebMeet rooms, roomId link routing, LiveKit token issuance, chat, room resources, Blackboard state, and Ploinky-managed room-agent metadata.
 
 ## Components
 
@@ -8,15 +8,15 @@
   - owns the WebMeet MCP surface and room store
   - does not serve a WebMeet-specific HTTP API or public proxy
   - stores persistent room data under `.ploinky/data/webmeetAgent/data`
-  - creates explicit LiveKit AI dispatches for the separate worker
+  - stores and projects the Ploinky-managed RoboTeam room agent
 - `webmeetInfra/liveKitServerAgent`
   - single Ploinky agent that supervises the WebMeet media runtime
   - includes LiveKit Server, Redis, Egress, and semantic supervisor health inside one pinned container
   - binds signaling/API only to box loopback `127.0.0.1:7880`, owns the one box UDP mux on `7882`, and contains no local TURN, public TLS proxy, or certificate manager
-- `webmeetLivekitAiAgent`
-  - optional separate Ploinky agent for the self-hosted LiveKit Agents worker
-  - owns the native `@livekit/agents` dependency tree
-  - is launched explicitly by stacks that want self-hosted AI participants and is not part of the default Explorer stack
+- `webmeetScribeAgent`
+  - separate text-only Meeting Secretary agent enabled with `no-wait`
+  - reconciles cumulative meeting notes through delegated WebMeet tools
+  - does not act as a LiveKit audio or video participant
 
 ## Running
 
@@ -25,8 +25,9 @@ The agent is started through Ploinky, not directly with Docker Compose.
 The WebMeet manifest:
 
 - enables `webmeetInfra/liveKitServerAgent`
+- enables `webmeetScribeAgent`
 - starts the MCP `AgentServer`
-- does not start the LiveKit AI worker process
+- does not start Redis, LiveKit Server, Egress, or an external AI worker process
 
 Explorer only needs to enable `webmeetAgent` and the `webmeet` plugin for normal rooms, chat, camera, and screen sharing flows.
 
@@ -44,25 +45,25 @@ Microphone voice processing is local to the browser before the track is publishe
 
 Background privacy uses a locally bundled LiveKit processor pipeline plus bundled MediaPipe assets. Blur and virtual-background images therefore stay inside the routed WebMeet frontend instead of depending on third-party CDN fetches at runtime.
 
-## Optional AI Worker
+## Ploinky Room Agent
 
-WebMeet uses self-hosted LiveKit Agents for AI participants. The worker is not simulated in the WebMeet store and is not LiveKit Cloud or LiveKit Inference.
+RoboTeam is the current WebMeet room agent. It is a Ploinky-managed logical participant stored in the encrypted room payload with participant identity `agent_robo_team`, agent type `robo_team`, mode `blackboard_demo`, and runtime `ploinky`.
 
-The optional worker registers with its own worker-name setting and is attached to rooms by explicit admin dispatch. A separate worker stack must be running before dispatch can be accepted. Attach is considered successful only after the LiveKit `AGENT` participant appears in the room with WebMeet attributes for the meeting, agent type, and mode. A `CreateDispatch` response without a real participant is not persisted as an active agent.
+The `webmeet_agent_attach`, `webmeet_agent_list`, and `webmeet_agent_detach` tools manage this persisted room-agent state. They do not create a LiveKit `AGENT` participant, invoke `CreateDispatch`, or require a separate LiveKit Agents worker. RoboTeam appears in the WebMeet roster without a microphone, camera, media track, or independent LiveKit session.
 
-The WebMeet store persists only dispatch metadata, chat, room resources, and participant state. It does not create fake AI participants.
-
-WebMeet rejects AI dispatch for empty rooms. When the last human participant leaves a room or times out from stale presence cleanup, WebMeet automatically detaches every active AI dispatch for that room.
+New rooms normalize RoboTeam state in the encrypted room payload. Administrators can configure it, and admitted participants can invoke the supported Blackboard workflow through `webmeet_event_command`.
 
 ## Room Links
 
 Guest-capable rooms use the same entrypoint as authenticated direct links:
 
 ```text
-/explorer/index.html?roomId=room_<uuid>
+/<webmeetAgent>/roomLoader.html?roomId=room_<uuid>
 ```
 
 Unauthenticated visitors receive a Ploinky guest session scoped to `webmeet:room:<roomId>` from the router. Authenticated users keep their normal Ploinky identity and can still see the dashboard and other allowed rooms.
+
+After admission, guest room refresh and chat use dedicated owner-bound MCP tools. Both require the joined `participantIdentity`; WebMeet verifies that identity against the router-issued guest session before returning the guest-safe room projection or deriving the persisted chat author. The guest roster omits durable account identifiers, and guest chat revalidates the active room, membership, and owner binding inside the same serialized mutation that persists the message.
 
 Room avatar projection is LiveKit-only rendering state, not durable room state. Joins do not persist avatar projections into the room record; after the participant connects, WebMeet publishes the effective avatar through LiveKit participant attributes and the reliable data channel. Authenticated users and guests publish through the room-scoped MCP tool path. Avatar publish failures must not block joining a room.
 

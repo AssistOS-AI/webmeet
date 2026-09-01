@@ -498,9 +498,7 @@ export class ChatComponent {
 
         try {
             const result = await this.runTool('webmeet_chat_send', {
-                meetingId: meeting.id,
-                authorId: session.participantIdentity,
-                authorName: session.participant?.displayName || 'User',
+                roomId: meeting.id,
                 message
             });
             const persistedMessage = result?.message && typeof result.message === 'object'

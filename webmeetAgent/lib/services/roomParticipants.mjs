@@ -489,6 +489,25 @@ export function projectStoredRoomParticipants(payload, meetingId = '') {
     return participants;
 }
 
+function projectGuestRoomParticipant(participant = {}) {
+    const {
+        userId: _userId,
+        attributes: sourceAttributes,
+        ...publicParticipant
+    } = participant && typeof participant === 'object' ? participant : {};
+    const attributes = sourceAttributes && typeof sourceAttributes === 'object'
+        ? { ...sourceAttributes }
+        : {};
+    delete attributes.webmeetUserId;
+    delete attributes.userId;
+    delete attributes.workspaceUserId;
+    delete attributes.ploinkyUserId;
+    if (Object.keys(attributes).length) {
+        publicParticipant.attributes = attributes;
+    }
+    return publicParticipant;
+}
+
 function appendRoboTeamParticipant(payload, participants, meetingId = '') {
     const nextParticipants = Array.isArray(participants) ? [...participants] : [];
     const roboTeam = projectRoboTeamParticipant(payload, meetingId);
@@ -673,11 +692,12 @@ export async function getGuestRoomDetails(context, { meetingId, participantId },
             preserveStoredMembersOnEmpty: true
         }, deps);
     } catch {
-        participants = projectStoredRoomParticipants(payload);
+        participants = projectStoredRoomParticipants(payload, meetingId);
     }
     return {
         meeting: buildRoomView(record),
-        participants,
+        participants: appendRoboTeamParticipant(payload, participants, meetingId)
+            .map(projectGuestRoomParticipant),
         chat: payload.chatMessages,
     };
 }

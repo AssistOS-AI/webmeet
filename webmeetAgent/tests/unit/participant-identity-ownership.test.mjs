@@ -175,6 +175,74 @@ test('guest participant identity requires a verified session and rejects guest/a
     assert.equal(refreshed.participant.displayName, 'Guest A refreshed');
     assert.ok(refreshed.participantToken);
 
+    const details = await dispatch('webmeet_room_guest_get', {
+        roomId: room.id,
+        participantId
+    }, context, guestA);
+    assert.equal(details.meeting.id, room.id);
+    assert.equal(details.participants.some((entry) => entry.id === participantId), true);
+    assert.deepEqual(Object.keys(details).sort(), ['chat', 'meeting', 'participants']);
+
+    const sent = await dispatch('webmeet_chat_send_guest', {
+        roomId: room.id,
+        participantId,
+        message: 'Guest-owned message'
+    }, context, guestA);
+    assert.equal(sent.message.authorId, participantId);
+    assert.equal(sent.message.authorName, 'Guest A refreshed');
+    assert.equal(sent.message.message, 'Guest-owned message');
+
+    const publicDetails = await dispatch('webmeet_room_public_get', {
+        roomId: room.id
+    }, context, guestA);
+    assert.equal(publicDetails.id, room.id);
+
+    const otherPublicRoom = await createMeeting(context, {
+        title: 'Other guest scope',
+        roomType: 'guest',
+        authInfo: ADMIN_AUTH
+    });
+    await assert.rejects(
+        () => dispatch('webmeet_room_public_get', {
+            roomId: otherPublicRoom.id
+        }, context, guestA),
+        /Public room join scope does not match this room/
+    );
+
+    for (const blockedTool of [
+        'webmeet_room_get',
+        'webmeet_chat_list',
+        'webmeet_participant_list',
+        'webmeet_agent_list'
+    ]) {
+        await assert.rejects(
+            () => dispatch(blockedTool, { roomId: room.id }, context, guestA),
+            new RegExp(`guest invocation cannot call "${blockedTool}"`)
+        );
+    }
+    await assert.rejects(
+        () => dispatch('webmeet_room_get', { roomId: room.id }, context, {
+            user: { id: 'opaque-router-guest', roles: ['guest'] }
+        }),
+        /guest invocation cannot call "webmeet_room_get"/
+    );
+
+    await assert.rejects(
+        () => dispatch('webmeet_room_guest_get', {
+            roomId: room.id,
+            participantId
+        }, context, guestB),
+        /participant identity is already bound to another caller/
+    );
+    await assert.rejects(
+        () => dispatch('webmeet_chat_send_guest', {
+            roomId: room.id,
+            participantId,
+            message: 'Guest B impersonation'
+        }, context, guestB),
+        /participant identity is already bound to another caller/
+    );
+
     await assert.rejects(
         () => dispatch('webmeet_room_join_guest', {
             roomId: room.id,

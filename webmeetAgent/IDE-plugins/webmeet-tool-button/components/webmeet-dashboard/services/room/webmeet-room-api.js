@@ -106,17 +106,18 @@ export class GuestWebMeetRoomApi {
         });
     }
 
-    async sendChat({ meetingId = '', roomId = '', message = '' } = {}) {
-        return this.runTool('webmeet_chat_send', {
+    async sendChat({ meetingId = '', roomId = '', participantId = '', message = '' } = {}) {
+        return this.runTool('webmeet_chat_send_guest', {
             roomId: requireString(roomId || meetingId, 'roomId'),
+            participantId: requireString(participantId, 'participantId'),
             message: requireString(message, 'message')
         });
     }
 
-    async loadRoomState({ meetingId = '', roomId = '' } = {}) {
-        return this.runTool('webmeet_room_get', {
+    async loadRoomState({ meetingId = '', roomId = '', participantId = '' } = {}) {
+        return this.runTool('webmeet_room_guest_get', {
             roomId: requireString(roomId || meetingId, 'roomId'),
-            includeParticipants: true
+            participantId: requireString(participantId, 'participantId')
         });
     }
 }
