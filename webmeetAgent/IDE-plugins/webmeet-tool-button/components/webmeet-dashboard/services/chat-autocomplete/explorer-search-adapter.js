@@ -2,6 +2,7 @@ const DEFAULT_EXCLUDES = [
     'node_modules',
     '.git',
     '.ploinky',
+    '.data',
     '.idea',
     '.vscode',
     'dist',

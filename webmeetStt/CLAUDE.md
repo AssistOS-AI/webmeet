@@ -7,6 +7,6 @@
 ## Rules
 
 - Keep the service internal to the `webmeet` network.
-- Store model cache and runtime data under `.ploinky/data/webmeetStt`.
+- Store model cache and runtime data under `.data/webmeetStt`.
 - Do not log raw audio, transcript text, tokens, or request payloads.
 - Update `AGENTS.md` and `CLAUDE.md` together so coding agents receive the same local context.

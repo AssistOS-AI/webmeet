@@ -73,7 +73,7 @@ async function withStore(fn) {
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-scripta-')));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'scripta-unit-test-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
     try {
@@ -324,7 +324,7 @@ test('room creation rolls back the room record when its SCRIPTA folder cannot be
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-room-rollback-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.webmeet-data');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     try {
         const context = await createStoreContext(root);

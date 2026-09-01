@@ -19,6 +19,7 @@ test('Explorer search adapter requests raw search_files payloads without the glo
     const results = await adapter.searchPaths('docs');
     assert.equal(results.length, 1);
     assert.equal(calls[0].name, 'search_files');
+    assert.ok(calls[0].args.excludePatterns.includes('.data'));
     assert.deepEqual(calls[0].options, { raw: true, withLoader: false });
 });
 

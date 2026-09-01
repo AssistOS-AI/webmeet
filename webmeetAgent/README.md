@@ -7,7 +7,7 @@
 - `webmeetAgent`
   - owns the WebMeet MCP surface and room store
   - does not serve a WebMeet-specific HTTP API or public proxy
-  - stores persistent room data under `.ploinky/data/webmeetAgent/data`
+  - stores persistent room data under `.data/webmeetAgent/data`, mounted at required `WEBMEET_DATA_DIR=/data`
   - stores and projects the Ploinky-managed RoboTeam room agent
 - `webmeetInfra/liveKitServerAgent`
   - single Ploinky agent that supervises the WebMeet media runtime

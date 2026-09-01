@@ -32,7 +32,10 @@ export function findWorkspaceRoot(startDir = '') {
 export function getWorkspacePaths(startDir = '') {
     const workspaceRoot = findWorkspaceRoot(startDir);
     const ploinkyDir = path.join(workspaceRoot, '.ploinky');
-    const dataDir = String(process.env.WEBMEET_DATA_DIR || '').trim() || path.join(ploinkyDir, 'webmeet');
+    const dataDir = String(process.env.WEBMEET_DATA_DIR || '').trim();
+    if (!dataDir) {
+        throw new Error('WEBMEET_DATA_DIR is required and must identify the mounted WebMeet data root.');
+    }
     const webmeetDir = dataDir;
     const jobsDir = path.join(webmeetDir, 'jobs');
     const locksDir = path.join(webmeetDir, 'locks');

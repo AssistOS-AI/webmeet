@@ -12,7 +12,7 @@
       "webmeetInfra": "https://github.com/AssistOS-AI/webmeetInfra.git"
     },
     "volumes": {
-      ".ploinky/data/webmeetScribeAgent": "/data"
+      ".data/webmeetScribeAgent": "/data"
     },
     "profiles": {
       "default": {

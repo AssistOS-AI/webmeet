@@ -23,7 +23,7 @@ async function withStore(fn) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-robo-team-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
     try {

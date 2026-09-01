@@ -17,7 +17,7 @@ A WebMeet room is two related objects:
 
 | Concept | Meaning | Stored where |
 | --- | --- | --- |
-| WebMeet room record | Durable application object with a `room_<uuid>` id, title, `roomType`, derived `roomName`, status, expiration, wrapped data-encryption key, and encrypted payload. | `/data/rooms/*.json`, backed by `.ploinky/data/webmeetAgent/data/rooms/*.json`. |
+| WebMeet room record | Durable application object with a `room_<uuid>` id, title, `roomType`, derived `roomName`, status, expiration, wrapped data-encryption key, and encrypted payload. | `/data/rooms/*.json`, backed by `.data/webmeetAgent/data/rooms/*.json`. |
 | LiveKit room | Media room name derived from the WebMeet `roomId`, sanitized and capped for LiveKit. | LiveKit runtime state, coordinated through Redis while active. |
 
 The encrypted WebMeet payload contains members, chat messages, resources, Ploinky room-agent metadata, Blackboard state, and collaboration state. Durable room and workspace events are stored separately as encoded `.event` files. Blackboard state is authoritative and contains widgets, properties, geometry, groups, connections, revision ordering, shared interaction context, and bounded undo/redo history. Runtime-only browser fields such as DOM nodes, widget ordinals, command status, viewport, zoom, scroll, and drag previews are not persisted. Room payloads use AES-256-GCM with per-room data keys wrapped by `PLOINKY_WEBMEET_MASTER_KEY`. That key is an agent-scoped generated secret declared with `generatedSecret: true`. The store does not support automatic legacy key fallback.

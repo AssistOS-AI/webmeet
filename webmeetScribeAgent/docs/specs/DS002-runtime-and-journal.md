@@ -15,7 +15,7 @@ The worker must require a meeting identifier, connect without an audio pipeline,
 
 Analysis must use the configured time and word checkpoints and must capture an immutable transcript checkpoint before invoking the meeting-notes skill. The input must include the active document, cumulative semantic memory, uncompacted chronological transcript, and editable title-and-chapter structure. Text that arrives during analysis remains pending for the next sequential revision.
 
-The worker must persist temporary encrypted recovery state, remove compacted transcript prefixes only after validated publication, divide oversized pending backlogs into bounded checkpoints, and delete the journal after successful finalization or after the configured recovery expiry. A generated document must be validated as bounded Markdown with one leading H1, the configured chapter order, and no SCRIPTA metadata before persistence.
+The worker must persist temporary encrypted recovery state under the `/data` runtime mount backed by `.data/webmeetScribeAgent`, remove compacted transcript prefixes only after validated publication, divide oversized pending backlogs into bounded checkpoints, and delete the journal after successful finalization or after the configured recovery expiry. A generated document must be validated as bounded Markdown with one leading H1, the configured chapter order, and no SCRIPTA metadata before persistence.
 
 ## Conclusion
 

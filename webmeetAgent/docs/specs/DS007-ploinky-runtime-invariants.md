@@ -46,7 +46,7 @@ Agent-local contract:
 - Authentication: Workspace room operations require authenticated route/MCP context. Public room entry requires a Ploinky public-protected invocation scoped to the target room.
 - Router surface: WebMeet does not publish a product-specific additional-server route. Browser calls use the generic Ploinky MCP route, and direct room entry uses the whitelisted `roomLoader.html` plus plugin/assets routing owned by Ploinky core.
 - Persistent state: Room data lives under `/data`; LiveKit secrets stay server-side.
-- Volumes: `.ploinky/data/webmeetAgent/data:/data`.
+- Volumes: `.data/webmeetAgent/data:/data`; `WEBMEET_DATA_DIR` is required and path resolution has no fallback.
 - Dependencies: Base startup uses Ploinky's shared prepared dependency cache. WebMeet must not add native external AI worker dependencies.
 - Secret handling: `PLOINKY_WEBMEET_MASTER_KEY` is an agent-scoped generated
 secret. LiveKit API key/secret are shared generated inputs for participant JWTs and the media runtime, but public/private transport is still selected by the active topology generation. The external TURN long-term secret is never present in the WebMeet environment: Ploinky core returns only short-lived credentials to this exact current-enable-generation consumer through the private broker. Router assertions are request-bound runtime credentials, not shared environment secrets or user/admin credentials.

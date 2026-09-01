@@ -11,7 +11,7 @@ WebMeet STT runs as a Python service with a manifest-defined bridge attachment a
 
 ## Core Content
 
-The manifest must use the webmeet bridge as the primary network attachment, mount .ploinky/data/webmeetStt at /data, and start the scripts/startAgent.sh entrypoint. The service must not publish a physical host port or declare a Router browser route. Readiness must use the loopback healthcheck endpoint.
+The manifest must use the webmeet bridge as the primary network attachment, mount `.data/webmeetStt` at `/data`, and start the `scripts/startAgent.sh` entrypoint. The service must not publish a physical host port or declare a Router browser route. Readiness must use the loopback healthcheck endpoint.
 
 WEBMEET_STT_PORT defaults to 9000. WHISPER_MODEL defaults to base, WHISPER_LANGUAGE to auto, WHISPER_DEVICE to cpu, WHISPER_COMPUTE_TYPE to int8, and WEBMEET_STT_DENOISE to dtln. The service must preserve these defaults unless an active Ploinky profile overrides them.
 

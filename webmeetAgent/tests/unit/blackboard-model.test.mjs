@@ -2816,7 +2816,7 @@ test('blackboard image events authorize the room before resolving Explorer media
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-auth-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
 
@@ -2868,7 +2868,7 @@ test('webmeet store persists blackboard on the RoboTeam agent and appends final 
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
 
@@ -3260,7 +3260,7 @@ test('webmeet blackboard submit derives participant authority from joined partic
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-spoof-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
 
@@ -3334,7 +3334,7 @@ test('webmeet blackboard strips non-admin visibility authority from final change
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webmeet-blackboard-visibility-'));
     const previousDataDir = process.env.WEBMEET_DATA_DIR;
     const previousMasterKey = process.env.PLOINKY_WEBMEET_MASTER_KEY;
-    process.env.WEBMEET_DATA_DIR = path.join(root, '.ploinky', 'webmeet');
+    process.env.WEBMEET_DATA_DIR = path.join(root, '.data', 'webmeetAgent', 'data');
     process.env.PLOINKY_WEBMEET_MASTER_KEY = 'unit-test-master-key';
     await fs.mkdir(path.join(root, '.ploinky'), { recursive: true });
 

@@ -55,7 +55,7 @@ The primary implementation map is:
 
 The active Explorer WebMeet UI path is the IDE plugin under `IDE-plugins/webmeet-tool-button`. Any older router-level `/webmeet` surface must not be treated as the current product entry point unless a future specification reintroduces it.
 
-`webmeetAgent` must keep its persistent store under the configured WebMeet data directory, normally the `/data` container mount backed by `.ploinky/data/webmeetAgent/data`.
+`webmeetAgent` must keep its persistent store under required `WEBMEET_DATA_DIR`, normally the `/data` container mount backed by `.data/webmeetAgent/data`. Runtime resolution must fail closed when the variable is absent and must not derive a workspace fallback.
 
 `webmeetAgent` must not own infrastructure supervision. Its manifest enables `webmeetInfra/liveKitServerAgent` and `webmeetScribeAgent` with `no-wait`, leaving their lifecycle to Ploinky. `scripts/startAgent.sh` must only start the WebMeet MCP AgentServer. It must not directly launch sibling processes, start a WebMeet HTTP API/proxy, import `@livekit/agents`, start Redis, or start LiveKit Server.
 

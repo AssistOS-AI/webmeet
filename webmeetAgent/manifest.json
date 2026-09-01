@@ -29,7 +29,7 @@
     ]
   },
   "volumes": {
-    ".ploinky/data/webmeetAgent/data": "/data"
+    ".data/webmeetAgent/data": "/data"
   },
   "profiles": {
     "default": {

@@ -24,6 +24,7 @@ async function freshContext() {
 
     process.env.PLOINKY_WEBMEET_MASTER_KEY = MASTER_KEY;
     process.env.PLOINKY_WORKSPACE_ROOT = dir;
+    process.env.WEBMEET_DATA_DIR = path.join(dir, '.data', 'webmeetAgent', 'data');
     process.env.LIVEKIT_API_KEY = 'test-livekit-api-key';
     process.env.LIVEKIT_API_SECRET = 'test-livekit-api-secret';
 
@@ -164,6 +165,7 @@ describe('concurrent meeting mutations (lock + in-process queue)', () => {
                 env: {
                     ...process.env,
                     PLOINKY_WORKSPACE_ROOT: tmpRoot,
+                    WEBMEET_DATA_DIR: path.join(tmpRoot, '.data', 'webmeetAgent', 'data'),
                     PLOINKY_WEBMEET_MASTER_KEY: MASTER_KEY,
                     WEBMEET_LOCK_TIMEOUT_MS: '5000',
                     WEBMEET_LOCK_STALE_TTL_MS: '5000',
