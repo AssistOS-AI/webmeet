@@ -18,21 +18,102 @@
           <h1>Architecture</h1>
           <p>WebMeet separates workspace navigation, protected meeting state, realtime media, and collaborative document ownership so each service controls the data and operations within its domain.</p>
         </section>
-        <section>
-          <h2>Runtime Boundaries</h2>
-          <pre class="mermaid">
-flowchart LR
-  Explorer[Explorer host shell] -->|opens plugin and supplies identity| WebMeet[WebMeet control plane]
-  WebMeet -->|private media operations| LiveKit[LiveKit media service]
-  WebMeet -->|room events and protected state| Store[Encrypted room store]
-  WebMeet -->|authorized document operations| Scripta[Explorer-owned SCRIPTA and Automerge]
-  WebMeet -->|delegated notes sessions| Secretary[Meeting Secretary]
-  WebMeet -->|persisted logical state| RoboTeam[Ploinky-managed RoboTeam]
-  LiveKit -->|audio, video, screen share, data| Browser[Participant browsers]
-  WebMeet -->|room projections and commands| Browser
-          </pre>
-          <p class="diagram-caption"><em>WebMeet coordinates meeting state while media and collaborative documents remain with their owning services.</em></p>
-        </section>
+        <div>
+          <h2>WebMeet Control And Collaboration Stack</h2>
+          <p>The diagram follows the three architectural layers used by WebMeet. The participant enters through Explorer and Ploinky Router, <code>webmeetAgent</code> authorizes the application capabilities, and durable state or delegated collaboration remains with its owning service.</p>
+          <figure class="diagram">
+            <pre class="mermaid">
+flowchart TB
+  subgraph Access["Client And Identity Layer"]
+    direction LR
+    Browser[Participant browser] -->|opens WebMeet| Explorer[Explorer host shell]
+    Explorer -->|signed MCP invocation| Router[Ploinky Router and Auth]
+  end
+
+  subgraph Application["WebMeet Application Layer"]
+    direction TB
+    WebMeet[webmeetAgent control plane and MCP authorization]
+    Rooms[Rooms, guest access, participants]
+    Collaboration[Chat, events, resources]
+    Workspace[Blackboard, SCRIPTA, room agents]
+    MediaControl[Media admission and room control]
+    WebMeet --> Rooms
+    WebMeet --> Collaboration
+    WebMeet --> Workspace
+    WebMeet --> MediaControl
+  end
+
+  subgraph Durable["Durable Collaboration Layer"]
+    direction LR
+    Store[(Encrypted room store)]
+    Scripta[Explorer-owned SCRIPTA and Automerge]
+    RoboTeam[Ploinky-managed RoboTeam]
+    Secretary[Meeting Secretary]
+  end
+
+  Access -->|verified identity, roles, guest scope| WebMeet
+  Rooms -->|protected room state| Store
+  Collaboration -->|persisted collaboration state| Store
+  Workspace -->|Blackboard and agent metadata| Store
+  Workspace -->|authorized document operations| Scripta
+  Workspace -->|logical room-agent operations| RoboTeam
+  WebMeet -->|delegated notes coordination| Secretary
+
+  classDef client fill:#dbeafe,stroke:#2563eb,color:#172554;
+  classDef control fill:#ede9fe,stroke:#7c3aed,color:#2e1065;
+  classDef durable fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  class Browser,Explorer,Router client;
+  class WebMeet,Rooms,Collaboration,Workspace,MediaControl control;
+  class Store,Scripta,RoboTeam,Secretary durable;
+            </pre>
+            <figcaption>WebMeet control and collaboration stack</figcaption>
+          </figure>
+
+          <h2>Media Infrastructure Layer</h2>
+          <p><code>webmeetInfra/liveKitServerAgent</code> supervises <a href="wiki.html#definition-livekit">LiveKit</a> Server, Redis, and Egress. WebMeet gives the participant browser a participant token, the Router signaling path, and the current RTC configuration. Ploinky Router carries public signaling and authenticated private Twirp calls. When the active topology declares external TURN, the Ploinky credential broker returns short-lived credentials to WebMeet, while the external TURN service alone relays WebRTC traffic when the direct media path is unavailable.</p>
+          <figure class="diagram">
+            <pre class="mermaid">
+sequenceDiagram
+  participant WebMeet as WebMeet control plane
+  participant Broker as Ploinky TURN credential broker
+  participant Browser as Participant browser
+  participant Router as Ploinky Router
+  participant LiveKit as LiveKit Server
+  opt Active topology declares external TURN
+    WebMeet->>Broker: Current-generation credential request
+    Broker-->>WebMeet: Short-lived TURN credentials
+  end
+  WebMeet-->>Browser: Participant JWT, signaling path, RTC config
+  Browser->>Router: Public signaling
+  Router->>LiveKit: Routed signaling
+  WebMeet->>Router: Authenticated private Twirp request
+  Router->>LiveKit: RoomService or AgentDispatchService call
+            </pre>
+            <figcaption>LiveKit admission and control flow</figcaption>
+          </figure>
+          <figure class="diagram">
+            <pre class="mermaid">
+flowchart TB
+  Browser[Participant browser] -->|direct WebRTC traffic| LiveKit
+  Browser -.->|when the direct path is unavailable| Turn[External TURN service]
+  Turn -->|relayed WebRTC traffic| LiveKit
+
+  subgraph Runtime["webmeetInfra/liveKitServerAgent"]
+    direction LR
+    LiveKit[LiveKit Server]
+    LiveKit <--> Redis[(Redis)]
+    Egress[LiveKit Egress] -->|WebSocket connection| LiveKit
+    Egress -->|job coordination| Redis
+  end
+
+  classDef client fill:#dbeafe,stroke:#2563eb,color:#172554;
+  classDef media fill:#ffedd5,stroke:#ea580c,color:#7c2d12;
+  class Browser client;
+  class LiveKit,Redis,Egress,Turn media;
+            </pre>
+            <figcaption>LiveKit media transport and supervised runtime</figcaption>
+          </figure>
+        </div>
         <section>
           <h2>Control Plane And Durable State</h2>
           <p>The agent owns room creation, admission, roles, archives, deletion, guest scope, authenticated and owner-bound guest chat records, resources, Blackboard state, and Ploinky-managed room-agent metadata. Room payloads are encrypted with AES-256-GCM and per-room data keys wrapped by <code>PLOINKY_WEBMEET_MASTER_KEY</code>. The central <code>WEBMEET_EVENT_TYPES</code> contract separates persisted events from realtime-only events and is shared by store and browser code.</p>

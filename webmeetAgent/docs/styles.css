@@ -69,6 +69,8 @@ pre, table { max-width: 100%; overflow-x: auto; }
 figure { margin-inline: 0; }
 figcaption { text-align: center; }
 .diagram-caption { text-align: center; }
+.diagram .mermaid { display: flex; justify-content: center; }
+.diagram figcaption { margin-top: .5rem; text-align: center; font-style: italic; }
 table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; }
 th, td { padding: .7rem; border: 1px solid #d7dee8; text-align: left; vertical-align: top; }
 th { background: #f1f4f8; }
