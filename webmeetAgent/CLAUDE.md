@@ -30,7 +30,7 @@ webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI dispatch metadata, r
 
 ## Runtime Defaults
 
-Runs `scripts/startAgent.sh` and the WebMeet MCP AgentServer in `docker.io/assistos/ploinky-node:24-bookworm-tools` on the `webmeet` network. The optional self-hosted LiveKit AI worker is owned by the separate `webmeetLivekitAiAgent` Ploinky agent and is not part of the default Explorer dependency graph.
+Runs `scripts/startAgent.sh` and the WebMeet MCP AgentServer in `docker.io/assistos/ploinky-node@sha256:accd925fcbf460c1f4c7a5cd9e2d46539c615bbfad2e896cabb7556d8050a669` on the `webmeet` network. The optional self-hosted LiveKit AI worker is owned by the separate `webmeetLivekitAiAgent` Ploinky agent and is not part of the default Explorer dependency graph.
 
 ## Key Paths
 
