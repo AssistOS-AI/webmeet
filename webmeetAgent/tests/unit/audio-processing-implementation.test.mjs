@@ -29,6 +29,16 @@ const settingsModalHtmlPath = path.join(
     'IDE-plugins/webmeet-tool-button/components/webmeet-settings-modal/webmeet-settings-modal.html'
 );
 
+function readVoiceProcessingOptions(settingsTemplate) {
+    const select = settingsTemplate.match(/<custom-select\b[^>]*\bid="webmeetVoiceProcessingMode"[^>]*>/)?.[0];
+    assert.ok(select, 'voice processing must use the shared custom-select control');
+    const encodedOptions = select.match(/\bdata-options="([^"]+)"/)?.[1];
+    assert.ok(encodedOptions, 'voice processing must declare its selectable modes');
+    const options = JSON.parse(decodeURIComponent(encodedOptions));
+    assert.ok(Array.isArray(options), 'voice processing options must be an array');
+    return options;
+}
+
 test('RNNoise initialization timeout disposes the worklet node', async () => {
     const factorySource = await fs.readFile(audioProcessingPath, 'utf8');
     const workletSource = await fs.readFile(rnnoiseWorkletPath, 'utf8');
@@ -85,7 +95,10 @@ test('automatic voice processing falls back without overwriting the automatic pr
     assert.match(controllerSource, /microphoneGain: 1/);
     assert.match(controllerSource, /humFilter: 'off'/);
     assert.match(controllerSource, /setAudioCleanupStatus\('browser'\)/);
-    assert.match(settingsTemplate, /Voice Focus, recommended/);
+    assert.deepEqual(
+        readVoiceProcessingOptions(settingsTemplate).filter((option) => option.value === 'auto'),
+        [{ value: 'auto', label: 'Voice Focus, recommended' }]
+    );
     assert.match(dashboardTemplate, /Using browser audio cleanup/);
     assert.doesNotMatch(controllerSource, /replaceUnsupportedVoiceProcessingMode\('standard', 'auto/);
 });
@@ -98,7 +111,10 @@ test('manual audio controls switch automatic voice processing to custom instead 
         'IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/media-settings-methods.js'
     ), 'utf8');
 
-    assert.match(settingsTemplate, /<option value="custom">Custom manual controls<\/option>/);
+    assert.deepEqual(
+        readVoiceProcessingOptions(settingsTemplate).filter((option) => option.value === 'custom'),
+        [{ value: 'custom', label: 'Custom manual controls' }]
+    );
     assert.match(mediaSettingsSource, /switchAutomaticVoiceProcessingToCustom/);
     assert.match(mediaSettingsSource, /this\.voiceProcessingModeSelect\.value = 'custom'/);
     assert.doesNotMatch(mediaSettingsSource, /control\.disabled = automaticVoiceProcessing/);
