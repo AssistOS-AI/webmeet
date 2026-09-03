@@ -1,5 +1,3 @@
-import { buildAgentRuntimeWaitUrl } from '../../../explorer/shared/ui/agent-runtime-loader/agent-runtime-wait-route.js';
-
 export class WebMeetToolButton {
     constructor(element, invalidate) {
         this.element = element;
@@ -101,20 +99,11 @@ export class WebMeetToolButton {
         return new URL(`/${encodeURIComponent(agentName)}/roomLoader.html`, window.location.origin);
     }
 
-    buildRuntimeWaitUrl(targetUrl) {
-        return buildAgentRuntimeWaitUrl({
-            agentRef: `AchillesIDE/${this.getWebMeetAgentName()}`,
-            label: 'WebMeet',
-            targetUrl
-        });
-    }
-
     openDashboard = (event) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
         const targetUrl = this.buildRoomLoaderUrl();
-        const waitingUrl = this.buildRuntimeWaitUrl(targetUrl);
-        window.open(waitingUrl.toString(), '_blank', 'noopener');
+        window.open(targetUrl.toString(), '_blank', 'noopener');
         this.scheduleInitialTabLoaderCleanup();
     };
 }

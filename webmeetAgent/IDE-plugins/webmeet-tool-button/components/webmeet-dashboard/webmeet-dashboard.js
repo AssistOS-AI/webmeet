@@ -41,10 +41,6 @@ import {
     normalizeCurrentActor,
     WEBMEET_ROOMS_CATEGORY_ID
 } from './services/dashboard-utils.js';
-import {
-    isAgentRuntimeStartupError,
-    mountAgentRuntimeLoader
-} from '/explorer/shared/ui/agent-runtime-loader/agent-runtime-loader.js';
 
 let avatarSettingsFormRegistrationPromise = null;
 
@@ -495,29 +491,7 @@ export class WebmeetDashboard {
         if (!this.initialDashboardDataLoadStarted) {
             this.initialDashboardDataLoadStarted = true;
             const loadInitialData = async () => {
-                try {
-                    await this.loadInitialDashboardData?.({ reportError: false });
-                } catch (error) {
-                    if (!isAgentRuntimeStartupError(error)) {
-                        this.setError?.(error instanceof Error ? error.message : String(error));
-                        return;
-                    }
-                    const dashboard = this.element.querySelector('.webmeet-dashboard');
-                    const host = this.element.querySelector('[data-role="runtime-loader"]');
-                    dashboard?.classList.add('webmeet-runtime-pending');
-                    try {
-                        await mountAgentRuntimeLoader(host, {
-                            key: 'webmeet-initial-runtime',
-                            agentRef: 'AchillesIDE/webmeetAgent',
-                            label: 'WebMeet',
-                            operation: () => this.loadInitialDashboardData?.({ reportError: false }),
-                            onReady: () => dashboard?.classList.remove('webmeet-runtime-pending')
-                        });
-                    } catch (loaderError) {
-                        dashboard?.classList.remove('webmeet-runtime-pending');
-                        this.setError?.(loaderError instanceof Error ? loaderError.message : String(loaderError));
-                    }
-                }
+                await this.loadInitialDashboardData?.();
             };
             if (typeof window.requestAnimationFrame === 'function') {
                 window.requestAnimationFrame(loadInitialData);

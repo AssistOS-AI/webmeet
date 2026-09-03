@@ -1938,7 +1938,7 @@ test("dashboard ready means mounted UI, not completed initial data loading", asy
     const afterRenderSource = source.slice(afterRenderStart, afterRenderEnd);
     const readyIndex = afterRenderSource.indexOf("window.dispatchEvent(new CustomEvent('webmeet-dashboard-ready'))");
     const readyFlagIndex = afterRenderSource.indexOf('window.__WEBMEET_DASHBOARD_READY__ = true');
-    const loadInitialIndex = afterRenderSource.indexOf('await this.loadInitialDashboardData?.({ reportError: false })');
+    const loadInitialIndex = afterRenderSource.indexOf('await this.loadInitialDashboardData?.()');
     const scheduleIndex = afterRenderSource.indexOf('window.requestAnimationFrame(loadInitialData)');
     const beforeRenderStart = source.indexOf('async beforeRender()');
     const beforeRenderEnd = source.indexOf('\n    async afterRender()', beforeRenderStart);

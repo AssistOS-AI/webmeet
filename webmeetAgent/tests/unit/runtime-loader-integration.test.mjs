@@ -1,83 +1,112 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
 
+import { WebMeetToolButton } from '../../IDE-plugins/webmeet-tool-button/webmeet-tool-button.js';
 import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-session-methods.js';
 
-const dashboardRoot = path.resolve(
-    import.meta.dirname,
-    '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard'
-);
-const toolButtonPath = path.resolve(
-    import.meta.dirname,
-    '../../IDE-plugins/webmeet-tool-button/webmeet-tool-button.js'
-);
-const sharedRuntimeLoaderPath = path.resolve(
-    import.meta.dirname,
-    '../../../explorer/shared/ui/agent-runtime-loader/agent-runtime-loader.js'
-);
-const explorerMainPath = path.resolve(import.meta.dirname, '../../../explorer/main.js');
-const explorerIndexPath = path.resolve(import.meta.dirname, '../../../explorer/index.html');
+function setBrowserContext(t, overrides = {}) {
+    for (const [key, value] of Object.entries({
+        window: { location: new URL('https://workspace.example/explorer/index.html') },
+        __WEBMEET_INITIAL_ROOM_ID__: '',
+        __WEBMEET_GUEST_ENTRY__: false,
+        ...overrides,
+    })) {
+        const previous = Object.getOwnPropertyDescriptor(globalThis, key);
+        Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+        t.after(() => {
+            if (previous) {
+                Object.defineProperty(globalThis, key, previous);
+            } else {
+                delete globalThis[key];
+            }
+        });
+    }
+}
 
-test('WebMeet shows the runtime loader only after an actual startup failure', () => {
-    const source = fs.readFileSync(path.join(dashboardRoot, 'webmeet-dashboard.js'), 'utf8');
-    const template = fs.readFileSync(path.join(dashboardRoot, 'webmeet-dashboard.html'), 'utf8');
-    assert.match(source, /\/explorer\/shared\/ui\/agent-runtime-loader\/agent-runtime-loader\.js/);
-    assert.match(source, /await this\.loadInitialDashboardData\?\.\(\{ reportError: false \}\)/);
-    assert.match(source, /if \(!isAgentRuntimeStartupError\(error\)\)/);
-    assert.match(source, /classList\.add\('webmeet-runtime-pending'\)/);
-    assert.match(source, /mountAgentRuntimeLoader\(host,/);
-    assert.match(source, /operation: \(\) => this\.loadInitialDashboardData\?\.\(\{ reportError: false \}\)/);
-    assert.match(template, /data-role="runtime-loader"/);
-    assert.doesNotMatch(template, /webmeet-dashboard webmeet-runtime-pending/);
-});
+for (const { name, context, attribute, expectedPath } of [
+    { name: 'default agent', expectedPath: '/webmeetAgent/roomLoader.html' },
+    { name: 'plugin agent alias', context: { pluginAgent: 'meeting-test' }, expectedPath: '/meeting-test/roomLoader.html' },
+    { name: 'host agent alias', context: { agent: 'meeting-host' }, expectedPath: '/meeting-host/roomLoader.html' },
+    { name: 'element agent alias', attribute: 'meeting-element', expectedPath: '/meeting-element/roomLoader.html' },
+    { name: 'blank alias', context: { pluginAgent: '  ' }, expectedPath: '/webmeetAgent/roomLoader.html' },
+    { name: 'alias containing URL delimiters', context: { pluginAgent: 'team/meet?#' }, expectedPath: '/team%2Fmeet%3F%23/roomLoader.html' },
+]) {
+    test(`WebMeet toolbar directly opens the room loader for ${name}`, (t) => {
+        const opened = [];
+        const calls = [];
+        setBrowserContext(t, {
+            window: {
+                location: new URL('https://workspace.example/explorer/index.html#workspace'),
+                open: (...args) => opened.push(args),
+            },
+        });
+        const button = new WebMeetToolButton({
+            getAttribute: (key) => key === 'data-plugin-agent' ? attribute || null : null,
+        }, () => {});
+        button.updateHostContext(context);
+        button.scheduleInitialTabLoaderCleanup = () => calls.push('cleanup');
 
-test('Explorer WebMeet launch opens the runtime wait route before roomLoader', () => {
-    const source = fs.readFileSync(toolButtonPath, 'utf8');
-    assert.match(source, /buildAgentRuntimeWaitUrl/);
-    assert.match(source, /agentRef: `AchillesIDE\/\$\{this\.getWebMeetAgentName\(\)\}`/);
-    assert.match(source, /window\.open\(waitingUrl\.toString\(\), '_blank', 'noopener'\)/);
-    assert.doesNotMatch(source, /window\.open\(targetUrl\.toString\(\), '_blank', 'noopener'\)/);
-});
+        button.openDashboard({
+            preventDefault: () => calls.push('preventDefault'),
+            stopPropagation: () => calls.push('stopPropagation'),
+        });
 
-test('Explorer keeps one bootstrap loader for the complete WebMeet wait', () => {
-    const source = fs.readFileSync(explorerMainPath, 'utf8');
-    const template = fs.readFileSync(explorerIndexPath, 'utf8');
-    const waitBranch = source.indexOf('await waitForInitialAgentRuntime(runtimeWaitRoute)');
-    const webSkelBootstrap = source.indexOf("await WebSkel.initialise('webskel.json')");
+        assert.deepEqual(opened, [[`https://workspace.example${expectedPath}`, '_blank', 'noopener']]);
+        assert.deepEqual(calls, ['preventDefault', 'stopPropagation', 'cleanup']);
+    });
+}
 
-    assert.ok(waitBranch >= 0);
-    assert.ok(webSkelBootstrap > waitBranch);
-    assert.match(source, /await probeAgentRuntimeTarget\(route\.targetUrl\)/);
-    assert.match(source, /await probeAgentRuntimeMcp\(route\.agentRef, assistosSDK\)/);
-    assert.match(source, /await probeAgentRuntimeRouteStability\(route\.agentRef\)/);
-    assert.match(template, /data-role="runtime-retry" hidden/);
-});
+for (const status of [401, 500, 503]) {
+    test(`initial dashboard ${status} failures use ordinary error reporting`, async (t) => {
+        setBrowserContext(t);
+        const errors = [];
+        let attempts = 0;
+        const failure = Object.assign(new Error(`Room loading failed (${status}).`), { status });
+        const dashboard = {
+            initialRoomId: '',
+            loadMeetings: async () => {
+                attempts += 1;
+                throw failure;
+            },
+            startWorkspaceEvents: () => assert.fail('Workspace events must wait for room loading.'),
+            renderAll: () => assert.fail('A failed room list must not be treated as loaded.'),
+            setError: (message) => errors.push(message),
+        };
 
-test('initial dashboard loading exposes startup failures only to the conditional loader', async () => {
-    const startupError = Object.assign(new Error('WebMeet is still starting.'), { status: 503 });
-    const errors = [];
+        await dashboardSessionMethods.loadInitialDashboardData.call(dashboard);
+
+        assert.equal(attempts, 1);
+        assert.deepEqual(errors, [failure.message]);
+    });
+}
+
+test('initial dashboard room loading starts workspace events and renders the room list', async (t) => {
+    setBrowserContext(t);
+    const calls = [];
     const dashboard = {
         initialRoomId: '',
-        loadMeetings: async () => {
-            throw startupError;
-        },
-        setError: (message) => errors.push(message)
+        loadMeetings: async () => calls.push('loadMeetings'),
+        startWorkspaceEvents: () => calls.push('startWorkspaceEvents'),
+        renderAll: () => calls.push('renderAll'),
+        setError: (message) => assert.fail(message),
     };
 
-    await assert.rejects(
-        () => dashboardSessionMethods.loadInitialDashboardData.call(dashboard, { reportError: false }),
-        (error) => error === startupError
-    );
-    assert.deepEqual(errors, []);
-
     await dashboardSessionMethods.loadInitialDashboardData.call(dashboard);
-    assert.deepEqual(errors, ['WebMeet is still starting.']);
+
+    assert.deepEqual(calls, ['loadMeetings', 'startWorkspaceEvents', 'renderAll']);
 });
 
-test('public WebMeet can load the shared runtime component without protected Explorer modules', () => {
-    const source = fs.readFileSync(sharedRuntimeLoaderPath, 'utf8');
-    assert.match(source, /from '\.\.\/runtime-component-registration\.js'/);
-    assert.doesNotMatch(source, /explorer\/utils|pluginUtils\.ui/);
+test('initial guest dashboard prepares only the linked room', async (t) => {
+    setBrowserContext(t, { __WEBMEET_GUEST_ENTRY__: true });
+    const roomIds = [];
+    const dashboard = {
+        initialRoomId: 'invited-room',
+        prepareGuestRoomEntry: async (roomId) => roomIds.push(roomId),
+        loadMeetings: () => assert.fail('Guest entry must not load workspace rooms.'),
+        setError: (message) => assert.fail(message),
+    };
+
+    await dashboardSessionMethods.loadInitialDashboardData.call(dashboard);
+
+    assert.deepEqual(roomIds, ['invited-room']);
 });
