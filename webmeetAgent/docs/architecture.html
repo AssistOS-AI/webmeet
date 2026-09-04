@@ -138,6 +138,7 @@ flowchart TB
         <section>
           <h2>Browser Application</h2>
           <p>The room loader initializes WebSkel from the shared Explorer library and mounts the WebMeet application. The browser combines room projections, LiveKit tracks, chat, Blackboard, SCRIPTA, media controls, and room settings while all authoritative mutations continue through the agent's configured tool boundary.</p>
+          <p>Avatar settings load the pack catalog from Explorer's generated public asset <code>/explorer/shared/generated/axi-face-packs.json</code>. Explorer prepares this catalog without modifying the AxiFace checkout; individual pack manifests and rendering assets retain their <code>/explorer/shared/vendor/axi-face/</code> URLs.</p>
         </section>
       </div>
     </div>

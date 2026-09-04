@@ -36,6 +36,7 @@ const currentUserCache = {
     promise: null
 };
 const AXIFACE_ASSET_BASE_URL = '/explorer/shared/vendor/axi-face';
+const AXIFACE_PACK_INDEX_URL = '/explorer/shared/generated/axi-face-packs.json';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -233,7 +234,7 @@ export async function loadAxiFaceGeneratedFacePalettes() {
 
 export async function loadAxiFacePacks() {
     if (!axiFacePacksPromise) {
-        axiFacePacksPromise = fetch(`${getAxiFaceAssetBaseUrl()}/packs/index.json`, {
+        axiFacePacksPromise = fetch(AXIFACE_PACK_INDEX_URL, {
             credentials: 'include',
             headers: { Accept: 'application/json' }
         })
