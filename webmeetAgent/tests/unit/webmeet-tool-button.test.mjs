@@ -10,7 +10,7 @@ test('WebMeet toolbar opens the shared expanded modal with a tab fallback', asyn
 
     assert.equal(config.toolbarModal.mode, 'iframe');
     assert.equal(config.toolbarModal.url, '/webmeetAgent/roomLoader.html');
-    assert.equal(config.toolbarModal.agentRef, 'AchillesIDE/webmeetAgent');
+    assert.equal(config.toolbarModal.agentRef, 'webmeet/webmeetAgent');
     assert.match(source, /openExpandedModal/);
     assert.match(source, /pluginToolbarModal/);
     assert.match(source, /window\.open\(/);

@@ -37,17 +37,16 @@ import {
     startMeetingNotesSession,
 } from '../../lib/meetingNotes/service.mjs';
 import { dispatch } from '../../tools/webmeet_tool.mjs';
-import { createMarkdownCrdtStore } from '../../../explorer/utils/server/markdown-crdt/markdown-crdt-store.mjs';
-import { createScriptaCrdtService } from '../../../explorer/utils/server/markdown-crdt/scripta-crdt-service.mjs';
-import {
-    changeDocument,
-    getDocumentChanges,
-    loadDocument,
-} from '../../../explorer/utils/server/markdown-crdt/automerge-adapter.mjs';
+import { explorerPath, explorerUrl } from '../../../test-support/explorer-root.mjs';
 import {
     parseWebMeetEvent,
     WEBMEET_EVENT_TYPES,
 } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
+
+const markdownCrdtUrl = (name) => explorerUrl('explorer', 'utils', 'server', 'markdown-crdt', name);
+const { createMarkdownCrdtStore } = await import(markdownCrdtUrl('markdown-crdt-store.mjs'));
+const { createScriptaCrdtService } = await import(markdownCrdtUrl('scripta-crdt-service.mjs'));
+const { changeDocument, getDocumentChanges, loadDocument } = await import(markdownCrdtUrl('automerge-adapter.mjs'));
 import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
 import {
     createGuestParticipantAuth,
@@ -147,7 +146,7 @@ test('WebMeet delegates SCRIPTA persistence to Explorer without a local state or
     const serviceSource = await fs.readFile(new URL('../../lib/scripta/service.mjs', import.meta.url), 'utf8');
     const clientSource = await fs.readFile(new URL('../../lib/scripta/explorer-crdt-client.mjs', import.meta.url), 'utf8');
     const mcpConfig = JSON.parse(await fs.readFile(new URL('../../mcp-config.json', import.meta.url), 'utf8'));
-    const explorerMcpConfig = JSON.parse(await fs.readFile(new URL('../../../explorer/mcp-config.json', import.meta.url), 'utf8'));
+    const explorerMcpConfig = JSON.parse(await fs.readFile(explorerPath('explorer', 'mcp-config.json'), 'utf8'));
     assert.doesNotMatch(serviceSource, /node:fs|node:path|readFile|writeFile/);
     assert.match(serviceSource, /scriptaExplorer/);
     assert.match(clientSource, /AgentMcpClient/);
@@ -397,7 +396,7 @@ test('Meeting Notes adopts an unreferenced first document instead of creating a 
         });
         const secretaryAuth = {
             user: ADMIN.user,
-            agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+            agent: { principalId: 'agent:webmeet/webmeetScribeAgent' },
         };
         const started = await startMeetingNotesSession(context, {
             roomId: meeting.roomId,
@@ -464,7 +463,7 @@ test('the first queued speech creates an empty active Meeting Notes document', a
             payload.roboTeamSettings = { meetingNotes: { enabled: true, timeZone: 'Europe/Bucharest' } };
         });
         const secretaryAuth = {
-            agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+            agent: { principalId: 'agent:webmeet/webmeetScribeAgent' },
         };
         const started = await startMeetingNotesSession(context, {
             roomId: meeting.roomId,
@@ -643,12 +642,12 @@ test('complete Meeting Notes Markdown is merged and committed by the Explorer SC
             participantId: 'agent_meeting_secretary',
             authInfo: {
                 user: { id: 'local:admin', username: 'admin', roles: ['admin'] },
-                agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+                agent: { principalId: 'agent:webmeet/webmeetScribeAgent' },
             },
         });
         const payload = decryptRoomPayload(context, await loadRoomRecord(context, meeting.roomId));
         const entry = payload.scripta.documents[created.resourceId];
-        assert.equal(payload.scripta.audit.at(-1).participantId, 'agent:AchillesIDE/webmeetScribeAgent');
+        assert.equal(payload.scripta.audit.at(-1).participantId, 'agent:webmeet/webmeetScribeAgent');
         const savedMarkdown = await fs.readFile(path.join(root, entry.path), 'utf8');
         assert.match(savedMarkdown, /achilles-ide-document/);
         assert.match(savedMarkdown, /Confirmed the file is the source of truth/);

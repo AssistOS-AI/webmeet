@@ -6,7 +6,7 @@
       "protocol": "none"
     },
     "enable": [
-      "AchillesIDE/liveKitServerAgent"
+      "liveKitServerAgent"
     ],
     "volumes": {
       ".data/webmeetScribeAgent": "/data"

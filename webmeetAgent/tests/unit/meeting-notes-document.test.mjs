@@ -39,7 +39,7 @@ test('Meeting Secretary tools reject regular callers', () => {
         agent: { principalId: 'webmeetScribeAgent' },
     }), /Meeting Secretary/);
     assert.doesNotThrow(() => assertMeetingSecretaryAuth({
-        agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' },
+        agent: { principalId: 'agent:webmeet/webmeetScribeAgent' },
     }));
 });
 
@@ -262,7 +262,7 @@ test('presence heartbeat redispatches a fresh persisted session whose LiveKit wo
         ? [{ attributes: { webmeetMeetingSecretary: 'true', webmeetAgentType: 'meeting_secretary' } }]
         : [];
     const authInfo = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] } };
-    const secretaryAuth = { agent: { principalId: 'agent:AchillesIDE/webmeetScribeAgent' } };
+    const secretaryAuth = { agent: { principalId: 'agent:webmeet/webmeetScribeAgent' } };
     const meeting = await createMeeting(context, { name: 'Recovery room', authInfo });
     await updateRoboTeamSettings(context, {
         roomId: meeting.roomId, authInfo, settings: { meetingNotes: { enabled: true } },

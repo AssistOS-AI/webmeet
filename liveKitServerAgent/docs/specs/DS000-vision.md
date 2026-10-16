@@ -7,7 +7,7 @@ summary: Defines liveKitServerAgent as the AchillesIDE runtime-v5 LiveKit and Eg
 
 ## Introduction
 
-`AchillesIDE/liveKitServerAgent` owns the WebMeet media runtime in the AchillesIDE repository. It supervises Redis, [LiveKit Server](wiki.html#definition-livekit), LiveKit [Egress](wiki.html#definition-egress), and private health inside a pinned multi-architecture image.
+`webmeet/liveKitServerAgent` owns the WebMeet media runtime in the webmeet repository. It supervises Redis, [LiveKit Server](wiki.html#definition-livekit), LiveKit [Egress](wiki.html#definition-egress), and private health inside a pinned multi-architecture image.
 
 ## Core Content
 

@@ -21,7 +21,7 @@ test('disabled secretary preserves settings until Marketplace enables it', async
         assert.equal(url, '/api/marketplace/agents');
         assert.equal(options.credentials, 'include');
         return { ok: true, json: async () => ({ marketplace: { agents: [
-            { ref: 'AchillesIDE/webmeetScribeAgent', active },
+            { ref: 'webmeet/webmeetScribeAgent', active },
         ] } }) };
     });
     const previousAssistOS = globalThis.assistOS;

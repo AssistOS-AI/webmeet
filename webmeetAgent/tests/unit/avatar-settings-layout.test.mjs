@@ -2,12 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { explorerPath } from '../../../test-support/explorer-root.mjs';
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
-const sharedAvatarSettingsCssPath = path.join(
-    repoRoot,
-    '../explorer/shared/ui/avatar-settings-form/avatar-settings-form.css'
-);
+const sharedAvatarSettingsCssPath = explorerPath('explorer/shared/ui/avatar-settings-form/avatar-settings-form.css');
 
 test('shared avatar settings form groups fields in aligned responsive sections', async () => {
     const css = await fs.readFile(sharedAvatarSettingsCssPath, 'utf8');

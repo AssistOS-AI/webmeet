@@ -1,4 +1,4 @@
-# AchillesIDE/liveKitServerAgent Agent Guide
+# webmeet/liveKitServerAgent Agent Guide
 
 ## Scope
 
@@ -91,5 +91,5 @@ Run the narrowest relevant check after edits, then broaden when touching shared 
 - `sh -n scripts/health/livekit-server-agent-health.sh`
 - `node --check scripts/health/supervisor-health.mjs`
 - `find .. -name '*.json' -not -path '*/.git/*' -print0 | xargs -0 -n1 python3 -m json.tool >/dev/null`
-- `ploinky start AchillesIDE/webmeetAgent`
+- `ploinky start webmeet/webmeetAgent`
 - `ploinky status`

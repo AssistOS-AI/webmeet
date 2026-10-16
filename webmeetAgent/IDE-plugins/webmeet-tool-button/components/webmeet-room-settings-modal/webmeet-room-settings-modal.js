@@ -317,7 +317,7 @@ export class WebmeetRoomSettingsModal {
             const data = await response.json();
             if (data?.ok === false || !Array.isArray(data?.marketplace?.agents)) return false;
             const secretary = data.marketplace.agents.find((agent) =>
-                (agent.ref || `${agent.repo}/${agent.name}`) === 'AchillesIDE/webmeetScribeAgent');
+                (agent.ref || `${agent.repo}/${agent.name}`) === 'webmeet/webmeetScribeAgent');
             return secretary?.active === false;
         } catch {
             // Availability is advisory; the owning agent still validates settings updates.

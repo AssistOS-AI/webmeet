@@ -13,7 +13,7 @@ The Meeting Secretary worker receives text-only dispatches and maintains recover
 
 [`webmeetScribeAgent`](wiki.html#definition-webmeetscribeagent) must be disabled by default and must not be automatically enabled by WebMeet. An administrator may enable the worker through Explorer Marketplace before automatic Meeting Notes are used. Ordinary meetings remain available without the worker. Transcript capture uses browser SpeechRecognition, with no dependency on `webmeetStt`.
 
-When enabled, the worker waits for `AchillesIDE/liveKitServerAgent` from the same repository. It does not install a separate media repository. Shared generated LiveKit credentials and the Router convention paths remain unchanged.
+When enabled, the worker waits for `webmeet/liveKitServerAgent` from the same repository. It does not install a separate media repository. Shared generated LiveKit credentials and the Router convention paths remain unchanged.
 
 The worker must require a meeting identifier, connect without an audio pipeline, and advertise the meeting-secretary participant attributes. A transcript segment is admissible only when its LiveKit identity has been confirmed by the authoritative WebMeet room state.
 

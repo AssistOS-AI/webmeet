@@ -1,0 +1,7 @@
+/webmeetAgent/node_modules/
+/webmeetScribeAgent/node_modules/
+
+/.idea/
+/.ploinky/test-artifacts/
+*.swp
+*.DS_Store

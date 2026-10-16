@@ -2,7 +2,7 @@ import {
     normalizeAvatarConfig,
     renderAxiFaceMarkup
 } from './webmeet-profile-avatar-runtime.js';
-import { EMOTIONS } from '../../../../../../explorer/shared/vendor/axi-face/src/state-machine.mjs';
+import { EMOTIONS } from '/explorer/shared/vendor/axi-face/src/state-machine.mjs';
 import {
     formatAvatarOptionLabel
 } from './avatar-settings-model.js';

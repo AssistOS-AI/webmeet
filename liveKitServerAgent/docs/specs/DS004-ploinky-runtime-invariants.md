@@ -33,7 +33,7 @@ Logs and user-facing errors must not expose secrets, cookies, bearer tokens, inv
 
 Agent-local contract:
 
-- Manifest: `AchillesIDE/liveKitServerAgent/manifest.json`
+- Manifest: `webmeet/liveKitServerAgent/manifest.json`
 - Role: Single Ploinky agent that supervises the WebMeet media runtime.
 - Authentication: The agent runs as a dependency of `webmeetAgent` / `webmeetLivekitAiAgent` and must not expose application guest or admin policy by itself.
 - Router routes: `/base-agent-additional-server/liveKitServerAgent/7880/*` admits public LiveKit signaling, while the more-specific `/base-agent-additional-server/liveKitServerAgent/7880/twirp/livekit.RoomService/*` requires authentication. Neither route creates a physical-host publication. Private Twirp also requires an exact current-instance/current-enable-generation caller assertion.

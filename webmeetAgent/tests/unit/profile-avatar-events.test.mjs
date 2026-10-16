@@ -27,9 +27,11 @@ import { dashboardRenderMethods } from '../../IDE-plugins/webmeet-tool-button/co
 import { dashboardSessionMethods } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/controllers/dashboard-session-methods.js';
 import { parseWebMeetEvent } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-events.js';
 import { WEBMEET_AVATAR_PRESETS } from '../../IDE-plugins/webmeet-tool-button/components/webmeet-dashboard/services/webmeet-avatar-override.js';
-import { EMOTIONS } from '../../../explorer/shared/vendor/axi-face/src/state-machine.mjs';
+import { explorerPath, explorerUrl } from '../../../test-support/explorer-root.mjs';
 import { withGuestParticipantOwner } from './participant-owner-fixture.mjs';
 import { installEdgeJoinFixture } from './edge-join-fixture.mjs';
+
+const { EMOTIONS } = await import(explorerUrl('explorer', 'shared', 'vendor', 'axi-face', 'src', 'state-machine.mjs'));
 
 let tempRoot = '';
 const originalDataDir = process.env.WEBMEET_DATA_DIR;
@@ -2082,10 +2084,7 @@ test('authenticated meeting refresh keeps a just-joined guest until LiveKit expo
 
 test("WebMeet guest links use Explorer roomId entry without the public proxy", async () => {
     const explorerSource = fs.readFileSync(
-        path.resolve(
-            import.meta.dirname,
-            '../../../explorer/main.js'
-        ),
+        explorerPath('explorer/main.js'),
         'utf8'
     );
 
@@ -2102,10 +2101,7 @@ test("WebMeet guest links use Explorer roomId entry without the public proxy", a
     // The resolver is exercised behaviorally: a room entry boots the WebMeet dashboard, no entry does not.
     const { pathToFileURL } = await import('node:url');
     const { resolveBootRoute } = await import(
-        pathToFileURL(path.resolve(
-            import.meta.dirname,
-            '../../../explorer/services/runtime/initial-application-route.js'
-        )).href
+        pathToFileURL(explorerPath('explorer/services/runtime/initial-application-route.js')).href
     );
     const roomRoute = resolveBootRoute({
         roomEntry: { roomId: 'room_123e4567-e89b-12d3-a456-426614174000' }
@@ -2158,10 +2154,7 @@ test("legacy guest session manager is removed", async () => {
 
 test("guest page bootstraps WebMeet dashboard through normal runtime components", async () => {
     const explorerSource = fs.readFileSync(
-        path.resolve(
-            import.meta.dirname,
-            '../../../explorer/main.js'
-        ),
+        explorerPath('explorer/main.js'),
         'utf8'
     );
 

@@ -1,7 +1,7 @@
 # liveKitServerAgent
 
 Pinned runtime-v5 media infrastructure for WebMeet, deployed as
-`AchillesIDE/liveKitServerAgent` from this repository.
+`webmeet/liveKitServerAgent` from this repository.
 
 See the [agent documentation](docs/index.html) and
 [specification matrix](docs/specs/matrix.md) for the runtime contract.

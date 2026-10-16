@@ -1,12 +1,17 @@
 import { fileURLToPath } from 'node:url';
 
-import { authInfoFromInvocation } from '../../../shared/invocation-auth.mjs';
+import { explorerUrl } from '../../../test-support/explorer-root.mjs';
 
 // Builds WebMeet authInfo the way production does: the sibling Ploinky
 // checkout's RouterRequestTokenService mints a router request, its Agent
 // verifier checks it as AgentServer does, and the verified grant is normalized
 // by authInfoFromInvocation. Importing this module fails if that checkout is
 // missing, so listing tests cannot silently fall back to hand-written identities.
+const INVOCATION_AUTH_URL = explorerUrl('shared', 'invocation-auth.mjs');
+// webmeet_tool.mjs falls back to a path next to Explorer's shared/ directory,
+// which does not exist beside this repository; point it at the Explorer checkout.
+process.env.PLOINKY_INVOCATION_AUTH_MODULE ||= INVOCATION_AUTH_URL;
+const { authInfoFromInvocation } = await import(INVOCATION_AUTH_URL);
 const PLOINKY_ROOT = new URL('../../../../ploinky/', import.meta.url);
 // Ploinky's signer resolves AchillesAgentLib only from an explicit source.
 process.env.PLOINKY_AGENTLIB_DIR ||= fileURLToPath(new URL('node_modules/achillesAgentLib', PLOINKY_ROOT));
@@ -14,7 +19,7 @@ const { RouterRequestTokenService } = await import(new URL('cli/server/security/
 const { verifyRouterRequestFromHeaders } = await import(new URL('Agent/lib/invocationAuth.mjs', PLOINKY_ROOT).href);
 const { computeRchTool } = await import(new URL('Agent/lib/requestHash.mjs', PLOINKY_ROOT).href);
 
-const WEBMEET_ID = 'agent:AchillesIDE/webmeetAgent';
+const WEBMEET_ID = 'agent:webmeet/webmeetAgent';
 const WEBMEET_SECRET = Buffer.alloc(32, 9);
 const minter = new RouterRequestTokenService({ resolveAgentSecret: () => WEBMEET_SECRET });
 

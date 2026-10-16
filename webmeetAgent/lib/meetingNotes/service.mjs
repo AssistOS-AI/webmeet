@@ -31,7 +31,7 @@ import {
 export const MEETING_NOTES_BOARD_PURPOSE = 'meeting-notes';
 export const MEETING_NOTES_BOARD_TITLE = 'Meeting Notes';
 export const MEETING_SECRETARY_PARTICIPANT_ID = 'agent_meeting_secretary';
-export const MEETING_SECRETARY_PRINCIPAL = 'agent:AchillesIDE/webmeetScribeAgent';
+export const MEETING_SECRETARY_PRINCIPAL = 'agent:webmeet/webmeetScribeAgent';
 const DISPATCH_START_GRACE_MS = 30_000;
 const SESSION_HEARTBEAT_GRACE_MS = 75_000;
 

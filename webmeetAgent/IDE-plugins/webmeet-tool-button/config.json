@@ -13,7 +13,7 @@
     "toolbarModal": {
         "mode": "iframe",
         "url": "/webmeetAgent/roomLoader.html",
-        "agentRef": "AchillesIDE/webmeetAgent",
+        "agentRef": "webmeet/webmeetAgent",
         "fullscreen": true,
         "resume": true
     },

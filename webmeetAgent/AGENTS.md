@@ -33,7 +33,7 @@ webmeetAgent owns WebMeet rooms, LiveKit token issuance, AI dispatch metadata, r
 
 ## Runtime Defaults
 
-Runs `scripts/startAgent.sh` and the WebMeet MCP AgentServer in `docker.io/assistos/ploinky-node@sha256:accd925fcbf460c1f4c7a5cd9e2d46539c615bbfad2e896cabb7556d8050a669`. Its manifest declares no network of its own; it enables `AchillesIDE/liveKitServerAgent`, which uses host networking, and only `webmeetStt` attaches to the `webmeet` network. No self-hosted LiveKit AI worker agent exists in the repository any more (the former `webmeetLivekitAiAgent` survives only as a `.gitignore` entry), and none is part of the default Explorer dependency graph.
+Runs `scripts/startAgent.sh` and the WebMeet MCP AgentServer in `docker.io/assistos/ploinky-node@sha256:accd925fcbf460c1f4c7a5cd9e2d46539c615bbfad2e896cabb7556d8050a669`. Its manifest declares no network of its own; it enables `webmeet/liveKitServerAgent`, which uses host networking, and only `webmeetStt` attaches to the `webmeet` network. No self-hosted LiveKit AI worker agent exists in the repository any more (the former `webmeetLivekitAiAgent` survives only as a `.gitignore` entry), and none is part of the default Explorer dependency graph.
 
 ## Key Paths
 

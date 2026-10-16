@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { explorerPath } from '../../../test-support/explorer-root.mjs';
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const pluginRoot = path.join(repoRoot, 'IDE-plugins/webmeet-tool-button');
@@ -37,7 +38,7 @@ test('guest-facing WebMeet assets use shared public paths', async () => {
 });
 
 test('the shared fullscreen icon exists for guest room settings and blackboard', async () => {
-    const sharedIcon = path.join(repoRoot, '../explorer/shared/assets/icons/fullscreen.svg');
+    const sharedIcon = explorerPath('explorer/shared/assets/icons/fullscreen.svg');
     await assert.doesNotReject(fs.access(sharedIcon));
 
     const settingsHtml = await fs.readFile(

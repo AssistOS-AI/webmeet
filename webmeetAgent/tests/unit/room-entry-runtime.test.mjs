@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { explorerPath } from '../../../test-support/explorer-root.mjs';
 
 test('WebMeet room entry uses Explorer runtime plugin loading, not a public proxy', async () => {
     const explorerMain = await fs.readFile(
-        path.resolve(import.meta.dirname, '../../../explorer/main.js'),
+        explorerPath('explorer/main.js'),
         'utf8'
     );
     const proxyPath = path.resolve(import.meta.dirname, '../../server', `webmeet-public-${'proxy'}.mjs`);
