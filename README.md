@@ -4,8 +4,8 @@ Ploinky agents for WebMeet, the room-based meeting application. Each top-level d
 
 | Agent | Role | Enabled by |
 | --- | --- | --- |
-| `webmeetAgent` | WebMeet rooms, LiveKit token issuance, chat, Blackboard state | Explorer manifest: `webmeet/webmeetAgent global no-wait` |
-| `liveKitServerAgent` | LiveKit, Redis and Egress media runtime (fixed in-Box UDP 7882) | Explorer manifest: `webmeet/liveKitServerAgent no-wait`; `webmeetAgent` and `webmeetScribeAgent` enable it as `liveKitServerAgent` |
+| `webmeetAgent` | WebMeet rooms, LiveKit token issuance, chat, Blackboard state | Disabled by default; Explorer Marketplace or the WebMeet toolbar plugin enables it on demand (manifest pins `enableModes: ["global"]`) |
+| `liveKitServerAgent` | LiveKit, Redis and Egress media runtime (fixed in-Box UDP 7882) | Not default-enabled; `webmeetAgent` and `webmeetScribeAgent` enable it as `liveKitServerAgent` |
 | `webmeetScribeAgent` | Optional text-only Meeting Secretary | Enabled on demand from WebMeet room settings (Meeting Notes); not in the default enable list |
 | `webmeetStt` | Optional speech-to-text service | Optional; not in the default enable list |
 | `moderator` | Example moderator agent kept from the original repository | Not enabled by default |

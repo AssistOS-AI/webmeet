@@ -16,8 +16,8 @@ Run each command from the agent directory. Node.js 20 or later.
 
 | Agent | Test command | Who enables it |
 | --- | --- | --- |
-| `webmeetAgent` | `EXPLORER_ROOT=<AssistOSExplorer checkout> node --import ../test-support/register-explorer-root.mjs --test tests/unit/*.test.mjs` | Explorer: `webmeet/webmeetAgent global no-wait` |
-| `liveKitServerAgent` | `node --test tests/*.test.mjs` | Explorer: `webmeet/liveKitServerAgent no-wait`; `webmeetAgent` (`liveKitServerAgent no-wait`) and `webmeetScribeAgent` (`liveKitServerAgent`) |
+| `webmeetAgent` | `EXPLORER_ROOT=<AssistOSExplorer checkout> node --import ../test-support/register-explorer-root.mjs --test tests/unit/*.test.mjs` | Disabled by default; an administrator enables it from Explorer Marketplace, or opening the WebMeet toolbar plugin enables it on demand. Its manifest pins `enableModes: ["global"]` |
+| `liveKitServerAgent` | `node --test tests/*.test.mjs` | Not default-enabled; `webmeetAgent` (`liveKitServerAgent no-wait`) and `webmeetScribeAgent` (`liveKitServerAgent`) enable it |
 | `webmeetScribeAgent` | `node --test tests/*.test.mjs` | On demand from WebMeet room settings; not default-enabled |
 | `webmeetStt` | `PYTHONPATH=. python3 -m unittest discover -s tests` | Optional; not default-enabled |
 | `moderator` | none | Not enabled by default |
