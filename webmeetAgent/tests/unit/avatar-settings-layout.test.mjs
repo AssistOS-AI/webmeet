@@ -1,0 +1,19 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { explorerPath } from '../../../test-support/explorer-root.mjs';
+
+const repoRoot = path.resolve(import.meta.dirname, '../..');
+const sharedAvatarSettingsCssPath = explorerPath('explorer/shared/ui/avatar-settings-form/avatar-settings-form.css');
+
+test('shared avatar settings form groups fields in aligned responsive sections', async () => {
+    const css = await fs.readFile(sharedAvatarSettingsCssPath, 'utf8');
+
+    assert.match(css, /avatar-settings-form \.avatar-settings-section\s*\{[\s\S]*grid-template-columns: repeat\(auto-fit, minmax\(150px, 1fr\)\)/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-section\s*\{[\s\S]*align-items: end/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-section\s*\{[\s\S]*border: 1px solid var\(--border/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-field\s*\{[\s\S]*grid-template-rows: auto 36px/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-content\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) 180px/);
+    assert.match(css, /avatar-settings-form \.avatar-settings-preview\s*\{[\s\S]*width: 100px/);
+});

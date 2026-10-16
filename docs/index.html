@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>webmeet Documentation</title>
+</head>
+<body>
+<main class="page">
+    <h1>webmeet</h1>
+    <p>Ploinky agents for WebMeet rooms, the LiveKit media runtime, the optional Meeting Secretary and speech-to-text. Agent identities are <code>agent:webmeet/&lt;agent&gt;</code>. Each agent keeps its own documentation.</p>
+    <table>
+        <thead><tr><th scope="col">Agent</th><th scope="col">Documentation</th><th scope="col">Enabled by</th></tr></thead>
+        <tbody>
+        <tr><td><code>webmeetAgent</code></td><td><a href="../webmeetAgent/docs/index.html">WebMeet</a></td><td>Explorer manifest</td></tr>
+        <tr><td><code>liveKitServerAgent</code></td><td><a href="../liveKitServerAgent/docs/index.html">LiveKit server</a></td><td>Explorer manifest, <code>webmeetAgent</code>, <code>webmeetScribeAgent</code></td></tr>
+        <tr><td><code>webmeetScribeAgent</code></td><td><a href="../webmeetScribeAgent/docs/index.html">Meeting Secretary</a></td><td>On demand (Meeting Notes)</td></tr>
+        <tr><td><code>webmeetStt</code></td><td><a href="../webmeetStt/docs/index.html">Speech to text</a></td><td>Optional</td></tr>
+        <tr><td><code>moderator</code></td><td>Example agent from the original repository (<code>moderator/server.js</code>)</td><td>Not enabled by default</td></tr>
+        </tbody>
+    </table>
+    <p>The shared module <code>documentation-breadcrumb.js</code> in this directory is imported by the per-agent <code>docs/partials-loader.js</code> files. Test commands and cross-repository rules are in <a href="../AGENTS.md">AGENTS.md</a>.</p>
+</main>
+</body>
+</html>
