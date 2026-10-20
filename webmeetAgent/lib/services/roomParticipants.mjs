@@ -334,13 +334,21 @@ function hasHumanRoomMembers(payload) {
     return Array.isArray(payload?.members) && payload.members.length > 0;
 }
 
+// The detach starts after the current mutation, as before. A tool call that
+// provides context.backgroundTasks awaits it before finishing, so in a warm
+// worker it cannot overlap the next call.
 function scheduleEmptyRoomAgentDetach(context, meetingId, deps, reason = 'no_human_participants') {
     const targetMeetingId = String(meetingId || '').trim();
     const detachActiveAgents = getParticipantDeps(deps).detachActiveAgentsWhenRoomHasNoHumans;
     if (!targetMeetingId) return;
-    setTimeout(() => {
-        detachActiveAgents(context, targetMeetingId, reason).catch(() => {});
-    }, 0);
+    const detach = new Promise((resolve) => {
+        setTimeout(() => {
+            detachActiveAgents(context, targetMeetingId, reason).catch(() => {}).then(resolve);
+        }, 0);
+    });
+    if (Array.isArray(context?.backgroundTasks)) {
+        context.backgroundTasks.push(detach);
+    }
 }
 
 function cleanupStaleMembers(context, meetingId, payload, stageEvent = null, deps = {}) {

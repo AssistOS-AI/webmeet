@@ -28,7 +28,7 @@ const WEBMEET_ID = 'agent:webmeet/webmeetAgent';
 const WEBMEET_SECRET = Buffer.alloc(32, 9);
 const minter = new RouterRequestTokenService({ resolveAgentSecret: () => WEBMEET_SECRET });
 
-async function verifiedAuthInfo(claims, tool) {
+async function verifiedGrant(claims, tool) {
     const rch = computeRchTool({ method: 'POST', path: '/mcp', tool, arguments: {} });
     const { token } = await minter.mintWithPayload({ targetAgentId: WEBMEET_ID, method: 'POST', path: '/mcp', tool, rch, ...claims });
     const verified = verifyRouterRequestFromHeaders({ authorization: `Bearer ${token}` }, {
@@ -36,18 +36,42 @@ async function verifiedAuthInfo(claims, tool) {
         method: 'POST', path: '/mcp', tool, rch,
     });
     if (!verified.ok) throw new Error(`fixture grant failed verification: ${verified.reason}`);
+    return verified;
+}
+
+async function verifiedAuthInfo(claims, tool) {
+    const verified = await verifiedGrant(claims, tool);
     return authInfoFromInvocation(verified.payload, { invocationToken: verified.rawToken });
 }
 
-// A direct browser user, as the Router mints it from the session user.
-export async function directUserAuth({ id, roles = ['user'], capabilities, scope, tool = 'webmeet_room_list' }) {
+function directUserClaims({ id, roles = ['user'], capabilities, scope }) {
     const subject = `user:${id}`;
     const lowered = roles.map((role) => String(role).trim().toLowerCase());
-    return verifiedAuthInfo({
+    return {
         sub: subject,
         actor: { kind: lowered.includes('guest') ? 'guest' : 'user', id: subject, roles, capabilities },
         ...(scope ? { scope } : {}),
-    }, tool);
+    };
+}
+
+// The tool envelope AgentServer hands a tool process or worker after
+// requireVerifiedInvocation: the verified grant plus the raw router token.
+export async function directUserEnvelope({ tool = 'webmeet_room_list', input = {}, ...principal }) {
+    const verified = await verifiedGrant(directUserClaims(principal), tool);
+    return {
+        tool,
+        input,
+        metadata: {
+            invocation: verified.payload,
+            invocationToken: verified.rawToken,
+            requestInfo: { headers: { authorization: `Bearer ${verified.rawToken}` } },
+        },
+    };
+}
+
+// A direct browser user, as the Router mints it from the session user.
+export async function directUserAuth({ tool = 'webmeet_room_list', ...principal }) {
+    return verifiedAuthInfo(directUserClaims(principal), tool);
 }
 
 // A delegated agent call carrying a user's claims, as the Router mints it.

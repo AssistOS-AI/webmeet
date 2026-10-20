@@ -82,7 +82,6 @@ async function loadInvocationAuth() {
 
 const { authInfoFromInvocation } = await loadInvocationAuth();
 
-const TOOL_NAME = String(process.env.TOOL_NAME || '').trim();
 const SUPPORTED_AGENT_TYPES = new Set(['robo_team']);
 const SUPPORTED_AGENT_MODES = new Set(['blackboard_demo']);
 const GUEST_TOOL_ALLOWLIST = new Set([
@@ -650,14 +649,45 @@ export async function dispatch(toolName, args, context, authInfo) {
     }
 }
 
-async function main() {
-    const envelope = await readEnvelope();
+// Waits for the call's own deferred work (for example an empty-room agent
+// detach), including work that settling tasks schedule in turn.
+async function drainBackgroundTasks(context) {
+    while (context.backgroundTasks.length > 0) {
+        await Promise.allSettled(context.backgroundTasks.splice(0));
+    }
+}
+
+function writeLine(stdout, text) {
+    return new Promise((resolve, reject) => {
+        stdout.write(`${text}\n`, (error) => (error ? reject(error) : resolve()));
+    });
+}
+
+// One tool call, shared by the spawn CLI and the warm tool worker. Everything
+// derived from the envelope (arguments, verified auth, store context) is
+// created here per call and never kept at module scope, and the call returns
+// only after its background work has settled, as a spawned process does.
+export async function handleWebMeetToolCall({ toolName, envelope = {}, stdout, createContext = createStoreContext } = {}) {
     const args = unwrapInput(envelope);
     const authInfo = authInfoFromEnvelope(envelope);
-    const context = await createStoreContext();
+    const context = await createContext();
+    context.backgroundTasks = [];
     context.envelope = envelope;
-    const result = await dispatch(TOOL_NAME, args, context, authInfo);
-    process.stdout.write(`${JSON.stringify(result)}\n`);
+    try {
+        const result = await dispatch(String(toolName || '').trim(), args, context, authInfo);
+        await writeLine(stdout, JSON.stringify(result));
+    } finally {
+        await drainBackgroundTasks(context);
+    }
+}
+
+async function main() {
+    const envelope = await readEnvelope();
+    await handleWebMeetToolCall({
+        toolName: String(process.env.TOOL_NAME || '').trim(),
+        envelope,
+        stdout: process.stdout
+    });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

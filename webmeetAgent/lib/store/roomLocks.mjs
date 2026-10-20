@@ -9,6 +9,18 @@ const LOCK_RETRY_BASE_MS = 20;
 const LOCK_RETRY_MAX_MS = 200;
 
 const roomMutationQueues = new Map();
+// Identifies this process in lock owner records, so a later process that
+// reuses the pid is not mistaken for the owner.
+const PROCESS_INSTANCE_ID = crypto.randomUUID();
+// Tokens of room locks currently held by an operation in this process. A lock
+// file that names this process but carries a token outside this set was leaked
+// (for example by a failed release in a warm tool worker, whose pid stays
+// alive) and is recovered through the stale-TTL path.
+const HELD_ROOM_LOCK_TOKENS = new Set();
+// Set when a lock release could not be confirmed. The warm tool worker adapter
+// reads this process-wide flag and asks the pool to recycle the worker after
+// the call. A Symbol.for key keeps it independent of module identity.
+export const UNCONFIRMED_ROOM_LOCK_RELEASE_KEY = Symbol.for('webmeet.unconfirmedRoomLockRelease');
 
 function getLockTimeoutMs() {
     const env = parseInt(process.env.WEBMEET_LOCK_TIMEOUT_MS || '', 10);
@@ -20,13 +32,17 @@ function getLockStaleTtlMs() {
     return Number.isFinite(env) && env >= 1_000 ? env : LOCK_DEFAULT_STALE_TTL_MS;
 }
 
-function isLockOwnerProcessAlive(owner) {
+export function isLockOwnerProcessAlive(owner) {
     if (String(owner?.hostname || '') !== os.hostname()) {
         return false;
     }
     const pid = Number(owner?.pid);
     if (!Number.isInteger(pid) || pid <= 0) {
         return false;
+    }
+    if (pid === process.pid && owner?.instanceId) {
+        if (owner.instanceId !== PROCESS_INSTANCE_ID) return false;
+        if (!HELD_ROOM_LOCK_TOKENS.has(String(owner.token || ''))) return false;
     }
     try {
         process.kill(pid, 0);
@@ -130,11 +146,16 @@ async function acquireRoomLock(context, roomId, options = {}) {
             roomId,
             meetingId: roomId,
             token,
+            instanceId: PROCESS_INSTANCE_ID,
         };
         try {
             const handle = await fs.open(lockPath, 'wx');
+            HELD_ROOM_LOCK_TOKENS.add(token);
             try {
                 await handle.writeFile(JSON.stringify(owner));
+            } catch (error) {
+                HELD_ROOM_LOCK_TOKENS.delete(token);
+                throw error;
             } finally {
                 await handle.close();
             }
@@ -169,12 +190,30 @@ async function acquireRoomLock(context, roomId, options = {}) {
 async function releaseRoomLock(handle) {
     if (!handle?.lockPath || !handle?.token) return;
     try {
-        const raw = await fs.readFile(handle.lockPath, 'utf8');
+        await releaseRoomLockFile(handle);
+    } finally {
+        HELD_ROOM_LOCK_TOKENS.delete(handle.token);
+    }
+}
+
+async function releaseRoomLockFile(handle) {
+    let raw;
+    try {
+        raw = await fs.readFile(handle.lockPath, 'utf8');
+    } catch (error) {
+        // Already removed: nothing is left to recover.
+        if (error?.code === 'ENOENT') return;
+        globalThis[UNCONFIRMED_ROOM_LOCK_RELEASE_KEY] = true;
+        return;
+    }
+    try {
         const owner = JSON.parse(raw);
-        if (owner.token !== handle.token) return;
+        if (owner?.token !== handle.token) return;
         await fs.rm(handle.lockPath, { force: true });
     } catch {
-        // Lock file already removed or unreadable; the timeout path can recover it.
+        // The lock file may remain. The stale-TTL path recovers it once this
+        // process exits or, in a warm tool worker, once the worker is recycled.
+        globalThis[UNCONFIRMED_ROOM_LOCK_RELEASE_KEY] = true;
     }
 }
 
