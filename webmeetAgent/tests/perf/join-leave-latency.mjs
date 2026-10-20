@@ -49,7 +49,8 @@ page.on('requestfinished', async (req) => {
         url: req.url(),
         body,
         headers: Object.fromEntries(Object.entries(headers).filter(([key]) => (
-          ['accept', 'content-type', 'mcp-session-id', 'mcp-protocol-version'].includes(key.toLowerCase())
+          // MCPBrowserClient also sends the Router's browser CSRF token on calls.
+          ['accept', 'content-type', 'mcp-session-id', 'mcp-protocol-version', 'x-ploinky-browser-csrf-token'].includes(key.toLowerCase())
         ))),
       };
     }
