@@ -1,4 +1,5 @@
-import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { explorerUrl } from '../../../test-support/explorer-root.mjs';
 
@@ -12,7 +13,11 @@ const INVOCATION_AUTH_URL = explorerUrl('shared', 'invocation-auth.mjs');
 // which does not exist beside this repository; point it at the Explorer checkout.
 process.env.PLOINKY_INVOCATION_AUTH_MODULE ||= INVOCATION_AUTH_URL;
 const { authInfoFromInvocation } = await import(INVOCATION_AUTH_URL);
-const PLOINKY_ROOT = new URL('../../../../ploinky/', import.meta.url);
+// PLOINKY_ROOT overrides the default sibling checkout (the convention of
+// Explorer's worker tests), so a run can pin an exact Ploinky revision.
+const PLOINKY_ROOT = process.env.PLOINKY_ROOT
+    ? pathToFileURL(`${path.resolve(process.env.PLOINKY_ROOT)}/`)
+    : new URL('../../../../ploinky/', import.meta.url);
 // Ploinky's signer resolves AchillesAgentLib only from an explicit source.
 process.env.PLOINKY_AGENTLIB_DIR ||= fileURLToPath(new URL('node_modules/achillesAgentLib', PLOINKY_ROOT));
 const { RouterRequestTokenService } = await import(new URL('cli/server/security/tokens/RouterRequestTokenService.js', PLOINKY_ROOT).href);
