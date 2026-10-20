@@ -1,4 +1,5 @@
 import { logMediaDiagnostic } from '../media-diagnostics.js';
+import { markWebMeetPerf } from '../webmeet-perf-marks.js';
 import {
     getLiveKitProfileResolution,
     getMediaQualityProfile
@@ -82,7 +83,9 @@ export class WebMeetRoomLiveKit {
         if (!session?.participantToken || !session?.livekitUrl) {
             throw new Error('Join payload missing media token');
         }
+        markWebMeetPerf('livekit-sdk-wait');
         const livekit = await this.ensureLiveKitClient();
+        markWebMeetPerf('livekit-sdk-ready');
         if (hooks.isCurrent && !hooks.isCurrent()) return;
         const { Room, RoomEvent, Track } = livekit;
 
@@ -208,11 +211,13 @@ export class WebMeetRoomLiveKit {
                     hasRtcConfig: Boolean(rtcConfig)
                 }
             });
+            markWebMeetPerf('room-connect-start');
             await room.connect(
                 livekitUrl.toString(),
                 session.participantToken,
                 connectOptions
             );
+            markWebMeetPerf('room-connect-complete');
             if ((hooks.isCurrent && !hooks.isCurrent()) || this.room !== room) {
                 await this.disconnect({ room, restore });
                 return;

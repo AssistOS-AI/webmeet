@@ -20,6 +20,7 @@ import {
     deriveAvatarSourceMode
 } from '../services/avatar-settings-model.js';
 import { applyPermanentRoomDeletion } from './permanent-room-deletion.js';
+import { markWebMeetPerf } from '../services/webmeet-perf-marks.js';
 
 const runTool = runWebMeetTool;
 
@@ -200,6 +201,10 @@ export const meetingActionMethods = {
             payload.displayName = displayName;
         }
         this.stopWorkspaceEvents();
+        // Start the first-join LiveKit SDK download while room_join runs. The load is
+        // idempotent and connect still awaits it, so a failure here is reported there.
+        Promise.resolve(this.roomLiveKit?.ensureLiveKitClient?.()).catch(() => {});
+        markWebMeetPerf('room-join-start');
         try {
             try {
                 await this.webMeetRoom.join(payload, transition);
@@ -217,6 +222,7 @@ export const meetingActionMethods = {
                 }
             }
             if (!transition.isCurrent()) return;
+            markWebMeetPerf('room-join-resolved');
             syncBrowserRoomUrl(meeting.id);
             writeWebMeetResume({ open: true, roomId: meeting.id });
             await this.primeCurrentParticipantAvatarProjection({ force: true });
@@ -224,6 +230,7 @@ export const meetingActionMethods = {
             this.state.skipConnectedAvatarRepublishOnce = true;
             await this.webMeetRoom.connectLiveKit(transition);
             if (!transition.isCurrent()) return;
+            markWebMeetPerf('livekit-connected');
             if (!this.isGuestSession()) {
                 this.startWorkspaceEvents();
             }

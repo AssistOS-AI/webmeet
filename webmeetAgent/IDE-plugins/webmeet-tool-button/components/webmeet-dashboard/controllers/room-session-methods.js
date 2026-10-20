@@ -10,6 +10,7 @@ import {
     summarizeVideoElement
 } from '../services/media-diagnostics.js';
 import { isAudioPublication } from '../services/microphone-publication.js';
+import { markWebMeetPerf } from '../services/webmeet-perf-marks.js';
 
 export const roomSessionMethods = {
     clearRoomConnectionTimers(room = null) {
@@ -113,7 +114,9 @@ export const roomSessionMethods = {
         }
         await this.disconnectRoom({ transition });
         if (!transition.isCurrent()) return;
+        markWebMeetPerf('microphone-permission-start');
         await this.chatComponent?.prepareRoboMicrophonePermission?.();
+        markWebMeetPerf('microphone-permission-done');
         if (!transition.isCurrent()) return;
         this.state.activeSpeakerIds = new Set();
 

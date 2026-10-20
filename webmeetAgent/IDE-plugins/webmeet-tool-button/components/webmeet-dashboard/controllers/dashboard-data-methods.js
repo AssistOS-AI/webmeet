@@ -103,20 +103,47 @@ export const dashboardDataMethods = {
             this.state.agents = [];
         }
         if (options.revalidateVisibility) return payload.meetings;
-        if (options.loadParticipants !== false) {
-            await this.loadParticipantsForMeetings({ ...options, isCurrent: current });
-        }
+        const selectedMeetingId = this.state.selectedMeetingId;
+        const loadParticipants = options.loadParticipants !== false;
+        // The selected room's roster snapshot carries the same post-reconcile agents as a
+        // summary room_get, so the details load reuses it within this load instead of
+        // issuing a second call. It is always fetched fresh, never from meetingGetCache.
+        const detailsSnapshot = loadParticipants && this.canReuseRosterForDetails(selectedMeetingId, options)
+            ? this.fetchMeetingSnapshot(selectedMeetingId, { includeParticipants: true, force: true })
+            : null;
+        const participantsLoad = loadParticipants
+            ? this.loadParticipantsForMeetings({
+                ...options,
+                isCurrent: current,
+                meetingSnapshots: detailsSnapshot ? new Map([[selectedMeetingId, detailsSnapshot]]) : null
+            })
+            : Promise.resolve();
+        // Details calls run alongside the rosters; their state is applied after the
+        // roster pass, as before, and only while this load is current.
+        const detailsLoad = selectedMeetingId
+            ? this.loadMeetingDetails({
+                expectedMeetingId: selectedMeetingId,
+                includeParticipants: false,
+                detailsSnapshot,
+                afterRoster: participantsLoad,
+                isCurrent: current
+            })
+            : Promise.resolve();
+        await Promise.all([participantsLoad, detailsLoad]);
         if (!current()) return null;
         this.state.selectedMeetingId = this.state.meetings.some((entry) => entry.id === this.state.selectedMeetingId)
             ? this.state.selectedMeetingId
             : '';
-        if (this.state.selectedMeetingId) {
-            await this.loadMeetingDetails({
-                expectedMeetingId: this.state.selectedMeetingId,
-                includeParticipants: false
-            });
-        }
         return current() ? payload.meetings : null;
+    },
+
+    // True when loadParticipantsForMeetings would fetch this room's roster anyway.
+    canReuseRosterForDetails(meetingId, options = {}) {
+        const targetMeetingId = String(meetingId || '').trim();
+        if (!targetMeetingId || this.isGuestSession()) return false;
+        if (!Array.isArray(options.rosterMeetingIds)) return true;
+        return options.rosterMeetingIds.some((entry) => String(entry || '').trim() === targetMeetingId)
+            || !Array.isArray(this.state.meetingParticipantsById?.[targetMeetingId]);
     },
 
     async refreshMeetingsFromWorkspaceEvent() {
@@ -306,6 +333,10 @@ export const dashboardDataMethods = {
                 if (!shouldRefreshMeeting && hasCachedRoster) {
                     return Promise.resolve(null);
                 }
+                const reusedSnapshot = options.meetingSnapshots?.get?.(meetingId);
+                if (reusedSnapshot) {
+                    return reusedSnapshot;
+                }
                 return this.fetchMeetingSnapshot(meetingId, {
                     includeParticipants: true,
                     force: Boolean(rosterMeetingIds?.has(meetingId))
@@ -382,6 +413,7 @@ export const dashboardDataMethods = {
         }
         this.loadParticipantAudioSettings();
         if (this.isGuestSession()) {
+            if (options.afterRoster && !(await options.afterRoster.then(() => true, () => false))) return;
             try {
                 const details = await this.fetchPublicMeetingDetails(meeting.id);
                 if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
@@ -406,21 +438,34 @@ export const dashboardDataMethods = {
         let chatPayload;
         let resourcePayload = { resources: [] };
         let agentPayload = { agents: [] };
+        const isStale = () => loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id
+            || (typeof options.isCurrent === 'function' && !options.isCurrent());
+        const canManageMeetingData = this.canManageRooms();
+        // A reused roster snapshot that failed (LiveKit or room lock) falls back to the
+        // summary room_get, so a roster failure never fails the details load.
+        const detailsRequest = options.detailsSnapshot
+            ? options.detailsSnapshot.catch(() => this.fetchMeetingSnapshot(meeting.id, { includeParticipants }))
+            : this.fetchMeetingSnapshot(meeting.id, { includeParticipants });
+        const [detailsOutcome, chatOutcome, resourceOutcome] = await Promise.allSettled([
+            detailsRequest,
+            runTool('webmeet_chat_list', { meetingId: meeting.id }),
+            canManageMeetingData ? runTool('webmeet_resource_list', { meetingId: meeting.id }) : resourcePayload
+        ]);
+        if (options.afterRoster && !(await options.afterRoster.then(() => true, () => false))) return;
+        if (isStale()) return;
         try {
-            const canManageMeetingData = this.canManageRooms();
+            // The room_get outcome decides first, as when the calls ran in sequence.
+            for (const outcome of [detailsOutcome, chatOutcome, resourceOutcome]) {
+                if (outcome.status === 'rejected') throw outcome.reason;
+            }
+            detailsPayload = detailsOutcome.value;
+            chatPayload = chatOutcome.value;
+            resourcePayload = resourceOutcome.value;
             if (canManageMeetingData) {
-                detailsPayload = await this.fetchMeetingSnapshot(meeting.id, { includeParticipants });
-                [chatPayload, resourcePayload] = await Promise.all([
-                    runTool('webmeet_chat_list', { meetingId: meeting.id }),
-                    runTool('webmeet_resource_list', { meetingId: meeting.id })
-                ]);
                 agentPayload = { agents: Array.isArray(detailsPayload?.agents) ? detailsPayload.agents : [] };
-            } else {
-                detailsPayload = await this.fetchMeetingSnapshot(meeting.id, { includeParticipants });
-                chatPayload = await runTool('webmeet_chat_list', { meetingId: meeting.id });
             }
         } catch (error) {
-            if (loadSeq !== this.meetingDetailsLoadSeq || this.state.selectedMeetingId !== meeting.id) return;
+            if (isStale()) return;
             if (!isMissingMeetingError(error)) {
                 throw error;
             }
