@@ -412,6 +412,19 @@ test('C7: a failed roster fetch on leave falls back to the summary details and s
     assert.deepEqual(controller.errors, []);
 });
 
+test('C7: a roster fetch that finds the room deleted does not retry with a summary room_get', async (t) => {
+    const failure = (name, args) => (
+        name === 'webmeet_room_get' && args.includeParticipants === true && args.roomId === ROOM_A
+            ? 'Meeting not found.'
+            : ''
+    );
+    const { controller, log } = await joinedHarness(t, { failure });
+    await controller.leaveMeeting();
+    assert.equal(log.includes('tool:webmeet_room_get:summary'), false, 'no summary room_get for a deleted room');
+    assert.deepEqual(controller.errors, []);
+    assert.equal(controller.state.selectedMeetingId, '');
+});
+
 test('C7: a failed roster fetch after room creation and archive keeps loadMeetings resolving', async (t) => {
     const { controller, log } = installHarness(t, { failure: rosterFailure });
     controller.state.selectedMeetingId = ROOM_A;

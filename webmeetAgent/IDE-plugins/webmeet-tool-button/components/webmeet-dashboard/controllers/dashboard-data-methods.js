@@ -442,9 +442,13 @@ export const dashboardDataMethods = {
             || (typeof options.isCurrent === 'function' && !options.isCurrent());
         const canManageMeetingData = this.canManageRooms();
         // A reused roster snapshot that failed (LiveKit or room lock) falls back to the
-        // summary room_get, so a roster failure never fails the details load.
+        // summary room_get, so a roster failure never fails the details load. A deleted
+        // room ("Meeting not found") would fail the same way, so it is not retried.
         const detailsRequest = options.detailsSnapshot
-            ? options.detailsSnapshot.catch(() => this.fetchMeetingSnapshot(meeting.id, { includeParticipants }))
+            ? options.detailsSnapshot.catch((error) => {
+                if (/Meeting not found/i.test(String(error?.message || error || ''))) throw error;
+                return this.fetchMeetingSnapshot(meeting.id, { includeParticipants });
+            })
             : this.fetchMeetingSnapshot(meeting.id, { includeParticipants });
         const [detailsOutcome, chatOutcome, resourceOutcome] = await Promise.allSettled([
             detailsRequest,

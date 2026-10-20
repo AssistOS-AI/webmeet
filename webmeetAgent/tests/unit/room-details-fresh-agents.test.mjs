@@ -146,3 +146,49 @@ test('RS1: the leave flow ends with the same agents in candidate and base call o
     assert.deepEqual(baseTypes, ['participant.left', 'participant.left', 'agent.detached']);
     assert.deepEqual(await flowTypes(candidateRoom), baseTypes);
 });
+
+// M-A: the details projection re-reads the stored room only when the empty-room
+// detach ran and changed it; otherwise it reuses the reconciled payload.
+async function countRoomReads(fixture, roomId, run) {
+    const roomFile = path.join(fixture.context.meetingsDir, `${roomId}.json`);
+    const original = fs.readFile;
+    let reads = 0;
+    fs.readFile = async (file, ...rest) => {
+        if (String(file).endsWith(path.basename(roomFile))) reads += 1;
+        return original.call(fs, file, ...rest);
+    };
+    try {
+        await run();
+    } finally {
+        fs.readFile = original;
+    }
+    return reads;
+}
+
+test('RS1: the room details re-read the room after a detach only', async (t) => {
+    const fixture = await storeFixture(t);
+    const admin = await directUserAuth(PRINCIPALS.admin);
+
+    // Empty room without active agents: the detach changes nothing.
+    const plain = await fixture.store.createMeeting(fixture.context, { title: 'No agents', roomType: 'team', authInfo: admin });
+    let details;
+    const plainReads = await countRoomReads(fixture, plain.id, async () => {
+        details = await fixture.store.getMeeting(fixture.context, plain.id, admin, { includeParticipants: true });
+    });
+    assert.deepEqual(details.agents.filter((agent) => agent.id === EXTERNAL_AGENT.id), []);
+
+    // Empty room with an active agent: the detach runs and the details see it.
+    const withAgent = await leaveScenario(fixture, 'With agent');
+    await fixture.call(PRINCIPALS.explorerUser, 'webmeet_room_leave', { roomId: withAgent.id, participantId: 'p-leaver' });
+    const detachReads = await countRoomReads(fixture, withAgent.id, async () => {
+        details = await fixture.store.getMeeting(fixture.context, withAgent.id, admin, { includeParticipants: true });
+    });
+    assert.equal(externalAgent(details).status, 'detached');
+    assert.ok(detachReads > plainReads, 'a detach that ran adds its own reads and the details re-read');
+    // The agents are detached now: the next details call finds nothing to detach.
+    const settledReads = await countRoomReads(fixture, withAgent.id, async () => {
+        details = await fixture.store.getMeeting(fixture.context, withAgent.id, admin, { includeParticipants: true });
+    });
+    assert.equal(externalAgent(details).status, 'detached');
+    assert.equal(settledReads, plainReads, 'no re-read when the detach changed nothing');
+});

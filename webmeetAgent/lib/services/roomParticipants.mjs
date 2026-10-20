@@ -559,7 +559,7 @@ export async function getRealtimeRoomParticipants(context, record, payload, opti
         return projectStoredRoomParticipants(payload, record.meetingId);
     }
     let reconciledParticipants = [];
-    await mutateRoom(context, record.meetingId, (lockedRecord, lockedPayload, stageEvent) => {
+    const reconciled = await mutateRoom(context, record.meetingId, (lockedRecord, lockedPayload, stageEvent) => {
         const participants = projectLiveKitRoomParticipants(lockedPayload, liveParticipants);
         reconciledParticipants = syncPayloadMembersToLiveKitParticipants(
             context,
@@ -572,13 +572,18 @@ export async function getRealtimeRoomParticipants(context, record, payload, opti
     if (reconciledParticipants.length === 0) {
         if (options.awaitEmptyRoomDetach === true) {
             // The caller projects agents after this returns, so the detach must have run.
-            await getParticipantDeps(deps)
+            const detached = await getParticipantDeps(deps)
                 .detachActiveAgentsWhenRoomHasNoHumans(context, record.meetingId, 'no_human_participants')
-                .catch(() => {});
+                .catch(() => null);
+            if (options.outcome) {
+                // Only an empty list proves the stored agents are unchanged.
+                options.outcome.detachChangedRoom = !(Array.isArray(detached) && detached.length === 0);
+            }
         } else {
             scheduleEmptyRoomAgentDetach(context, record.meetingId, deps, 'no_human_participants');
         }
     }
+    if (options.outcome) options.outcome.payload = reconciled.payload;
     return reconciledParticipants;
 }
 
@@ -601,17 +606,23 @@ export async function getRoomDetails(context, meetingId, authInfo = null, option
     if (options.includeParticipants === false) {
         participants = projectStoredRoomParticipants(normalizedPayload, meetingId);
     } else {
+        const outcome = { payload: null, detachChangedRoom: false };
         const realtimeParticipants = await getRealtimeRoomParticipants(context, record, normalizedPayload, {
-            awaitEmptyRoomDetach: true
+            awaitEmptyRoomDetach: true,
+            outcome
         }, deps);
         participants = appendRoboTeamParticipant(normalizedPayload, realtimeParticipants, meetingId);
-        // The LiveKit reconcile saved the room and may have detached agents of an
-        // empty room: project agents from the stored record as it is now, the same
-        // agents a later summary room_get returns.
-        try {
-            agentsPayload = decryptRoomPayload(context, await loadRoomRecord(context, meetingId));
-        } catch {
-            agentsPayload = normalizedPayload;
+        // The LiveKit reconcile saved the room, so its payload is current. Only a
+        // detach of an empty room's agents changes the stored agents afterwards:
+        // then project them from the stored record as it is now, the same agents a
+        // later summary room_get returns.
+        agentsPayload = outcome.payload || normalizedPayload;
+        if (outcome.detachChangedRoom) {
+            try {
+                agentsPayload = decryptRoomPayload(context, await loadRoomRecord(context, meetingId));
+            } catch {
+                // keep the reconciled payload
+            }
         }
     }
     return {
