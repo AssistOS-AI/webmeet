@@ -570,7 +570,14 @@ export async function getRealtimeRoomParticipants(context, record, payload, opti
         );
     });
     if (reconciledParticipants.length === 0) {
-        scheduleEmptyRoomAgentDetach(context, record.meetingId, deps, 'no_human_participants');
+        if (options.awaitEmptyRoomDetach === true) {
+            // The caller projects agents after this returns, so the detach must have run.
+            await getParticipantDeps(deps)
+                .detachActiveAgentsWhenRoomHasNoHumans(context, record.meetingId, 'no_human_participants')
+                .catch(() => {});
+        } else {
+            scheduleEmptyRoomAgentDetach(context, record.meetingId, deps, 'no_human_participants');
+        }
     }
     return reconciledParticipants;
 }
@@ -589,17 +596,32 @@ export async function getRoomDetails(context, meetingId, authInfo = null, option
         record = mutation.record;
         normalizedPayload = mutation.payload;
     }
-    const participants = options.includeParticipants === false
-        ? projectStoredRoomParticipants(normalizedPayload, meetingId)
-        : appendRoboTeamParticipant(normalizedPayload, await getRealtimeRoomParticipants(context, record, normalizedPayload, {}, deps), meetingId);
+    let participants;
+    let agentsPayload = normalizedPayload;
+    if (options.includeParticipants === false) {
+        participants = projectStoredRoomParticipants(normalizedPayload, meetingId);
+    } else {
+        const realtimeParticipants = await getRealtimeRoomParticipants(context, record, normalizedPayload, {
+            awaitEmptyRoomDetach: true
+        }, deps);
+        participants = appendRoboTeamParticipant(normalizedPayload, realtimeParticipants, meetingId);
+        // The LiveKit reconcile saved the room and may have detached agents of an
+        // empty room: project agents from the stored record as it is now, the same
+        // agents a later summary room_get returns.
+        try {
+            agentsPayload = decryptRoomPayload(context, await loadRoomRecord(context, meetingId));
+        } catch {
+            agentsPayload = normalizedPayload;
+        }
+    }
     return {
         meeting: buildRoomView(record),
         participants,
         meetingNotes: {
             enabled: Boolean(normalizeRoboTeamSettings(normalizedPayload.roboTeamSettings).meetingNotes.enabled),
         },
-        agents: Array.isArray(normalizedPayload.agents)
-            ? normalizedPayload.agents.map(projectRoomAgentForDetails)
+        agents: Array.isArray(agentsPayload.agents)
+            ? agentsPayload.agents.map(projectRoomAgentForDetails)
             : []
     };
 }
