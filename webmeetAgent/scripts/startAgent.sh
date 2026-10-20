@@ -47,6 +47,6 @@ done
 
 : "${WEBMEET_DATA_DIR:?WEBMEET_DATA_DIR is required and must identify the mounted WebMeet data root}"
 mkdir -p "$WEBMEET_DATA_DIR"
-chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs 2>/dev/null || true
+chmod +x /code/tools/webmeet_tool.sh /code/tools/webmeet_tool.mjs /code/tools/webmeet_tool_worker.sh /code/tools/webmeet_tool_worker.mjs 2>/dev/null || true
 
 exec sh /Agent/server/AgentServer.sh

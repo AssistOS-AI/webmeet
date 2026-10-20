@@ -1,4 +1,7 @@
 {
+  "toolWorkers": {
+    "webmeet": { "command": "tools/webmeet_tool_worker.sh", "cwd": "workspace", "size": 4 }
+  },
   "tools": [
     {
       "name": "webmeet_scribe_session_start",
@@ -210,6 +213,7 @@
       "description": "List WebMeet rooms visible to the current authenticated user.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {},
       "env": { "TOOL_NAME": "webmeet_room_list" }
     },
@@ -231,6 +235,7 @@
       "description": "Get room details and participants.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "includeParticipants": { "type": "boolean", "optional": true }
@@ -243,6 +248,7 @@
       "description": "Get the guest-safe room projection for a verified guest participant.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": false }
@@ -255,6 +261,7 @@
       "description": "Get minimal metadata for an active public guest room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false }
       },
@@ -266,6 +273,7 @@
       "description": "Join a room as an authenticated user and receive a LiveKit token.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "displayName": { "type": "string", "optional": true },
@@ -280,6 +288,7 @@
       "description": "Join a public guest-enabled room as a scoped guest visitor.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "displayName": { "type": "string", "optional": false },
@@ -293,6 +302,7 @@
       "description": "Leave a room participant session.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": false }
@@ -305,6 +315,7 @@
       "description": "Refresh the current participant presence timestamp for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": false }
@@ -388,6 +399,7 @@
       "description": "List room events after an optional event id.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "afterId": { "type": "string", "optional": true }
@@ -496,6 +508,7 @@
       "description": "List room chat messages.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false }
       },
@@ -584,6 +597,7 @@
       "description": "Publish the current participant avatar projection for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false },
         "participantId": { "type": "string", "optional": false },
@@ -675,6 +689,7 @@
       "description": "List resources for a room.",
       "command": "tools/webmeet_tool.sh",
       "cwd": "workspace",
+      "worker": "webmeet",
       "inputSchema": {
         "roomId": { "type": "string", "optional": false }
       },

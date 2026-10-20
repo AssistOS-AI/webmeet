@@ -63,6 +63,14 @@
           "name": "WEBMEET_AGENT_NAME",
           "required": false,
           "default": "WebMeetAgent"
+        },
+        {
+          "name": "PLOINKY_TOOL_WORKERS",
+          "value": "1"
+        },
+        {
+          "name": "PLOINKY_TOOL_WORKER_TIMINGS",
+          "required": false
         }
       ]
     },
@@ -100,6 +108,14 @@
           "name": "WEBMEET_AGENT_NAME",
           "required": false,
           "default": "WebMeetAgent"
+        },
+        {
+          "name": "PLOINKY_TOOL_WORKERS",
+          "value": "1"
+        },
+        {
+          "name": "PLOINKY_TOOL_WORKER_TIMINGS",
+          "required": false
         }
       ]
     },

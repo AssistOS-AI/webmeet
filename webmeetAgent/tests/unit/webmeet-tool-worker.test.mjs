@@ -134,13 +134,15 @@ test('W1: the spawn CLI keeps its exact result line and error bytes', async (t) 
 test('W3: the handler takes the tool name per call and ignores the ambient TOOL_NAME', async (t) => {
     const fixture = await storeFixture(t);
     const room = await createRoom(fixture);
-    const { handleWebMeetToolCall } = await import('../../tools/webmeet_tool.mjs');
     const previousName = process.env.TOOL_NAME;
     process.env.TOOL_NAME = 'webmeet_room_get';
     t.after(() => {
         if (previousName === undefined) delete process.env.TOOL_NAME;
         else process.env.TOOL_NAME = previousName;
     });
+    // A fresh module instance loaded while the ambient TOOL_NAME is set, as in
+    // a worker process that inherited one.
+    const { handleWebMeetToolCall } = await import('../../tools/webmeet_tool.mjs?ambient-tool-name');
     const first = capture();
     await handleWebMeetToolCall({
         toolName: 'webmeet_room_list',
@@ -279,4 +281,468 @@ test('W8: a same-pid owner is alive only while its operation holds the token in 
     delete legacy.instanceId;
     assert.equal(roomLocks.isLockOwnerProcessAlive(legacy), true, 'records without instanceId keep pid liveness');
     assert.equal(roomLocks.isLockOwnerProcessAlive({ ...heldOwner, hostname: 'elsewhere' }), false);
+});
+
+// ---------------------------------------------------------------------------
+// Real Ploinky pool. PLOINKY_ROOT selects the checkout (default: the sibling
+// ../ploinky); its Agent/server/toolWorkerPool.mjs spawns the workers.
+
+const workerShell = path.join(toolsDir, 'webmeet_tool_worker.sh');
+const fixtureWorker = fileURLToPath(new URL('./webmeet-tool-worker-fixture.mjs', import.meta.url));
+const PLOINKY_ROOT = path.resolve(process.env.PLOINKY_ROOT || fileURLToPath(new URL('../../../../ploinky/', import.meta.url)));
+const WORKER_TOOLS = [
+    'webmeet_room_list', 'webmeet_room_get', 'webmeet_room_guest_get', 'webmeet_room_public_get',
+    'webmeet_room_join', 'webmeet_room_join_guest', 'webmeet_room_leave', 'webmeet_presence_heartbeat',
+    'webmeet_room_events_list', 'webmeet_chat_list', 'webmeet_participant_avatar_update', 'webmeet_resource_list'
+];
+const GUEST_ALLOWED_TOOLS = new Set([
+    'webmeet_room_public_get', 'webmeet_room_join_guest', 'webmeet_room_guest_get', 'webmeet_chat_send_guest',
+    'webmeet_room_leave', 'webmeet_presence_heartbeat', 'webmeet_participant_avatar_update'
+]);
+const GUEST = Object.freeze({ id: 'guest-visitor', roles: ['guest'], capabilities: [] });
+const SCOPED_USER = Object.freeze({
+    id: 'scoped-1',
+    roles: ['user'],
+    capabilities: ['explorer.access'],
+    scope: ['webmeet:room:room_00000000-0000-4000-8000-0000000000ff']
+});
+
+async function loadPloinky(relative) {
+    return await import(new URL(relative, `file://${PLOINKY_ROOT}/`).href);
+}
+
+async function realPool(t, root, options = {}) {
+    const { ToolWorkerPool } = await loadPloinky('Agent/server/toolWorkerPool.mjs');
+    const logs = [];
+    const { env: extraEnv = {}, ...rest } = options;
+    const pool = new ToolWorkerPool('webmeet', {
+        command: workerShell,
+        cwd: root,
+        size: 1,
+        env: {
+            WEBMEET_DATA_DIR: root,
+            PLOINKY_WEBMEET_MASTER_KEY: MASTER_KEY,
+            NODE_NO_WARNINGS: '1',
+            TOOL_NAME: 'ambient_wrong',
+            ...extraEnv
+        },
+        idleTimeoutMs: 600_000,
+        maxCallsPerWorker: 500,
+        callTimeoutMs: 20_000,
+        log: (line) => logs.push(line),
+        ...rest
+    });
+    t.after(async () => {
+        const outcome = await pool.shutdown({ timeoutMs: 5_000 });
+        assert.equal(outcome.clean, true, 'WebMeet pool shutdown must be clean.');
+    });
+    return { pool, logs };
+}
+
+function fixturePool(t, root, options = {}) {
+    return realPool(t, root, { command: process.execPath, args: [fixtureWorker], ...options });
+}
+
+// A pool call shaped like AgentServer's: the tool's TOOL_NAME in toolEnv and the
+// verified envelope as the payload. The frame toolName is deliberately wrong.
+function poolCall(pool, toolName, envelope) {
+    return pool.call({ toolName: 'ignored_frame_name', toolEnv: { TOOL_NAME: toolName }, payload: envelope });
+}
+
+async function envelopeFor(principal, tool, input = {}) {
+    return await directUserEnvelope({ ...principal, tool, input });
+}
+
+// room_get refreshes presence timestamps on every call, so two runs of the same
+// call differ only in ISO timestamps; everything else must be byte-identical.
+const ISO_TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g;
+
+function assertSameResult(actual, expected, label, { normalizeTimestamps = false } = {}) {
+    const normalize = (text) => (normalizeTimestamps ? text.replace(ISO_TIMESTAMP, '<timestamp>') : text);
+    assert.equal(actual.code, expected.status, `${label}: exit code\n${actual.stderr}`);
+    assert.equal(normalize(actual.stdout), normalize(expected.stdout.toString()), `${label}: stdout`);
+    assert.equal(actual.stderr, expected.stderr.toString(), `${label}: stderr`);
+}
+
+function unexpectedPoolLines(logs) {
+    return logs.filter((line) => !/ timing | identity walk /.test(line));
+}
+
+test('W2: the worker returns the CLI bytes and exit codes for results and errors', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const { pool, logs } = await realPool(t, fixture.root);
+    const cases = [
+        ['webmeet_room_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list')],
+        ['webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: room.id, includeParticipants: false })],
+        ['webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', {})],
+        ['webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: 'room_00000000-0000-4000-8000-00000000dead', includeParticipants: false })],
+        ['webmeet_unknown_tool', await envelopeFor(PRINCIPALS.admin, 'webmeet_unknown_tool')]
+    ];
+    for (const [toolName, envelope] of cases) {
+        const expected = runCli(fixture.root, toolName, envelope);
+        const actual = await poolCall(pool, toolName, envelope);
+        assertSameResult(actual, expected, `${toolName} ${JSON.stringify(envelope.input)}`, { normalizeTimestamps: toolName === 'webmeet_room_get' });
+    }
+    const missing = await poolCall(pool, 'webmeet_room_get', cases[2][1]);
+    assert.equal(missing.stderr, 'Missing required argument "roomId".\n');
+    assert.equal(pool.stats().spawned, 1, 'every call used the same warm worker');
+    assert.deepEqual(unexpectedPoolLines(logs), []);
+});
+
+test('W3: consecutive calls on one worker dispatch their own tool; toolEnv.TOOL_NAME wins over the frame name', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const { pool } = await realPool(t, fixture.root);
+    const listed = await poolCall(pool, 'webmeet_room_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list'));
+    assert.equal(listed.code, 0, listed.stderr);
+    assert.ok(Array.isArray(JSON.parse(listed.stdout).rooms));
+    const chat = await poolCall(pool, 'webmeet_chat_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_chat_list', { roomId: room.id }));
+    assert.equal(chat.code, 0, chat.stderr);
+    assert.deepEqual(Object.keys(JSON.parse(chat.stdout)), ['messages']);
+    // Without a configured TOOL_NAME the frame name is used, never the ambient one.
+    const byFrame = await pool.call({ toolName: 'webmeet_room_list', toolEnv: {}, payload: await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list') });
+    assert.equal(byFrame.code, 0, byFrame.stderr);
+    assert.ok(Array.isArray(JSON.parse(byFrame.stdout).rooms));
+    const unnamed = await pool.call({ toolName: '', toolEnv: {}, payload: await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list') });
+    assert.equal(unnamed.code, 1);
+    assert.equal(unnamed.stderr, 'Unsupported TOOL_NAME "".\n');
+    assert.equal(pool.stats().spawned, 1);
+});
+
+test('W4/W6: identities, admin rights and invocation tokens never cross calls on one worker', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const { pool, logs } = await realPool(t, fixture.root);
+    const adminList = await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list');
+    const adminToken = adminList.metadata.invocationToken;
+    const results = [];
+
+    const a = await poolCall(pool, 'webmeet_room_list', adminList);
+    results.push(a);
+    assert.equal(a.code, 0, a.stderr);
+    assert.equal(JSON.parse(a.stdout).canManageRooms, true);
+    assert.deepEqual(JSON.parse(a.stdout).rooms.map((entry) => entry.id), [room.id]);
+
+    const g = await poolCall(pool, 'webmeet_room_list', await envelopeFor(GUEST, 'webmeet_room_list'));
+    results.push(g);
+    assert.equal(g.code, 1);
+    assert.equal(g.stderr, 'Access denied: guest invocation cannot call "webmeet_room_list".\n');
+
+    const b = await poolCall(pool, 'webmeet_room_get', await envelopeFor(SCOPED_USER, 'webmeet_room_get', { roomId: room.id, includeParticipants: false }));
+    results.push(b);
+    assert.equal(b.code, 1);
+    assert.equal(b.stderr, 'Meeting not found.\n');
+
+    // W6: admin rights follow each call's own grant on the same worker.
+    const user = await poolCall(pool, 'webmeet_room_list', await envelopeFor(PRINCIPALS.explorerUser, 'webmeet_room_list'));
+    const admin = await poolCall(pool, 'webmeet_room_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list'));
+    const noGrant = await poolCall(pool, 'webmeet_room_list', { tool: 'webmeet_room_list', input: {} });
+    results.push(user, admin, noGrant);
+    assert.equal(JSON.parse(user.stdout).canManageRooms, false);
+    assert.equal(JSON.parse(admin.stdout).canManageRooms, true);
+    assert.equal(noGrant.code, 1, 'a call without a grant must not inherit the previous admin');
+
+    assert.equal(pool.stats().spawned, 1, 'every call used the same warm worker');
+    const everything = results.map((result) => result.stdout + result.stderr).join('\n') + logs.join('\n');
+    assert.equal(everything.includes(adminToken), false, 'the admin invocation token must not appear in outputs or pool logs');
+    assert.equal(b.stdout.includes('owner-1') || b.stderr.includes('owner-1'), false);
+});
+
+test('W5: every tool outside the guest allowlist rejects a guest grant in worker mode as in spawn mode', async (t) => {
+    const fixture = await storeFixture(t);
+    const descriptor = JSON.parse(await fs.readFile(new URL('../../mcp-config.json', import.meta.url), 'utf8'));
+    const { pool } = await realPool(t, fixture.root);
+    const denied = descriptor.tools.map((tool) => tool.name).filter((name) => !GUEST_ALLOWED_TOOLS.has(name));
+    assert.equal(denied.length, descriptor.tools.length - 7);
+    for (const name of denied) {
+        const result = await poolCall(pool, name, await envelopeFor(GUEST, name, { roomId: 'room_00000000-0000-4000-8000-000000000001' }));
+        assert.equal(result.code, 1, name);
+        assert.equal(result.stdout, '', name);
+        assert.equal(result.stderr, `Access denied: guest invocation cannot call "${name}".\n`, name);
+    }
+    for (const name of ['webmeet_room_list', 'webmeet_room_rename', 'webmeet_room_events_list']) {
+        const envelope = await envelopeFor(GUEST, name, { roomId: 'room_00000000-0000-4000-8000-000000000001' });
+        assertSameResult(await poolCall(pool, name, envelope), runCli(fixture.root, name, envelope), name);
+    }
+    assert.equal(pool.stats().spawned, 1);
+});
+
+test('W7 (worker): deferred detach work is finished when the result frame arrives, with no stray output', async (t) => {
+    const fixture = await storeFixture(t);
+    await bindSyncDecrypt(fixture.context);
+    const presence = await createRoom(fixture, 'Presence cleanup room');
+    const realtime = await createRoom(fixture, 'Realtime roster room');
+    for (const room of [presence, realtime]) {
+        await seedRoomPayload(fixture.context, room.id, { members: [], agents: [EXTERNAL_AGENT] });
+    }
+    const { pool, logs } = await fixturePool(t, fixture.root);
+    const agentList = await poolCall(pool, 'webmeet_agent_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_agent_list', { roomId: presence.id }));
+    assert.equal(agentList.code, 0, agentList.stderr);
+    assert.equal(readAgentsSync(fixture.context, presence.id).find((agent) => agent.id === EXTERNAL_AGENT.id).status, 'detached');
+    const roomGet = await poolCall(pool, 'webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: realtime.id }));
+    assert.equal(roomGet.code, 0, roomGet.stderr);
+    assert.equal(readAgentsSync(fixture.context, realtime.id).find((agent) => agent.id === EXTERNAL_AGENT.id).status, 'detached');
+    // The next call on the same worker is unaffected.
+    const next = await poolCall(pool, 'webmeet_room_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list'));
+    assert.equal(next.code, 0, next.stderr);
+    assert.equal(pool.stats().spawned, 1);
+    assert.deepEqual(unexpectedPoolLines(logs), []);
+});
+
+test('W8 (worker): an unconfirmed lock release recycles the worker and another worker recovers the lock', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const faultFile = path.join(fixture.root, 'fault-pid.txt');
+    const livekitFile = path.join(fixture.root, 'livekit.json');
+    await fs.writeFile(livekitFile, '[]');
+    const { pool, logs } = await fixturePool(t, fixture.root, {
+        size: 2,
+        env: {
+            WEBMEET_WORKER_FIXTURE_FAULT_FILE: faultFile,
+            WEBMEET_WORKER_FIXTURE_LIVEKIT_FILE: livekitFile,
+            WEBMEET_LOCK_STALE_TTL_MS: '1000',
+            WEBMEET_LOCK_TIMEOUT_MS: '5000'
+        }
+    });
+    const call = (tool, input = {}) => poolCall(pool, tool, { tool, input });
+    const warm = await Promise.all([call('fixture_hold', { ms: 600 }), call('fixture_hold', { ms: 600 })]);
+    assert.equal(new Set(warm.map((result) => result.stdout)).size, 2, 'two distinct warm workers');
+    // Keep one worker busy so the next calls land on the other, which leaks its lock.
+    const holding = call('fixture_hold', { ms: 900 });
+    const leaker = await call('fixture_pid');
+    await fs.writeFile(faultFile, leaker.stdout);
+    const leaked = await poolCall(pool, 'webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: room.id }));
+    assert.equal(leaked.code, 0, leaked.stderr);
+    const lockFile = path.join(fixture.context.meetingLocksDir, `${room.id}.lock`);
+    assert.equal(JSON.parse(await fs.readFile(lockFile, 'utf8')).pid, Number(leaker.stdout), 'the lock file was left behind');
+    const holder = await holding;
+    assert.notEqual(holder.stdout, leaker.stdout);
+    assert.ok(pool.stats().recycled >= 1, `the worker with the unconfirmed release was recycled\n${logs.join('\n')}`);
+
+    const started = Date.now();
+    const contender = await poolCall(pool, 'webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: room.id }));
+    const elapsed = Date.now() - started;
+    assert.equal(contender.code, 0, contender.stderr);
+    assert.ok(elapsed < 1_000 + 1_000 + 1_500, `the contender waited ${elapsed} ms (stale TTL 1000 ms)`);
+    assert.equal(fsSync.existsSync(lockFile), false);
+});
+
+test('W9: external writes are visible to the next call and a code change retires the worker', async (t) => {
+    const fixture = await storeFixture(t);
+    const codeDir = await fs.mkdtemp(path.join(fixture.root, 'code-'));
+    await fs.writeFile(path.join(codeDir, 'tool.mjs'), 'export const version = 1;\n');
+    const past = new Date(Date.now() - 60_000);
+    await fs.utimes(path.join(codeDir, 'tool.mjs'), past, past);
+    const { createCodeIdentity } = await loadPloinky('Agent/server/toolCodeIdentity.mjs');
+    const { pool } = await fixturePool(t, fixture.root, { codeIdentity: createCodeIdentity({ roots: [codeDir], settleMs: 0 }) });
+    const list = async () => JSON.parse((await poolCall(pool, 'webmeet_room_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list'))).stdout).rooms;
+    assert.deepEqual(await list(), []);
+    const created = await createRoom(fixture, 'Written outside the worker');
+    assert.deepEqual((await list()).map((entry) => entry.id), [created.id]);
+    const firstPid = (await poolCall(pool, 'fixture_pid', {})).stdout;
+    assert.equal(pool.stats().spawned, 1);
+
+    await fs.writeFile(path.join(codeDir, 'tool.mjs'), 'export const version = 2;\n');
+    await fs.utimes(path.join(codeDir, 'tool.mjs'), past, new Date(Date.now() - 30_000));
+    const secondPid = (await poolCall(pool, 'fixture_pid', {})).stdout;
+    assert.notEqual(secondPid, firstPid, 'the worker started under the old code was retired');
+    assert.equal(pool.stats().spawned, 2);
+});
+
+test('W10: a worker killed mid-call fails that call only; the replacement serves and the dead lock is recovered', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const { pool } = await fixturePool(t, fixture.root, { env: { WEBMEET_LOCK_STALE_TTL_MS: '1000' } });
+    const firstPid = Number((await poolCall(pool, 'fixture_pid', {})).stdout);
+    const busy = poolCall(pool, 'fixture_hold_lock', { tool: 'fixture_hold_lock', input: { roomId: room.id, ms: 10_000 } });
+    const lockFile = path.join(fixture.context.meetingLocksDir, `${room.id}.lock`);
+    for (let attempt = 0; attempt < 100 && !fsSync.existsSync(lockFile); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(JSON.parse(await fs.readFile(lockFile, 'utf8')).pid, firstPid);
+    process.kill(firstPid, 'SIGKILL');
+    const failed = await busy;
+    assert.equal(failed.code, 1);
+    assert.equal(failed.stdout, '');
+
+    const next = await poolCall(pool, 'webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: room.id }));
+    assert.equal(next.code, 0, next.stderr);
+    assert.notEqual(Number((await poolCall(pool, 'fixture_pid', {})).stdout), firstPid);
+    assert.equal(fsSync.existsSync(lockFile), false, 'no lock with a dead owner remains');
+    assert.equal(pool.stats().crashes >= 1, true);
+});
+
+test('W11: parallel writes on one room through four workers neither lose updates nor time out', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const now = new Date().toISOString();
+    const members = Array.from({ length: 20 }, (_, index) => ({ id: `participant-${index}`, displayName: `P${index}`, joinedAt: now, lastSeenAt: now }));
+    await seedRoomPayload(fixture.context, room.id, { members });
+    const livekitFile = path.join(fixture.root, 'livekit.json');
+    await fs.writeFile(livekitFile, JSON.stringify(members.map((member) => ({ identity: member.id, name: member.displayName, kind: 'STANDARD', attributes: {} }))));
+    const { pool } = await fixturePool(t, fixture.root, { size: 4, env: { WEBMEET_WORKER_FIXTURE_LIVEKIT_FILE: livekitFile } });
+    const calls = [];
+    for (let index = 0; index < 20; index += 1) {
+        const principal = { id: `user-${index}`, roles: ['user'], capabilities: ['explorer.access'] };
+        calls.push(poolCall(pool, 'webmeet_participant_avatar_update', await envelopeFor(principal, 'webmeet_participant_avatar_update', {
+            roomId: room.id,
+            participantId: `participant-${index}`,
+            avatar: { enabled: true, fallbackLetter: 'P', config: { generated: true, emotion: 'happy', seed: `seed-${index}` } }
+        })));
+    }
+    for (let index = 0; index < 5; index += 1) {
+        calls.push(poolCall(pool, 'webmeet_room_get', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId: room.id })));
+    }
+    const results = await Promise.all(calls);
+    for (const result of results) {
+        assert.equal(result.code, 0, result.stderr);
+        assert.doesNotMatch(result.stderr, /Timed out acquiring meeting lock/);
+    }
+    const { decryptRoomPayload, loadRoomRecord } = await import('../../lib/store/roomRecords.mjs');
+    const payload = decryptRoomPayload(fixture.context, await loadRoomRecord(fixture.context, room.id));
+    // Each update binds its participant to the caller inside the room lock; a
+    // lost read-modify-write would leave a participant unbound.
+    assert.deepEqual(
+        payload.members.map((member) => [member.id, member.userId]).sort(),
+        members.map((member, index) => [member.id, `user-${index}`]).sort()
+    );
+    assert.ok(pool.stats().spawned >= 2 && pool.stats().spawned <= 4);
+});
+
+test('W12: the pool declaration, the worker tool set and the spawn fallback are pinned', async () => {
+    const descriptor = JSON.parse(await fs.readFile(new URL('../../mcp-config.json', import.meta.url), 'utf8'));
+    assert.deepEqual(descriptor.toolWorkers, {
+        webmeet: { command: 'tools/webmeet_tool_worker.sh', cwd: 'workspace', size: 4 }
+    });
+    const workers = descriptor.tools.filter((tool) => tool.worker !== undefined).map((tool) => tool.name).sort();
+    assert.deepEqual(workers, [...WORKER_TOOLS].sort());
+    for (const tool of descriptor.tools) {
+        assert.equal(tool.worker, WORKER_TOOLS.includes(tool.name) ? 'webmeet' : undefined, tool.name);
+        assert.equal(tool.command, 'tools/webmeet_tool.sh', tool.name);
+        assert.equal(tool.cwd, descriptor.toolWorkers.webmeet.cwd, tool.name);
+        assert.deepEqual(tool.env, { TOOL_NAME: tool.name }, tool.name);
+        assert.equal(tool.async, undefined, tool.name);
+    }
+    assert.equal(descriptor.tools.find((tool) => tool.name === 'webmeet_room_rename').worker, undefined);
+    for (const file of ['webmeet_tool_worker.sh', 'webmeet_tool_worker.mjs', 'webmeet_tool.sh', 'webmeet_tool.mjs']) {
+        assert.notEqual((await fs.stat(path.join(toolsDir, file))).mode & 0o111, 0, `${file} must be executable`);
+    }
+    const manifest = JSON.parse(await fs.readFile(new URL('../../manifest.json', import.meta.url), 'utf8'));
+    for (const profile of ['default', 'dev']) {
+        const entries = manifest.profiles[profile].env.filter((entry) => String(entry?.name || '').startsWith('PLOINKY_TOOL_WORKER'));
+        assert.deepEqual(entries, [
+            { name: 'PLOINKY_TOOL_WORKERS', value: '1' },
+            { name: 'PLOINKY_TOOL_WORKER_TIMINGS', required: false }
+        ], profile);
+    }
+    const startScript = await fs.readFile(new URL('../../scripts/startAgent.sh', import.meta.url), 'utf8');
+    assert.match(startScript, /chmod \+x [^\n]*\/code\/tools\/webmeet_tool_worker\.sh [^\n]*\/code\/tools\/webmeet_tool_worker\.mjs/);
+});
+
+test('the worker refuses a missing or relative shared runtime module path', async () => {
+    const { serveWebMeetToolWorker } = await import('../../tools/webmeet_tool_worker.mjs');
+    for (const workerModulePath of ['', 'relative.mjs']) {
+        await assert.rejects(serveWebMeetToolWorker({ workerModulePath }), /absolute PLOINKY_TOOL_WORKER_MODULE/);
+    }
+});
+
+test('probes: boundary, orphan, idempotency and malformed envelopes match spawn mode and keep the worker usable', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const deleted = await createRoom(fixture, 'Deleted room');
+    const admin = await directUserAuth(PRINCIPALS.admin);
+    await fixture.store.deleteMeeting(fixture.context, { meetingId: deleted.id, confirm: true, authInfo: admin }).catch(async () => {
+        await fs.rm(path.join(fixture.context.meetingsDir, `${deleted.id}.json`));
+    });
+    const { pool } = await realPool(t, fixture.root);
+    const roomGet = async (roomId) => await envelopeFor(PRINCIPALS.admin, 'webmeet_room_get', { roomId, includeParticipants: false });
+    const parity = [
+        ['webmeet_room_get', await roomGet('')],
+        ['webmeet_room_get', await roomGet('r'.repeat(10_000))],
+        ['webmeet_room_get', await roomGet('room_ü')],
+        ['webmeet_room_get', await roomGet(deleted.id)],
+        ['webmeet_chat_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_chat_list', { roomId: deleted.id })],
+        ['webmeet_room_join', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_join', { roomId: deleted.id, participantId: 'p-orphan' })],
+        ['webmeet_room_list', { tool: 'webmeet_room_list', input: {}, metadata: { invocation: 'not-an-object' } }]
+    ];
+    for (const [toolName, envelope] of parity) {
+        const expected = runCli(fixture.root, toolName, envelope);
+        const actual = await poolCall(pool, toolName, envelope);
+        assertSameResult(actual, expected, `${toolName} ${JSON.stringify(envelope.input).slice(0, 60)}`);
+        assert.equal(actual.code, 1, `${toolName} must fail`);
+    }
+    // The tool layer trusts metadata that AgentServer has verified, in both
+    // modes; a forged grant is rejected by AgentServer before dispatch.
+    const forgedEnvelope = { tool: 'webmeet_room_list', input: {}, metadata: { invocation: { sub: 'user:forged', actor: { kind: 'user', id: 'user:forged', roles: ['admin'] } } } };
+    const forged = await poolCall(pool, 'webmeet_room_list', forgedEnvelope);
+    assertSameResult(forged, runCli(fixture.root, 'webmeet_room_list', forgedEnvelope), 'forged grant');
+    const listed = await poolCall(pool, 'webmeet_room_list', await envelopeFor(PRINCIPALS.admin, 'webmeet_room_list'));
+    assert.equal(listed.code, 0, listed.stderr);
+    assert.deepEqual(JSON.parse(listed.stdout).rooms.map((entry) => entry.id), [room.id]);
+    assert.equal(pool.stats().spawned, 1, 'the worker stayed alive through every failure');
+    assert.deepEqual(await fs.readdir(fixture.context.meetingLocksDir), [], 'no lock file is left behind');
+});
+
+test('probes: replayed leave and join through a worker behave as in spawn mode', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const livekitFile = path.join(fixture.root, 'livekit.json');
+    await fs.writeFile(livekitFile, '[]');
+    const { pool } = await fixturePool(t, fixture.root, { env: { WEBMEET_WORKER_FIXTURE_LIVEKIT_FILE: livekitFile } });
+    const okJson = (result) => {
+        assert.equal(result.code, 0, result.stderr);
+        return JSON.parse(result.stdout);
+    };
+    const call = async (principal, tool, input) => await poolCall(pool, tool, await envelopeFor(principal, tool, input));
+    const joinInput = { roomId: room.id, participantId: 'p-replay', displayName: 'Replay' };
+    const leaveInput = { roomId: room.id, participantId: 'p-replay' };
+    okJson(await call(PRINCIPALS.explorerUser, 'webmeet_room_join', joinInput));
+    assert.equal(okJson(await call(PRINCIPALS.explorerUser, 'webmeet_room_leave', leaveInput)).removed, true);
+    // A user's replayed leave no longer finds its participant: the same denial as a spawned process.
+    const replayEnvelope = await envelopeFor(PRINCIPALS.explorerUser, 'webmeet_room_leave', leaveInput);
+    const replayed = await poolCall(pool, 'webmeet_room_leave', replayEnvelope);
+    assertSameResult(replayed, runCli(fixture.root, 'webmeet_room_leave', replayEnvelope), 'replayed user leave');
+    assert.equal(replayed.stderr, 'Access denied: cannot act as another participant.\n');
+    // An administrator's replayed leave is a no-op.
+    assert.equal(okJson(await call(PRINCIPALS.admin, 'webmeet_room_leave', leaveInput)).removed, false);
+    const joinedAgain = okJson(await call(PRINCIPALS.explorerUser, 'webmeet_room_join', joinInput));
+    const joinedTwice = okJson(await call(PRINCIPALS.explorerUser, 'webmeet_room_join', joinInput));
+    assert.equal(joinedAgain.participantIdentity, 'p-replay');
+    assert.equal(joinedTwice.participantIdentity, 'p-replay');
+    const { decryptRoomPayload, loadRoomRecord } = await import('../../lib/store/roomRecords.mjs');
+    const payload = decryptRoomPayload(fixture.context, await loadRoomRecord(fixture.context, room.id));
+    assert.deepEqual(payload.members.map((member) => member.id), ['p-replay'], 'no duplicate member');
+    assert.equal(pool.stats().spawned, 1);
+});
+
+test('probes: a leave racing another user\'s roster read on two workers never re-adds the leaver (50 rounds)', async (t) => {
+    const fixture = await storeFixture(t);
+    const room = await createRoom(fixture);
+    const livekitFile = path.join(fixture.root, 'livekit.json');
+    const { pool } = await fixturePool(t, fixture.root, { size: 2, env: { WEBMEET_WORKER_FIXTURE_LIVEKIT_FILE: livekitFile } });
+    const leaver = PRINCIPALS.explorerUser;
+    const stayer = { id: 'member-2', roles: ['user'], capabilities: ['explorer.access'] };
+    const live = (ids) => fs.writeFile(livekitFile, JSON.stringify(ids.map((identity) => ({ identity, name: identity, kind: 'STANDARD', attributes: {} }))));
+    const call = async (principal, tool, input) => {
+        const result = await poolCall(pool, tool, await envelopeFor(principal, tool, input));
+        assert.equal(result.code, 0, `${tool}: ${result.stderr}`);
+        return result;
+    };
+    const { decryptRoomPayload, loadRoomRecord } = await import('../../lib/store/roomRecords.mjs');
+    await live(['p-stays', 'p-leaves']);
+    await call(stayer, 'webmeet_room_join', { roomId: room.id, participantId: 'p-stays', displayName: 'Stays' });
+    for (let round = 0; round < 50; round += 1) {
+        await live(['p-stays', 'p-leaves']);
+        await call(leaver, 'webmeet_room_join', { roomId: room.id, participantId: 'p-leaves', displayName: 'Leaves' });
+        // The leaver has disconnected from LiveKit, as the browser does before room_leave.
+        await live(['p-stays']);
+        await Promise.all([
+            call(leaver, 'webmeet_room_leave', { roomId: room.id, participantId: 'p-leaves' }),
+            call(stayer, 'webmeet_room_get', { roomId: room.id })
+        ]);
+        const payload = decryptRoomPayload(fixture.context, await loadRoomRecord(fixture.context, room.id));
+        assert.deepEqual(payload.members.map((member) => member.id), ['p-stays'], `round ${round}`);
+    }
+    assert.deepEqual(await fs.readdir(fixture.context.meetingLocksDir), []);
 });
