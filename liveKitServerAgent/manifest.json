@@ -64,6 +64,10 @@
         {
           "name": "PLOINKY_HOST_REACHABLE_IPV4",
           "required": false
+        },
+        {
+          "name": "PLOINKY_BOX_MEDIA_PORT",
+          "required": false
         }
       ]
     },
@@ -86,6 +90,10 @@
         {
           "name": "PLOINKY_HOST_REACHABLE_IPV4",
           "required": false
+        },
+        {
+          "name": "PLOINKY_BOX_MEDIA_PORT",
+          "required": false
         }
       ]
     },
@@ -107,6 +115,10 @@
         },
         {
           "name": "PLOINKY_HOST_REACHABLE_IPV4",
+          "required": false
+        },
+        {
+          "name": "PLOINKY_BOX_MEDIA_PORT",
           "required": false
         }
       ]

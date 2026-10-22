@@ -6,6 +6,7 @@ LIVEKIT_CONFIG="${GENERATED_DIR}/livekit.yaml"
 EGRESS_CONFIG="${GENERATED_DIR}/egress.yaml"
 EGRESS_RUNTIME_CONFIG="/run/ploinky/egress.yaml"
 EGRESS_PID_FILE="/run/ploinky/egress.pid"
+LIVEKIT_UDP_PORT_FILE="/run/ploinky/livekit-udp-port"
 REDIS_CONFIG="${GENERATED_DIR}/redis.conf"
 SUPERVISOR_SOCKET="/run/ploinky/livekit-supervisor.sock"
 WAIT_FOR_TIMEOUT="${LIVEKIT_INFRA_WAIT_TIMEOUT:-45}"
@@ -136,22 +137,24 @@ wait_for_tcp() {
 }
 
 wait_for_udp_owner() {
+  udp_port="$1"
   deadline=$(( $(date +%s) + WAIT_FOR_TIMEOUT ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    if ss -H -lunp 2>/dev/null | awk '$4 ~ /:7882$/ && /livekit-server/ { found=1 } END { exit(found ? 0 : 1) }'; then
-      log "livekit-server owns the fixed UDP mux on 0.0.0.0:7882"
+    if livekit_owns_udp "$udp_port"; then
+      log "livekit-server owns the fixed UDP mux on 0.0.0.0:${udp_port}"
       return 0
     fi
     sleep 1
   done
-  fail "livekit-server did not acquire the fixed UDP mux 7882/udp"
+  fail "livekit-server did not acquire the fixed UDP mux ${udp_port}/udp"
 }
 
 assert_forbidden_listeners_absent() {
+  udp_port="$1"
   if ss -H -lnt 2>/dev/null | awk '$4 ~ /:(80|443|3478|5349|7881)$/ { found=1 } END { exit(found ? 0 : 1) }'; then
     fail "a forbidden TCP listener (80, 443, 3478, 5349, or 7881) is active"
   fi
-  if ss -H -lun 2>/dev/null | awk '$4 ~ /:(3478|5349|7883|7884|7885|7886|7887|7888|7889|7890|7891|7892)$/ { found=1 } END { exit(found ? 0 : 1) }'; then
+  if forbidden_udp_listener_present "$udp_port"; then
     fail "a forbidden local TURN or LiveKit UDP-range listener is active"
   fi
 }
@@ -208,8 +211,12 @@ node /code/scripts/generate-config.mjs
 require_file "$LIVEKIT_CONFIG"
 require_file "$EGRESS_CONFIG"
 require_file "$REDIS_CONFIG"
+# shellcheck source=lib/livekit-udp-mux.sh
+. /code/scripts/lib/livekit-udp-mux.sh
+LIVEKIT_UDP_PORT="$(livekit_udp_port_from_config "$LIVEKIT_CONFIG")" \
+  || fail "generated LiveKit config does not contain a valid rtc.udp_port"
 mkdir -p /data/redis /data/recordings /run/ploinky
-rm -f "$SUPERVISOR_SOCKET" "$EGRESS_PID_FILE"
+rm -f "$SUPERVISOR_SOCKET" "$EGRESS_PID_FILE" "$LIVEKIT_UDP_PORT_FILE" "${LIVEKIT_UDP_PORT_FILE}.tmp"
 prepare_egress_runtime
 
 trap 'shutdown_children; exit 0' INT TERM
@@ -226,8 +233,13 @@ livekit-server --config "$LIVEKIT_CONFIG" &
 LIVEKIT_PID=$!
 PIDS="$PIDS $LIVEKIT_PID"
 wait_for_tcp livekit 127.0.0.1 7880
-wait_for_udp_owner
-assert_forbidden_listeners_absent
+wait_for_udp_owner "$LIVEKIT_UDP_PORT"
+assert_forbidden_listeners_absent "$LIVEKIT_UDP_PORT"
+# Publish the selected mux port for the health script, which never reads the
+# secret-bearing livekit.yaml. Write atomically so health never sees a partial file.
+printf '%s\n' "$LIVEKIT_UDP_PORT" > "${LIVEKIT_UDP_PORT_FILE}.tmp"
+chmod 0444 "${LIVEKIT_UDP_PORT_FILE}.tmp"
+mv -f "${LIVEKIT_UDP_PORT_FILE}.tmp" "$LIVEKIT_UDP_PORT_FILE"
 
 log "starting unprivileged PulseAudio for LiveKit Egress"
 setpriv \

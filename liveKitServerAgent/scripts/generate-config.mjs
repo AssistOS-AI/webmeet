@@ -115,6 +115,33 @@ function detectLocalIpv4() {
   return candidates.sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))[0];
 }
 
+const DEFAULT_BOX_MEDIA_PORT = 7882;
+const RESERVED_MEDIA_PORTS = new Map([
+  [3478, 'TURN'],
+  [5349, 'TURN'],
+  [7881, 'the disabled LiveKit TCP media listener'],
+]);
+
+// The Box exports PLOINKY_BOX_MEDIA_PORT only when its media UDP port differs
+// from the default. The in-Box listener must equal the published host port,
+// because LiveKit advertises the port it binds.
+function resolveBoxMediaPort() {
+  const raw = String(process.env.PLOINKY_BOX_MEDIA_PORT || '').trim();
+  let envPort;
+  if (raw) {
+    if (!/^[1-9][0-9]{0,4}$/.test(raw) || Number(raw) > 65535) {
+      throw new Error('PLOINKY_BOX_MEDIA_PORT must be an integer UDP port in 1..65535');
+    }
+    envPort = Number(raw);
+  }
+  const resolved = envPort ?? DEFAULT_BOX_MEDIA_PORT;
+  if (RESERVED_MEDIA_PORTS.has(resolved)) {
+    throw new Error(`PLOINKY_BOX_MEDIA_PORT ${resolved} is reserved for ${RESERVED_MEDIA_PORTS.get(resolved)} and cannot be the LiveKit mux`);
+  }
+  return resolved;
+}
+
+const mediaPort = resolveBoxMediaPort();
 const configuredMedia = media !== undefined;
 const mediaAddress = configuredMedia ? media?.publicIPv4 : detectLocalIpv4();
 if (configuredMedia && !isLiteralGlobalUnicastIpv4(mediaAddress)) {
@@ -123,8 +150,8 @@ if (configuredMedia && !isLiteralGlobalUnicastIpv4(mediaAddress)) {
 if (!configuredMedia && !isUsableLocalIpv4(mediaAddress)) {
   throw new Error('LiveKit local media address must be a usable literal IPv4 address');
 }
-if (configuredMedia && media?.udpPort !== 7882) {
-  throw new Error('LiveKit media.udpPort must equal the box-owned port 7882');
+if (configuredMedia && media?.udpPort !== mediaPort) {
+  throw new Error(`LiveKit media.udpPort must equal the Box media port ${mediaPort}`);
 }
 if (configuredMedia && !['direct', 'nat-forward'].includes(media?.addressMode)) {
   throw new Error('LiveKit media.addressMode must be direct or nat-forward');
@@ -137,7 +164,7 @@ const livekitConfig = {
   rtc: {
     node_ip: mediaAddress,
     tcp_port: 0,
-    udp_port: 7882,
+    udp_port: mediaPort,
     use_external_ip: false,
   },
   turn: { enabled: false },
@@ -173,4 +200,4 @@ fs.writeFileSync(
   { mode: 0o600 },
 );
 
-console.log('[liveKitServerAgent] generated fixed LiveKit/Egress/Redis configuration from the attested topology (credentials redacted)');
+console.log(`[liveKitServerAgent] generated fixed LiveKit/Egress/Redis configuration with UDP mux ${mediaPort} from the attested topology (credentials redacted)`);

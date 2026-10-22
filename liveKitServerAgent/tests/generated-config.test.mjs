@@ -430,6 +430,11 @@ test('manifest defers generated config until the attested runtime starts', () =>
       { name: 'PLOINKY_HOST_REACHABLE_IPV4', required: false },
       `${profile} cannot receive the manifest-resolved host-reachable address`,
     );
+    assert.deepEqual(
+      config.env.find(({ name }) => name === 'PLOINKY_BOX_MEDIA_PORT'),
+      { name: 'PLOINKY_BOX_MEDIA_PORT', required: false },
+      `${profile} cannot receive the Box media UDP port`,
+    );
   }
   assert.deepEqual(manifest.volumeOptions['/working-data/generated'], {
     generated: true,
@@ -441,4 +446,103 @@ test('manifest defers generated config until the attested runtime starts', () =>
   const firstConfigReadIndex = source.indexOf('require_file "$LIVEKIT_CONFIG"');
   assert.notEqual(generationIndex, -1);
   assert.ok(generationIndex < firstConfigReadIndex, 'runtime must generate config before reading it');
+});
+
+function readRtc(run) {
+  return JSON.parse(fs.readFileSync(path.join(run.generated, 'livekit.yaml'), 'utf8')).rtc;
+}
+
+test('generation binds the Box media port for local media', () => {
+  for (const [env, expected] of [[{ PLOINKY_BOX_MEDIA_PORT: '7893' }, 7893], [{}, 7882], [{ PLOINKY_BOX_MEDIA_PORT: '' }, 7882], [{ PLOINKY_BOX_MEDIA_PORT: ' 7893 ' }, 7893]]) {
+    const run = runGenerator({}, { PLOINKY_MEDIA_PUBLIC_IP: '192.168.50.10', ...env });
+    try {
+      assert.equal(run.result.status, 0, run.result.stderr);
+      assert.equal(readRtc(run).udp_port, expected);
+      assert.match(run.result.stdout, new RegExp(`UDP mux ${expected}\\b`));
+    } finally {
+      fs.rmSync(run.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('generation accepts configured media that equals the Box media port', () => {
+  const run = runGenerator(validTopology({ udpPort: 7893 }), { PLOINKY_BOX_MEDIA_PORT: '7893' });
+  try {
+    assert.equal(run.result.status, 0, run.result.stderr);
+    assert.equal(readRtc(run).udp_port, 7893);
+  } finally {
+    fs.rmSync(run.root, { recursive: true, force: true });
+  }
+});
+
+for (const [label, env, message] of [
+  ['an env port that differs from the topology', { PLOINKY_BOX_MEDIA_PORT: '7894' }, /udpPort must equal the Box media port 7894/],
+  ['a topology port without the env port', {}, /udpPort must equal the Box media port 7882/],
+]) {
+  test(`generation rejects ${label} before writing config`, () => {
+    const run = runGenerator(validTopology({ udpPort: 7893 }), env);
+    try {
+      assert.notEqual(run.result.status, 0);
+      assert.match(run.result.stderr, message);
+      assert.equal(run.result.stderr.includes('test-secret-never-log'), false);
+      assert.equal(fs.existsSync(path.join(run.generated, 'livekit.yaml')), false);
+    } finally {
+      fs.rmSync(run.root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('generation rejects malformed Box media ports', () => {
+  for (const value of ['0', '65536', '-1', '07893', '7893.0', '1e4', 'abc', '\u0667\u0668\u0669\u0663', '1'.repeat(100), '7893 7894']) {
+    const run = runGenerator({}, { PLOINKY_MEDIA_PUBLIC_IP: '192.168.50.10', PLOINKY_BOX_MEDIA_PORT: value });
+    try {
+      assert.notEqual(run.result.status, 0, `${value} was accepted`);
+      assert.match(run.result.stderr, /PLOINKY_BOX_MEDIA_PORT must be an integer UDP port/, value);
+      assert.equal(fs.existsSync(path.join(run.generated, 'livekit.yaml')), false);
+    } finally {
+      fs.rmSync(run.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('generation accepts the Box media port boundaries', () => {
+  for (const value of ['1', '65535']) {
+    const run = runGenerator({}, { PLOINKY_MEDIA_PUBLIC_IP: '192.168.50.10', PLOINKY_BOX_MEDIA_PORT: value });
+    try {
+      assert.equal(run.result.status, 0, run.result.stderr);
+      assert.equal(readRtc(run).udp_port, Number(value));
+    } finally {
+      fs.rmSync(run.root, { recursive: true, force: true });
+    }
+  }
+});
+
+for (const [value, message] of [['3478', /reserved for TURN/], ['5349', /reserved for TURN/], ['7881', /reserved for the disabled LiveKit TCP media listener/]]) {
+  test(`generation rejects reserved Box media port ${value}`, () => {
+    for (const topology of [{}, validTopology({ udpPort: Number(value) })]) {
+      const run = runGenerator(topology, { PLOINKY_MEDIA_PUBLIC_IP: '192.168.50.10', PLOINKY_BOX_MEDIA_PORT: value });
+      try {
+        assert.notEqual(run.result.status, 0);
+        assert.match(run.result.stderr, message);
+        assert.equal(fs.existsSync(path.join(run.generated, 'livekit.yaml')), false);
+      } finally {
+        fs.rmSync(run.root, { recursive: true, force: true });
+      }
+    }
+  });
+}
+
+test('start and health scripts share the port-aware mux checks and never hard-code 7882 listeners', () => {
+  const scripts = path.join(agentRoot, 'scripts');
+  const start = fs.readFileSync(path.join(scripts, 'start-livekit-server-agent.sh'), 'utf8');
+  const health = fs.readFileSync(path.join(scripts, 'health/livekit-server-agent-health.sh'), 'utf8');
+  for (const source of [start, health]) {
+    assert.match(source, /\. \/code\/scripts\/lib\/livekit-udp-mux\.sh/);
+    assert.doesNotMatch(source, /:7882\$|7882\/udp/);
+  }
+  assert.match(start, /rm -f [^\n]*"\$LIVEKIT_UDP_PORT_FILE"/);
+  assert.match(start, /chmod 0444 "\$\{LIVEKIT_UDP_PORT_FILE\}\.tmp"\nmv -f "\$\{LIVEKIT_UDP_PORT_FILE\}\.tmp" "\$LIVEKIT_UDP_PORT_FILE"/);
+  assert.doesNotMatch(health, /livekit\.yaml|livekit_udp_port_from_config/);
+  const fallback = health.slice(health.indexOf('elif [ -z "${PLOINKY_BOX_MEDIA_PORT:-}" ]'));
+  assert.match(fallback, /^elif \[ -z "\$\{PLOINKY_BOX_MEDIA_PORT:-\}" \]; then\n  livekit_udp_port=7882\nelse\n  fail 'LiveKit UDP port file is missing'/);
 });
