@@ -46,7 +46,7 @@ authority attestation. It defaults to Ploinky's standard
 `PLOINKY_EDGE_TOPOLOGY_FILE` as an override. It generates LiveKit with loopback
 HTTP/Twirp on `7880`,
 a literal configured public IPv4,
-`use_external_ip: false`, one UDP mux on `7882`, and TCP media disabled. Public
+`use_external_ip: false`, one UDP mux on the Box media UDP port (`PLOINKY_BOX_MEDIA_PORT`, default `7882`), and TCP media disabled. The generator rejects a media stanza whose `udpPort` differs from that port and rejects the reserved ports 3478, 5349 and 7881. The external-network release lanes require the default `7882`. Public
 topology is authoritative and ignores `PLOINKY_MEDIA_PUBLIC_IP`. When valid
 topology omits media, that optional manifest-declared variable selects a
 reachable host or LAN IPv4 for bounded local deployment; absent that, the

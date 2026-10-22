@@ -20,7 +20,7 @@ manifest-resolved `PLOINKY_HOST_REACHABLE_IPV4`, normally supplied by
 deployment-time detection, is preferred; otherwise startup discovers a usable
 non-loopback container address. Operator configuration may replace that
 detected hint through normal optional manifest env resolution. Local mode does
-not satisfy cross-network release gates. LiveKit alone owns UDP `7882`. Egress uses
+not satisfy cross-network release gates. LiveKit alone owns the Box media UDP port (`PLOINKY_BOX_MEDIA_PORT`, default `7882`); the external-network release lanes require the default `7882`. Egress uses
 loopback template/service `7980` and loopback semantic health `7981`.
 
 Public WebSocket signaling reaches loopback LiveKit through

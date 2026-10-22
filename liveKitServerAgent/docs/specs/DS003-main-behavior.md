@@ -20,7 +20,7 @@ summary: Defines attested LiveKit startup, private administration, and supervise
 
 ### Attested media runtime
 
-Ploinky starts the pinned image and provides the attested topology before `scripts/generate-config.mjs` writes runtime configuration. The supervisor starts Redis, [LiveKit Server](wiki.html#definition-livekit), [Egress](wiki.html#definition-egress), and private health, and checks process and socket ownership. LiveKit owns one UDP mux on `7882`. A declared media stanza is authoritative; topology without media selects bounded local deployment and cannot satisfy cross-network release evidence. [DS002-livekit-server-agent](specsLoader.html?spec=DS002-livekit-server-agent.md) defines address and readiness requirements.
+Ploinky starts the pinned image and provides the attested topology before `scripts/generate-config.mjs` writes runtime configuration. The supervisor starts Redis, [LiveKit Server](wiki.html#definition-livekit), [Egress](wiki.html#definition-egress), and private health, and checks process and socket ownership. LiveKit owns one UDP mux on the Box media UDP port (`PLOINKY_BOX_MEDIA_PORT`, default `7882`). A declared media stanza is authoritative; topology without media selects bounded local deployment and cannot satisfy cross-network release evidence. [DS002-livekit-server-agent](specsLoader.html?spec=DS002-livekit-server-agent.md) defines address and readiness requirements.
 
 ### Protected signaling and recording
 

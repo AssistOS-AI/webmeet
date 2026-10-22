@@ -30,4 +30,4 @@ Run each command from the agent directory. Node.js 20 or later.
 - Fixtures that mint grants use the sibling `../ploinky` checkout and fail when it is missing.
 - `MEETING_SECRETARY_PRINCIPAL` in `webmeetAgent/lib/meetingNotes/service.mjs` is `agent:webmeet/webmeetScribeAgent`. It authorizes meeting-notes writes and must equal the Scribe agent's real identity.
 - Each agent's `docs/partials-loader.js` imports `../../docs/documentation-breadcrumb.js`; keep `docs/documentation-breadcrumb.js` at the repository root.
-- `liveKitServerAgent` always advertises in-Box UDP 7882; host ports are chosen with the Ploinky global `--port` and `--udp-port` flags.
+- `liveKitServerAgent` binds and advertises the Box media UDP port (`PLOINKY_BOX_MEDIA_PORT`, default 7882); host ports are chosen with the Ploinky global `--port` and `--udp-port` flags, and Ploinky exports `PLOINKY_BOX_MEDIA_PORT` only when `--udp-port` differs from 7882. The external-network release lanes require the default 7882.

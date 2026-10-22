@@ -12,7 +12,7 @@
 - `webmeet/liveKitServerAgent`
   - single Ploinky agent that supervises the WebMeet media runtime
   - includes LiveKit Server, Redis, Egress, and semantic supervisor health inside one pinned container
-  - binds signaling/API only to box loopback `127.0.0.1:7880`, owns the one box UDP mux on `7882`, and contains no local TURN, public TLS proxy, or certificate manager
+  - binds signaling/API only to box loopback `127.0.0.1:7880`, owns the one box UDP mux on the Box media UDP port (`PLOINKY_BOX_MEDIA_PORT`, default `7882`), and contains no local TURN, public TLS proxy, or certificate manager
 - `webmeetScribeAgent`
   - separate text-only Meeting Secretary agent enabled with `no-wait`
   - reconciles cumulative meeting notes through delegated WebMeet tools

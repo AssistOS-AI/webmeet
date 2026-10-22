@@ -25,7 +25,7 @@ The verified rootless Podman transport cannot activate the private broker or pri
 
 ### Media and credential lifecycle
 
-The SFU advertises one direct candidate at the configured public IPv4 and UDP `7882`. External TURN provides UDP and TLS/TCP relay. The long-term relay secret is absent from [WebMeet](wiki.html#definition-webmeetagent) environment and topology; only allowed current-generation consumers can mint short-lived material.
+The SFU advertises one direct candidate at the configured public IPv4 and the Box media UDP port (`PLOINKY_BOX_MEDIA_PORT`, default `7882`). External TURN provides UDP and TLS/TCP relay. The long-term relay secret is absent from [WebMeet](wiki.html#definition-webmeetagent) environment and topology; only allowed current-generation consumers can mint short-lived material.
 
 Before credential expiry, the room UI performs a controlled disconnect, resolves fresh join material, recreates the [LiveKit](wiki.html#definition-livekit) connection, rejoins, and restores microphone/camera state. Browser network transitions are left to the [LiveKit](wiki.html#definition-livekit) client, which resumes the existing session in place. A session without relay servers never recreates its connection on a network event. A relay session performs the same controlled recreation only when the browser reports `online` and the [LiveKit](wiki.html#definition-livekit) room is still reconnecting 15 seconds later; a connected or disconnected room is left alone. Network quality estimate changes (`navigator.connection` `change`) never trigger recreation. An active screen share is stopped and the user is told to press the real Share screen button again because display capture cannot be reacquired without a fresh browser user activation. Failure is visible and closed; stale material is not retried as a fallback. Refresh timers and network listeners are removed when the dashboard unloads.
 
@@ -48,12 +48,12 @@ With `SMOKE_WEBMEET_SCREEN=1`, the existing two-account smoke test requires two 
 - local [LiveKit](wiki.html#definition-livekit) ScreenShare publication and active UI state;
 - a visible attached remote ScreenShare video with current media data;
 - increasing screen-source outbound and inbound RTP packet/frame counters;
-- selected ICE candidate-pair evidence proving both browsers use an active non-relay UDP pair on the fixed `7882` mux; and
+- selected ICE candidate-pair evidence proving both browsers use an active non-relay UDP pair on the fixed Box media UDP mux (default `7882`); and
 - local unpublication plus remote track removal before reversing direction.
 
 The test retains chat and room cleanup and writes redacted trace, video, screenshots, publication identity, candidate-pair, and RTC diagnostics on failure. Screen mode never skips for environment or account absence.
 
-The local screen lane deliberately does not claim that the selected address is the configured public IPv4. Separate native Linux x64 and arm64 lanes use two remote browsers on verified distinct external networks. There, direct UDP must select the configured public IPv4 and `7882` rather than `7881` or a private/discovered alternative; relay lanes must select external TURN/UDP and TURN/TLS respectively.
+The external-network release lanes require the default `7882`. The local screen lane deliberately does not claim that the selected address is the configured public IPv4. Separate native Linux x64 and arm64 lanes use two remote browsers on verified distinct external networks. There, direct UDP must select the configured public IPv4 and `7882` rather than `7881` or a private/discovered alternative; relay lanes must select external TURN/UDP and TURN/TLS respectively.
 
 ### Security
 
