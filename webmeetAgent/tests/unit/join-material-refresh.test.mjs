@@ -34,29 +34,122 @@ afterEach(() => {
     restoreGlobal('navigator', originalNavigatorDescriptor);
 });
 
-test('network refresh listeners are exact and removed when the dashboard unloads', async () => {
-    const { browserWindow, connection } = setBrowserGlobals();
+const RELAY_ICE_SERVERS = [{
+    urls: 'turn:turn.example:3478',
+    username: 'temporary',
+    credential: 'secret'
+}];
+
+function createNetworkPresenter(browserWindow, { iceServers = RELAY_ICE_SERVERS, roomState = 'connected' } = {}) {
     const reasons = [];
+    const room = { state: roomState };
     const presenter = {
-        roomLiveKit: { getRoom: () => ({ connected: true }) },
+        state: { session: { rtcConfig: { iceTransportPolicy: 'all', iceServers } } },
+        roomLiveKit: { getRoom: () => room },
         refreshJoinMaterialAndReconnect: async (reason) => reasons.push(reason),
         joinMaterialRefreshTimer: browserWindow.setTimeout(() => {}, 60_000),
         joinMaterialNetworkRefreshHandler: null
     };
+    return { presenter, reasons, room };
+}
+
+test('direct-UDP sessions leave network transitions to the LiveKit resume', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow, connection } = setBrowserGlobals();
+    const { presenter, reasons } = createNetworkPresenter(browserWindow, { iceServers: [], roomState: 'reconnecting' });
+
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    assert.equal(presenter.joinMaterialNetworkRefreshHandler ?? null, null);
+    browserWindow.dispatchEvent(new Event('online'));
+    connection.dispatchEvent(new Event('change'));
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(reasons, []);
+});
+
+test('network quality estimate changes never recreate a relay session', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow, connection } = setBrowserGlobals();
+    const { presenter, reasons } = createNetworkPresenter(browserWindow, { roomState: 'reconnecting' });
+
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    connection.dispatchEvent(new Event('change'));
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(reasons, []);
+    roomSessionMethods.uninstallJoinMaterialRefreshListeners.call(presenter);
+});
+
+test('relay sessions that LiveKit resumed in the grace period are kept', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow } = setBrowserGlobals();
+    const { presenter, reasons, room } = createNetworkPresenter(browserWindow, { roomState: 'reconnecting' });
 
     roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
     browserWindow.dispatchEvent(new Event('online'));
-    connection.dispatchEvent(new Event('change'));
-    await Promise.resolve();
-    assert.deepEqual(reasons, ['network-transition', 'network-transition']);
+    room.state = 'connected';
+    t.mock.timers.tick(15_000);
+    assert.deepEqual(reasons, []);
+    roomSessionMethods.uninstallJoinMaterialRefreshListeners.call(presenter);
+});
 
+test('relay sessions still resuming after the grace period recreate join material once', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow } = setBrowserGlobals();
+    const { presenter, reasons, room } = createNetworkPresenter(browserWindow, { roomState: 'reconnecting' });
+
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    browserWindow.dispatchEvent(new Event('online'));
+    t.mock.timers.tick(5_000);
+    room.state = 'signalReconnecting';
+    browserWindow.dispatchEvent(new Event('online'));
+    t.mock.timers.tick(14_999);
+    assert.deepEqual(reasons, []);
+    t.mock.timers.tick(1);
+    assert.deepEqual(reasons, ['network-transition']);
+    roomSessionMethods.uninstallJoinMaterialRefreshListeners.call(presenter);
+});
+
+test('relay sessions that LiveKit disconnected are not rejoined by the network check', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow } = setBrowserGlobals();
+    const { presenter, reasons, room } = createNetworkPresenter(browserWindow, { roomState: 'reconnecting' });
+
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    browserWindow.dispatchEvent(new Event('online'));
+    room.state = 'disconnected';
+    t.mock.timers.tick(15_000);
+    assert.deepEqual(reasons, []);
+    roomSessionMethods.uninstallJoinMaterialRefreshListeners.call(presenter);
+});
+
+test('relay listeners do not recreate sessions whose join material lost its relay servers', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow } = setBrowserGlobals();
+    const { presenter, reasons } = createNetworkPresenter(browserWindow, { roomState: 'reconnecting' });
+
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    presenter.state.session = { rtcConfig: { iceTransportPolicy: 'all', iceServers: [] } };
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    browserWindow.dispatchEvent(new Event('online'));
+    t.mock.timers.tick(15_000);
+    assert.deepEqual(reasons, []);
+    roomSessionMethods.uninstallJoinMaterialRefreshListeners.call(presenter);
+});
+
+test('network refresh listeners and pending checks are removed when the dashboard unloads', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { browserWindow } = setBrowserGlobals();
+    const { presenter, reasons } = createNetworkPresenter(browserWindow, { roomState: 'reconnecting' });
+
+    roomSessionMethods.installJoinMaterialRefreshListeners.call(presenter);
+    browserWindow.dispatchEvent(new Event('online'));
     roomSessionMethods.uninstallJoinMaterialRefreshListeners.call(presenter);
     assert.equal(presenter.joinMaterialNetworkRefreshHandler, null);
+    assert.equal(presenter.joinMaterialNetworkCheckTimer, null);
     assert.equal(presenter.joinMaterialRefreshTimer, null);
+    t.mock.timers.tick(60_000);
     browserWindow.dispatchEvent(new Event('online'));
-    connection.dispatchEvent(new Event('change'));
-    await Promise.resolve();
-    assert.deepEqual(reasons, ['network-transition', 'network-transition']);
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(reasons, []);
 });
 
 test('connected room starts edge refresh and Meeting Notes transcription together', () => {

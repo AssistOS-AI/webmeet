@@ -34,7 +34,7 @@ sequenceDiagram
       </section>
       <section>
         <h2>Media Credential Refresh</h2>
-        <p>Before relay credentials expire and after browser network transitions, <a href="wiki.html#definition-webmeetagent">WebMeet</a> resolves fresh join material and performs a controlled <a href="wiki.html#definition-livekit">LiveKit</a> disconnect, recreation, and rejoin. Microphone and camera state are restored. An active screen share stops and requires the participant to press Share screen again because browser display capture requires fresh activation.</p>
+        <p>Before relay credentials expire, <a href="wiki.html#definition-webmeetagent">WebMeet</a> resolves fresh join material and performs a controlled <a href="wiki.html#definition-livekit">LiveKit</a> disconnect, recreation, and rejoin. Browser network transitions are left to the <a href="wiki.html#definition-livekit">LiveKit</a> client, which resumes the session in place; only a relay session that is still reconnecting 15 seconds after the browser comes back online is recreated the same way. Microphone and camera state are restored. An active screen share stops and requires the participant to press Share screen again because browser display capture requires fresh activation.</p>
         <p>The approved rootless transport boundary fails closed when the managed bridge cannot reach the private Router. <a href="wiki.html#definition-webmeetagent">WebMeet</a> does not fall back to a public Router path, a direct private target, host networking, a widened listener, or a forwarding sidecar.</p>
       </section>
       <section>

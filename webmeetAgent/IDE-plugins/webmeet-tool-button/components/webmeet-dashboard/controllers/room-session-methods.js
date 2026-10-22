@@ -12,6 +12,9 @@ import {
 import { isAudioPublication } from '../services/microphone-publication.js';
 import { markWebMeetPerf } from '../services/webmeet-perf-marks.js';
 
+const NETWORK_RESUME_GRACE_MS = 15_000;
+const LIVEKIT_RESUMING_STATES = new Set(['reconnecting', 'signalReconnecting']);
+
 export const roomSessionMethods = {
     clearRoomConnectionTimers(room = null) {
         const owner = this.roomConnectionOwner;
@@ -26,20 +29,33 @@ export const roomSessionMethods = {
 
     installJoinMaterialRefreshListeners() {
         if (this.joinMaterialNetworkRefreshHandler) return;
+        // LiveKit resumes its own session after browser network transitions. Only relay sessions
+        // need fresh TURN material, and only when that resume has not recovered within the grace period.
+        const hasRelayServers = () => Array.isArray(this.state?.session?.rtcConfig?.iceServers)
+            && this.state.session.rtcConfig.iceServers.length > 0;
+        if (!hasRelayServers()) return;
         this.joinMaterialNetworkRefreshHandler = () => {
             if (!this.roomLiveKit?.getRoom?.() || navigator.onLine === false) return;
-            void this.refreshJoinMaterialAndReconnect('network-transition');
+            window.clearTimeout(this.joinMaterialNetworkCheckTimer);
+            this.joinMaterialNetworkCheckTimer = window.setTimeout(() => {
+                this.joinMaterialNetworkCheckTimer = null;
+                const room = this.roomLiveKit?.getRoom?.();
+                if (!room || navigator.onLine === false || !LIVEKIT_RESUMING_STATES.has(room.state)) return;
+                // Join material may have lost its relay servers since the listener was installed.
+                if (!hasRelayServers()) return;
+                void this.refreshJoinMaterialAndReconnect('network-transition');
+            }, NETWORK_RESUME_GRACE_MS);
         };
         window.addEventListener('online', this.joinMaterialNetworkRefreshHandler);
-        navigator.connection?.addEventListener?.('change', this.joinMaterialNetworkRefreshHandler);
     },
 
     uninstallJoinMaterialRefreshListeners() {
         window.clearTimeout(this.joinMaterialRefreshTimer);
         this.joinMaterialRefreshTimer = null;
+        window.clearTimeout(this.joinMaterialNetworkCheckTimer);
+        this.joinMaterialNetworkCheckTimer = null;
         if (!this.joinMaterialNetworkRefreshHandler) return;
         window.removeEventListener('online', this.joinMaterialNetworkRefreshHandler);
-        navigator.connection?.removeEventListener?.('change', this.joinMaterialNetworkRefreshHandler);
         this.joinMaterialNetworkRefreshHandler = null;
     },
 
