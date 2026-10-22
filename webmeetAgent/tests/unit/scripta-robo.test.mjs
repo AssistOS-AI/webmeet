@@ -57,6 +57,24 @@ const ADMIN = { user: { id: 'local:admin', username: 'admin', roles: ['admin'] }
 const USER = { user: { id: 'local:user', username: 'user', roles: ['user'] } };
 const VICTIM = { user: { id: 'local:victim', username: 'victim', roles: ['user'] } };
 
+test('concurrent Blackboard creates after deletion persist distinct workspace ids and default names', async () => {
+    await withStore(async (context) => {
+        const meeting = await createMeeting(context, { name: 'Workspace concurrency', authInfo: ADMIN });
+        const input = { roomId: meeting.roomId, participantId: 'admin', authInfo: ADMIN };
+        const second = await applyRoomBlackboardWorkspaceAction(context, { ...input, action: 'board-create' });
+        await applyRoomBlackboardWorkspaceAction(context, { ...input, action: 'board-create' });
+        await applyRoomBlackboardWorkspaceAction(context, { ...input, action: 'board-delete', boardId: second.workspace.activeBoardId });
+        await Promise.all(Array.from({ length: 6 }, (_, index) => applyRoomBlackboardWorkspaceAction(context, {
+            ...input, action: 'board-create', ...(index % 2 ? { title: 'Workspace 3' } : {})
+        })));
+        const result = await getRoomBlackboard(context, input);
+        const boards = result.workspace.boards;
+        assert.equal(new Set(boards.map((board) => board.boardId)).size, boards.length);
+        assert.equal(new Set(boards.map((board) => board.title.toLowerCase())).size, boards.length);
+        assert.equal(new Set(result.workspace.boardOrder).size, result.workspace.boardOrder.length);
+    });
+});
+
 function assertCanonicalJson(value) {
     if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
         throw new TypeError('canonicalJson: undefined, function, and symbol values are not allowed');

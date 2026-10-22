@@ -39,6 +39,7 @@ sequenceDiagram
       </section>
       <section>
         <h2>Meeting Notes Reconciliation</h2>
+        <p>New Blackboard workspaces receive their default Workspace number from the server during the serialized room update. Deleting a workspace and creating several from multiple clients cannot allocate the same default name.</p>
         <p>Enabling Meeting Notes creates its workspace. Final browser speech-recognition segments enter a retry-safe directed <a href="wiki.html#definition-livekit">LiveKit</a> queue, and the first accepted transcript creates and attaches one empty <a href="wiki.html#definition-scripta">SCRIPTA</a> document when the active discussion has none. Concurrent heartbeats cannot allocate duplicate documents.</p>
         <p><code>webmeetScribeAgent</code> reconciles each revision from the configured document structure, bounded cumulative memory, uncompacted transcript, and Explorer's metadata-free current projection. Explorer applies the result as <a href="wiki.html#definition-automerge">Automerge</a> text operations against a captured snapshot, merges concurrent participant edits, restores private document metadata, and commits canonical Markdown without direct file overwrite. Revisions are serialized and the room bar exposes authoritative queued, analyzing, updating, and retrying states.</p>
       </section>

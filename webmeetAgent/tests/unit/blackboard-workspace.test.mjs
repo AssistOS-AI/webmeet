@@ -28,6 +28,22 @@ function addWidget(board, id, x = 10, y = 20) {
     board.addWidget({ id, type: 'shape', properties: { geometry: { x, y, width: 100, height: 60 } } }, { record: false });
 }
 
+test('default workspace names remain unique after deletion and stale client creates', () => {
+    let workspace = new BlackboardWorkspace({ roomId: 'room-numbering' });
+    const second = workspace.createBoard();
+    workspace.createBoard();
+    workspace.deleteBoard(second.boardId);
+    workspace = BlackboardWorkspace.from(workspace.serializePrivileged());
+    assert.equal(workspace.createBoard().metadata.title, 'Workspace 4');
+    assert.equal(workspace.createBoard({ title: 'Workspace 3' }).metadata.title, 'Workspace 5');
+    assert.equal(workspace.createBoard({ title: 'workspace 3' }).metadata.title, 'Workspace 6');
+    const summary = workspace.serializePrivileged();
+    const titles = summary.boards.map((board) => board.metadata.title.toLowerCase());
+    assert.equal(new Set(titles).size, titles.length);
+    assert.equal(new Set(summary.boardOrder).size, summary.boardOrder.length);
+    assert.equal(workspace.createBoard({ title: 'Planning' }).metadata.title, 'Planning');
+});
+
 test('BlackboardWorkspace creates, activates, renames, reorders and deletes shared zones', () => {
     const workspace = new BlackboardWorkspace({ roomId: 'room-1' });
     const firstId = workspace.activeBoardId;
@@ -261,7 +277,7 @@ test('workspace UI admits only one create request while Add Workspace is pending
     const secondClick = blackboardWorkspaceMethods.createWorkspaceBoard.call(presenter);
 
     assert.equal(presenter.busy, true);
-    assert.deepEqual(calls, [{action: 'board-create', input: {title: 'Workspace 2'}}]);
+    assert.deepEqual(calls, [{action: 'board-create', input: {}}]);
     finishRequest();
     await Promise.all([firstClick, secondClick]);
     assert.equal(presenter.busy, false);

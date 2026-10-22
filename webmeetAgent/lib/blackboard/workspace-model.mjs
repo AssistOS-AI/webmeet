@@ -146,6 +146,16 @@ export class BlackboardWorkspace {
 
     createBoard({ title = '' } = {}, { record = true, activate = true } = {}) {
         const before = record ? this.snapshot() : null;
+        const titles = new Set([...this.boards.values()].map((board) => normalizeTitle(board.metadata?.title).toLowerCase()));
+        let number = 1;
+        for (const existingTitle of titles) {
+            const match = /^workspace (\d+)$/.exec(existingTitle);
+            const ordinal = Number(match?.[1]);
+            if (Number.isSafeInteger(ordinal) && ordinal >= number && ordinal < Number.MAX_SAFE_INTEGER) number = ordinal + 1;
+        }
+        let boardTitle = normalizeTitle(title, `Workspace ${number}`);
+        // Older clients send a locally calculated default title; resolve its collision here too.
+        if (/^workspace \d+$/i.test(boardTitle) && titles.has(boardTitle.toLowerCase())) boardTitle = `Workspace ${number}`;
         const boardId = newEventId('board');
         const board = new Blackboard({
             id: `blackboard_${boardId}`,
@@ -154,7 +164,7 @@ export class BlackboardWorkspace {
             boardOwnerType: 'room',
             boardOwnerId: this.roomId,
             boardVisibility: 'room',
-            metadata: { title: normalizeTitle(title, `Workspace ${this.boards.size + 1}`) },
+            metadata: { title: boardTitle },
         });
         this.boards.set(boardId, board);
         this.boardOrder.push(boardId);

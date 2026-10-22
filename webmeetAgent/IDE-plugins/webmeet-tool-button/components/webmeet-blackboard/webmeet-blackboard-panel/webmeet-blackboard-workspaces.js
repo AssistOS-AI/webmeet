@@ -874,11 +874,10 @@ export const blackboardWorkspaceMethods = {
 
     async createWorkspaceBoard() {
         if (this.busy) return;
-        const number = Number(this.workspace?.boards?.length || 0) + 1;
         this.busy = true;
         this.updateToolbarState();
         try {
-            await this.adapter.sendWorkspaceAction('board-create', { title: `Workspace ${number}` });
+            await this.adapter.sendWorkspaceAction('board-create', {});
         } finally {
             this.busy = false;
             this.updateToolbarState();
