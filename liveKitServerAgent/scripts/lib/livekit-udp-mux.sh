@@ -48,3 +48,37 @@ forbidden_udp_listener_present() {
     END { exit(found ? 0 : 1) }
   '
 }
+
+# Health-side port selection. $1 is the fixed port file written by the start
+# script. Sets livekit_udp_port on success; on failure sets
+# LIVEKIT_UDP_PORT_ERROR and returns 1. With no port file, only a Box without
+# PLOINKY_BOX_MEDIA_PORT (surrounding whitespace ignored, as in the generator)
+# falls back to 7882; an exported port without the file fails closed.
+livekit_check_selected_udp_port() {
+  _lk_file="$1"
+  LIVEKIT_UDP_PORT_ERROR=""
+  if [ -e "$_lk_file" ] || [ -L "$_lk_file" ]; then
+    if [ ! -f "$_lk_file" ] || [ -L "$_lk_file" ]; then
+      LIVEKIT_UDP_PORT_ERROR='LiveKit UDP port file is missing or invalid'
+      return 1
+    fi
+    if [ "$(stat -c '%u:%g:%a' "$_lk_file")" != '0:0:444' ]; then
+      LIVEKIT_UDP_PORT_ERROR='LiveKit UDP port file ownership or mode is invalid'
+      return 1
+    fi
+    livekit_udp_port="$(cat "$_lk_file")"
+    if ! livekit_valid_udp_port "$livekit_udp_port"; then
+      LIVEKIT_UDP_PORT_ERROR='LiveKit UDP port file is malformed'
+      return 1
+    fi
+  elif [ -z "$(printf '%s' "${PLOINKY_BOX_MEDIA_PORT:-}" | tr -d '[:space:]')" ]; then
+    livekit_udp_port=7882
+  else
+    LIVEKIT_UDP_PORT_ERROR='LiveKit UDP port file is missing'
+    return 1
+  fi
+  if ! livekit_owns_udp "$livekit_udp_port"; then
+    LIVEKIT_UDP_PORT_ERROR="LiveKit does not own ${livekit_udp_port}/udp"
+    return 1
+  fi
+}

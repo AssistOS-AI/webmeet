@@ -543,6 +543,6 @@ test('start and health scripts share the port-aware mux checks and never hard-co
   assert.match(start, /rm -f [^\n]*"\$LIVEKIT_UDP_PORT_FILE"/);
   assert.match(start, /chmod 0444 "\$\{LIVEKIT_UDP_PORT_FILE\}\.tmp"\nmv -f "\$\{LIVEKIT_UDP_PORT_FILE\}\.tmp" "\$LIVEKIT_UDP_PORT_FILE"/);
   assert.doesNotMatch(health, /livekit\.yaml|livekit_udp_port_from_config/);
-  const fallback = health.slice(health.indexOf('elif [ -z "${PLOINKY_BOX_MEDIA_PORT:-}" ]'));
-  assert.match(fallback, /^elif \[ -z "\$\{PLOINKY_BOX_MEDIA_PORT:-\}" \]; then\n  livekit_udp_port=7882\nelse\n  fail 'LiveKit UDP port file is missing'/);
+  assert.match(health, /livekit_check_selected_udp_port "\$LIVEKIT_UDP_PORT_FILE" \\\n  \|\| fail "\$LIVEKIT_UDP_PORT_ERROR"/);
+  assert.match(health, /LIVEKIT_UDP_PORT_FILE="\/run\/ploinky\/livekit-udp-port"/);
 });

@@ -51,25 +51,10 @@ for port in 7980 7981; do
   fi
 done
 
-# The start script publishes the selected mux port once LiveKit owns it. Health
-# never reads the generated LiveKit config because it holds API secrets. Without the
-# file, only a Box on the default media port (no PLOINKY_BOX_MEDIA_PORT) falls
-# back to 7882; an exported port without the file fails closed.
-if [ -e "$LIVEKIT_UDP_PORT_FILE" ] || [ -L "$LIVEKIT_UDP_PORT_FILE" ]; then
-  [ -f "$LIVEKIT_UDP_PORT_FILE" ] && [ ! -L "$LIVEKIT_UDP_PORT_FILE" ] \
-    || fail 'LiveKit UDP port file is missing or invalid'
-  [ "$(stat -c '%u:%g:%a' "$LIVEKIT_UDP_PORT_FILE")" = '0:0:444' ] \
-    || fail 'LiveKit UDP port file ownership or mode is invalid'
-  livekit_udp_port="$(cat "$LIVEKIT_UDP_PORT_FILE")"
-  livekit_valid_udp_port "$livekit_udp_port" \
-    || fail 'LiveKit UDP port file is malformed'
-elif [ -z "${PLOINKY_BOX_MEDIA_PORT:-}" ]; then
-  livekit_udp_port=7882
-else
-  fail 'LiveKit UDP port file is missing'
-fi
-livekit_owns_udp "$livekit_udp_port" \
-  || fail "LiveKit does not own ${livekit_udp_port}/udp"
+# Selects the mux port from the start script's port file and proves LiveKit
+# owns it (never reads the generated LiveKit config, which holds API secrets).
+livekit_check_selected_udp_port "$LIVEKIT_UDP_PORT_FILE" \
+  || fail "$LIVEKIT_UDP_PORT_ERROR"
 
 if ss -H -lnt 2>/dev/null | awk '$4 ~ /:(80|443|3478|5349|7881)$/ { found=1 } END { exit(found ? 0 : 1) }'; then
   fail 'forbidden TCP listener detected'

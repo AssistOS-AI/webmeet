@@ -58,13 +58,75 @@ test('forbidden_udp_listener_present flags the whole range when the mux is outsi
   }
 });
 
-test('health reports the selected port when livekit-server owns a different one', () => {
-  const result = run(
-    'livekit_owns_udp 7893 || { echo "LiveKit does not own 7893/udp"; exit 3; }',
-    [livekitOn(7882)],
-  );
+// Runs the real health port selection (the function the health script calls)
+// against a temp port file, a fake `ss` and a fake `stat` reporting `statOut`.
+function runHealthPort({ file, statOut = '0:0:444', env = {}, ssLines = [] }) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livekit-health-port-test-'));
+  try {
+    const bin = path.join(root, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(root, 'ss.out'), ssLines.map((line) => `${line}\n`).join(''));
+    fs.writeFileSync(path.join(bin, 'ss'), `#!/bin/sh\ncat '${path.join(root, 'ss.out')}'\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'stat'), `#!/bin/sh\nprintf '%s\\n' '${statOut}'\n`, { mode: 0o755 });
+    const target = path.join(root, 'livekit-udp-port');
+    if (file?.symlinkTo) fs.symlinkSync(file.symlinkTo, target);
+    else if (file !== undefined) fs.writeFileSync(target, file);
+    const cleanEnv = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+    delete cleanEnv.PLOINKY_BOX_MEDIA_PORT;
+    return spawnSync('sh', ['-c', `. "${lib}"; livekit_check_selected_udp_port "${target}" || { echo "$LIVEKIT_UDP_PORT_ERROR"; exit 3; }; echo "port=$livekit_udp_port"`], {
+      encoding: 'utf8',
+      env: { ...cleanEnv, ...env },
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const livekitSocket = (port) => `UNCONN 0 0 0.0.0.0:${port} 0.0.0.0:* users:(("livekit-server",pid=12,fd=9))`;
+
+test('health port selection fails when LiveKit owns a different port than the port file', () => {
+  const result = runHealthPort({ file: '7893\n', ssLines: [livekitSocket(7882)] });
   assert.equal(result.status, 3);
   assert.match(result.stdout, /LiveKit does not own 7893\/udp/);
+});
+
+test('health port selection accepts the port file when LiveKit owns it', () => {
+  const result = runHealthPort({ file: '7891\n', ssLines: [livekitSocket(7891)] });
+  assert.equal(result.status, 0, result.stdout);
+  assert.match(result.stdout, /port=7891/);
+});
+
+test('health port selection falls back to 7882 only when the file and the env are absent', () => {
+  const ok = runHealthPort({ ssLines: [livekitSocket(7882)] });
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.match(ok.stdout, /port=7882/);
+  const blank = runHealthPort({ env: { PLOINKY_BOX_MEDIA_PORT: '  ' }, ssLines: [livekitSocket(7882)] });
+  assert.equal(blank.status, 0, blank.stdout);
+  const set = runHealthPort({ env: { PLOINKY_BOX_MEDIA_PORT: '7893' }, ssLines: [livekitSocket(7882)] });
+  assert.equal(set.status, 3);
+  assert.match(set.stdout, /port file is missing/);
+});
+
+test('health port selection rejects bad port files', () => {
+  const ss = [livekitSocket(7893)];
+  const mode = runHealthPort({ file: '7893\n', statOut: '0:0:644', ssLines: ss });
+  assert.equal(mode.status, 3);
+  assert.match(mode.stdout, /ownership or mode is invalid/);
+  const malformed = runHealthPort({ file: '07893\n', ssLines: ss });
+  assert.equal(malformed.status, 3);
+  assert.match(malformed.stdout, /malformed/);
+  const link = runHealthPort({ file: { symlinkTo: '/etc/hostname' }, ssLines: ss });
+  assert.equal(link.status, 3);
+  assert.match(link.stdout, /missing or invalid/);
+});
+
+test('start script publishes the port file before invoking the in-start health check', () => {
+  const start = fs.readFileSync(path.join(agentRoot, 'scripts/start-livekit-server-agent.sh'), 'utf8');
+  const write = start.indexOf('mv -f "${LIVEKIT_UDP_PORT_FILE}.tmp" "$LIVEKIT_UDP_PORT_FILE"');
+  const health = start.indexOf('sh /code/scripts/health/livekit-server-agent-health.sh');
+  assert.notEqual(write, -1);
+  assert.notEqual(health, -1);
+  assert.ok(write < health, 'port file must exist before health runs');
 });
 
 test('livekit_valid_udp_port accepts only canonical ports', () => {
