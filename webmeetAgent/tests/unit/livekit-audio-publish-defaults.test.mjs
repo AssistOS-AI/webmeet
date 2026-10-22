@@ -28,3 +28,26 @@ test('room publish defaults merge audio settings without mutating the shared pre
     audio.audioPreset.maxBitrate = 1;
     assert.equal(AUDIO_PUBLISH_DEFAULTS.audioPreset.maxBitrate, 32000);
 });
+
+test('room creation opts out of the single peer connection mode', async () => {
+    const manager = new WebMeetRoomLiveKit({});
+    let roomOptions = null;
+    class StopAfterOptions {
+        constructor(options) {
+            roomOptions = options;
+            throw new Error('stop after room options');
+        }
+    }
+    manager.ensureLiveKitClient = async () => ({ Room: StopAfterOptions, RoomEvent: {}, Track: {} });
+    manager.installRtcPeerConnectionOverride = () => () => {};
+    manager.getAudioCaptureDefaults = () => ({});
+    manager.getVideoCaptureDefaults = () => ({});
+    manager.buildRtcConfigForSession = () => ({});
+    await assert.rejects(
+        manager.connect({ participantToken: 'token', livekitUrl: 'wss://example.invalid' }),
+        /stop after room options/,
+    );
+    assert.equal(roomOptions.singlePeerConnection, false);
+    assert.equal(roomOptions.adaptiveStream, false);
+    assert.equal(roomOptions.dynacast, false);
+});

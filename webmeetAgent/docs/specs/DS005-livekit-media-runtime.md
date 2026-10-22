@@ -31,6 +31,8 @@ Before credential expiry, the room UI performs a controlled disconnect, resolves
 
 Microphone capture profiles, single-stage voice processing, capture-session lifecycle, applied-settings verification, and read-only ICE transport diagnostics are defined by DS012. Published microphone audio uses explicit voice-oriented [LiveKit](wiki.html#definition-livekit) publish defaults covering Opus bitrate, DTX, RED, mono output, and stop-microphone-on-mute. That contract does not change the transport credential brokerage or the fail-closed reachability boundary described here.
 
+The browser creates its [LiveKit](wiki.html#definition-livekit) room with `singlePeerConnection: false`, so the client uses the legacy publisher and subscriber peer connections. The single-peer-connection default of livekit-client 2.18.3 can loop on server `media_sections_requirement` messages, adding a receive-only transceiver per message until the signaling stream exceeds its size limits and the client rejoins.
+
 ### Voice-responsive AxiFace state
 
 When the participant's avatar `expressionMode` is `audio`, [LiveKit](wiki.html#definition-livekit) is the only authority for microphone availability and speaking activity. Track publish, unpublish, mute, unmute, connection, and active-speaker events update one browser-side avatar controller. The controller alone reconciles those facts into the effective state; participant-card media state and received avatar projections do not feed back into that decision. A mute or unpublish event immediately makes the microphone unavailable, and a delayed active-speaker event can update activity but cannot keep or restore `speaking` until [LiveKit](wiki.html#definition-livekit) explicitly publishes or unmutes the microphone again.

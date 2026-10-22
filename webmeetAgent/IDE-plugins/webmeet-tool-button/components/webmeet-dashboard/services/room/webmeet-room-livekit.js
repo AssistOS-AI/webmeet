@@ -96,6 +96,8 @@ export class WebMeetRoomLiveKit {
         const rtcConfig = this.buildRtcConfigForSession(session);
 
         const room = new Room({
+            // Legacy publisher/subscriber PCs avoid the single-PC media-section renegotiation loop.
+            singlePeerConnection: false,
             adaptiveStream: false,
             dynacast: false,
             audioCaptureDefaults,
