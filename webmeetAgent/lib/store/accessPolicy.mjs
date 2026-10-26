@@ -91,12 +91,21 @@ export function assertAuthenticatedAuthInfo(authInfo = null) {
     }
 }
 
+// The one display-name rule for verified callers: display name, name, a
+// username that is not the raw id, email, then the agent name. A raw id is never
+// shown. The result is presentation only; isAdminAuthInfo must never read it.
 export function getAuthDisplayName(authInfo = null) {
-    const user = authInfo && typeof authInfo === 'object'
-        ? (authInfo.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo)
-        : null;
-    if (!user) return '';
-    return String(user.name || user.username || user.email || '').trim();
+    if (!authInfo || typeof authInfo !== 'object') return '';
+    const user = authInfo.user && typeof authInfo.user === 'object' ? authInfo.user : authInfo;
+    const agent = authInfo.agent && typeof authInfo.agent === 'object' ? authInfo.agent : null;
+    const text = (value) => (typeof value === 'string' ? value.trim() : '');
+    const username = text(user.username);
+    const id = text(user.id);
+    return text(user.displayName)
+        || text(user.name)
+        || (username && username !== id ? username : '')
+        || text(user.email)
+        || text(agent?.name);
 }
 
 function getInvocationScopes(authInfo = null) {

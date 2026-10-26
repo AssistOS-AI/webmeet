@@ -58,6 +58,7 @@ import {
 } from '../lib/webmeetStore.mjs';
 import { withVerifiedGuestParticipantOwner } from '../lib/services/roomParticipants.mjs';
 import {
+    getAuthDisplayName,
     hasWebmeetRoomScope,
     isVerifiedAdminAuthInfo,
     isVerifiedListingEntitled
@@ -178,7 +179,7 @@ function authInfoFromEnvelope(envelope) {
         : null;
 }
 
-function deriveAuthChatAuthor(authInfo = null) {
+export function deriveAuthChatAuthor(authInfo = null) {
     if (!authInfo || typeof authInfo !== 'object') {
         return null;
     }
@@ -190,7 +191,7 @@ function deriveAuthChatAuthor(authInfo = null) {
     }
     return {
         authorId,
-        authorName: String(user.name || user.username || user.email || authorId).trim() || authorId
+        authorName: getAuthDisplayName(authInfo) || 'Participant'
     };
 }
 

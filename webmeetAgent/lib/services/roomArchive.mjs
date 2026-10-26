@@ -32,7 +32,7 @@ function randomArchiveEventId() {
 function resolveArchiveActor(authInfo = null) {
     const normalized = normalizeAuthInfo(authInfo);
     const archivedById = String(normalized.id || normalized.principalId || normalized.username || normalized.email || '').trim();
-    const archivedByName = String(getAuthDisplayName(authInfo) || normalized.username || normalized.email || archivedById || '').trim();
+    const archivedByName = getAuthDisplayName(authInfo);
     return { archivedById, archivedByName };
 }
 

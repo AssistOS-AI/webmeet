@@ -1,7 +1,9 @@
 import {
     assertAuthenticatedAuthInfo,
     canViewMeetingRecord,
+    getAuthDisplayName,
     isAdminAuthInfo,
+    isGuestAuthInfo,
     normalizeAuthInfo
 } from '../store/accessPolicy.mjs';
 import { authorizeRoomParticipantId } from '../store/participantAuthorization.mjs';
@@ -100,7 +102,9 @@ export async function publishRoomAttachment(context, {
         const effectiveParticipantId = authorizeRoomParticipantId(payload, authInfo, participantId, targetRoomId);
         const member = (Array.isArray(payload.members) ? payload.members : [])
             .find((entry) => String(entry?.id || '') === effectiveParticipantId);
-        const authorName = String(member?.displayName || member?.name || 'User');
+        const authorName = isAuthenticatedUserCaller(authInfo)
+            ? (getAuthDisplayName(authInfo) || 'Participant')
+            : String(member?.displayName || member?.name || 'User');
         const workspace = loadWorkspaceFromPayload(payload, targetRoomId);
         let blackboard = workspace.requireBoard(targetBoardId);
         const before = workspace.snapshot();
@@ -240,6 +244,14 @@ function assertCanAccessBlackboard(record, authInfo) {
     if (!canViewMeetingRecord(record, authInfo)) {
         throw new Error('Access denied: cannot access this room blackboard.');
     }
+}
+
+// A verified user (not a guest) has one name across chat and attachments; a
+// guest has no user identity, so its attachment keeps the joined member name.
+function isAuthenticatedUserCaller(authInfo) {
+    return Boolean(normalizeAuthInfo(authInfo).id)
+        && !isGuestAuthInfo(authInfo)
+        && String(authInfo?.invocation?.actor?.kind || '').trim().toLowerCase() !== 'guest';
 }
 
 function assertCanMutateBlackboard(record, authInfo) {

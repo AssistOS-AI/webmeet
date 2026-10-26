@@ -44,12 +44,12 @@ async function verifiedAuthInfo(claims, tool) {
     return authInfoFromInvocation(verified.payload, { invocationToken: verified.rawToken });
 }
 
-function directUserClaims({ id, roles = ['user'], capabilities, scope }) {
+function directUserClaims({ id, roles = ['user'], capabilities, scope, displayName }) {
     const subject = `user:${id}`;
     const lowered = roles.map((role) => String(role).trim().toLowerCase());
     return {
         sub: subject,
-        actor: { kind: lowered.includes('guest') ? 'guest' : 'user', id: subject, roles, capabilities },
+        actor: { kind: lowered.includes('guest') ? 'guest' : 'user', id: subject, roles, capabilities, ...(displayName ? { displayName } : {}) },
         ...(scope ? { scope } : {}),
     };
 }

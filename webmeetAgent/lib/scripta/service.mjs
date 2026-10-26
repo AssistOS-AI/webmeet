@@ -9,6 +9,7 @@ import {
 } from '../roboTeam/service.mjs';
 import {
     canViewMeetingRecord,
+    getAuthDisplayName,
     isGuestAuthInfo,
     normalizeAuthInfo,
 } from '../store/accessPolicy.mjs';
@@ -145,7 +146,7 @@ function participantIdentity(payload, authInfo = null, participantId = '', roomI
         hash: scriptaOwnerHash(source),
         label: secretary
             ? 'Meeting Secretary'
-            : String(auth.name || auth.username || auth.email || source).trim() || source,
+            : getAuthDisplayName(authInfo) || String(auth.name || auth.username || auth.email || source).trim() || source,
     };
 }
 
