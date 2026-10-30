@@ -123,6 +123,9 @@ test('WebMeet settings fields live in the WebSkel modal template, not the dashbo
     assert.match(modalHtml, /id="webmeetSpeechRecognitionLanguage"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsTabPanel"/);
     assert.match(modalHtml, /id="webmeetMediaSettingsActions"/);
+    assert.doesNotMatch(modalHtml, /webmeetApplyMediaSettingsButton|data-local-action="applyMediaSettings"/);
+    assert.match(modalHtml, /Rescan devices/);
+    assert.match(modalHtml, /id="webmeetResetMediaSettingsButton"[\s\S]*?data-local-action="resetMediaSettings"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsActions"/);
 });
 

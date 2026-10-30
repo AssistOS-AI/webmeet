@@ -118,7 +118,7 @@ test('WebMeet microphone test UI is wired to processed audio settings lifecycle'
     assert.match(mediaSettingsSource, /this\.microphoneTestToggleButton = root\?\.querySelector\?\.\('#webmeetMicrophoneTestToggleButton'\)/);
     assert.match(mediaSettingsSource, /createMicrophoneTestSession\(this\.getMicrophoneTestSettings\(\)\)/);
     assert.match(mediaSettingsSource, /await this\.stopMicrophoneTest\(\)/);
-    assert.match(mediaSettingsSource, /scheduleMicrophoneTestRestart/);
+    assert.match(mediaSettingsSource, /if \(restartTest && this\.state\.mediaSettingsPanelVisible\) await this\.startMicrophoneTest\(\);/);
     assert.match(sessionSource, /import \{ createProcessedMicrophoneTrack \}/);
     assert.match(sessionSource, /capture = await createCapture\(settings\)/);
 });

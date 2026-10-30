@@ -588,34 +588,6 @@ dialog.modal.webmeet-settings-modal-dialog.is-fullscreen {
     align-items: center;
 }
 
-.webmeet-settings-modal .webmeet-apply-media-settings-button {
-    position: relative;
-    min-width: 74px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.webmeet-settings-modal .webmeet-apply-media-settings-button:disabled {
-    cursor: wait;
-    opacity: 0.78;
-}
-
-.webmeet-settings-modal .webmeet-apply-media-settings-button.is-loading .webmeet-button-label {
-    opacity: 0;
-}
-
-.webmeet-settings-modal .webmeet-apply-media-settings-button.is-loading::after {
-    content: "";
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    border: 2px solid color-mix(in srgb, currentColor 32%, transparent);
-    border-top-color: currentColor;
-    border-radius: 50%;
-    animation: webmeet-spin 0.8s linear infinite;
-}
-
 .webmeet-settings-modal .webmeet-avatar-status {
     color: var(--text-soft);
     font-size: 0.78rem;

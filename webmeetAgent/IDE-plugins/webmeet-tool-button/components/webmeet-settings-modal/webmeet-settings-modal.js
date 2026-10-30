@@ -189,9 +189,9 @@ export class WebmeetSettingsModal {
     }
 
     closeMediaSettings(target) { this.dispatchAction('closeMediaSettings', target); }
-    applyMediaSettings(target) { this.dispatchAction('applyMediaSettings', target); }
     setSettingsTab(target) { this.dispatchAction('setSettingsTab', target); }
     refreshMediaDevices(target) { this.dispatchAction('refreshMediaDevices', target); }
+    resetMediaSettings(target) { this.dispatchAction('resetMediaSettings', target); }
     resetWebMeetAvatarOverride(target) { this.dispatchAction('resetWebMeetAvatarOverride', target); }
     applyWebMeetAvatarSettings(target) { this.dispatchAction('applyWebMeetAvatarSettings', target); }
 }

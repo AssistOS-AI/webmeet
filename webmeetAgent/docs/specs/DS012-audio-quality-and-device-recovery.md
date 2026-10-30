@@ -15,6 +15,12 @@ The audio path is split into a capture profile, a single-stage processing chain,
 
 ## Core Content
 
+### Immediate media preferences
+
+Audio/video and voice-command preferences apply and persist automatically without an Apply action or closing the settings modal. Changes are coalesced for 200 ms and media reconfiguration is serialized; newer selections made during an update are applied afterwards. Closing the modal flushes pending changes. Active input tracks are reconfigured only when their relevant preferences change; muted devices are not enabled. Errors remain visible rather than reporting successful application. Avatar preferences retain their separate explicit Apply action.
+
+Rescan devices enumerates connected microphones, cameras and speakers and refreshes device warnings. It preserves the selected preferences and is not a reset-to-defaults action. The separate Reset to defaults action, shown only on the Audio & video tab, restores the same defaults used on first load and applies them automatically. It restores system-default devices, audio processing, volumes, camera/screen quality and background preferences; it preserves the voice-command language and avatar preferences.
+
 ### Capture profiles and constraints
 
 Microphone constraints have one source of truth in `services/audio-processing/capture-constraints.js`. The builder resolves a profile from the voice-processing mode:

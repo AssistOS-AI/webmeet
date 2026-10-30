@@ -78,11 +78,11 @@ export const mediaSettingsMethods = {
     cacheMediaSettingsElements(root = this.element) {
         this.mediaSettingsPanel = root?.querySelector?.('#webmeetMediaSettingsPanel') || null;
         this.settingsFullscreenButton = root?.querySelector?.('#webmeetSettingsFullscreenButton') || null;
-        this.applyMediaSettingsButton = root?.querySelector?.('#webmeetApplyMediaSettingsButton') || null;
         this.settingsTabButtons = Array.from(root?.querySelectorAll?.('[data-settings-tab]') || []);
         this.settingsTabPanels = Array.from(root?.querySelectorAll?.('[data-settings-tab-panel]') || []);
         this.mediaSettingsActions = root?.querySelector?.('#webmeetMediaSettingsActions') || null;
         this.refreshMediaDevicesButton = root?.querySelector?.('#webmeetRefreshMediaDevicesButton') || null;
+        this.resetMediaSettingsButton = root?.querySelector?.('#webmeetResetMediaSettingsButton') || null;
         this.avatarSettingsActions = root?.querySelector?.('#webmeetAvatarSettingsActions') || null;
         this.speechRecognitionLanguageSelect = root?.querySelector?.('#webmeetSpeechRecognitionLanguage') || null;
         this.audioInputSelect = root?.querySelector?.('#webmeetAudioInputSelect') || null;
@@ -247,7 +247,6 @@ export const mediaSettingsMethods = {
     },
 
     async stopMicrophoneTest(options = {}) {
-        window.clearTimeout(this.microphoneTestRestartTimer);
         this.microphoneTestRestartTimer = null;
         window.clearInterval(this.microphoneTestMetricsTimer);
         this.microphoneTestMetricsTimer = null;
@@ -279,22 +278,6 @@ export const mediaSettingsMethods = {
             return;
         }
         await this.startMicrophoneTest();
-    },
-
-    scheduleMicrophoneTestRestart() {
-        if (!this.state.microphoneTest?.active) return;
-        window.clearTimeout(this.microphoneTestRestartTimer);
-        this.setMicrophoneTestState({
-            status: 'Updating microphone test...',
-            statusState: 'active'
-        });
-        this.microphoneTestRestartTimer = window.setTimeout(async () => {
-            const wasActive = Boolean(this.state.microphoneTest?.active);
-            await this.stopMicrophoneTest({ resetStatus: false });
-            if (wasActive && this.state.mediaSettingsPanelVisible) {
-                await this.startMicrophoneTest();
-            }
-        }, 350);
     },
 
     async recordMicrophoneTestSample() {
@@ -343,11 +326,7 @@ export const mediaSettingsMethods = {
         }
         const syncDraftFromControls = () => {
             this.syncMediaSettingsDraftFromInputs();
-        };
-        const syncMicrophoneTestFromControls = () => {
-            if (this.state.microphoneTest?.active) {
-                this.scheduleMicrophoneTestRestart();
-            }
+            this.scheduleMediaSettingsApply();
         };
         const switchAutomaticVoiceProcessingToCustom = () => {
             if (this.voiceProcessingModeSelect?.value === 'auto') {
@@ -364,7 +343,6 @@ export const mediaSettingsMethods = {
             if (this.microphoneGainWarning) {
                 this.microphoneGainWarning.classList.toggle('webmeet-hidden', microphoneGain <= 1.25);
             }
-            syncMicrophoneTestFromControls();
         };
         const updateOutputVolumePreview = () => {
             const outputVolume = this.normalizeOutputVolume(this.outputVolumeInput?.value);
@@ -378,13 +356,9 @@ export const mediaSettingsMethods = {
             syncDraftFromControls();
             this.renderMediaSettingsPanel();
         };
-        const handleMicrophoneTestAffectingChange = () => {
-            handleSelectOrCheckboxChange();
-            syncMicrophoneTestFromControls();
-        };
         const handleManualVoiceProcessingControlChange = () => {
             switchAutomaticVoiceProcessingToCustom();
-            handleMicrophoneTestAffectingChange();
+            handleSelectOrCheckboxChange();
         };
         const handleAvatarPresetChange = () => {
             this.syncWebMeetAvatarSettingsDraftFromInputs?.();
@@ -400,7 +374,7 @@ export const mediaSettingsMethods = {
         this.outputVolumeInput?.addEventListener?.('input', updateOutputVolumePreview);
         this.roomNotificationSoundsInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.roomNotificationSoundsInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
-        this.audioInputSelect?.addEventListener?.('change', handleMicrophoneTestAffectingChange);
+        this.audioInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.videoInputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.audioOutputSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.cameraQualitySelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
@@ -415,8 +389,8 @@ export const mediaSettingsMethods = {
         this.autoGainControlInput?.addEventListener?.('input', handleManualVoiceProcessingControlChange);
         this.automaticParticipantVolumeInput?.addEventListener?.('change', handleSelectOrCheckboxChange);
         this.automaticParticipantVolumeInput?.addEventListener?.('input', handleSelectOrCheckboxChange);
-        this.voiceProcessingModeSelect?.addEventListener?.('change', handleMicrophoneTestAffectingChange);
-        this.voiceProcessingModeSelect?.addEventListener?.('input', handleMicrophoneTestAffectingChange);
+        this.voiceProcessingModeSelect?.addEventListener?.('change', handleSelectOrCheckboxChange);
+        this.voiceProcessingModeSelect?.addEventListener?.('input', handleSelectOrCheckboxChange);
         this.humFilterSelect?.addEventListener?.('change', handleManualVoiceProcessingControlChange);
         this.humFilterSelect?.addEventListener?.('input', handleManualVoiceProcessingControlChange);
         this.microphoneTestToggleButton?.addEventListener?.('click', () => {
@@ -444,8 +418,8 @@ export const mediaSettingsMethods = {
         }
     },
 
-    loadMediaSettings() {
-        const fallback = {
+    getDefaultMediaSettings() {
+        return {
             audioInputDeviceId: '',
             videoInputDeviceId: '',
             audioOutputDeviceId: '',
@@ -466,6 +440,10 @@ export const mediaSettingsMethods = {
             backgroundImageDataUrl: '',
             backgroundImageName: ''
         };
+    },
+
+    loadMediaSettings() {
+        const fallback = this.getDefaultMediaSettings();
         try {
             const raw = String(window?.localStorage?.getItem(MEDIA_SETTINGS_STORAGE_KEY) || '').trim();
             if (!raw) return fallback;
@@ -601,6 +579,7 @@ export const mediaSettingsMethods = {
                 backgroundImageDataUrl: dataUrl,
                 backgroundImageName: file.name || 'Custom background'
             });
+            this.scheduleMediaSettingsApply();
             this.renderMediaSettingsPanel();
         } catch (error) {
             this.setError(error instanceof Error ? error.message : 'Background image could not be loaded.');
@@ -622,6 +601,7 @@ export const mediaSettingsMethods = {
         if (this.backgroundImageInput) {
             this.backgroundImageInput.value = '';
         }
+        this.scheduleMediaSettingsApply();
         this.renderMediaSettingsPanel();
     },
 
@@ -1193,6 +1173,7 @@ export const mediaSettingsMethods = {
         }
         this.mediaSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab === 'avatar');
         this.refreshMediaDevicesButton?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
+        this.resetMediaSettingsButton?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
         this.avatarSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'avatar');
         const syncSelectOptions = (selectElement, devices, selectedId, emptyLabel) => {
             if (!selectElement) return;
@@ -1306,12 +1287,6 @@ export const mediaSettingsMethods = {
         if (this.mediaSettingsButton) {
             this.mediaSettingsButton.classList.toggle('active', this.state.mediaSettingsPanelVisible);
         }
-        if (this.applyMediaSettingsButton) {
-            const isApplying = Boolean(this.state.mediaSettingsApplying);
-            this.applyMediaSettingsButton.classList.toggle('is-loading', isApplying);
-            this.applyMediaSettingsButton.disabled = isApplying;
-            this.applyMediaSettingsButton.setAttribute('aria-busy', isApplying ? 'true' : 'false');
-        }
         this.renderMicrophoneTestPanel();
         this.renderAvatarControls?.();
     },
@@ -1344,9 +1319,10 @@ export const mediaSettingsMethods = {
     },
 
     async closeMediaSettings() {
-        if (this.state.mediaSettingsApplying || !this.state.mediaSettingsPanelVisible) {
+        if (!this.state.mediaSettingsPanelVisible) {
             return;
         }
+        await this.applyMediaSettings();
         await this.stopMicrophoneTest();
         this.state.mediaSettingsPanelVisible = false;
         this.clearMediaSettingsDraft();
@@ -1388,6 +1364,7 @@ export const mediaSettingsMethods = {
     },
 
     async handleMediaSettingsModalClosed() {
+        await this.applyMediaSettings();
         await this.stopMicrophoneTest();
         this.mediaSettingsModalElement = null;
         window.removeEventListener('webmeet:settings-modal-ready', this.handleSettingsModalReadyEvent);
@@ -1403,9 +1380,9 @@ export const mediaSettingsMethods = {
         const action = String(event?.detail?.action || '').trim();
         const allowedActions = new Set([
             'closeMediaSettings',
-            'applyMediaSettings',
             'setSettingsTab',
             'refreshMediaDevices',
+            'resetMediaSettings',
             'resetWebMeetAvatarOverride',
             'applyWebMeetAvatarSettings'
         ]);
@@ -1540,54 +1517,87 @@ export const mediaSettingsMethods = {
         return errors;
     },
 
-    async applyMediaSettings() {
-        if (this.state.mediaSettingsApplying) {
-            return;
-        }
-        const previousSettings = this.cloneCurrentMediaSettings();
-        const nextSettings = this.state.mediaSettingsDraft
-            ? this.normalizeMediaSettings(this.state.mediaSettingsDraft)
-            : this.collectMediaSettingsFromInputs(previousSettings);
-        const validationError = this.getMediaSettingsValidationError(nextSettings);
-        if (validationError) {
-            this.state.mediaSettingsDraft = nextSettings;
-            this.renderMediaSettingsPanel();
-            this.setError(validationError);
-            return;
-        }
-        this.state.mediaSettingsApplying = true;
-        await this.stopMicrophoneTest();
-        this.state.mediaSettings = nextSettings;
+    async resetMediaSettings() {
+        const currentSettings = this.getCurrentMediaSettingsForPanel();
+        this.state.mediaSettingsDraft = this.normalizeMediaSettings({
+            ...this.getDefaultMediaSettings(),
+            speechRecognitionLanguage: currentSettings.speechRecognitionLanguage
+        });
         this.renderMediaSettingsPanel();
+        await this.applyMediaSettings();
+    },
+
+    scheduleMediaSettingsApply() {
+        window.clearTimeout(this.mediaSettingsApplyTimer);
+        this.mediaSettingsApplyTimer = window.setTimeout(() => {
+            void this.applyMediaSettings();
+        }, 200);
+    },
+
+    async applyMediaSettings() {
+        window.clearTimeout(this.mediaSettingsApplyTimer);
+        if (this.state.mediaSettingsDraft) {
+            this.pendingMediaSettings = this.normalizeMediaSettings(this.state.mediaSettingsDraft);
+        }
+        if (this.mediaSettingsApplyPromise) return this.mediaSettingsApplyPromise;
+        this.mediaSettingsApplyPromise = this.applyPendingMediaSettings();
         try {
-            this.mediaController.setSettings(this.state.mediaSettings);
-            this.persistMediaSettings();
-            if (this.hasSettingsChange(previousSettings, ['automaticParticipantVolume'])) {
-                for (const participantId of this.participantLayoutController.getParticipantIds()) {
-                    this.remoteAudioNormalizer?.refreshParticipant?.(participantId);
+            await this.mediaSettingsApplyPromise;
+        } finally {
+            this.mediaSettingsApplyPromise = null;
+        }
+    },
+
+    async applyPendingMediaSettings() {
+        this.state.mediaSettingsApplying = true;
+        try {
+            while (this.pendingMediaSettings) {
+                const nextSettings = this.pendingMediaSettings;
+                this.pendingMediaSettings = null;
+                const previousSettings = this.cloneCurrentMediaSettings();
+                if (JSON.stringify(nextSettings) === JSON.stringify(previousSettings)) continue;
+                const validationError = this.getMediaSettingsValidationError(nextSettings);
+                if (validationError) {
+                    this.setError(validationError);
+                    continue;
                 }
-                this.applyOutputVolumePreviewToAllAudioElements();
+                const restartTest = Boolean(this.state.microphoneTest?.active) && [
+                    'audioInputDeviceId', 'echoCancellation', 'noiseSuppression', 'autoGainControl',
+                    'microphoneGain', 'voiceProcessingMode', 'humFilter'
+                ].some((key) => previousSettings[key] !== nextSettings[key]);
+                try {
+                    if (restartTest) await this.stopMicrophoneTest();
+                    this.state.mediaSettings = nextSettings;
+                    this.mediaController.setSettings(nextSettings);
+                    if (this.hasSettingsChange(previousSettings, ['automaticParticipantVolume'])) {
+                        for (const participantId of this.participantLayoutController.getParticipantIds()) {
+                            this.remoteAudioNormalizer?.refreshParticipant?.(participantId);
+                        }
+                    }
+                    this.applyOutputVolumePreviewToAllAudioElements();
+                    if (this.hasSettingsChange(previousSettings, ['audioOutputDeviceId'])) {
+                        await this.applyAudioOutputDeviceToAllTracks();
+                    }
+                    const inputErrors = await this.reapplyActiveInputDevices(previousSettings);
+                    this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(nextSettings, { testMicrophone: false });
+                    this.persistMediaSettings();
+                    if (inputErrors.length || this.state.mediaDeviceWarnings.length) {
+                        this.setError(inputErrors[0] || this.state.mediaDeviceWarnings[0]);
+                    }
+                } catch (error) {
+                    this.state.mediaSettings = previousSettings;
+                    this.mediaController.setSettings(previousSettings);
+                    if (JSON.stringify(this.state.mediaSettingsDraft) === JSON.stringify(nextSettings)) {
+                        this.state.mediaSettingsDraft = previousSettings;
+                    }
+                    this.setError(error instanceof Error ? error.message : 'Media settings could not be applied.');
+                } finally {
+                    if (restartTest && this.state.mediaSettingsPanelVisible) await this.startMicrophoneTest();
+                }
             }
-            this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
-                this.state.mediaSettings,
-                { testMicrophone: true }
-            );
-            await this.applyAudioOutputDeviceToAllTracks();
-            const inputErrors = await this.reapplyActiveInputDevices(previousSettings);
-            this.state.mediaSettingsPanelVisible = false;
-            if (this.state.activeMobilePanel === 'settings') {
-                this.state.activeMobilePanel = 'room';
-                this.applyMobilePanelState?.();
-            }
-            this.clearMediaSettingsDraft();
-            this.closeMediaSettingsDialog({ applied: true });
-            this.renderMediaSettingsPanel();
-            this.setError(inputErrors[0] || this.state.mediaDeviceWarnings[0] || 'Media settings applied.');
         } finally {
             this.state.mediaSettingsApplying = false;
-            if (this.state.mediaSettingsPanelVisible) {
-                this.renderMediaSettingsPanel();
-            }
+            this.renderMediaSettingsPanel();
         }
     },
 
