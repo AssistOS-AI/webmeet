@@ -15,6 +15,7 @@ export class WebmeetSettingsModal {
     afterRender() {
         this.ensureResizable();
         this.ensureHelpTooltipPositioning();
+        this.ensureTabNavigation();
         window.dispatchEvent(new CustomEvent(SETTINGS_READY_EVENT, {
             detail: {
                 element: this.element,
@@ -24,9 +25,42 @@ export class WebmeetSettingsModal {
     }
 
     afterUnload() {
+        this.tabMediaQuery?.removeEventListener('change', this.updateTabOrientation);
+        this.tabNavigation?.removeEventListener('keydown', this.handleTabKeydown);
         window.dispatchEvent(new CustomEvent(SETTINGS_CLOSED_EVENT, {
             detail: { element: this.element }
         }));
+    }
+
+    ensureTabNavigation() {
+        const navigation = this.element.querySelector('[role="tablist"]');
+        if (!navigation || this.tabNavigation === navigation) return;
+        this.tabNavigation = navigation;
+        this.tabMediaQuery = window.matchMedia('(max-width: 720px)');
+        this.updateTabOrientation = () => navigation.setAttribute(
+            'aria-orientation', this.tabMediaQuery.matches ? 'horizontal' : 'vertical'
+        );
+        this.updateTabOrientation();
+        this.tabMediaQuery.addEventListener('change', this.updateTabOrientation);
+        this.handleTabKeydown = (event) => {
+            const tabs = Array.from(navigation.querySelectorAll('[role="tab"]'));
+            const index = tabs.indexOf(event.target);
+            if (index < 0) return;
+            const vertical = navigation.getAttribute('aria-orientation') === 'vertical';
+            const previous = vertical ? 'ArrowUp' : 'ArrowLeft';
+            const next = vertical ? 'ArrowDown' : 'ArrowRight';
+            let targetIndex;
+            if (event.key === 'Home') targetIndex = 0;
+            else if (event.key === 'End') targetIndex = tabs.length - 1;
+            else if (event.key === previous) targetIndex = (index - 1 + tabs.length) % tabs.length;
+            else if (event.key === next) targetIndex = (index + 1) % tabs.length;
+            else return;
+            event.preventDefault();
+            tabs[targetIndex].focus();
+            tabs[targetIndex].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            this.setSettingsTab(tabs[targetIndex]);
+        };
+        navigation.addEventListener('keydown', this.handleTabKeydown);
     }
 
     getDialogElement() {
@@ -127,7 +161,7 @@ export class WebmeetSettingsModal {
     }
 
     positionHelpTooltip(control) {
-        if (!control || !globalThis.matchMedia?.('(max-width: 720px)')?.matches) return;
+        if (!control) return;
         const tooltip = control.querySelector('.webmeet-setting-help-tooltip');
         if (!tooltip) return;
         const viewportWidth = document.documentElement?.clientWidth || window.innerWidth || 0;
@@ -190,7 +224,7 @@ export class WebmeetSettingsModal {
 
     closeMediaSettings(target) { this.dispatchAction('closeMediaSettings', target); }
     setSettingsTab(target) { this.dispatchAction('setSettingsTab', target); }
-    refreshMediaDevices(target) { this.dispatchAction('refreshMediaDevices', target); }
+    rescanSettingsDevices(target) { this.dispatchAction('rescanSettingsDevices', target); }
     resetMediaSettings(target) { this.dispatchAction('resetMediaSettings', target); }
     resetWebMeetAvatarOverride(target) { this.dispatchAction('resetWebMeetAvatarOverride', target); }
     applyWebMeetAvatarSettings(target) { this.dispatchAction('applyWebMeetAvatarSettings', target); }

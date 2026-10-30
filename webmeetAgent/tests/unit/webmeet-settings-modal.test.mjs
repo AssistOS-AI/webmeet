@@ -118,7 +118,8 @@ test('WebMeet settings fields live in the WebSkel modal template, not the dashbo
 
     assert.doesNotMatch(dashboardHtml, /id="webmeetMediaSettingsPanel"/);
     assert.match(modalHtml, /id="webmeetMediaSettingsPanel" class="webmeet-settings-modal webmeet-media-settings"/);
-    assert.match(modalHtml, /id="webmeetAudioVideoSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetAudioSettingsTabPanel"/);
+    assert.match(modalHtml, /id="webmeetVideoSettingsTabPanel"/);
     assert.match(modalHtml, /id="webmeetVoiceCommandSettingsTabPanel"/);
     assert.match(modalHtml, /id="webmeetSpeechRecognitionLanguage"/);
     assert.match(modalHtml, /id="webmeetAvatarSettingsTabPanel"/);
@@ -198,8 +199,8 @@ test('WebMeet settings tab footer actions hide inactive tab controls inside the 
     );
 
     assert.match(modalHtml, /id="webmeetAvatarSettingsActions" class="webmeet-media-settings-actions webmeet-hidden"/);
-    assert.match(mediaSettingsSource, /mediaSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab === 'avatar'\)/);
-    assert.match(mediaSettingsSource, /refreshMediaDevicesButton\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'media'\)/);
+    assert.match(mediaSettingsSource, /mediaSettingsActions\?\.classList\.toggle\('webmeet-hidden', !isDeviceTab\)/);
+    assert.match(mediaSettingsSource, /refreshMediaDevicesButton\?\.classList\.toggle\('webmeet-hidden', !isDeviceTab\)/);
     assert.match(mediaSettingsSource, /avatarSettingsActions\?\.classList\.toggle\('webmeet-hidden', activeSettingsTab !== 'avatar'\)/);
     assert.match(modalCss, /\.webmeet-settings-modal \.webmeet-hidden\s*\{[\s\S]*display: none !important;/);
 });
@@ -229,4 +230,48 @@ test('WebMeet audio health is a microphone button badge, not a settings field', 
     assert.doesNotMatch(settingsModalCss, /webmeet-audio-health/);
     assert.match(dashboardSource, /updateAudioHealthIndicator/);
     assert.match(dashboardSource, /Toggle Microphone - Audio: \$\{health\}/);
+});
+
+test('settings category navigation supports vertical and horizontal keyboard interaction', async () => {
+    const { WebmeetSettingsModal } = await import('../../IDE-plugins/webmeet-tool-button/components/webmeet-settings-modal/webmeet-settings-modal.js');
+    const attributes = new Map();
+    const navigation = new EventTarget();
+    const mediaQuery = new EventTarget();
+    mediaQuery.matches = false;
+    const previousWindow = globalThis.window;
+    globalThis.window = { matchMedia: () => mediaQuery };
+    const tabs = ['audio', 'video', 'voice', 'avatar'].map((name) => ({
+        dataset: { settingsTab: name }, focus() { this.focused = true; }, scrollIntoView() {}
+    }));
+    navigation.querySelectorAll = () => tabs;
+    navigation.setAttribute = (name, value) => attributes.set(name, value);
+    navigation.getAttribute = (name) => attributes.get(name);
+    const selected = [];
+    const modal = {
+        element: { querySelector: () => navigation },
+        setSettingsTab: (target) => selected.push(target.dataset.settingsTab)
+    };
+    try {
+        WebmeetSettingsModal.prototype.ensureTabNavigation.call(modal);
+        assert.equal(attributes.get('aria-orientation'), 'vertical');
+        const press = (target, key) => {
+            const event = { target, key, prevented: false, preventDefault() { this.prevented = true; } };
+            modal.handleTabKeydown(event);
+            return event.prevented;
+        };
+        assert.equal(press(tabs[0], 'ArrowDown'), true);
+        assert.equal(tabs[1].focused, true);
+        assert.equal(press(tabs[0], 'ArrowRight'), false);
+        assert.equal(press(tabs[1], 'End'), true);
+        assert.equal(press(tabs[3], 'Home'), true);
+        mediaQuery.matches = true;
+        mediaQuery.dispatchEvent(new Event('change'));
+        assert.equal(attributes.get('aria-orientation'), 'horizontal');
+        assert.equal(press(tabs[0], 'ArrowLeft'), true);
+        assert.deepEqual(selected, ['video', 'avatar', 'audio', 'avatar']);
+    } finally {
+        mediaQuery.removeEventListener('change', modal.updateTabOrientation);
+        navigation.removeEventListener('keydown', modal.handleTabKeydown);
+        globalThis.window = previousWindow;
+    }
 });

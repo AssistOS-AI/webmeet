@@ -111,7 +111,7 @@ test('microphone preferences restart an active test while preserving the open mo
     assert.equal(presenter.state.mediaSettingsPanelVisible, true);
 });
 
-test('reset restores first-load defaults and persists them without changing language or avatar', async () => {
+test('audio reset restores its defaults without changing video, language or avatar', async () => {
     const { presenter, calls } = createSettings();
     globalThis.window = globalThis;
     presenter.state.webMeetAvatarOverride = { style: 'robot-soft' };
@@ -121,9 +121,12 @@ test('reset restores first-load defaults and persists them without changing lang
         speechRecognitionLanguage: 'ro-RO'
     };
     presenter.scheduleMediaSettingsApply();
+    presenter.state.activeSettingsTab = 'audio';
+    const videoSettings = { videoInputDeviceId: 'camera', cameraQuality: 'h1080', screenShareQuality: 'h720fps15', backgroundMode: 'image', backgroundBlurRadius: 20, backgroundImageDataUrl: 'data:image/png;base64,test', backgroundImageName: 'photo' };
+    Object.assign(presenter.state.mediaSettingsDraft, videoSettings);
     await presenter.resetMediaSettings();
     assert.deepEqual(presenter.state.mediaSettings, {
-        ...presenter.getDefaultMediaSettings(), speechRecognitionLanguage: 'ro-RO'
+        ...presenter.getDefaultMediaSettings(), ...videoSettings, speechRecognitionLanguage: 'ro-RO'
     });
     assert.deepEqual(calls.persisted, [presenter.state.mediaSettings]);
     assert.deepEqual(presenter.state.webMeetAvatarOverride, { style: 'robot-soft' });
@@ -141,11 +144,60 @@ test('reset supersedes preferences queued while a media update is in progress', 
     };
     presenter.state.mediaSettingsDraft = { outputVolume: 0.2, speechRecognitionLanguage: 'ro-RO' };
     const applying = presenter.applyMediaSettings();
+    presenter.state.activeSettingsTab = 'video';
     const resetting = presenter.resetMediaSettings();
     release();
     await Promise.all([applying, resetting]);
     assert.equal(calls.persisted.length, 2);
-    assert.deepEqual(calls.persisted.at(-1), {
-        ...presenter.getDefaultMediaSettings(), speechRecognitionLanguage: 'ro-RO'
-    });
+    const defaults = presenter.getDefaultMediaSettings();
+    assert.equal(calls.persisted.at(-1).outputVolume, 0.2);
+    assert.equal(calls.persisted.at(-1).speechRecognitionLanguage, 'ro-RO');
+    for (const key of ['videoInputDeviceId', 'cameraQuality', 'screenShareQuality', 'backgroundMode', 'backgroundBlurRadius', 'backgroundImageDataUrl', 'backgroundImageName']) {
+        assert.equal(calls.persisted.at(-1)[key], defaults[key]);
+    }
+});
+
+test('rescan updates only the selected device category and never opens media capture', async () => {
+    const { presenter, calls } = createSettings();
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaDevices: {
+        async enumerateDevices() { return [
+            { kind: 'audioinput', deviceId: 'new-mic', label: 'USB Microphone' },
+            { kind: 'audiooutput', deviceId: 'new-speaker', label: 'USB Speaker' },
+            { kind: 'videoinput', deviceId: 'new-camera', label: 'USB Camera' }
+        ]; },
+        async getUserMedia() { assert.fail('Rescan must not start microphone or camera capture'); }
+    } } });
+    try {
+        presenter.mediaDevices = { audioInput: [], audioOutput: [], videoInput: [{ deviceId: 'original-camera' }] };
+        presenter.state.activeSettingsTab = 'audio';
+        await presenter.rescanSettingsDevices();
+        assert.equal(presenter.mediaDevices.audioInput[0].deviceId, 'new-mic');
+        assert.equal(presenter.mediaDevices.audioOutput[0].deviceId, 'new-speaker');
+        assert.equal(presenter.mediaDevices.videoInput[0].deviceId, 'original-camera');
+        assert.match(calls.errors.at(-1), /^Audio devices refreshed:/);
+        const audioInput = presenter.mediaDevices.audioInput;
+        presenter.state.activeSettingsTab = 'video';
+        await presenter.rescanSettingsDevices();
+        assert.equal(presenter.mediaDevices.videoInput[0].deviceId, 'new-camera');
+        assert.equal(presenter.mediaDevices.audioInput, audioInput);
+        assert.match(calls.errors.at(-1), /^Video devices refreshed:/);
+        assert.deepEqual(calls.persisted, []);
+    } finally {
+        if (descriptor) Object.defineProperty(globalThis, 'navigator', descriptor);
+        else delete globalThis.navigator;
+    }
+});
+
+test('device actions do not modify preferences from Voice commands or Avatar', async () => {
+    const { presenter, calls } = createSettings();
+    const original = presenter.state.mediaSettings;
+    presenter.refreshMediaDevices = () => assert.fail('No device rescan outside device tabs');
+    for (const tab of ['voice', 'avatar']) {
+        presenter.state.activeSettingsTab = tab;
+        await presenter.resetMediaSettings();
+        await presenter.rescanSettingsDevices();
+    }
+    assert.equal(presenter.state.mediaSettings, original);
+    assert.deepEqual(calls.persisted, []);
 });

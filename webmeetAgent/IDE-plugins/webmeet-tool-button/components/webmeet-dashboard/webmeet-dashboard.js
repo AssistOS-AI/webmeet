@@ -174,7 +174,7 @@ export class WebmeetDashboard {
                 levelPercent: 0,
                 clipping: false
             },
-            activeSettingsTab: 'media',
+            activeSettingsTab: 'audio',
             webMeetAvatarOverride: null,
             webMeetAvatarOverrideDraft: null,
             skipConnectedAvatarRepublishOnce: false,
@@ -586,6 +586,7 @@ export class WebmeetDashboard {
                 'toggleAvatarQuickMenu',
                 'toggleAvatarSubmenu',
                 'refreshMediaDevices',
+                'rescanSettingsDevices',
                 'resetMediaSettings',
                 'openParticipantAudioSettings',
                 'focusParticipantCard',

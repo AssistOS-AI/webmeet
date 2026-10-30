@@ -25,6 +25,11 @@ function escapeHtml(value) {
 const PARTICIPANT_AUDIO_SETTINGS_STORAGE_KEY = 'webmeet.participantAudioSettings';
 const MEDIA_SETTINGS_STORAGE_KEY = 'webmeet.mediaSettings';
 const DEFAULT_PARTICIPANT_VOLUME = 1;
+const SETTINGS_TABS = ['audio', 'video', 'voice', 'avatar'];
+const VIDEO_SETTINGS_KEYS = [
+    'videoInputDeviceId', 'cameraQuality', 'screenShareQuality', 'backgroundMode',
+    'backgroundBlurRadius', 'backgroundImageDataUrl', 'backgroundImageName'
+];
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -81,9 +86,11 @@ export const mediaSettingsMethods = {
         this.settingsTabButtons = Array.from(root?.querySelectorAll?.('[data-settings-tab]') || []);
         this.settingsTabPanels = Array.from(root?.querySelectorAll?.('[data-settings-tab-panel]') || []);
         this.mediaSettingsActions = root?.querySelector?.('#webmeetMediaSettingsActions') || null;
+        this.mediaSettingsSaveHint = root?.querySelector?.('#webmeetMediaSettingsSaveHint') || null;
         this.refreshMediaDevicesButton = root?.querySelector?.('#webmeetRefreshMediaDevicesButton') || null;
         this.resetMediaSettingsButton = root?.querySelector?.('#webmeetResetMediaSettingsButton') || null;
         this.avatarSettingsActions = root?.querySelector?.('#webmeetAvatarSettingsActions') || null;
+        this.useProfileAvatarButton = root?.querySelector?.('#webmeetUseProfileAvatarButton') || null;
         this.speechRecognitionLanguageSelect = root?.querySelector?.('#webmeetSpeechRecognitionLanguage') || null;
         this.audioInputSelect = root?.querySelector?.('#webmeetAudioInputSelect') || null;
         this.videoInputSelect = root?.querySelector?.('#webmeetVideoInputSelect') || null;
@@ -1078,6 +1085,12 @@ export const mediaSettingsMethods = {
         }
     },
 
+    async rescanSettingsDevices() {
+        const tab = this.state.activeSettingsTab;
+        if (tab !== 'audio' && tab !== 'video') return;
+        await this.refreshMediaDevices({ requestPermission: false, deviceKind: tab });
+    },
+
     async refreshMediaDevices(options = {}) {
         const requestPermission = options.requestPermission === undefined ? true : Boolean(options.requestPermission);
         const requestAudioPermission = options.requestAudioPermission === undefined ? requestPermission : Boolean(options.requestAudioPermission);
@@ -1102,13 +1115,21 @@ export const mediaSettingsMethods = {
                 }
             }
             const devices = await navigator.mediaDevices.enumerateDevices();
-            this.mediaDevices = this.normalizeEnumeratedMediaDevices(devices);
-            this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
-                this.getCurrentMediaSettingsForPanel(),
-                { testMicrophone: requestAudioPermission }
-            );
+            const detected = this.normalizeEnumeratedMediaDevices(devices);
+            if (options.deviceKind === 'audio') {
+                this.mediaDevices = { ...this.mediaDevices, audioInput: detected.audioInput, audioOutput: detected.audioOutput };
+            } else if (options.deviceKind === 'video') {
+                this.mediaDevices = { ...this.mediaDevices, videoInput: detected.videoInput };
+            } else {
+                this.mediaDevices = detected;
+            }
+            if (options.deviceKind !== 'video') {
+                this.state.mediaDeviceWarnings = await this.collectMediaDeviceWarnings(
+                    this.getCurrentMediaSettingsForPanel(),
+                    { testMicrophone: requestAudioPermission }
+                );
+            }
         } catch (_) {
-            this.mediaDevices = { audioInput: [], videoInput: [], audioOutput: [] };
             this.state.mediaDeviceWarnings = ['Failed to refresh media devices.'];
             this.setError('Failed to refresh media devices.');
             return;
@@ -1121,7 +1142,12 @@ export const mediaSettingsMethods = {
             const warning = this.state.mediaDeviceWarnings[0]
                 ? ` ${this.state.mediaDeviceWarnings[0]}`
                 : '';
-            this.setError(`Devices refreshed: ${ai} microphones, ${vi} cameras, ${ao} speakers.${warning}`);
+            const summary = options.deviceKind === 'audio'
+                ? `Audio devices refreshed: ${ai} microphones, ${ao} speakers.${warning}`
+                : options.deviceKind === 'video'
+                    ? `Video devices refreshed: ${vi} cameras.`
+                    : `Devices refreshed: ${ai} microphones, ${vi} cameras, ${ao} speakers.${warning}`;
+            this.setError(summary);
         }
     },
 
@@ -1151,15 +1177,15 @@ export const mediaSettingsMethods = {
         const source = target?.target || target;
         const tabElement = source?.closest?.('[data-settings-tab]') || source;
         const tab = String(tabElement?.dataset?.settingsTab || '').trim();
-        this.state.activeSettingsTab = ['media', 'voice', 'avatar'].includes(tab) ? tab : 'media';
+        this.state.activeSettingsTab = SETTINGS_TABS.includes(tab) ? tab : 'audio';
         this.renderMediaSettingsPanel();
     },
 
     renderMediaSettingsPanel() {
         const settings = this.getCurrentMediaSettingsForPanel();
-        const activeSettingsTab = ['media', 'voice', 'avatar'].includes(this.state.activeSettingsTab)
+        const activeSettingsTab = SETTINGS_TABS.includes(this.state.activeSettingsTab)
             ? this.state.activeSettingsTab
-            : 'media';
+            : 'audio';
         for (const button of this.settingsTabButtons || []) {
             const isActive = String(button.dataset?.settingsTab || '').trim() === activeSettingsTab;
             button.classList.toggle('is-active', isActive);
@@ -1171,10 +1197,21 @@ export const mediaSettingsMethods = {
             const isActive = String(panel.dataset?.settingsTabPanel || '').trim() === activeSettingsTab;
             panel.hidden = !isActive;
         }
-        this.mediaSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab === 'avatar');
-        this.refreshMediaDevicesButton?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
-        this.resetMediaSettingsButton?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'media');
+        const isDeviceTab = activeSettingsTab === 'audio' || activeSettingsTab === 'video';
+        this.mediaSettingsActions?.classList.toggle('webmeet-hidden', !isDeviceTab);
+        this.mediaSettingsSaveHint?.classList.toggle('webmeet-hidden', activeSettingsTab === 'avatar');
+        this.refreshMediaDevicesButton?.classList.toggle('webmeet-hidden', !isDeviceTab);
+        this.resetMediaSettingsButton?.classList.toggle('webmeet-hidden', !isDeviceTab);
+        if (this.resetMediaSettingsButton) {
+            this.resetMediaSettingsButton.title = `Restore default ${activeSettingsTab} settings`;
+            this.resetMediaSettingsButton.setAttribute('aria-label', `Reset ${activeSettingsTab} to defaults`);
+        }
         this.avatarSettingsActions?.classList.toggle('webmeet-hidden', activeSettingsTab !== 'avatar');
+        this.useProfileAvatarButton?.classList.toggle('webmeet-hidden', !this.state.webMeetAvatarOverride);
+        if (this.refreshMediaDevicesButton) {
+            this.refreshMediaDevicesButton.title = `Look for connected ${activeSettingsTab === 'video' ? 'cameras' : 'microphones and speakers'}; keeps your settings`;
+            this.refreshMediaDevicesButton.setAttribute('aria-label', `Rescan ${activeSettingsTab} devices`);
+        }
         const syncSelectOptions = (selectElement, devices, selectedId, emptyLabel) => {
             if (!selectElement) return;
             const currentValue = String(selectElement.value || '').trim();
@@ -1274,8 +1311,16 @@ export const mediaSettingsMethods = {
             this.backgroundImageRemoveButton.classList.toggle('webmeet-hidden', !hasBackgroundImage);
         }
         if (this.mediaDeviceWarnings) {
-            const warnings = Array.isArray(this.state.mediaDeviceWarnings) ? this.state.mediaDeviceWarnings : [];
-            this.mediaDeviceWarnings.classList.toggle('webmeet-hidden', warnings.length === 0);
+            let warnings = Array.isArray(this.state.mediaDeviceWarnings) ? this.state.mediaDeviceWarnings : [];
+            if (activeSettingsTab === 'video') {
+                const cameras = this.mediaDevices.videoInput || [];
+                warnings = !cameras.length
+                    ? ['No selectable camera was detected. Allow camera access in the browser to choose a specific device.']
+                    : settings.videoInputDeviceId && !this.findSelectedDevice(cameras, settings.videoInputDeviceId)
+                        ? ['The selected camera is no longer available. Select another camera.']
+                        : [];
+            }
+            this.mediaDeviceWarnings.classList.toggle('webmeet-hidden', !isDeviceTab || warnings.length === 0);
             this.mediaDeviceWarnings.innerHTML = warnings
                 .map((warning) => `<p class="webmeet-media-device-warning">${escapeHtml(warning)}</p>`)
                 .join('');
@@ -1381,7 +1426,7 @@ export const mediaSettingsMethods = {
         const allowedActions = new Set([
             'closeMediaSettings',
             'setSettingsTab',
-            'refreshMediaDevices',
+            'rescanSettingsDevices',
             'resetMediaSettings',
             'resetWebMeetAvatarOverride',
             'applyWebMeetAvatarSettings'
@@ -1518,10 +1563,15 @@ export const mediaSettingsMethods = {
     },
 
     async resetMediaSettings() {
+        if (this.state.activeSettingsTab !== 'audio' && this.state.activeSettingsTab !== 'video') return;
         const currentSettings = this.getCurrentMediaSettingsForPanel();
+        const defaults = this.getDefaultMediaSettings();
+        const isVideo = this.state.activeSettingsTab === 'video';
+        const keys = Object.keys(defaults).filter((key) => key !== 'speechRecognitionLanguage'
+            && VIDEO_SETTINGS_KEYS.includes(key) === isVideo);
         this.state.mediaSettingsDraft = this.normalizeMediaSettings({
-            ...this.getDefaultMediaSettings(),
-            speechRecognitionLanguage: currentSettings.speechRecognitionLanguage
+            ...currentSettings,
+            ...Object.fromEntries(keys.map((key) => [key, defaults[key]]))
         });
         this.renderMediaSettingsPanel();
         await this.applyMediaSettings();
