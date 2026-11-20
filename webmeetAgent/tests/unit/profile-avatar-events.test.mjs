@@ -1908,7 +1908,7 @@ test("guest room loader stays a bootstrapper while dashboard owns guest entry UI
     assert.match(loaderSource, /send\('tools\/call'/);
     assert.match(loaderSource, /function closeStartupLoaders\(\)/);
     assert.match(loaderSource, /dialog\.spinner\.spinner-default-style/);
-    assert.match(loaderSource, /closeStartupLoaders\(\);\s*webSkel\.changeToDynamicPage\('webmeet-dashboard', 'webmeet-dashboard'/);
+    assert.match(loaderSource, /await webSkel\.changeToDynamicPage\('webmeet-dashboard', 'webmeet-dashboard'[\s\S]*await dashboardReady;[\s\S]*closeStartupLoaders\(\);/);
     // The dashboard, not the loader, owns the guest entry UI (a modal component).
     assert.doesNotMatch(htmlSource, /webmeetGuestEntryForm/);
     assert.match(dashboardSource, /showModal\('webmeet-guest-entry-modal'/);

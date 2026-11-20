@@ -13,6 +13,8 @@ summary: Defines the WebMeet MCP tools, browser shells, event encoding, chat per
 
 ## Core Content
 
+The room loader starts with `data-app-loading="true"` and retains startup coverage until WebSkel has mounted the dashboard and reached a render frame. Access-denied and startup-error views are inserted before startup loaders are removed and the marker is cleared. The dashboard-ready event still means mounted UI, allowing guest-entry dialogs and ordinary room-loading errors to remain interactive rather than waiting for room admission behind the host overlay.
+
 `scripts/startAgent.sh` starts:
 
 | Process | Default port | Role |

@@ -39,6 +39,7 @@ function closeStartupLoaders() {
     try { loader.close?.(); } catch (_) {}
     loader.remove();
   }
+  document.documentElement.setAttribute('data-app-loading', 'false');
 }
 
 function waitForDashboardReady() {
@@ -55,7 +56,6 @@ function waitForDashboardReady() {
 }
 
 function showAccessDenied(message = '') {
-  closeInitialLoader();
   const content = document.querySelector('#page_content');
   if (!content) return;
   content.innerHTML = `
@@ -67,6 +67,7 @@ function showAccessDenied(message = '') {
       </div>
     </section>
   `;
+  closeStartupLoaders();
 }
 
 window.__WEBMEET_SHOW_ACCESS_DENIED__ = showAccessDenied;
@@ -393,15 +394,15 @@ async function start() {
 
   const pageComponentDefinitions = componentDefinitions.filter((definition) => definition.type !== 'modals');
   await Promise.all(pageComponentDefinitions.map((definition) => registerComponent(webSkel, definition)));
-/*  const dashboardReady = waitForDashboardReady();
-  await dashboardReady;*/
+  const dashboardReady = waitForDashboardReady();
+  await webSkel.changeToDynamicPage('webmeet-dashboard', 'webmeet-dashboard', null, true);
+  await dashboardReady;
+  await new Promise(requestAnimationFrame);
   closeStartupLoaders();
-  webSkel.changeToDynamicPage('webmeet-dashboard', 'webmeet-dashboard', null, true);
 }
 
 start().catch((error) => {
   console.error('[WebMeet] Initialization failed:', error);
-  closeStartupLoaders();
   const message = error instanceof Error ? error.message : String(error);
   const isComponentLoadError = /Failed to load .+ (template|stylesheet)|Failed to fetch dynamically imported module/i.test(message);
   if (window.__WEBMEET_GUEST_ENTRY__ && !isComponentLoadError) {
@@ -415,4 +416,5 @@ start().catch((error) => {
       <button type="button" onclick="window.location.reload()">Retry</button>
     </div>
   `;
+  closeStartupLoaders();
 });
