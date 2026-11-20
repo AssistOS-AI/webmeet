@@ -4,7 +4,7 @@ import {
     WEBMEET_ROOMS_CATEGORY_ID,
     WEBMEET_ROOMS_CATEGORY_NAME
 } from '../services/dashboard-utils.js';
-import { findMentionRanges } from '../services/chat-autocomplete/index.js';
+import { appendChatText } from '../services/chat-message-text.js';
 import {
     renderWebMeetAvatarPreview,
     WEBMEET_AVATAR_PRESETS
@@ -46,26 +46,6 @@ function cloneDashboardTemplate(owner, name, selector) {
         ?.content?.cloneNode(true)?.querySelector?.(selector) || null;
 }
 
-function appendChatText(container, value, knownTokens) {
-    const text = String(value || '');
-    const known = new Set(Array.from(knownTokens || []).map(String));
-    const ranges = findMentionRanges(text);
-    let cursor = 0;
-    for (const range of ranges) {
-        if (range.start > cursor) container.append(document.createTextNode(text.slice(cursor, range.start)));
-        if (known.has(range.token)) {
-            const mention = document.createElement('strong');
-            mention.className = 'webmeet-chat-mention';
-            mention.textContent = range.token;
-            container.append(mention);
-        } else {
-            container.append(document.createTextNode(range.token));
-        }
-        cursor = range.end;
-    }
-    if (cursor < text.length) container.append(document.createTextNode(text.slice(cursor)));
-}
-
 function appendChatAttachments(owner, container, entry) {
     const attachments = Array.isArray(entry?.metadata?.attachments) ? entry.metadata.attachments : [];
     const widgetId = String(entry?.metadata?.blackboardWidgetId || '');
@@ -105,9 +85,29 @@ function appendChatAttachments(owner, container, entry) {
     }
 }
 
-function renderChatFeed(owner, target, entries, {emptyMessage, knownTokens, participantId} = {}) {
-    const fragment = document.createDocumentFragment();
-    for (const entry of entries) {
+const chatFeedState = new WeakMap();
+
+export function renderChatFeed(owner, target, entries, {emptyMessage, knownTokens, participantId} = {}) {
+    const previous = chatFeedState.get(target);
+    const next = new Map();
+    const ordered = [];
+    const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 48;
+    const selection = target.ownerDocument?.getSelection?.();
+    const selectingText = selection && !selection.isCollapsed
+        && (target.contains(selection.anchorNode) || target.contains(selection.focusNode));
+    const occurrences = new Map();
+    for (const [index, entry] of entries.entries()) {
+        const id = String(entry?.id || `entry-${index}`);
+        const occurrence = occurrences.get(id) || 0;
+        occurrences.set(id, occurrence + 1);
+        const key = `${id}:${occurrence}`;
+        const signature = JSON.stringify([entry, knownTokens, participantId]);
+        const cached = previous?.get(key);
+        if (cached?.signature === signature && cached.node.parentNode === target) {
+            next.set(key, cached);
+            ordered.push(cached.node);
+            continue;
+        }
         const item = cloneDashboardTemplate(owner, 'chat-entry', '.webmeet-feed-item');
         if (!item) continue;
         const chatEntry = item.querySelector('.webmeet-chat-entry');
@@ -122,16 +122,27 @@ function renderChatFeed(owner, target, entries, {emptyMessage, knownTokens, part
         const textContainer = item.querySelector('[data-role="chat-text"]');
         appendChatText(textContainer, formatChatEntryMessage(entry), knownTokens);
         appendChatAttachments(owner, textContainer, entry);
-        fragment.append(item);
+        next.set(key, { signature, node: item });
+        ordered.push(item);
     }
-    if (!fragment.childNodes.length) {
+    if (!ordered.length) {
+        const cached = previous?.get('empty');
+        if (cached?.signature === emptyMessage && cached.node.parentNode === target) return;
         const empty = document.createElement('div');
         empty.className = 'webmeet-chat-empty';
         empty.textContent = emptyMessage;
-        fragment.append(empty);
+        next.set('empty', { signature: emptyMessage, node: empty });
+        ordered.push(empty);
     }
-    target.replaceChildren(fragment);
-    target.scrollTop = target.scrollHeight;
+    const retained = new Set(ordered);
+    for (const node of Array.from(target.childNodes)) {
+        if (!retained.has(node)) node.remove();
+    }
+    ordered.forEach((node, index) => {
+        if (target.childNodes[index] !== node) target.insertBefore(node, target.childNodes[index] || null);
+    });
+    chatFeedState.set(target, next);
+    if (!selectingText && (!previous || nearBottom)) target.scrollTop = target.scrollHeight;
 }
 
 export function filterChatEntries(entries, mode = 'normal') {
