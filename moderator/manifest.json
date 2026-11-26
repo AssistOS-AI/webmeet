@@ -5,5 +5,11 @@
   "update": "",
   "cli": "/bin/sh",
   "agent": "node /code/server.js",
-  "about": "Example of moderator agent"
+  "about": "Example of moderator agent",
+  "profiles": {
+    "default": {},
+    "dev": {},
+    "qa": {},
+    "prod": {}
+  }
 }
